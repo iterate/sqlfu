@@ -19,7 +19,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "pnpm run build && node --test test/**/*.test.js",
+    "test": "pnpm run build && vitest run test/smoke.test.ts",
     "generate": "node ./dist/cli/main.js generate",
     "cli": "node ./dist/cli/main.js"
   },
@@ -31,6 +31,7 @@
   "devDependencies": {
     "@types/node": "^24.5.2",
     "typescript": "^5.9.3",
-    "typesql-cli": "^0.22.0"
+    "typesql-cli": "^0.22.0",
+    "vitest": "^4.1.1"
   }
 }
