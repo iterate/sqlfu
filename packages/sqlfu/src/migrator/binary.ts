@@ -18,10 +18,10 @@ export async function ensureSqlite3defBinary(config: SqlfuProjectConfig): Promis
 function getArchiveInfo(version: string): {url: string; binaryName: string; archiveType: 'zip' | 'tar.gz'} {
   const platform = os.platform();
   const arch = os.arch();
-  const binaryName = platform === 'win32' ? 'sqlite3def.exe' : 'sqlite3def';
+  const binaryName = 'sqlite3def';
 
-  if (platform === 'win32') {
-    throw new Error('sqlfu does not yet auto-install sqlite3def on Windows. Install sqlite3def manually and pass --sqlite3def-binary-path.');
+  if (platform !== 'darwin' && platform !== 'linux') {
+    throw new Error(`sqlfu supports only macOS and Linux. Unsupported platform: ${platform}/${arch}`);
   }
 
   const platformName = platform === 'darwin' ? 'darwin' : platform === 'linux' ? 'linux' : null;

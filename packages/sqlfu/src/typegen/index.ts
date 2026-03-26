@@ -5,12 +5,12 @@ import {fileURLToPath} from 'node:url';
 
 import {createClient} from '@libsql/client';
 
-import {resolveProjectConfig} from '../core/config.js';
+import {loadProjectConfig} from '../core/config.js';
 import type {ProjectConfigOverrides} from '../core/types.js';
 import {materializeSchemaDatabase} from '../migrator/index.js';
 
 export async function writeTypesqlConfig(overrides: ProjectConfigOverrides = {}): Promise<string> {
-  const config = resolveProjectConfig(overrides);
+  const config = await loadProjectConfig(overrides);
 
   await fs.writeFile(
     config.typesqlConfigPath,
@@ -31,7 +31,7 @@ export async function writeTypesqlConfig(overrides: ProjectConfigOverrides = {})
 }
 
 export async function generateQueryTypes(overrides: ProjectConfigOverrides = {}): Promise<void> {
-  const config = resolveProjectConfig(overrides);
+  const config = await loadProjectConfig(overrides);
   await materializeSchemaDatabase(overrides, config.tempDbPath);
   const typesqlConfigPath = await writeTypesqlConfig(overrides);
   await runLocalCli('typesql', ['compile', '--config', typesqlConfigPath], packageRoot);
@@ -441,7 +441,7 @@ async function patchGeneratedTypeFile(filePath: string, columns: ReadonlyMap<str
 
 async function runLocalCli(command: string, args: readonly string[], cwd: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['exec', command, ...args], {
+    const child = spawn('pnpm', ['exec', command, ...args], {
       cwd,
       stdio: 'inherit',
       env: process.env,

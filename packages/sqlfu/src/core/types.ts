@@ -39,8 +39,21 @@ export interface D1DatabaseLike {
   prepare(query: string): D1PreparedStatement;
 }
 
+export interface SqlfuConfig {
+  readonly dbPath?: string;
+  readonly definitionsPath?: string;
+  readonly sqlDir?: string;
+  readonly tempDir?: string;
+  readonly tempDbPath?: string;
+  readonly typesqlConfigPath?: string;
+  readonly sqlite3defVersion?: string;
+  readonly sqlite3defBinaryPath?: string;
+}
+
 export interface SqlfuProjectConfig {
   readonly cwd: string;
+  readonly configPath?: string;
+  readonly dbPath: string;
   readonly definitionsPath: string;
   readonly sqlDir: string;
   readonly tempDir: string;
@@ -50,15 +63,9 @@ export interface SqlfuProjectConfig {
   readonly sqlite3defBinaryPath: string;
 }
 
-export interface ProjectConfigOverrides {
+export interface ProjectConfigOverrides extends SqlfuConfig {
   readonly cwd?: string;
-  readonly definitionsPath?: string;
-  readonly sqlDir?: string;
-  readonly tempDir?: string;
-  readonly tempDbPath?: string;
-  readonly typesqlConfigPath?: string;
-  readonly sqlite3defVersion?: string;
-  readonly sqlite3defBinaryPath?: string;
+  readonly configPath?: string;
 }
 
 export interface MigrateDiffResult {

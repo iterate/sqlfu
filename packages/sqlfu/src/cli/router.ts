@@ -1,12 +1,14 @@
 import {createCli, t} from 'trpc-cli';
 import {z} from 'zod';
 
-import {resolveProjectConfig} from '../core/config.js';
+import {loadProjectConfig} from '../core/config.js';
 import {applyDefinitions, checkDatabase, diffDatabase, exportSchema} from '../migrator/index.js';
 import {generateQueryTypes} from '../typegen/index.js';
 
 const configShape = {
   cwd: z.string().optional(),
+  configPath: z.string().optional(),
+  dbPath: z.string().optional(),
   definitionsPath: z.string().optional(),
   sqlDir: z.string().optional(),
   tempDir: z.string().optional(),
@@ -18,17 +20,14 @@ const configShape = {
 
 const configInput = z.object(configShape).default({});
 
-const dbInput = z.object({
-  ...configShape,
-  dbPath: z.string().optional(),
-});
+const dbInput = z.object(configShape);
 
 export const router = t.router({
   generate: t.procedure.input(configInput).mutation(async ({input}) => {
     await generateQueryTypes(input);
     return 'Generated schema-derived database and TypeSQL outputs.';
   }),
-  config: t.procedure.input(configInput).query(({input}) => resolveProjectConfig(input)),
+  config: t.procedure.input(configInput).query(async ({input}) => loadProjectConfig(input)),
   migrate: t.router({
     diff: t.procedure.input(dbInput).query(async ({input}) => {
       const result = await diffDatabase(input, input.dbPath);

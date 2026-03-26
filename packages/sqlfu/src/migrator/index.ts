@@ -1,14 +1,15 @@
 import fs from 'node:fs/promises';
 import {spawn} from 'node:child_process';
+import path from 'node:path';
 
-import {resolveProjectConfig} from '../core/config.js';
+import {loadProjectConfig} from '../core/config.js';
 import type {MigrateDiffResult, ProjectConfigOverrides, SqlfuProjectConfig} from '../core/types.js';
 import {ensureSqlite3defBinary} from './binary.js';
 
 export async function diffDatabase(overrides: ProjectConfigOverrides = {}, dbPath?: string): Promise<MigrateDiffResult> {
-  const config = resolveProjectConfig(overrides);
+  const config = await loadProjectConfig(overrides);
   await assertDefinitionsExists(config);
-  const target = dbPath ?? config.tempDbPath;
+  const target = dbPath ?? config.dbPath;
   const output = await runSqlite3def(config, ['--dry-run', '--file', config.definitionsPath, target]);
   const drift = hasMeaningfulDiff(output);
   return {
@@ -18,16 +19,16 @@ export async function diffDatabase(overrides: ProjectConfigOverrides = {}, dbPat
 }
 
 export async function applyDefinitions(overrides: ProjectConfigOverrides = {}, dbPath?: string): Promise<string> {
-  const config = resolveProjectConfig(overrides);
+  const config = await loadProjectConfig(overrides);
   await assertDefinitionsExists(config);
-  const target = dbPath ?? config.tempDbPath;
-  await fs.mkdir(config.tempDir, {recursive: true});
+  const target = dbPath ?? config.dbPath;
+  await fs.mkdir(path.dirname(target), {recursive: true});
   return runSqlite3def(config, ['--apply', '--file', config.definitionsPath, target]);
 }
 
 export async function exportSchema(overrides: ProjectConfigOverrides = {}, dbPath?: string): Promise<string> {
-  const config = resolveProjectConfig(overrides);
-  const target = dbPath ?? config.tempDbPath;
+  const config = await loadProjectConfig(overrides);
+  const target = dbPath ?? config.dbPath;
   return runSqlite3def(config, ['--export', target]);
 }
 
@@ -39,10 +40,10 @@ export async function checkDatabase(overrides: ProjectConfigOverrides = {}, dbPa
 }
 
 export async function materializeSchemaDatabase(overrides: ProjectConfigOverrides = {}, dbPath?: string): Promise<string> {
-  const config = resolveProjectConfig(overrides);
+  const config = await loadProjectConfig(overrides);
   const target = dbPath ?? config.tempDbPath;
 
-  await fs.mkdir(config.tempDir, {recursive: true});
+  await fs.mkdir(path.dirname(target), {recursive: true});
   await fs.rm(target, {force: true});
   await fs.rm(`${target}-shm`, {force: true});
   await fs.rm(`${target}-wal`, {force: true});
