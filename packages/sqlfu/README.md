@@ -20,7 +20,16 @@
 pnpm generate
 pnpm cli migrate diff --db-path .sqlfu/dev.db
 pnpm cli migrate apply --db-path .sqlfu/dev.db
+pnpm cli migrate check --db-path .sqlfu/dev.db
 pnpm cli migrate export --db-path .sqlfu/dev.db
+```
+
+`pnpm generate` materializes `definitions.sql` into `.sqlfu/typegen.db`, writes `typesql.json`, runs `typesql compile`, and then refines the generated query result types using the materialized schema. The intended working loop is:
+
+```sh
+pnpm generate
+pnpm cli migrate diff --db-path .sqlfu/dev.db
+pnpm cli migrate check --db-path .sqlfu/dev.db
 ```
 
 ## Notes
@@ -28,3 +37,4 @@ pnpm cli migrate export --db-path .sqlfu/dev.db
 - the runtime client abstraction lives in `src/core` + `src/adapters`
 - the migrator currently auto-downloads `sqlite3def` for macOS/Linux
 - Windows auto-install is not implemented yet
+- TypeSQL currently loses SQLite view column types and rejects some SQLite expressions such as `substr(...)` during direct query analysis, so `sqlfu` applies a small post-pass to recover stronger types for simple view-backed selects while keeping `.sql` files as the source of query truth

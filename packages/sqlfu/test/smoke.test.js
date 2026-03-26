@@ -24,14 +24,22 @@ test('generate materializes schema and migrate check stays clean', async () => {
     const generatedIndexPath = path.join(tempRoot, 'sql', 'index.ts');
     const generatedTypesqlConfigPath = path.join(tempRoot, 'typesql.json');
 
-    const [generatedQuery, diffResult] = await Promise.all([
+    const [generatedQuery, generatedTypesqlConfig, diffResult] = await Promise.all([
       fs.readFile(generatedQueryPath, 'utf8'),
+      fs.readFile(generatedTypesqlConfigPath, 'utf8'),
       diffDatabase({cwd: tempRoot, sqlite3defBinaryPath}, path.join(tempRoot, '.sqlfu', 'typegen.db')),
     ]);
 
     await fs.access(generatedIndexPath);
     await fs.access(generatedTypesqlConfigPath);
     assert.match(generatedQuery, /export async function listPostSummaries/);
+    assert.match(generatedQuery, /id: number;/);
+    assert.match(generatedQuery, /slug: string;/);
+    assert.match(generatedQuery, /title: string;/);
+    assert.match(generatedQuery, /published_at: string;/);
+    assert.match(generatedQuery, /excerpt: string;/);
+    assert.doesNotMatch(generatedQuery, /:\s*any;/);
+    assert.match(generatedTypesqlConfig, /"includeCrudTables": \[\]/);
     assert.equal(diffResult.drift, false);
 
     await checkDatabase({cwd: tempRoot, sqlite3defBinaryPath}, path.join(tempRoot, '.sqlfu', 'typegen.db'));

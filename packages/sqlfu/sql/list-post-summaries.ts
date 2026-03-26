@@ -1,11 +1,11 @@
 import type { Client, Transaction } from '@libsql/client';
 
 export type ListPostSummariesResult = {
-	id?: any;
-	slug?: any;
-	title?: any;
-	published_at?: any;
-	excerpt?: any;
+	id: number;
+	slug: string;
+	title: string;
+	published_at: string;
+	excerpt: string;
 }
 
 export async function listPostSummaries(client: Client | Transaction): Promise<ListPostSummariesResult[]> {
