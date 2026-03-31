@@ -37,9 +37,10 @@ export async function generateQueryTypes(overrides: ProjectConfigOverrides = {})
   await runPackageBinary('typesql-cli', ['compile', '--config', typesqlConfigPath], packageRoot);
   await refineGeneratedTypes(config.tempDbPath, config.sqlDir);
   // TODO: If we need custom fs support (for example memfs), column-name transforms such as
-  // snake_case -> camelCase, or direct access to TypeSQL's intermediate descriptors so sqlfu
-  // can emit zod/custom nullability-aware output, we may need to vendor TypeSQL instead of
-  // continuing to treat it as a black-box compiler plus post-processing step.
+  // snake_case -> camelCase, direct access to TypeSQL's intermediate descriptors so sqlfu can
+  // emit zod/custom nullability-aware output, or a first-class way to expose the generated SQL
+  // itself instead of hiding it inside wrapper functions, we may need to vendor TypeSQL instead
+  // of continuing to treat it as a black-box compiler plus post-processing step.
   await rewriteGeneratedWrappers(config.sqlDir);
 }
 
@@ -133,7 +134,7 @@ function rewriteGeneratedWrapper(contents: string): string {
   const header = contents.slice(0, match.index).replace(importPattern, `import type {AsyncExecutor} from 'sqlfu';\n\n`);
   const rewrittenFunction = [
     `export async function ${functionName}(executor: AsyncExecutor${paramsClause}): Promise<${returnType}> {`,
-    indentLines(sqlMatch[0], '\t'),
+    indentLines(normalizeSqlDeclaration(sqlMatch[0]), '\t'),
     `\t${returnStatement.replaceAll('\n', '\n\t')}`,
     `}`,
     '',
@@ -161,6 +162,16 @@ function buildExecutorReturn(chainedCalls: string, resultTypeName: string, execu
   }
 
   return undefined;
+}
+
+function normalizeSqlDeclaration(value: string): string {
+  const match = value.match(/^const sql = `([\s\S]*?)`;$/m);
+  if (!match) {
+    return value;
+  }
+
+  const sql = match[1].trim();
+  return `const sql = \`\n${sql}\n\``;
 }
 
 function indentLines(value: string, indent: string): string {
