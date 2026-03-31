@@ -43,7 +43,9 @@ export async function generateQueryTypes(overrides: ProjectConfigOverrides = {})
   // of continuing to treat it as a black-box compiler plus post-processing step. Another concrete
   // reason: TypeSQL currently falls over on writable CTE shapes; if sqlfu owns the parser/analyzer
   // path we could AST-rewrite `insert/update ... returning ...` branches into equivalent select-ish
-  // analysis queries, similar to how pgkit handles those cases.
+  // analysis queries, similar to how pgkit handles those cases. Also, `sqlfu generate` currently
+  // depends on consumers having `typesql-cli` available even though it is an internal implementation
+  // detail; that's another reason to eventually vendor the TypeSQL pieces we rely on.
   await rewriteGeneratedWrappers(config.sqlDir);
 }
 
@@ -103,7 +105,7 @@ async function rewriteGeneratedWrappers(sqlDir: string): Promise<void> {
 
 function rewriteGeneratedWrapper(contents: string): string {
   if (contents.trim() === '//Invalid SQL') {
-    return contents;
+    return `//Invalid SQL\nexport {};\n`;
   }
 
   const importPattern = /^import type \{ Client, Transaction \} from '@libsql\/client';\n\n/;
@@ -111,77 +113,24 @@ function rewriteGeneratedWrapper(contents: string): string {
     return contents;
   }
 
-  const resultTypeName = contents.match(/export type ([A-Za-z0-9_]+Result) = \{/m)?.[1];
-  const functionPattern =
-    /export async function ([A-Za-z0-9_]+)\(client: Client \| Transaction(, params: [A-Za-z0-9_]+)?\): Promise<([^>]+)>\s*\{\n([\s\S]*?)\n\}\n\nfunction mapArrayTo[A-Za-z0-9_]+\([\s\S]*$/m;
-  const match = contents.match(functionPattern);
-
-  if (!match || !resultTypeName) {
-    return contents.replace(importPattern, `import type {AsyncExecutor} from 'sqlfu';\n\n`);
-  }
-
-  const [, functionName, paramsClause = '', returnType, functionBody] = match;
-  const sqlMatch = functionBody.match(/const sql = `[\s\S]*?`/m);
-  const executeMatch = functionBody.match(/return client\.execute\(([\s\S]*?)\)\n([\s\S]*)$/m);
-
-  if (!sqlMatch || !executeMatch) {
-    return contents.replace(importPattern, `import type {AsyncExecutor} from 'sqlfu';\n\n`);
-  }
-
-  const executeArgs = normalizeExecuteArgs(executeMatch[1].trim());
-  const returnStatement = buildExecutorReturn(executeMatch[2], resultTypeName, executeArgs);
-  if (!returnStatement) {
-    return contents.replace(importPattern, `import type {AsyncExecutor} from 'sqlfu';\n\n`);
-  }
-
-  const header = contents.slice(0, match.index).replace(importPattern, `import type {AsyncExecutor} from 'sqlfu';\n\n`);
-  const rewrittenFunction = [
-    `export async function ${functionName}(executor: AsyncExecutor${paramsClause}): Promise<${returnType}> {`,
-    indentLines(normalizeSqlDeclaration(sqlMatch[0]), '\t'),
-    `\t${returnStatement.replaceAll('\n', '\n\t')}`,
-    `}`,
-    '',
-  ].join('\n');
-
-  return `${header}${rewrittenFunction}`;
-}
-
-function normalizeExecuteArgs(value: string): string {
-  return value === 'sql' ? '{ sql, args: [] }' : value;
-}
-
-function buildExecutorReturn(chainedCalls: string, resultTypeName: string, executeArgs: string): string | undefined {
-  const normalized = chainedCalls.trim();
-
-  if (/^\.then\(res => res\.rows\)\s*\.then\(rows => rows\.map\(row => mapArrayTo[A-Za-z0-9_]+\(row\)\)\);$/m.test(normalized)) {
-    return `return executor.query<${resultTypeName}>(${executeArgs});`;
-  }
-
-  if (/^\.then\(res => res\.rows\)\s*\.then\(rows => rows\.length > 0 \? mapArrayTo[A-Za-z0-9_]+\(\s*rows\[0\]\s*\) : null\);$/m.test(normalized)) {
-    return [
-      `return executor.query<${resultTypeName}>(${executeArgs})`,
-      `.then(result => result.rows[0] ?? null);`,
-    ].join('\n');
-  }
-
-  return undefined;
-}
-
-function normalizeSqlDeclaration(value: string): string {
-  const match = value.match(/^const sql = `([\s\S]*?)`;$/m);
-  if (!match) {
-    return value;
-  }
-
-  const sql = match[1].trim();
-  return `const sql = \`\n${sql}\n\``;
-}
-
-function indentLines(value: string, indent: string): string {
-  return value
-    .split('\n')
-    .map((line) => `${indent}${line}`)
-    .join('\n');
+  return contents
+    .replace(importPattern, `import type {AsyncExecutor, SqlQuery} from 'sqlfu';\n\n`)
+    .replaceAll(
+      /export async function ([A-Za-z0-9_]+)\(client: Client \| Transaction([^)]*)\): Promise<([^>]+)>\s*\{/g,
+      (_match, functionName: string, restArgs: string, returnType: string) => {
+        return [
+          `export async function ${functionName}(executor: AsyncExecutor${restArgs}): Promise<${returnType}> {`,
+          `  const client = {`,
+          `    execute(query: string | SqlQuery) {`,
+          `      return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({`,
+          `        ...result,`,
+          `        rows: Array.from(result.rows),`,
+          `      }));`,
+          `    },`,
+          `  };`,
+        ].join('\n').replaceAll("  ", "\t");
+      },
+    );
 }
 
 async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, RelationInfo>> {

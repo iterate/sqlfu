@@ -37,6 +37,7 @@
   "devDependencies": {
     "@types/node": "^24.5.2",
     "dedent": "^1.7.2",
+    "ts-morph": "^27.0.2",
     "typescript": "^5.9.3",
     "typesql-cli": "^0.22.0",
     "vitest": "^4.1.1"

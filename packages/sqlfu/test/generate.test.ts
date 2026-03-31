@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {Project, ts} from 'ts-morph';
 import {expect, test} from 'vitest';
 
 import {generateQueryTypes} from '../src/typegen/index.js';
@@ -31,8 +32,9 @@ test('generate writes wrappers and a barrel for every checked-in query', async (
 
   expect(indexTs).toMatch(/list-post-summaries\.js/);
   expect(indexTs).toMatch(/find-post-by-slug\.js/);
+  await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(listPostSummariesTs).toMatchInlineSnapshot(`
-    "import type {AsyncExecutor} from 'sqlfu';
+    "import type {AsyncExecutor, SqlQuery} from 'sqlfu';
 
     export type ListPostSummariesResult = {
     	id: number;
@@ -42,16 +44,35 @@ test('generate writes wrappers and a barrel for every checked-in query', async (
     }
 
     export async function listPostSummaries(executor: AsyncExecutor): Promise<ListPostSummariesResult[]> {
+    	const client = {
+    		execute(query: string | SqlQuery) {
+    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
+    				...result,
+    				rows: Array.from(result.rows),
+    			}));
+    		},
+    	};
     	const sql = \`
-    		select id, slug, published_at, excerpt from post_summaries;
-    		
-    		\`
-    	return executor.query<ListPostSummariesResult>({ sql, args: [] });
+    	select id, slug, published_at, excerpt from post_summaries;
+    	
+    	\`
+    	return client.execute(sql)
+    		.then(res => res.rows)
+    		.then(rows => rows.map(row => mapArrayToListPostSummariesResult(row)));
     }
-    "
+
+    function mapArrayToListPostSummariesResult(data: any) {
+    	const result: ListPostSummariesResult = {
+    		id: data[0],
+    		slug: data[1],
+    		published_at: data[2],
+    		excerpt: data[3]
+    	}
+    	return result;
+    }"
   `);
   expect(findPostBySlugTs).toMatchInlineSnapshot(`
-    "import type {AsyncExecutor} from 'sqlfu';
+    "import type {AsyncExecutor, SqlQuery} from 'sqlfu';
 
     export type FindPostBySlugParams = {
     	slug: string;
@@ -64,14 +85,31 @@ test('generate writes wrappers and a barrel for every checked-in query', async (
     }
 
     export async function findPostBySlug(executor: AsyncExecutor, params: FindPostBySlugParams): Promise<FindPostBySlugResult | null> {
+    	const client = {
+    		execute(query: string | SqlQuery) {
+    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
+    				...result,
+    				rows: Array.from(result.rows),
+    			}));
+    		},
+    	};
     	const sql = \`
-    		select id, slug, body as excerpt from posts where slug = ? limit 1;
-    		
-    		\`
-    	return executor.query<FindPostBySlugResult>({ sql, args: [params.slug] })
-    	.then(result => result.rows[0] ?? null);
+    	select id, slug, body as excerpt from posts where slug = ? limit 1;
+    	
+    	\`
+    	return client.execute({ sql, args: [params.slug] })
+    		.then(res => res.rows)
+    		.then(rows => rows.length > 0 ? mapArrayToFindPostBySlugResult(rows[0]) : null);
     }
-    "
+
+    function mapArrayToFindPostBySlugResult(data: any) {
+    	const result: FindPostBySlugResult = {
+    		id: data[0],
+    		slug: data[1],
+    		excerpt: data[2]
+    	}
+    	return result;
+    }"
   `);
   expect(typesqlJson).toContain('"includeCrudTables": []');
 });
@@ -90,8 +128,9 @@ test('generate emits named param types and a nullable single-row result for limi
 
   const generatedTs = await project.readFile('sql/find-post-by-slug.ts');
 
+  await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {AsyncExecutor} from 'sqlfu';
+    "import type {AsyncExecutor, SqlQuery} from 'sqlfu';
 
     export type FindPostBySlugParams = {
     	slug: string;
@@ -104,14 +143,31 @@ test('generate emits named param types and a nullable single-row result for limi
     }
 
     export async function findPostBySlug(executor: AsyncExecutor, params: FindPostBySlugParams): Promise<FindPostBySlugResult | null> {
+    	const client = {
+    		execute(query: string | SqlQuery) {
+    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
+    				...result,
+    				rows: Array.from(result.rows),
+    			}));
+    		},
+    	};
     	const sql = \`
-    		select id, slug, title from posts where slug = ? limit 1;
-    		
-    		\`
-    	return executor.query<FindPostBySlugResult>({ sql, args: [params.slug] })
-    	.then(result => result.rows[0] ?? null);
+    	select id, slug, title from posts where slug = ? limit 1;
+    	
+    	\`
+    	return client.execute({ sql, args: [params.slug] })
+    		.then(res => res.rows)
+    		.then(rows => rows.length > 0 ? mapArrayToFindPostBySlugResult(rows[0]) : null);
     }
-    "
+
+    function mapArrayToFindPostBySlugResult(data: any) {
+    	const result: FindPostBySlugResult = {
+    		id: data[0],
+    		slug: data[1],
+    		title: data[2]
+    	}
+    	return result;
+    }"
   `);
 });
 
@@ -129,8 +185,9 @@ test('generate uses schema types for aliased selected columns instead of leaving
 
   const generatedTs = await project.readFile('sql/find-post-preview.ts');
 
+  await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {AsyncExecutor} from 'sqlfu';
+    "import type {AsyncExecutor, SqlQuery} from 'sqlfu';
 
     export type FindPostPreviewResult = {
     	id: number;
@@ -138,13 +195,30 @@ test('generate uses schema types for aliased selected columns instead of leaving
     }
 
     export async function findPostPreview(executor: AsyncExecutor): Promise<FindPostPreviewResult[]> {
+    	const client = {
+    		execute(query: string | SqlQuery) {
+    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
+    				...result,
+    				rows: Array.from(result.rows),
+    			}));
+    		},
+    	};
     	const sql = \`
-    		select id, body as excerpt from posts limit 5;
-    		
-    		\`
-    	return executor.query<FindPostPreviewResult>({ sql, args: [] });
+    	select id, body as excerpt from posts limit 5;
+    	
+    	\`
+    	return client.execute(sql)
+    		.then(res => res.rows)
+    		.then(rows => rows.map(row => mapArrayToFindPostPreviewResult(row)));
     }
-    "
+
+    function mapArrayToFindPostPreviewResult(data: any) {
+    	const result: FindPostPreviewResult = {
+    		id: data[0],
+    		excerpt: data[1]
+    	}
+    	return result;
+    }"
   `);
 });
 
@@ -162,8 +236,9 @@ test('generate treats selected columns as required when the query narrows them w
 
   const generatedTs = await project.readFile('sql/find-published-post-by-slug.ts');
 
+  await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {AsyncExecutor} from 'sqlfu';
+    "import type {AsyncExecutor, SqlQuery} from 'sqlfu';
 
     export type FindPublishedPostBySlugResult = {
     	id: number;
@@ -171,14 +246,30 @@ test('generate treats selected columns as required when the query narrows them w
     }
 
     export async function findPublishedPostBySlug(executor: AsyncExecutor): Promise<FindPublishedPostBySlugResult | null> {
+    	const client = {
+    		execute(query: string | SqlQuery) {
+    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
+    				...result,
+    				rows: Array.from(result.rows),
+    			}));
+    		},
+    	};
     	const sql = \`
-    		select id, published_at from posts where published_at is not null limit 1;
-    		
-    		\`
-    	return executor.query<FindPublishedPostBySlugResult>({ sql, args: [] })
-    	.then(result => result.rows[0] ?? null);
+    	select id, published_at from posts where published_at is not null limit 1;
+    	
+    	\`
+    	return client.execute(sql)
+    		.then(res => res.rows)
+    		.then(rows => rows.length > 0 ? mapArrayToFindPublishedPostBySlugResult(rows[0]) : null);
     }
-    "
+
+    function mapArrayToFindPublishedPostBySlugResult(data: any) {
+    	const result: FindPublishedPostBySlugResult = {
+    		id: data[0],
+    		published_at: data[1]
+    	}
+    	return result;
+    }"
   `);
 });
 
@@ -197,8 +288,9 @@ test('generate preserves useful result types for queries that read through views
 
   const generatedTs = await project.readFile('sql/list-post-summaries.ts');
 
+  await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {AsyncExecutor} from 'sqlfu';
+    "import type {AsyncExecutor, SqlQuery} from 'sqlfu';
 
     export type ListPostSummariesResult = {
     	id: number;
@@ -206,13 +298,30 @@ test('generate preserves useful result types for queries that read through views
     }
 
     export async function listPostSummaries(executor: AsyncExecutor): Promise<ListPostSummariesResult[]> {
+    	const client = {
+    		execute(query: string | SqlQuery) {
+    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
+    				...result,
+    				rows: Array.from(result.rows),
+    			}));
+    		},
+    	};
     	const sql = \`
-    		select id, excerpt from post_summaries;
-    		
-    		\`
-    	return executor.query<ListPostSummariesResult>({ sql, args: [] });
+    	select id, excerpt from post_summaries;
+    	
+    	\`
+    	return client.execute(sql)
+    		.then(res => res.rows)
+    		.then(rows => rows.map(row => mapArrayToListPostSummariesResult(row)));
     }
-    "
+
+    function mapArrayToListPostSummariesResult(data: any) {
+    	const result: ListPostSummariesResult = {
+    		id: data[0],
+    		excerpt: data[1]
+    	}
+    	return result;
+    }"
   `);
 });
 
@@ -230,7 +339,11 @@ test('generate infers simple expression aliases like substr in result types', as
 
   const generatedTs = await project.readFile('sql/list-post-cards.ts');
 
-  expect(generatedTs).toMatchInlineSnapshot(`"//Invalid SQL"`);
+  expect(generatedTs).toMatchInlineSnapshot(`
+    "//Invalid SQL
+    export {};
+    "
+  `);
 });
 
 test('generate snapshots insert queries', async () => {
@@ -247,8 +360,9 @@ test('generate snapshots insert queries', async () => {
 
   const generatedTs = await project.readFile('sql/insert-post.ts');
 
+  await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {AsyncExecutor} from 'sqlfu';
+    "import type {AsyncExecutor, SqlQuery} from 'sqlfu';
 
     export type InsertPostParams = {
     	slug: string;
@@ -259,7 +373,15 @@ test('generate snapshots insert queries', async () => {
     	lastInsertRowid: number;
     }
 
-    export async function insertPost(client: Client | Transaction, params: InsertPostParams): Promise<InsertPostResult> {
+    export async function insertPost(executor: AsyncExecutor, params: InsertPostParams): Promise<InsertPostResult> {
+    	const client = {
+    		execute(query: string | SqlQuery) {
+    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
+    				...result,
+    				rows: Array.from(result.rows),
+    			}));
+    		},
+    	};
     	const sql = \`
     	insert into posts (slug) values (?);
     	
@@ -292,8 +414,9 @@ test('generate snapshots update queries', async () => {
 
   const generatedTs = await project.readFile('sql/update-post.ts');
 
+  await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {AsyncExecutor} from 'sqlfu';
+    "import type {AsyncExecutor, SqlQuery} from 'sqlfu';
 
     export type UpdatePostData = {
     	slug: string;
@@ -307,7 +430,15 @@ test('generate snapshots update queries', async () => {
     	rowsAffected: number;
     }
 
-    export async function updatePost(client: Client | Transaction, data: UpdatePostData, params: UpdatePostParams): Promise<UpdatePostResult> {
+    export async function updatePost(executor: AsyncExecutor, data: UpdatePostData, params: UpdatePostParams): Promise<UpdatePostResult> {
+    	const client = {
+    		execute(query: string | SqlQuery) {
+    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
+    				...result,
+    				rows: Array.from(result.rows),
+    			}));
+    		},
+    	};
     	const sql = \`
     	update posts set slug = ? where id = ?;
     	
@@ -339,8 +470,9 @@ test('generate snapshots delete queries', async () => {
 
   const generatedTs = await project.readFile('sql/delete-post.ts');
 
+  await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {AsyncExecutor} from 'sqlfu';
+    "import type {AsyncExecutor, SqlQuery} from 'sqlfu';
 
     export type DeletePostParams = {
     	id: number;
@@ -350,7 +482,15 @@ test('generate snapshots delete queries', async () => {
     	rowsAffected: number;
     }
 
-    export async function deletePost(client: Client | Transaction, params: DeletePostParams): Promise<DeletePostResult> {
+    export async function deletePost(executor: AsyncExecutor, params: DeletePostParams): Promise<DeletePostResult> {
+    	const client = {
+    		execute(query: string | SqlQuery) {
+    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
+    				...result,
+    				rows: Array.from(result.rows),
+    			}));
+    		},
+    	};
     	const sql = \`
     	delete from posts where id = ?;
     	
@@ -382,22 +522,38 @@ test('generate snapshots function queries', async () => {
 
   const generatedTs = await project.readFile('sql/count-posts.ts');
 
+  await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {AsyncExecutor} from 'sqlfu';
+    "import type {AsyncExecutor, SqlQuery} from 'sqlfu';
 
     export type CountPostsResult = {
     	total: number;
     }
 
     export async function countPosts(executor: AsyncExecutor): Promise<CountPostsResult | null> {
+    	const client = {
+    		execute(query: string | SqlQuery) {
+    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
+    				...result,
+    				rows: Array.from(result.rows),
+    			}));
+    		},
+    	};
     	const sql = \`
-    		select count(*) as total from posts;
-    		
-    		\`
-    	return executor.query<CountPostsResult>({ sql, args: [] })
-    	.then(result => result.rows[0] ?? null);
+    	select count(*) as total from posts;
+    	
+    	\`
+    	return client.execute(sql)
+    		.then(res => res.rows)
+    		.then(rows => rows.length > 0 ? mapArrayToCountPostsResult(rows[0]) : null);
     }
-    "
+
+    function mapArrayToCountPostsResult(data: any) {
+    	const result: CountPostsResult = {
+    		total: data[0]
+    	}
+    	return result;
+    }"
   `);
 });
 
@@ -415,7 +571,12 @@ test('generate snapshots user-defined function queries', async () => {
 
   const generatedTs = await project.readFile('sql/list-normalized-slugs.ts');
 
-  expect(generatedTs).toMatchInlineSnapshot(`"//Invalid SQL"`);
+  await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
+  expect(generatedTs).toMatchInlineSnapshot(`
+    "//Invalid SQL
+    export {};
+    "
+  `);
 });
 
 test('generate snapshots cte queries with the works in one query', async () => {
@@ -449,7 +610,12 @@ test('generate snapshots cte queries with the works in one query', async () => {
 
   const generatedTs = await project.readFile('sql/sync-post-from-cte.ts');
 
-  expect(generatedTs).toMatchInlineSnapshot(`"//Invalid SQL"`);
+  await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
+  expect(generatedTs).toMatchInlineSnapshot(`
+    "//Invalid SQL
+    export {};
+    "
+  `);
 });
 
 async function createGenerateFixture(input: {
@@ -488,6 +654,32 @@ async function createGenerateFixture(input: {
     },
     async readFile(relativePath: string) {
       return fs.readFile(path.join(root, relativePath), 'utf8');
+    },
+    async getCompileDiagnostics() {
+      const project = new Project({
+        compilerOptions: {
+          module: ts.ModuleKind.NodeNext,
+          moduleResolution: ts.ModuleResolutionKind.NodeNext,
+          target: ts.ScriptTarget.ESNext,
+          lib: ['lib.esnext.d.ts'],
+          strict: true,
+          skipLibCheck: true,
+          noEmit: true,
+          baseUrl: root,
+          paths: {
+            sqlfu: [path.join(packageRoot, 'src', 'index.ts')],
+          },
+          types: ['node'],
+        },
+      });
+
+      project.addSourceFilesAtPaths(path.join(packageRoot, 'src', '**', '*.ts'));
+      project.addSourceFilesAtPaths(path.join(root, 'sql', '**', '*.ts'));
+
+      return project
+        .getPreEmitDiagnostics()
+        .map((diagnostic) => project.formatDiagnosticsWithColorAndContext([diagnostic]))
+        .filter((message) => message.includes(`${path.sep}sql${path.sep}`));
     },
     async [Symbol.asyncDispose]() {
       await fs.rm(root, {recursive: true, force: true});
