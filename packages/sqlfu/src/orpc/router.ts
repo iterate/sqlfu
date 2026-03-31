@@ -62,6 +62,7 @@ const configShape = {
   snapshotFile: z.string().optional(),
   definitionsPath: z.string().optional(),
   sqlDir: z.string().optional(),
+  generatedImportExtension: z.enum(['.js', '.ts']).optional(),
   tempDir: z.string().optional(),
   tempDbPath: z.string().optional(),
   typesqlConfigPath: z.string().optional(),

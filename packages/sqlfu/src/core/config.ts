@@ -35,6 +35,7 @@ export function resolveProjectConfig(
     snapshotFile: resolveConfigPathValue(cwd, configDir, overrides.snapshotFile, fileConfig.snapshotFile, 'snapshot.sql'),
     definitionsPath: resolveConfigPathValue(cwd, configDir, overrides.definitionsPath, fileConfig.definitionsPath, 'definitions.sql'),
     sqlDir: resolveConfigPathValue(cwd, configDir, overrides.sqlDir, fileConfig.sqlDir, 'sql'),
+    generatedImportExtension: overrides.generatedImportExtension ?? fileConfig.generatedImportExtension ?? '.js',
     tempDir,
     tempDbPath: resolveConfigPathValue(
       cwd,

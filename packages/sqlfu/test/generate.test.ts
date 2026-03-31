@@ -114,6 +114,26 @@ test('generate writes wrappers and a barrel for every checked-in query', async (
   expect(typesqlJson).toContain('"includeCrudTables": []');
 });
 
+test('generate can use .ts extensions in the barrel file', async () => {
+  await using project = await createGenerateFixture({
+    definitionsSql: dedent`
+      create table posts (id integer primary key, slug text not null);
+    `,
+    sqlFiles: {
+      'sql/list-posts.sql': `select id, slug from posts;`,
+    },
+    config: {
+      generatedImportExtension: '.ts',
+    },
+  });
+
+  await project.generate();
+
+  const indexTs = await project.readFile('sql/index.ts');
+
+  expect(indexTs).toBe(`export * from "./list-posts.ts";\n`);
+});
+
 test('generate emits named param types and a nullable single-row result for limit 1 queries', async () => {
   await using project = await createGenerateFixture({
     definitionsSql: dedent`
@@ -621,6 +641,9 @@ test('generate snapshots cte queries with the works in one query', async () => {
 async function createGenerateFixture(input: {
   definitionsSql: string;
   sqlFiles: Record<string, string>;
+  config?: {
+    generatedImportExtension?: '.js' | '.ts';
+  };
 }) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-generate-'));
   await fs.writeFile(path.join(root, 'definitions.sql'), `${input.definitionsSql.trim()}\n`);
@@ -632,6 +655,7 @@ async function createGenerateFixture(input: {
         snapshotFile: './snapshot.sql',
         definitionsPath: './definitions.sql',
         sqlDir: './sql',
+        generatedImportExtension: '${input.config?.generatedImportExtension ?? '.js'}',
         tempDir: './.sqlfu',
         tempDbPath: './.sqlfu/typegen.db',
         typesqlConfigPath: './typesql.json',

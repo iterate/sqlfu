@@ -53,6 +53,7 @@ export interface SqlfuConfig {
   readonly snapshotFile?: string;
   readonly definitionsPath?: string;
   readonly sqlDir?: string;
+  readonly generatedImportExtension?: '.js' | '.ts';
   readonly tempDir?: string;
   readonly tempDbPath?: string;
   readonly typesqlConfigPath?: string;
@@ -68,6 +69,7 @@ export interface SqlfuProjectConfig {
   readonly snapshotFile: string;
   readonly definitionsPath: string;
   readonly sqlDir: string;
+  readonly generatedImportExtension: '.js' | '.ts';
   readonly tempDir: string;
   readonly tempDbPath: string;
   readonly typesqlConfigPath: string;

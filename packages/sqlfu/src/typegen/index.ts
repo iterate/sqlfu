@@ -46,7 +46,7 @@ export async function generateQueryTypes(overrides: ProjectConfigOverrides = {})
   // analysis queries, similar to how pgkit handles those cases. Also, `sqlfu generate` currently
   // depends on consumers having `typesql-cli` available even though it is an internal implementation
   // detail; that's another reason to eventually vendor the TypeSQL pieces we rely on.
-  await rewriteGeneratedWrappers(config.sqlDir);
+  await rewriteGeneratedWrappers(config.sqlDir, config.generatedImportExtension);
 }
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(new URL('../../package.json', import.meta.url))));
@@ -86,21 +86,28 @@ async function refineGeneratedTypes(databasePath: string, sqlDir: string): Promi
   );
 }
 
-async function rewriteGeneratedWrappers(sqlDir: string): Promise<void> {
+async function rewriteGeneratedWrappers(sqlDir: string, generatedImportExtension: '.js' | '.ts'): Promise<void> {
   const sqlEntries = await fs.readdir(sqlDir, {withFileTypes: true});
 
   await Promise.all(
     sqlEntries
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.ts') && entry.name !== 'index.ts')
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
       .map(async (entry) => {
         const filePath = path.join(sqlDir, entry.name);
         const contents = await fs.readFile(filePath, 'utf8');
-        const nextContents = rewriteGeneratedWrapper(contents);
+        const nextContents =
+          entry.name === 'index.ts'
+            ? rewriteGeneratedBarrel(contents, generatedImportExtension)
+            : rewriteGeneratedWrapper(contents);
         if (nextContents !== contents) {
           await fs.writeFile(filePath, nextContents);
         }
       }),
   );
+}
+
+function rewriteGeneratedBarrel(contents: string, generatedImportExtension: '.js' | '.ts'): string {
+  return contents.replace(/(?<=export \* from "\.\/[^"]+)\.js(?=";)/g, generatedImportExtension);
 }
 
 function rewriteGeneratedWrapper(contents: string): string {
