@@ -1,0 +1,312 @@
+import dedent from 'dedent';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {createClient} from '@libsql/client';
+import {expect, test} from 'vitest';
+
+import {createSqlfuCaller} from '../src/orpc/router.js';
+
+test('draft creates the single mutable migration from finalized history to definitions.sql', async () => {
+  await using project = await createProjectFixture({
+    definitionsSql: dedent`
+      create table users (id int, email text);
+      create table posts (id int, slug text);
+    `,
+    snapshotSql: dedent`
+      create table users (id int, email text);
+    `,
+    migrations: {
+      'migrations/20260331090000_create_users.sql': finalMigration(`
+        create table users (id int, email text);
+      `),
+    },
+  });
+
+  await project.db.execute(`
+    create table users (id int, email text);
+  `);
+
+  await project.caller.draft({name: 'add_posts'});
+
+  const migrationFiles = await project.fs.readdir('migrations');
+  expect(migrationFiles).toMatchObject([
+    '20260331090000_create_users.sql',
+    expect.stringMatching(/^\d+_add_posts\.sql$/),
+  ]);
+  const draftMigrationPath = `migrations/${migrationFiles.at(-1)!}`;
+  expect(await project.fs.readFile(draftMigrationPath)).toContain('-- status: draft');
+  expect(await project.fs.readFile(draftMigrationPath)).toContain('create table posts');
+  expect(await project.fs.readFile('snapshot.sql')).toContain('create table users');
+  expect(await project.db.exportSchema()).resolves.toContain('create table users');
+});
+
+test('draft rewrites the existing draft instead of creating a second editable migration', async () => {
+  await using project = await createProjectFixture({
+    definitionsSql: dedent`
+      create table users (id int, email text);
+      create table posts (id int, slug text);
+      create index posts_slug_idx on posts(slug);
+    `,
+    snapshotSql: dedent`
+      create table users (id int, email text);
+    `,
+    migrations: {
+      'migrations/20260331090000_create_users.sql': finalMigration(`
+        create table users (id int, email text);
+      `),
+      'migrations/20260331090001_add_posts.sql': draftMigration(`
+        create table posts (id int, slug text);
+      `),
+    },
+  });
+
+  await project.db.execute(`
+    create table users (id int, email text);
+  `);
+
+  const beforeFiles = await project.fs.readdir('migrations');
+  await project.caller.draft({name: 'add_posts'});
+
+  const afterFiles = await project.fs.readdir('migrations');
+  expect(afterFiles).toMatchObject([
+    '20260331090000_create_users.sql',
+    '20260331090001_add_posts.sql',
+  ]);
+  expect(afterFiles).toEqual(beforeFiles);
+  expect(await project.fs.readFile('migrations/20260331090001_add_posts.sql')).toContain('-- status: draft');
+  expect(await project.fs.readFile('migrations/20260331090001_add_posts.sql')).toContain('create index posts_slug_idx');
+});
+
+test('migrate refuses to run while a draft migration exists', async () => {
+  await using project = await createProjectFixture({
+    definitionsSql: dedent`
+      create table users (id int, email text);
+      create table posts (id int, slug text);
+    `,
+    snapshotSql: dedent`
+      create table users (id int, email text);
+    `,
+    migrations: {
+      'migrations/20260331090000_create_users.sql': finalMigration(`
+        create table users (id int, email text);
+      `),
+      'migrations/20260331090001_add_posts.sql': draftMigration(`
+        create table posts (id int, slug text);
+      `),
+    },
+  });
+
+  await project.db.execute(`
+    create table users (id int, email text);
+  `);
+
+  await expect(project.caller.migrate()).rejects.toThrow(/draft/i);
+  expect(await project.db.exportSchema()).resolves.toContain('create table users');
+  expect(await project.db.exportSchema()).resolves.not.toContain('create table posts');
+});
+
+test('sync fixes a drifted development database without mutating migrations or snapshot.sql', async () => {
+  await using project = await createProjectFixture({
+    definitionsSql: dedent`
+      create table users (id int, email text);
+      create table posts (id int, slug text);
+    `,
+    snapshotSql: dedent`
+      create table users (id int, email text);
+    `,
+    migrations: {
+      'migrations/20260331090000_create_users.sql': finalMigration(`
+        create table users (id int, email text);
+      `),
+      'migrations/20260331090001_add_posts.sql': draftMigration(`
+        create table posts (id int, slug text);
+      `),
+    },
+  });
+
+  await project.db.execute(`
+    create table users (id int, email text, nickname text);
+  `);
+
+  const beforeDraft = await project.fs.readFile('migrations/20260331090001_add_posts.sql');
+  const beforeSnapshot = await project.fs.readFile('snapshot.sql');
+
+  await project.caller.sync();
+
+  expect(await project.db.exportSchema()).resolves.toContain('create table posts');
+  expect(await project.db.exportSchema()).resolves.not.toContain('nickname');
+  expect(await project.fs.readFile('migrations/20260331090001_add_posts.sql')).toBe(beforeDraft);
+  expect(await project.fs.readFile('snapshot.sql')).toBe(beforeSnapshot);
+});
+
+test('check reports where desired schema, finalized history, snapshot, and actual database disagree', async () => {
+  await using project = await createProjectFixture({
+    definitionsSql: dedent`
+      create table users (id int, email text);
+      create table posts (id int, slug text);
+      create index posts_slug_idx on posts(slug);
+    `,
+    snapshotSql: dedent`
+      create table users (id int, email text);
+    `,
+    migrations: {
+      'migrations/20260331090000_create_users.sql': finalMigration(`
+        create table users (id int, email text);
+      `),
+      'migrations/20260331090001_add_posts.sql': draftMigration(`
+        create table posts (id int, slug text);
+      `),
+    },
+  });
+
+  await project.db.execute(`
+    create table users (id int, email text, nickname text);
+  `);
+
+  await expect(project.caller.check()).resolves.toMatchObject({
+    ok: expect.stringMatching(/^failure: /),
+    desiredVsHistory: expect.stringContaining('desired schema'),
+    finalizedVsSnapshot: 'ok',
+    databaseVsDesired: expect.stringContaining('database'),
+    databaseVsFinalized: expect.stringContaining('database'),
+  });
+});
+
+test('draft does not require the actual database to match definitions.sql first', async () => {
+  await using project = await createProjectFixture({
+    definitionsSql: dedent`
+      create table users (id int, email text);
+      create table posts (id int, slug text);
+    `,
+    snapshotSql: dedent`
+      create table users (id int, email text);
+    `,
+    migrations: {
+      'migrations/20260331090000_create_users.sql': finalMigration(`
+        create table users (id int, email text);
+      `),
+    },
+  });
+
+  await project.db.execute(`
+    create table users (id int, email text, nickname text);
+  `);
+
+  await project.caller.draft({name: 'add_posts'});
+
+  const migrationFiles = await project.fs.readdir('migrations');
+  const draftMigrationPath = `migrations/${migrationFiles.at(-1)!}`;
+  expect(await project.fs.readFile(draftMigrationPath)).toContain('-- status: draft');
+  expect(await project.fs.readFile(draftMigrationPath)).toContain('create table posts');
+  expect(await project.db.exportSchema()).resolves.toContain('nickname');
+});
+
+async function createProjectFixture(input: {
+  definitionsSql: string;
+  snapshotSql: string;
+  migrations: Record<string, string>;
+}) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-router-'));
+  const fsAdapter = createRealFs(root);
+  await fsAdapter.writeFile('definitions.sql', input.definitionsSql);
+  await fsAdapter.writeFile('snapshot.sql', input.snapshotSql);
+  await fsAdapter.mkdir('migrations');
+  for (const [filePath, contents] of Object.entries(input.migrations)) {
+    await fsAdapter.writeFile(filePath, contents);
+  }
+
+  const db = createRealDatabase(path.join(root, 'dev.db'));
+  const caller = createSqlfuCaller({
+    config: {
+      definitionsPath: 'definitions.sql',
+      migrationsDir: 'migrations',
+      snapshotPath: 'snapshot.sql',
+      dbPath: 'dev.db',
+    },
+    fs: fsAdapter,
+    db,
+  });
+
+  return {
+    caller,
+    fs: fsAdapter,
+    db,
+    async [Symbol.asyncDispose]() {
+      await db.close();
+      await fs.rm(root, {recursive: true, force: true});
+    },
+  };
+}
+
+function createRealFs(root: string) {
+  return {
+    async exists(relativePath: string) {
+      try {
+        await fs.access(resolvePath(root, relativePath));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    async readFile(relativePath: string) {
+      return fs.readFile(resolvePath(root, relativePath), 'utf8');
+    },
+    async writeFile(relativePath: string, contents: string) {
+      const fullPath = resolvePath(root, relativePath);
+      await fs.mkdir(path.dirname(fullPath), {recursive: true});
+      await fs.writeFile(fullPath, contents);
+    },
+    async readdir(relativePath: string) {
+      return (await fs.readdir(resolvePath(root, relativePath))).sort();
+    },
+    async mkdir(relativePath: string) {
+      await fs.mkdir(resolvePath(root, relativePath), {recursive: true});
+    },
+  };
+}
+
+function createRealDatabase(dbPath: string) {
+  const client = createClient({url: `file:${dbPath}`});
+
+  return {
+    async execute(sql: string) {
+      for (const statement of sqlStatements(sql)) {
+        await client.execute(statement);
+      }
+    },
+    async exportSchema() {
+      const result = await client.execute(`
+        select sql
+        from sqlite_schema
+        where sql is not null
+          and name not like 'sqlite_%'
+        order by type, name
+      `);
+      return result.rows.map((row) => String(row.sql)).join('\n');
+    },
+    async close() {
+      client.close();
+    },
+  };
+}
+
+function finalMigration(upSql: string) {
+  return `-- status: final\n${dedent(upSql)}\n`;
+}
+
+function draftMigration(upSql: string) {
+  return `-- status: draft\n${dedent(upSql)}\n`;
+}
+
+function resolvePath(root: string, relativePath: string) {
+  return path.join(root, relativePath);
+}
+
+function sqlStatements(sql: string) {
+  return dedent(sql)
+    .split(';')
+    .map((statement) => statement.trim())
+    .filter(Boolean)
+    .map((statement) => `${statement};`);
+}

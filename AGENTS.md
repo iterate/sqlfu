@@ -1,0 +1,1 @@
+Prefer lowercase SQL keywords.
