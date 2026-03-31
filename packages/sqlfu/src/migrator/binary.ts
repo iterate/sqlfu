@@ -2,9 +2,13 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import type {SqlfuProjectConfig} from '../core/types.js';
+interface Sqlite3defBinaryConfig {
+  readonly tempDir: string;
+  readonly sqlite3defVersion: string;
+  readonly sqlite3defBinaryPath: string;
+}
 
-export async function ensureSqlite3defBinary(config: SqlfuProjectConfig): Promise<string> {
+export async function ensureSqlite3defBinary(config: Sqlite3defBinaryConfig): Promise<string> {
   try {
     await fs.access(config.sqlite3defBinaryPath);
     return config.sqlite3defBinaryPath;
@@ -40,7 +44,7 @@ function getArchiveInfo(version: string): {url: string; binaryName: string; arch
   };
 }
 
-async function downloadAndExtractBinary(config: SqlfuProjectConfig): Promise<void> {
+async function downloadAndExtractBinary(config: Sqlite3defBinaryConfig): Promise<void> {
   const archive = getArchiveInfo(config.sqlite3defVersion);
   const archivePath = path.join(config.tempDir, `${archive.binaryName}.${archive.archiveType}`);
 

@@ -10,7 +10,7 @@ import {createSqlfuCaller} from '../src/orpc/router.js';
 test('draft creates the single mutable migration from finalized history to definitions.sql', async () => {
   await using project = await createProjectFixture({
     definitionsSql: dedent`
-      create table users (id int, email text);
+      create table users (id int, email text, nickname text);
       create table posts (id int, slug text);
     `,
     snapshotSql: dedent`
@@ -36,7 +36,9 @@ test('draft creates the single mutable migration from finalized history to defin
   ]);
   const draftMigrationPath = `migrations/${migrationFiles.at(-1)!}`;
   expect(await project.fs.readFile(draftMigrationPath)).toContain('-- status: draft');
+  expect(await project.fs.readFile(draftMigrationPath)).toMatch(/alter table "users" add column "nickname" text;/i);
   expect(await project.fs.readFile(draftMigrationPath)).toContain('create table posts');
+  expect(await project.fs.readFile(draftMigrationPath)).not.toContain('create table users');
   expect(await project.fs.readFile('snapshot.sql')).toContain('create table users');
   expect(await project.db.exportSchema()).toContain('create table users');
 });
@@ -176,7 +178,7 @@ test('check reports where desired schema, finalized history, snapshot, and actua
 test('draft does not require the actual database to match definitions.sql first', async () => {
   await using project = await createProjectFixture({
     definitionsSql: dedent`
-      create table users (id int, email text);
+      create table users (id int, email text, nickname text);
       create table posts (id int, slug text);
     `,
     snapshotSql: dedent`
@@ -198,6 +200,7 @@ test('draft does not require the actual database to match definitions.sql first'
   const migrationFiles = await project.fs.readdir('migrations');
   const draftMigrationPath = `migrations/${migrationFiles.at(-1)!}`;
   expect(await project.fs.readFile(draftMigrationPath)).toContain('-- status: draft');
+  expect(await project.fs.readFile(draftMigrationPath)).toMatch(/alter table "users" add column "nickname" text;/i);
   expect(await project.fs.readFile(draftMigrationPath)).toContain('create table posts');
   expect(await project.db.exportSchema()).toContain('nickname');
 });

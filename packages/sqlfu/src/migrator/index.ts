@@ -1,11 +1,10 @@
 import fs from 'node:fs/promises';
-import {spawn} from 'node:child_process';
 import path from 'node:path';
 
 import {loadProjectConfig} from '../core/config.js';
 import {runPackageBinary} from '../core/tooling.js';
+import {diffSnapshotSqlToDesiredSql, getMeaningfulDiffLines, runSqlite3def} from '../core/sqlite3def.js';
 import type {MigrateDiffResult, ProjectConfigOverrides, SqlfuProjectConfig} from '../core/types.js';
-import {ensureSqlite3defBinary} from './binary.js';
 
 export async function diffDatabase(overrides: ProjectConfigOverrides = {}, dbPath?: string): Promise<MigrateDiffResult> {
   const config = await loadProjectConfig(overrides);
@@ -84,38 +83,6 @@ export async function materializeSchemaDatabase(overrides: ProjectConfigOverride
   return target;
 }
 
-export async function runSqlite3def(config: SqlfuProjectConfig, args: readonly string[]): Promise<string> {
-  const binaryPath = await ensureSqlite3defBinary(config);
-
-  return new Promise<string>((resolve, reject) => {
-    const child = spawn(binaryPath, [...args], {
-      cwd: config.cwd,
-      env: process.env,
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk;
-    });
-
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk;
-    });
-
-    child.on('exit', (code) => {
-      if (code === 0) {
-        resolve(stdout.trim());
-        return;
-      }
-      reject(new Error([stdout, stderr].filter(Boolean).join('\n').trim() || `sqlite3def exited with code ${code ?? 'unknown'}`));
-    });
-
-    child.on('error', reject);
-  });
-}
-
 async function assertDefinitionsExists(config: SqlfuProjectConfig): Promise<void> {
   try {
     await fs.access(config.definitionsPath);
@@ -128,38 +95,10 @@ function hasMeaningfulDiff(output: string): boolean {
   return getMeaningfulDiffLines(output).length > 0;
 }
 
-function getMeaningfulDiffLines(output: string): string[] {
-  if (/Nothing is modified/i.test(output)) {
-    return [];
-  }
-
-  return output
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => line !== '-- dry run --')
-    .filter((line) => line !== 'BEGIN;')
-    .filter((line) => line !== 'COMMIT;')
-    .filter((line) => line !== 'DROP TABLE "schema_migrations";')
-    .filter((line) => line !== '-- Skipped: DROP TABLE "schema_migrations";')
-    .filter((line) => !/^-- Skipped: DROP TABLE ".*_fts_(data|idx|content|docsize|config)";$/i.test(line))
-    .filter((line) => line !== 'finished!');
-}
-
 async function draftMigrationSql(config: SqlfuProjectConfig): Promise<string> {
-  const baselineDbPath = path.join(config.tempDir, 'migration-draft.db');
-
-  await fs.mkdir(path.dirname(baselineDbPath), {recursive: true});
-  await fs.rm(baselineDbPath, {force: true});
-  await fs.rm(`${baselineDbPath}-shm`, {force: true});
-  await fs.rm(`${baselineDbPath}-wal`, {force: true});
-
-  if (await fileExists(config.schemaFile)) {
-    await runSqlite3def(config, ['--apply', '--file', config.schemaFile, baselineDbPath]);
-  }
-
-  const diffOutput = await runSqlite3def(config, ['--dry-run', '--file', config.definitionsPath, baselineDbPath]);
-  const lines = getMeaningfulDiffLines(diffOutput);
+  const snapshotSql = (await fileExists(config.schemaFile)) ? await fs.readFile(config.schemaFile, 'utf8') : '';
+  const desiredSql = await fs.readFile(config.definitionsPath, 'utf8');
+  const lines = await diffSnapshotSqlToDesiredSql(config, {snapshotSql, desiredSql});
 
   if (lines.length === 0) {
     return '-- No schema changes detected between schema.sql and definitions.sql.';

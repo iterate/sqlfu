@@ -1,3 +1,5 @@
+import {createDefaultSqlite3defConfig, diffSnapshotSqlToDesiredSql} from '../core/sqlite3def.js';
+
 export interface SqlfuFsLike {
   exists(path: string): Promise<boolean>;
   readFile(path: string): Promise<string>;
@@ -51,6 +53,8 @@ type MigrationFile = {
 };
 
 export function createSqlfuCaller(options: CreateSqlfuCallerOptions): SqlfuCaller {
+  const sqlite3defConfig = createDefaultSqlite3defConfig('orpc');
+
   return {
     async sync() {
       const desiredSql = await options.fs.readFile(options.config.definitionsPath);
@@ -78,13 +82,13 @@ export function createSqlfuCaller(options: CreateSqlfuCallerOptions): SqlfuCalle
         throw new Error('draft name is required when creating a new draft migration');
       }
 
-      const draftSql = computeDraftSql(snapshotSql, desiredSql);
+      const draftLines = await diffSnapshotSqlToDesiredSql(sqlite3defConfig, {snapshotSql, desiredSql});
       const targetFileName = existingDraft?.fileName ?? `${nextMigrationId(migrations)}_${slugify(input?.name ?? 'draft')}.sql`;
 
       await options.fs.mkdir(options.config.migrationsDir);
       await options.fs.writeFile(
         joinPath(options.config.migrationsDir, targetFileName),
-        `-- status: draft\n${draftSql}\n`,
+        `-- status: draft\n${draftLines.join('\n')}\n`,
       );
     },
 
@@ -174,12 +178,6 @@ function parseMigrationFile(fileName: string, contents: string): MigrationFile {
 
 function compareSchemas(message: string, leftSql: string, rightSql: string): SqlfuCheckResult {
   return normalizeSql(leftSql) === normalizeSql(rightSql) ? 'ok' : `failure: ${message}`;
-}
-
-function computeDraftSql(snapshotSql: string, definitionsSql: string): string {
-  const snapshotStatements = new Set(splitStatements(snapshotSql));
-  const nextStatements = splitStatements(definitionsSql).filter((statement) => !snapshotStatements.has(statement));
-  return nextStatements.join('\n');
 }
 
 function normalizeSql(sql: string): string {
