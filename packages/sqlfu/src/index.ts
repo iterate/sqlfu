@@ -5,3 +5,4 @@ export * from './adapters/libsql.js';
 export * from './adapters/d1.js';
 export * from './migrator/index.js';
 export * from './typegen/index.js';
+export * from './orpc/router.js';

@@ -1,3 +1,6 @@
+import {createRouterClient, os} from '@orpc/server';
+import {z} from 'zod';
+
 import {createDefaultSqlite3defConfig, diffSnapshotSqlToDesiredSql} from '../core/sqlite3def.js';
 
 export interface SqlfuFsLike {
@@ -23,13 +26,6 @@ export interface SqlfuCheckReport {
   readonly databaseVsFinalized: SqlfuCheckResult;
 }
 
-export interface SqlfuCaller {
-  sync(): Promise<void>;
-  migrate(): Promise<void>;
-  draft(input?: {name?: string}): Promise<void>;
-  check(): Promise<SqlfuCheckReport>;
-}
-
 export interface SqlfuRouterConfig {
   readonly definitionsPath: string;
   readonly migrationsDir: string;
@@ -37,7 +33,7 @@ export interface SqlfuRouterConfig {
   readonly dbPath: string;
 }
 
-export interface CreateSqlfuCallerOptions {
+export interface SqlfuRouterContext {
   readonly config: SqlfuRouterConfig;
   readonly fs: SqlfuFsLike;
   readonly db: SqlfuDatabaseLike;
@@ -52,106 +48,142 @@ type MigrationFile = {
   status(): MigrationStatus;
 };
 
-export function createSqlfuCaller(options: CreateSqlfuCallerOptions): SqlfuCaller {
-  const sqlite3defConfig = createDefaultSqlite3defConfig('orpc');
+const sqlite3defConfig = createDefaultSqlite3defConfig('orpc');
+const draftInputSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    finalize: z.boolean().optional(),
+    content: z.string().optional(),
+  })
+  .optional();
+const base = os.$context<SqlfuRouterContext>();
 
-  return {
-    async sync() {
-      const desiredSql = await options.fs.readFile(options.config.definitionsPath);
-      await options.db.execute(desiredSql);
-    },
+export const sqlfuRouter = {
+  sync: base.handler(async ({context}) => {
+    const desiredSql = await context.fs.readFile(context.config.definitionsPath);
+    await context.db.execute(desiredSql);
+  }),
 
-    async migrate() {
-      const migrations = await loadMigrations(options);
-      const draftMigration = migrations.find((migration) => migration.status() === 'draft');
-      if (draftMigration) {
-        throw new Error(`draft migration must be finalized before migrate: ${draftMigration.fileName}`);
+  migrate: base.handler(async ({context}) => {
+    const migrations = await loadMigrations(context);
+    const draftMigration = migrations.find((migration) => migration.status() === 'draft');
+    if (draftMigration) {
+      throw new Error(`draft migration must be finalized before migrate: ${draftMigration.fileName}`);
+    }
+
+    const snapshotSql = await context.fs.readFile(context.config.snapshotPath);
+    await context.db.execute(snapshotSql);
+  }),
+
+  draft: base.input(draftInputSchema).handler(async ({context, input}) => {
+    const desiredSql = await context.fs.readFile(context.config.definitionsPath);
+    const snapshotSql = await context.fs.readFile(context.config.snapshotPath);
+    const migrations = await loadMigrations(context);
+    const existingDraft = migrations.find((migration) => migration.status() === 'draft');
+    const wantsFinalize = input?.finalize === true;
+    const wantsContent = typeof input?.content === 'string';
+    const wantsName = typeof input?.name === 'string' && input.name.trim().length > 0;
+
+    if (wantsFinalize && wantsContent) {
+      throw new Error('draft finalize cannot be combined with content');
+    }
+
+    if (wantsFinalize && wantsName) {
+      throw new Error('draft finalize cannot be combined with name');
+    }
+
+    if (wantsFinalize) {
+      if (!existingDraft) {
+        throw new Error('no draft migration exists to finalize');
       }
 
-      const snapshotSql = await options.fs.readFile(options.config.snapshotPath);
-      await options.db.execute(snapshotSql);
-    },
-
-    async draft(input) {
-      const desiredSql = await options.fs.readFile(options.config.definitionsPath);
-      const snapshotSql = await options.fs.readFile(options.config.snapshotPath);
-      const migrations = await loadMigrations(options);
-      const existingDraft = migrations.find((migration) => migration.status() === 'draft');
-
-      if (!existingDraft && !input?.name) {
-        throw new Error('draft name is required when creating a new draft migration');
-      }
-
-      const draftLines = await diffSnapshotSqlToDesiredSql(sqlite3defConfig, {snapshotSql, desiredSql});
-      const targetFileName = existingDraft?.fileName ?? `${nextMigrationId(migrations)}_${slugify(input?.name ?? 'draft')}.sql`;
-
-      await options.fs.mkdir(options.config.migrationsDir);
-      await options.fs.writeFile(
-        joinPath(options.config.migrationsDir, targetFileName),
-        `-- status: draft\n${draftLines.join('\n')}\n`,
+      await context.fs.writeFile(
+        joinPath(context.config.migrationsDir, existingDraft.fileName),
+        serializeMigration('final', existingDraft.body),
       );
-    },
+      await context.fs.writeFile(context.config.snapshotPath, withTrailingNewline(desiredSql));
+      return;
+    }
 
-    async check() {
-      const definitionsSql = await options.fs.readFile(options.config.definitionsPath);
-      const snapshotSql = await options.fs.readFile(options.config.snapshotPath);
-      const migrations = await loadMigrations(options);
-      const databaseSql = await options.db.exportSchema();
+    if (existingDraft && wantsName) {
+      throw new Error(`draft migration already exists: ${existingDraft.fileName}`);
+    }
 
-      const finalSql = migrations
-        .filter((migration) => migration.status() === 'final')
-        .map((migration) => migration.body)
-        .join('\n');
-      const draftSql = migrations.find((migration) => migration.status() === 'draft')?.body ?? '';
-      const desiredVsHistory = compareSchemas(
-        'desired schema does not match finalized history plus draft',
-        definitionsSql,
-        [snapshotSql, draftSql].filter(Boolean).join('\n'),
-      );
-      const finalizedVsSnapshot = compareSchemas(
-        'finalized history does not match snapshot.sql',
-        snapshotSql,
-        finalSql,
-      );
-      const databaseVsDesired = compareSchemas(
-        'database does not match desired schema',
-        definitionsSql,
-        databaseSql,
-      );
-      const databaseVsFinalized = compareSchemas(
-        'database does not match finalized history',
-        snapshotSql,
-        databaseSql,
-      );
+    const draftBody = wantsContent
+      ? input!.content!.trim()
+      : (await diffSnapshotSqlToDesiredSql(sqlite3defConfig, {snapshotSql, desiredSql})).join('\n');
+    const targetFileName = existingDraft?.fileName ?? `${nextMigrationId(migrations)}_${slugify(input?.name ?? 'draft')}.sql`;
 
-      const failures = [desiredVsHistory, finalizedVsSnapshot, databaseVsDesired, databaseVsFinalized].filter(
-        (result) => result !== 'ok',
-      );
+    await context.fs.mkdir(context.config.migrationsDir);
+    await context.fs.writeFile(
+      joinPath(context.config.migrationsDir, targetFileName),
+      serializeMigration('draft', draftBody),
+    );
+  }),
 
-      return {
-        ok: failures.length === 0 ? 'ok' : (`failure: ${failures.map((failure) => failure.slice('failure: '.length)).join('; ')}` as const),
-        desiredVsHistory,
-        finalizedVsSnapshot,
-        databaseVsDesired,
-        databaseVsFinalized,
-      };
-    },
-  };
+  check: base.handler(async ({context}): Promise<SqlfuCheckReport> => {
+    const definitionsSql = await context.fs.readFile(context.config.definitionsPath);
+    const snapshotSql = await context.fs.readFile(context.config.snapshotPath);
+    const migrations = await loadMigrations(context);
+    const databaseSql = await context.db.exportSchema();
+
+    const finalSql = migrations
+      .filter((migration) => migration.status() === 'final')
+      .map((migration) => migration.body)
+      .join('\n');
+    const draftSql = migrations.find((migration) => migration.status() === 'draft')?.body ?? '';
+    const desiredVsHistory = compareSchemas(
+      'desired schema does not match finalized history plus draft',
+      definitionsSql,
+      [snapshotSql, draftSql].filter(Boolean).join('\n'),
+    );
+    const finalizedVsSnapshot = compareSchemas(
+      'finalized history does not match snapshot.sql',
+      snapshotSql,
+      finalSql,
+    );
+    const databaseVsDesired = compareSchemas(
+      'database does not match desired schema',
+      definitionsSql,
+      databaseSql,
+    );
+    const databaseVsFinalized = compareSchemas(
+      'database does not match finalized history',
+      snapshotSql,
+      databaseSql,
+    );
+
+    const failures = [desiredVsHistory, finalizedVsSnapshot, databaseVsDesired, databaseVsFinalized].filter(
+      (result) => result !== 'ok',
+    );
+
+    return {
+      ok: failures.length === 0 ? 'ok' : (`failure: ${failures.map((failure) => failure.slice('failure: '.length)).join('; ')}` as const),
+      desiredVsHistory,
+      finalizedVsSnapshot,
+      databaseVsDesired,
+      databaseVsFinalized,
+    };
+  }),
+};
+
+export function createSqlfuCaller(context: SqlfuRouterContext) {
+  return createRouterClient(sqlfuRouter, {context});
 }
 
-async function loadMigrations(options: CreateSqlfuCallerOptions): Promise<MigrationFile[]> {
-  const exists = await options.fs.exists(options.config.migrationsDir);
+async function loadMigrations(context: SqlfuRouterContext): Promise<MigrationFile[]> {
+  const exists = await context.fs.exists(context.config.migrationsDir);
   if (!exists) {
     return [];
   }
 
-  const fileNames = (await options.fs.readdir(options.config.migrationsDir))
+  const fileNames = (await context.fs.readdir(context.config.migrationsDir))
     .filter((fileName) => fileName.endsWith('.sql'))
     .sort();
 
   return Promise.all(
     fileNames.map(async (fileName) => {
-      const contents = await options.fs.readFile(joinPath(options.config.migrationsDir, fileName));
+      const contents = await context.fs.readFile(joinPath(context.config.migrationsDir, fileName));
       return parseMigrationFile(fileName, contents);
     }),
   );
@@ -174,6 +206,10 @@ function parseMigrationFile(fileName: string, contents: string): MigrationFile {
       return statusValue === 'draft' ? 'draft' : 'final';
     },
   };
+}
+
+function serializeMigration(status: MigrationStatus, body: string): string {
+  return `-- status: ${status}\n${body.trim()}\n`;
 }
 
 function compareSchemas(message: string, leftSql: string, rightSql: string): SqlfuCheckResult {
@@ -202,6 +238,10 @@ function slugify(value: string): string {
 
 function joinPath(left: string, right: string): string {
   return `${left.replace(/\/+$/u, '')}/${right.replace(/^\/+/u, '')}`;
+}
+
+function withTrailingNewline(value: string): string {
+  return value.endsWith('\n') ? value : `${value}\n`;
 }
 
 function nextMigrationId(migrations: readonly MigrationFile[]): string {
