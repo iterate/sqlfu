@@ -134,11 +134,7 @@ function rewriteGeneratedWrapper(contents: string): string {
         return [
           `export async function ${functionName}(executor: AsyncExecutor${restArgs}): Promise<${returnType}> {`,
           `  const client = {`,
-          `    execute(query: SqlQuery) {`,
-          `      return executor.query(query).then((rows) => ({`,
-          `        rows: Array.from(rows),`,
-          `      }));`,
-          `    },`,
+          `    execute: (query: SqlQuery) => executor.query(query).then((rows) => ({ rows })),`,
           `  };`,
         ].join('\n').replaceAll("  ", "\t");
       },
