@@ -14,7 +14,12 @@
     ".": "./dist/index.js",
     "./client": "./dist/client.js",
     "./api": "./dist/api.js",
-    "./cli": "./dist/cli.js"
+    "./cli": "./dist/cli.js",
+    "./d1": "./dist/adapters/d1.js",
+    "./libsql-client": "./dist/adapters/libsql-client.js",
+    "./bun": "./dist/adapters/bun.js",
+    "./better-sqlite3": "./dist/adapters/better-sqlite3.js",
+    "./durable-object": "./dist/adapters/durable-object.js"
   },
   "files": [
     "dist",
@@ -30,6 +35,7 @@
     "cli": "node ./dist/cli.js"
   },
   "dependencies": {
+    "@clack/prompts": "^1.2.0",
     "@libsql/client": "^0.17.2",
     "@orpc/server": "^1.13.13",
     "dbmate": "^2.31.0",
