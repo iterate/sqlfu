@@ -9,51 +9,6 @@ import {migrationNickname} from './core/naming.js';
 import {createDefaultSqlite3defConfig, diffSnapshotSqlToDesiredSql, runSqlite3def} from './core/sqlite3def.js';
 import {generateQueryTypes} from './typegen/index.js';
 
-export interface SqlfuFsLike {
-  exists(path: string): Promise<boolean>;
-  readFile(path: string): Promise<string>;
-  writeFile(path: string, contents: string): Promise<void>;
-  readdir(path: string): Promise<string[]>;
-  mkdir(path: string): Promise<void>;
-}
-
-export interface SqlfuDatabaseLike {
-  execute(sql: string): Promise<void>;
-  exportSchema(): Promise<string>;
-}
-
-export type SqlfuCheckResult = 'ok' | `failure: ${string}`;
-
-export interface SqlfuCheckReport {
-  readonly ok: SqlfuCheckResult;
-  readonly desiredVsHistory: SqlfuCheckResult;
-  readonly finalizedVsSnapshot: SqlfuCheckResult;
-  readonly databaseVsDesired: SqlfuCheckResult;
-  readonly databaseVsFinalized: SqlfuCheckResult;
-}
-
-export interface SqlfuRouterConfig {
-  readonly definitionsPath: string;
-  readonly migrationsDir: string;
-  readonly snapshotPath: string;
-  readonly dbPath: string;
-}
-
-export interface SqlfuRouterContext {
-  readonly config?: SqlfuRouterConfig;
-  readonly fs?: SqlfuFsLike;
-  readonly db?: SqlfuDatabaseLike;
-}
-
-type MigrationStatus = 'draft' | 'final';
-
-type MigrationFile = {
-  readonly fileName: string;
-  readonly contents: string;
-  readonly body: string;
-  status(): MigrationStatus;
-};
-
 const sqlite3defConfig = createDefaultSqlite3defConfig('orpc');
 const configShape = {
   cwd: z.string().optional(),
@@ -94,7 +49,7 @@ export const router = {
   sync: base.input(sqlfuConfigInput).handler(async ({context, input}) => {
     await using runtime = await resolveRuntime(context, input);
     const desiredSql = await runtime.fs.readFile(runtime.config.definitionsPath);
-    await runtime.db.execute(desiredSql);
+    await runtime.db.applySchema(desiredSql);
   }),
 
   migrate: base.input(sqlfuConfigInput).handler(async ({context, input}) => {
@@ -106,7 +61,7 @@ export const router = {
     }
 
     const snapshotSql = await runtime.fs.readFile(runtime.config.snapshotPath);
-    await runtime.db.execute(snapshotSql);
+    await runtime.db.applySchema(snapshotSql);
   }),
 
   draft: base.input(draftInputSchema).handler(async ({context, input}) => {
@@ -213,6 +168,112 @@ export function createCaller(context: SqlfuRouterContext) {
 
 export const createSqlfuCaller = createCaller;
 
+async function resolveRuntime(
+  context: SqlfuRouterContext,
+  overrides?: z.input<typeof sqlfuConfigInput>,
+): Promise<{
+  config: SqlfuRouterConfig;
+  fs: SqlfuFsLike;
+  db: SqlfuDatabaseLike;
+  [Symbol.asyncDispose](): Promise<void>;
+}> {
+  const projectConfig = await loadProjectConfig(overrides ?? {});
+  const stagedSqlPath = path.join(projectConfig.tempDir, 'cli-applied.sql');
+  const defaultFs: SqlfuFsLike = {
+    async exists(filePath: string) {
+      return fs.access(filePath).then(() => true, () => false);
+    },
+    async readFile(filePath: string) {
+      return fs.readFile(filePath, 'utf8');
+    },
+    async writeFile(filePath: string, contents: string) {
+      await fs.mkdir(path.dirname(filePath), {recursive: true});
+      await fs.writeFile(filePath, contents);
+    },
+    async readdir(dirPath: string) {
+      return (await fs.readdir(dirPath)).sort();
+    },
+    async mkdir(dirPath: string) {
+      await fs.mkdir(dirPath, {recursive: true});
+    },
+  };
+  const defaultDb: SqlfuDatabaseLike = {
+    async applySchema(sql: string) {
+      await fs.mkdir(path.dirname(stagedSqlPath), {recursive: true});
+      await fs.writeFile(stagedSqlPath, sql);
+      await runSqlite3def(projectConfig, ['--apply', '--file', stagedSqlPath, projectConfig.dbPath]);
+    },
+    async exportSchema() {
+      return runSqlite3def(projectConfig, ['--export', projectConfig.dbPath]);
+    },
+  };
+
+  return {
+    config: context.config ?? {
+      definitionsPath: projectConfig.definitionsPath,
+      migrationsDir: projectConfig.migrationsDir,
+      snapshotPath: projectConfig.snapshotFile,
+      dbPath: projectConfig.dbPath,
+    },
+    fs: context.fs ?? defaultFs,
+    db: context.db ?? defaultDb,
+    async [Symbol.asyncDispose]() {},
+  };
+}
+
+function joinPath(left: string, right: string): string {
+  return `${left.replace(/\/+$/u, '')}/${right.replace(/^\/+/u, '')}`;
+}
+
+function withTrailingNewline(value: string): string {
+  return value.endsWith('\n') ? value : `${value}\n`;
+}
+
+export interface SqlfuFsLike {
+  exists(path: string): Promise<boolean>;
+  readFile(path: string): Promise<string>;
+  writeFile(path: string, contents: string): Promise<void>;
+  readdir(path: string): Promise<string[]>;
+  mkdir(path: string): Promise<void>;
+}
+
+export interface SqlfuDatabaseLike {
+  applySchema(sql: string): Promise<void>;
+  exportSchema(): Promise<string>;
+}
+
+export type SqlfuCheckResult = 'ok' | `failure: ${string}`;
+
+export interface SqlfuCheckReport {
+  readonly ok: SqlfuCheckResult;
+  readonly desiredVsHistory: SqlfuCheckResult;
+  readonly finalizedVsSnapshot: SqlfuCheckResult;
+  readonly databaseVsDesired: SqlfuCheckResult;
+  readonly databaseVsFinalized: SqlfuCheckResult;
+}
+
+export interface SqlfuRouterConfig {
+  readonly definitionsPath: string;
+  readonly migrationsDir: string;
+  readonly snapshotPath: string;
+  readonly dbPath: string;
+}
+
+export interface SqlfuRouterContext {
+  readonly config?: SqlfuRouterConfig;
+  readonly fs?: SqlfuFsLike;
+  readonly db?: SqlfuDatabaseLike;
+}
+
+type MigrationStatus = 'draft' | 'final';
+
+type MigrationFile = {
+  readonly fileName: string;
+  readonly contents: string;
+  readonly body: string;
+  status(): MigrationStatus;
+};
+
 async function loadMigrations(context: {config: SqlfuRouterConfig; fs: SqlfuFsLike}): Promise<MigrationFile[]> {
   const exists = await context.fs.exists(context.config.migrationsDir);
   if (!exists) {
@@ -229,66 +290,6 @@ async function loadMigrations(context: {config: SqlfuRouterConfig; fs: SqlfuFsLi
       return parseMigrationFile(fileName, contents);
     }),
   );
-}
-
-async function resolveRuntime(
-  context: SqlfuRouterContext,
-  overrides?: z.input<typeof sqlfuConfigInput>,
-): Promise<{
-  config: SqlfuRouterConfig;
-  fs: SqlfuFsLike;
-  db: SqlfuDatabaseLike;
-  [Symbol.asyncDispose](): Promise<void>;
-}> {
-  if (context.config && context.fs && context.db) {
-    return {
-      config: context.config,
-      fs: context.fs,
-      db: context.db,
-      async [Symbol.asyncDispose]() {},
-    };
-  }
-
-  const projectConfig = await loadProjectConfig(overrides ?? {});
-  const stagedSqlPath = path.join(projectConfig.tempDir, 'cli-applied.sql');
-
-  return {
-    config: {
-      definitionsPath: projectConfig.definitionsPath,
-      migrationsDir: projectConfig.migrationsDir,
-      snapshotPath: projectConfig.snapshotFile,
-      dbPath: projectConfig.dbPath,
-    },
-    fs: {
-      async exists(filePath: string) {
-        return fs.access(filePath).then(() => true, () => false);
-      },
-      async readFile(filePath: string) {
-        return fs.readFile(filePath, 'utf8');
-      },
-      async writeFile(filePath: string, contents: string) {
-        await fs.mkdir(path.dirname(filePath), {recursive: true});
-        await fs.writeFile(filePath, contents);
-      },
-      async readdir(dirPath: string) {
-        return (await fs.readdir(dirPath)).sort();
-      },
-      async mkdir(dirPath: string) {
-        await fs.mkdir(dirPath, {recursive: true});
-      },
-    },
-    db: {
-      async execute(sql: string) {
-        await fs.mkdir(path.dirname(stagedSqlPath), {recursive: true});
-        await fs.writeFile(stagedSqlPath, sql);
-        await runSqlite3def(projectConfig, ['--apply', '--file', stagedSqlPath, projectConfig.dbPath]);
-      },
-      async exportSchema() {
-        return runSqlite3def(projectConfig, ['--export', projectConfig.dbPath]);
-      },
-    },
-    async [Symbol.asyncDispose]() {},
-  };
 }
 
 function parseMigrationFile(fileName: string, contents: string): MigrationFile {
@@ -336,14 +337,6 @@ function slugify(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/u, '') || 'migration';
-}
-
-function joinPath(left: string, right: string): string {
-  return `${left.replace(/\/+$/u, '')}/${right.replace(/^\/+/u, '')}`;
-}
-
-function withTrailingNewline(value: string): string {
-  return value.endsWith('\n') ? value : `${value}\n`;
 }
 
 function nextMigrationId(migrations: readonly MigrationFile[]): string {

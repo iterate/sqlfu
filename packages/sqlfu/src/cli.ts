@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import {createCli} from 'trpc-cli';
+import {createCli, yamlTableConsoleLogger} from 'trpc-cli';
 
 import {router} from './api.js';
 
@@ -12,4 +12,6 @@ export function createSqlfuCli() {
   });
 }
 
-await createSqlfuCli().run();
+await createSqlfuCli().run({
+  logger: yamlTableConsoleLogger,
+});

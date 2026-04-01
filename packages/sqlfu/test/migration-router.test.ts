@@ -24,7 +24,7 @@ test('draft creates the single mutable migration from finalized history to defin
     },
   });
 
-  await project.db.execute(`
+  await project.db.applySchema(`
     create table users (id int, email text);
   `);
 
@@ -64,7 +64,7 @@ test('draft rewrites the existing draft instead of creating a second editable mi
     },
   });
 
-  await project.db.execute(`
+  await project.db.applySchema(`
     create table users (id int, email text);
   `);
 
@@ -198,7 +198,7 @@ test('migrate refuses to run while a draft migration exists', async () => {
     },
   });
 
-  await project.db.execute(`
+  await project.db.applySchema(`
     create table users (id int, email text);
   `);
 
@@ -226,7 +226,7 @@ test('sync fixes a drifted development database without mutating migrations or s
     },
   });
 
-  await project.db.execute(`
+  await project.db.applySchema(`
     create table users (id int, email text, nickname text);
   `);
 
@@ -239,6 +239,54 @@ test('sync fixes a drifted development database without mutating migrations or s
   expect(await project.db.exportSchema()).not.toContain('nickname');
   expect(await project.fs.readFile('migrations/20260331090001_add_posts.sql')).toBe(beforeDraft);
   expect(await project.fs.readFile('snapshot.sql')).toBe(beforeSnapshot);
+});
+
+test('check respects injected config and db even when fs falls back to the default filesystem', async () => {
+  await using project = await createProjectFixture({
+    definitionsSql: dedent`
+      create table users (id int, email text);
+    `,
+    snapshotSql: dedent`
+      create table users (id int, email text);
+    `,
+    migrations: {
+      'migrations/20260331090000_create_users.sql': finalMigration(`
+        create table users (id int, email text);
+      `),
+    },
+  });
+
+  let exportSchemaCalls = 0;
+  const caller = createRouterClient(sqlfuRouter, {
+    context: {
+      config: {
+        definitionsPath: resolvePath(project.root, 'definitions.sql'),
+        migrationsDir: resolvePath(project.root, 'migrations'),
+        snapshotPath: resolvePath(project.root, 'snapshot.sql'),
+        dbPath: resolvePath(project.root, 'dev.db'),
+      },
+      db: {
+        async applySchema() {
+          throw new Error('applySchema should not be called');
+        },
+        async exportSchema() {
+          exportSchemaCalls += 1;
+          return dedent`
+            create table users (id int, email text);
+          `;
+        },
+      },
+    },
+  });
+
+  await expect(caller.check()).resolves.toMatchObject({
+    ok: 'ok',
+    desiredVsHistory: 'ok',
+    finalizedVsSnapshot: 'ok',
+    databaseVsDesired: 'ok',
+    databaseVsFinalized: 'ok',
+  });
+  expect(exportSchemaCalls).toBe(1);
 });
 
 test('check reports where desired schema, finalized history, snapshot, and actual database disagree', async () => {
@@ -261,7 +309,7 @@ test('check reports where desired schema, finalized history, snapshot, and actua
     },
   });
 
-  await project.db.execute(`
+  await project.db.applySchema(`
     create table users (id int, email text, nickname text);
   `);
 
@@ -290,7 +338,7 @@ test('draft does not require the actual database to match definitions.sql first'
     },
   });
 
-  await project.db.execute(`
+  await project.db.applySchema(`
     create table users (id int, email text, nickname text);
   `);
 
@@ -335,6 +383,7 @@ async function createProjectFixture(input: {
     caller,
     fs: fsAdapter,
     db,
+    root,
     async [Symbol.asyncDispose]() {
       await db.close();
       await fs.rm(root, {recursive: true, force: true});
@@ -373,7 +422,7 @@ function createRealDatabase(dbPath: string) {
   const client = createClient({url: `file:${dbPath}`});
 
   return {
-    async execute(sql: string) {
+    async applySchema(sql: string) {
       const existingObjects = await client.execute(`
         select type, name
         from sqlite_schema
