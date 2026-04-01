@@ -1,8 +1,8 @@
-import {bindSql} from '../core/sql.js';
-import type {AsyncExecutor, QueryResult, ResultRow, SqlQuery} from '../core/types.js';
+import {bindSyncSql} from '../core/sql.js';
+import type {ResultRow, SqlQuery, SyncExecutor, SyncSqlClient} from '../core/types.js';
 
 export interface DurableObjectSqlStorageCursorLike<TRow extends ResultRow = ResultRow> {
-  toArray(): readonly TRow[];
+  toArray(): TRow[];
   readonly rowsWritten?: number;
 }
 
@@ -13,26 +13,23 @@ export interface DurableObjectSqlStorageLike {
   ): DurableObjectSqlStorageCursorLike<TRow>;
 }
 
-export interface DurableObjectDatabase extends AsyncExecutor {
-  readonly sql: ReturnType<typeof bindSql>;
+export interface DurableObjectClient extends SyncSqlClient {
   readonly storage: DurableObjectSqlStorageLike;
 }
 
-export function createDurableObjectDatabase(storage: DurableObjectSqlStorageLike): DurableObjectDatabase {
-  const executor: AsyncExecutor = {
-    async query<TRow extends ResultRow = ResultRow>(query: SqlQuery): Promise<QueryResult<TRow>> {
+export function createDurableObjectClient(storage: DurableObjectSqlStorageLike): DurableObjectClient {
+  const executor: SyncExecutor = {
+    query<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       const cursor = storage.exec<TRow>(query.sql, ...query.args);
-      return {
-        rows: cursor.toArray(),
-        rowsAffected: cursor.rowsWritten ?? 0,
-        lastInsertRowid: null,
-      };
+      return cursor.toArray();
     },
   };
 
   return {
     ...executor,
     storage,
-    sql: bindSql(executor),
+    sql: bindSyncSql(executor),
   };
 }
+
+export const createDurableObjectDatabase = createDurableObjectClient;

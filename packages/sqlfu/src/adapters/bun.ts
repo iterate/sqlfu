@@ -1,5 +1,5 @@
-import {bindSql} from '../core/sql.js';
-import type {AsyncExecutor, QueryResult, ResultRow, SqlQuery} from '../core/types.js';
+import {bindSyncSql} from '../core/sql.js';
+import type {ResultRow, SqlQuery, SyncExecutor, SyncSqlClient} from '../core/types.js';
 
 export interface BunSqliteRunResult {
   readonly changes?: number;
@@ -7,7 +7,7 @@ export interface BunSqliteRunResult {
 }
 
 export interface BunSqliteStatementLike<TRow extends ResultRow = ResultRow> {
-  all(...params: readonly unknown[]): readonly TRow[];
+  all(...params: readonly unknown[]): TRow[];
 }
 
 export interface BunSqliteDatabaseLike {
@@ -15,37 +15,30 @@ export interface BunSqliteDatabaseLike {
   run(query: string, params?: readonly unknown[]): BunSqliteRunResult;
 }
 
-export interface BunDatabase extends AsyncExecutor {
-  readonly sql: ReturnType<typeof bindSql>;
+export interface BunClient extends SyncSqlClient {
   readonly database: BunSqliteDatabaseLike;
 }
 
-export function createBunDatabase(database: BunSqliteDatabaseLike): BunDatabase {
-  const executor: AsyncExecutor = {
-    async query<TRow extends ResultRow = ResultRow>(query: SqlQuery): Promise<QueryResult<TRow>> {
+export function createBunClient(database: BunSqliteDatabaseLike): BunClient {
+  const executor: SyncExecutor = {
+    query<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       if (returnsRows(query.sql)) {
-        return {
-          rows: database.query<TRow>(query.sql).all(...query.args),
-          rowsAffected: 0,
-          lastInsertRowid: null,
-        };
+        return database.query<TRow>(query.sql).all(...query.args);
       }
 
-      const result = database.run(query.sql, [...query.args]);
-      return {
-        rows: [],
-        rowsAffected: result.changes ?? 0,
-        lastInsertRowid: result.lastInsertRowid ?? null,
-      };
+      database.run(query.sql, [...query.args]);
+      return [];
     },
   };
 
   return {
     ...executor,
     database,
-    sql: bindSql(executor),
+    sql: bindSyncSql(executor),
   };
 }
+
+export const createBunDatabase = createBunClient;
 
 function returnsRows(query: string): boolean {
   const firstKeyword = query.trimStart().match(/^[a-z]+/iu)?.[0]?.toLowerCase();

@@ -1,8 +1,19 @@
-import type {AsyncExecutor, QueryArg, QueryResult, ResultRow, SqlFragment, SqlQuery} from './types.js';
+import type {
+  AsyncExecutor,
+  AsyncSqlTag,
+  QueryArg,
+  QueryResult,
+  ResultRow,
+  SqlFragment,
+  SqlQuery,
+  SqlValue,
+  SyncExecutor,
+  SyncSqlTag,
+} from './types.js';
 
 const emptyFragment: SqlFragment = {sql: '', args: []};
 
-export class BoundQuery<TRow extends ResultRow> implements PromiseLike<readonly TRow[]> {
+export class AsyncBoundQuery<TRow extends ResultRow> implements PromiseLike<QueryResult<TRow>> {
   readonly query: SqlQuery;
   readonly #executor: AsyncExecutor;
 
@@ -11,34 +22,38 @@ export class BoundQuery<TRow extends ResultRow> implements PromiseLike<readonly 
     this.query = query;
   }
 
-  all(): Promise<readonly TRow[]> {
-    return this.#executor.query<TRow>(this.query).then((result) => result.rows);
-  }
-
-  first(): Promise<TRow | null> {
-    return this.#executor.query<TRow>(this.query).then((result) => result.rows[0] ?? null);
-  }
-
-  run(): Promise<QueryResult<TRow>> {
-    return this.#executor.query<TRow>(this.query);
-  }
-
-  then<TResult1 = readonly TRow[], TResult2 = never>(
-    onfulfilled?: ((value: readonly TRow[]) => TResult1 | PromiseLike<TResult1>) | null,
+  then<TResult1 = QueryResult<TRow>, TResult2 = never>(
+    onfulfilled?: ((value: QueryResult<TRow>) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ): Promise<TResult1 | TResult2> {
-    return this.all().then(onfulfilled, onrejected);
+    try {
+      return Promise.resolve(this.#executor.query<TRow>(this.query)).then(onfulfilled, onrejected);
+    } catch (error) {
+      return Promise.reject(error).then(onfulfilled, onrejected);
+    }
   }
 }
 
-export interface BoundSqlTag {
-  <TRow extends ResultRow = ResultRow>(
-    strings: TemplateStringsArray,
-    ...values: readonly SqlValue[]
-  ): BoundQuery<TRow>;
-}
+export class SyncBoundQuery<TRow extends ResultRow> implements PromiseLike<QueryResult<TRow>> {
+  readonly query: SqlQuery;
+  readonly #executor: SyncExecutor;
 
-export type SqlValue = QueryArg | SqlFragment;
+  constructor(executor: SyncExecutor, query: SqlQuery) {
+    this.#executor = executor;
+    this.query = query;
+  }
+
+  then<TResult1 = QueryResult<TRow>, TResult2 = never>(
+    onfulfilled?: ((value: QueryResult<TRow>) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): Promise<TResult1 | TResult2> {
+    try {
+      return Promise.resolve(this.#executor.query<TRow>(this.query)).then(onfulfilled, onrejected);
+    } catch (error) {
+      return Promise.reject(error).then(onfulfilled, onrejected);
+    }
+  }
+}
 
 export function isSqlFragment(value: unknown): value is SqlFragment {
   return Boolean(
@@ -101,11 +116,32 @@ export function join(values: readonly SqlValue[], separator = ', '): SqlFragment
   return {sql: text, args};
 }
 
-export function bindSql(executor: AsyncExecutor): BoundSqlTag {
-  return <TRow extends ResultRow = ResultRow>(
+export function bindSyncSql(executor: SyncExecutor): SyncSqlTag {
+  const boundSql = <TRow extends ResultRow = ResultRow>(
     strings: TemplateStringsArray,
     ...values: readonly SqlValue[]
-  ) => new BoundQuery<TRow>(executor, sql(strings, ...values));
+  ) => new SyncBoundQuery<TRow>(executor, sql(strings, ...values));
+
+  boundSql.exec = <TRow extends ResultRow = ResultRow>(
+    strings: TemplateStringsArray,
+    ...values: readonly SqlValue[]
+  ) => executor.query<TRow>(sql(strings, ...values));
+
+  return boundSql;
+}
+
+export function bindAsyncSql(executor: AsyncExecutor): AsyncSqlTag {
+  const boundSql = <TRow extends ResultRow = ResultRow>(
+    strings: TemplateStringsArray,
+    ...values: readonly SqlValue[]
+  ) => new AsyncBoundQuery<TRow>(executor, sql(strings, ...values));
+
+  boundSql.exec = <TRow extends ResultRow = ResultRow>(
+    strings: TemplateStringsArray,
+    ...values: readonly SqlValue[]
+  ) => executor.query<TRow>(sql(strings, ...values));
+
+  return boundSql;
 }
 
 function collapseWhitespace(value: string): string {

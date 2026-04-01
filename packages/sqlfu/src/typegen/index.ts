@@ -130,16 +130,16 @@ function rewriteGeneratedWrapper(contents: string): string {
         return [
           `export async function ${functionName}(executor: AsyncExecutor${restArgs}): Promise<${returnType}> {`,
           `  const client = {`,
-          `    execute(query: string | SqlQuery) {`,
-          `      return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({`,
-          `        ...result,`,
-          `        rows: Array.from(result.rows),`,
+          `    execute(query: SqlQuery) {`,
+          `      return executor.query(query).then((rows) => ({`,
+          `        rows: Array.from(rows),`,
           `      }));`,
           `    },`,
           `  };`,
         ].join('\n').replaceAll("  ", "\t");
       },
-    );
+    )
+    .replaceAll(/client\.execute\(sql\)/g, 'client.execute({ sql, args: [] })');
 }
 
 async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, RelationInfo>> {

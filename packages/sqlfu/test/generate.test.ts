@@ -45,10 +45,9 @@ test('generate writes wrappers and a barrel for every checked-in query', async (
 
     export async function listPostSummaries(executor: AsyncExecutor): Promise<ListPostSummariesResult[]> {
     	const client = {
-    		execute(query: string | SqlQuery) {
-    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
-    				...result,
-    				rows: Array.from(result.rows),
+    		execute(query: SqlQuery) {
+    			return executor.query(query).then((rows) => ({
+    				rows: Array.from(rows),
     			}));
     		},
     	};
@@ -56,7 +55,7 @@ test('generate writes wrappers and a barrel for every checked-in query', async (
     	select id, slug, published_at, excerpt from post_summaries;
     	
     	\`
-    	return client.execute(sql)
+    	return client.execute({ sql, args: [] })
     		.then(res => res.rows)
     		.then(rows => rows.map(row => mapArrayToListPostSummariesResult(row)));
     }
@@ -86,10 +85,9 @@ test('generate writes wrappers and a barrel for every checked-in query', async (
 
     export async function findPostBySlug(executor: AsyncExecutor, params: FindPostBySlugParams): Promise<FindPostBySlugResult | null> {
     	const client = {
-    		execute(query: string | SqlQuery) {
-    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
-    				...result,
-    				rows: Array.from(result.rows),
+    		execute(query: SqlQuery) {
+    			return executor.query(query).then((rows) => ({
+    				rows: Array.from(rows),
     			}));
     		},
     	};
@@ -207,10 +205,9 @@ test('generate emits named param types and a nullable single-row result for limi
 
     export async function findPostBySlug(executor: AsyncExecutor, params: FindPostBySlugParams): Promise<FindPostBySlugResult | null> {
     	const client = {
-    		execute(query: string | SqlQuery) {
-    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
-    				...result,
-    				rows: Array.from(result.rows),
+    		execute(query: SqlQuery) {
+    			return executor.query(query).then((rows) => ({
+    				rows: Array.from(rows),
     			}));
     		},
     	};
@@ -259,10 +256,9 @@ test('generate uses schema types for aliased selected columns instead of leaving
 
     export async function findPostPreview(executor: AsyncExecutor): Promise<FindPostPreviewResult[]> {
     	const client = {
-    		execute(query: string | SqlQuery) {
-    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
-    				...result,
-    				rows: Array.from(result.rows),
+    		execute(query: SqlQuery) {
+    			return executor.query(query).then((rows) => ({
+    				rows: Array.from(rows),
     			}));
     		},
     	};
@@ -270,7 +266,7 @@ test('generate uses schema types for aliased selected columns instead of leaving
     	select id, body as excerpt from posts limit 5;
     	
     	\`
-    	return client.execute(sql)
+    	return client.execute({ sql, args: [] })
     		.then(res => res.rows)
     		.then(rows => rows.map(row => mapArrayToFindPostPreviewResult(row)));
     }
@@ -310,10 +306,9 @@ test('generate treats selected columns as required when the query narrows them w
 
     export async function findPublishedPostBySlug(executor: AsyncExecutor): Promise<FindPublishedPostBySlugResult | null> {
     	const client = {
-    		execute(query: string | SqlQuery) {
-    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
-    				...result,
-    				rows: Array.from(result.rows),
+    		execute(query: SqlQuery) {
+    			return executor.query(query).then((rows) => ({
+    				rows: Array.from(rows),
     			}));
     		},
     	};
@@ -321,7 +316,7 @@ test('generate treats selected columns as required when the query narrows them w
     	select id, published_at from posts where published_at is not null limit 1;
     	
     	\`
-    	return client.execute(sql)
+    	return client.execute({ sql, args: [] })
     		.then(res => res.rows)
     		.then(rows => rows.length > 0 ? mapArrayToFindPublishedPostBySlugResult(rows[0]) : null);
     }
@@ -362,10 +357,9 @@ test('generate preserves useful result types for queries that read through views
 
     export async function listPostSummaries(executor: AsyncExecutor): Promise<ListPostSummariesResult[]> {
     	const client = {
-    		execute(query: string | SqlQuery) {
-    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
-    				...result,
-    				rows: Array.from(result.rows),
+    		execute(query: SqlQuery) {
+    			return executor.query(query).then((rows) => ({
+    				rows: Array.from(rows),
     			}));
     		},
     	};
@@ -373,7 +367,7 @@ test('generate preserves useful result types for queries that read through views
     	select id, excerpt from post_summaries;
     	
     	\`
-    	return client.execute(sql)
+    	return client.execute({ sql, args: [] })
     		.then(res => res.rows)
     		.then(rows => rows.map(row => mapArrayToListPostSummariesResult(row)));
     }
@@ -438,10 +432,9 @@ test('generate snapshots insert queries', async () => {
 
     export async function insertPost(executor: AsyncExecutor, params: InsertPostParams): Promise<InsertPostResult> {
     	const client = {
-    		execute(query: string | SqlQuery) {
-    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
-    				...result,
-    				rows: Array.from(result.rows),
+    		execute(query: SqlQuery) {
+    			return executor.query(query).then((rows) => ({
+    				rows: Array.from(rows),
     			}));
     		},
     	};
@@ -495,10 +488,9 @@ test('generate snapshots update queries', async () => {
 
     export async function updatePost(executor: AsyncExecutor, data: UpdatePostData, params: UpdatePostParams): Promise<UpdatePostResult> {
     	const client = {
-    		execute(query: string | SqlQuery) {
-    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
-    				...result,
-    				rows: Array.from(result.rows),
+    		execute(query: SqlQuery) {
+    			return executor.query(query).then((rows) => ({
+    				rows: Array.from(rows),
     			}));
     		},
     	};
@@ -547,10 +539,9 @@ test('generate snapshots delete queries', async () => {
 
     export async function deletePost(executor: AsyncExecutor, params: DeletePostParams): Promise<DeletePostResult> {
     	const client = {
-    		execute(query: string | SqlQuery) {
-    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
-    				...result,
-    				rows: Array.from(result.rows),
+    		execute(query: SqlQuery) {
+    			return executor.query(query).then((rows) => ({
+    				rows: Array.from(rows),
     			}));
     		},
     	};
@@ -595,10 +586,9 @@ test('generate snapshots function queries', async () => {
 
     export async function countPosts(executor: AsyncExecutor): Promise<CountPostsResult | null> {
     	const client = {
-    		execute(query: string | SqlQuery) {
-    			return executor.query(typeof query === 'string' ? {sql: query, args: []} : query).then((result) => ({
-    				...result,
-    				rows: Array.from(result.rows),
+    		execute(query: SqlQuery) {
+    			return executor.query(query).then((rows) => ({
+    				rows: Array.from(rows),
     			}));
     		},
     	};
@@ -606,7 +596,7 @@ test('generate snapshots function queries', async () => {
     	select count(*) as total from posts;
     	
     	\`
-    	return client.execute(sql)
+    	return client.execute({ sql, args: [] })
     		.then(res => res.rows)
     		.then(rows => rows.length > 0 ? mapArrayToCountPostsResult(rows[0]) : null);
     }

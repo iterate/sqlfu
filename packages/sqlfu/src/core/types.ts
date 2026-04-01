@@ -9,11 +9,7 @@ export interface SqlFragment {
 
 export interface SqlQuery extends SqlFragment {}
 
-export interface QueryResult<TRow extends ResultRow = ResultRow> {
-  readonly rows: readonly TRow[];
-  readonly rowsAffected: number;
-  readonly lastInsertRowid: string | number | bigint | null;
-}
+export type QueryResult<TRow extends ResultRow = ResultRow> = TRow[];
 
 export interface SyncExecutor {
   query<TRow extends ResultRow = ResultRow>(query: SqlQuery): QueryResult<TRow>;
@@ -46,6 +42,40 @@ export interface SyncClient {
 export interface AsyncClient {
   connect(): Promise<AsyncConnection>;
 }
+
+export interface SyncSqlClient extends SyncExecutor {
+  readonly sql: SyncSqlTag;
+}
+
+export interface AsyncSqlClient extends AsyncExecutor {
+  readonly sql: AsyncSqlTag;
+}
+
+export interface SyncSqlTag {
+  <TRow extends ResultRow = ResultRow>(
+    strings: TemplateStringsArray,
+    ...values: readonly SqlValue[]
+  ): PromiseLike<QueryResult<TRow>>;
+  exec<TRow extends ResultRow = ResultRow>(
+    strings: TemplateStringsArray,
+    ...values: readonly SqlValue[]
+  ): QueryResult<TRow>;
+}
+
+export interface AsyncSqlTag {
+  <TRow extends ResultRow = ResultRow>(
+    strings: TemplateStringsArray,
+    ...values: readonly SqlValue[]
+  ): PromiseLike<QueryResult<TRow>>;
+  exec<TRow extends ResultRow = ResultRow>(
+    strings: TemplateStringsArray,
+    ...values: readonly SqlValue[]
+  ): Promise<QueryResult<TRow>>;
+}
+
+export type SqlTag = SyncSqlTag | AsyncSqlTag;
+
+export type SqlValue = QueryArg | SqlFragment;
 
 export interface SqlfuConfig {
   readonly dbPath?: string;

@@ -1,5 +1,5 @@
-import {bindSql} from '../core/sql.js';
-import type {AsyncExecutor, QueryResult, ResultRow, SqlQuery} from '../core/types.js';
+import {bindAsyncSql} from '../core/sql.js';
+import type {AsyncExecutor, AsyncSqlClient, ResultRow, SqlQuery} from '../core/types.js';
 
 export interface LibsqlStatementLike {
   readonly sql: string;
@@ -7,7 +7,7 @@ export interface LibsqlStatementLike {
 }
 
 export interface LibsqlExecuteResultLike<TRow extends ResultRow = ResultRow> {
-  readonly rows: readonly TRow[];
+  readonly rows: TRow[];
   readonly rowsAffected?: number;
   readonly lastInsertRowid?: string | number | bigint | null;
 }
@@ -18,29 +18,26 @@ export interface LibsqlClientLike {
   ): Promise<LibsqlExecuteResultLike<TRow>>;
 }
 
-export interface LibsqlDatabase extends AsyncExecutor {
-  readonly sql: ReturnType<typeof bindSql>;
+export interface LibsqlClient extends AsyncSqlClient {
   readonly client: LibsqlClientLike;
 }
 
-export function createLibsqlDatabase(client: LibsqlClientLike): LibsqlDatabase {
+export function createLibsqlClient(client: LibsqlClientLike): LibsqlClient {
   const executor: AsyncExecutor = {
-    async query<TRow extends ResultRow = ResultRow>(query: SqlQuery): Promise<QueryResult<TRow>> {
+    async query<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       const result = await client.execute<TRow>(toStatement(query));
-      return {
-        rows: result.rows,
-        rowsAffected: result.rowsAffected ?? 0,
-        lastInsertRowid: result.lastInsertRowid ?? null,
-      };
+      return Array.from(result.rows);
     },
   };
 
   return {
     ...executor,
     client,
-    sql: bindSql(executor),
+    sql: bindAsyncSql(executor),
   };
 }
+
+export const createLibsqlDatabase = createLibsqlClient;
 
 function toStatement(query: SqlQuery): LibsqlStatementLike {
   return {
