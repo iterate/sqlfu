@@ -9,7 +9,12 @@ export interface SqlFragment {
 
 export interface SqlQuery extends SqlFragment {}
 
-export type QueryResult<TRow extends ResultRow = ResultRow> = TRow[];
+export interface QueryMetadata {
+  readonly rowsAffected?: number;
+  readonly lastInsertRowid?: string | number | bigint | null;
+}
+
+export type QueryResult<TRow extends ResultRow = ResultRow> = TRow[] & QueryMetadata;
 
 export interface SyncExecutor {
   query<TRow extends ResultRow = ResultRow>(query: SqlQuery): QueryResult<TRow>;
@@ -18,6 +23,8 @@ export interface SyncExecutor {
 export interface AsyncExecutor {
   query<TRow extends ResultRow = ResultRow>(query: SqlQuery): Promise<QueryResult<TRow>>;
 }
+
+export type QueryExecutor = SyncExecutor | AsyncExecutor;
 
 export interface SyncTransaction extends SyncExecutor {}
 

@@ -121,25 +121,159 @@ function rewriteGeneratedWrapper(contents: string): string {
     return `//Invalid SQL\nexport {};\n`;
   }
 
-  const importPattern = /^import type \{ Client, Transaction \} from '@libsql\/client';\n\n/;
-  if (!importPattern.test(contents)) {
+  if (!contents.startsWith(`import type { Client, Transaction } from '@libsql/client';\n\n`)) {
     return contents;
   }
 
-  return contents
-    .replace(importPattern, `import type {AsyncExecutor, SqlQuery} from 'sqlfu';\n\n`)
-    .replaceAll(
-      /export async function ([A-Za-z0-9_]+)\(client: Client \| Transaction([^)]*)\): Promise<([^>]+)>\s*\{/g,
-      (_match, functionName: string, restArgs: string, returnType: string) => {
-        return [
-          `export async function ${functionName}(executor: AsyncExecutor${restArgs}): Promise<${returnType}> {`,
-          `  const client = {`,
-          `    execute: (query: SqlQuery) => executor.query(query).then((rows) => ({ rows })),`,
-          `  };`,
-        ].join('\n').replaceAll("  ", "\t");
-      },
-    )
-    .replaceAll(/client\.execute\(sql\)/g, 'client.execute({ sql, args: [] })');
+  const functionLine = contents
+    .split('\n')
+    .find((line) => line.startsWith('export async function '));
+  if (!functionLine) {
+    return contents;
+  }
+
+  const signature = parseGeneratedFunctionSignature(functionLine);
+  const typeBlocks = extractExportedTypeBlocks(contents);
+  const sqlBlock = extractSqlBlock(contents);
+  const executeArg = extractExecuteArgument(contents);
+  const queryExpression = executeArg === 'sql' ? '{ sql, args: [] }' : executeArg;
+  const resultType = signature.returnType.endsWith('[]')
+    ? signature.returnType.slice(0, -2)
+    : signature.returnType.endsWith(' | null')
+      ? signature.returnType.slice(0, -7)
+      : signature.returnType;
+
+  return [
+    `import type {QueryExecutor, SqlQuery} from 'sqlfu';`,
+    ``,
+    typeBlocks,
+    ``,
+    `export async function ${signature.name}(executor: QueryExecutor${signature.restParameters.length > 0 ? `, ${signature.restParameters}` : ''}): Promise<${signature.returnType}> {`,
+    indent(sqlBlock),
+    `\tconst query: SqlQuery = ${queryExpression};`,
+    ...buildGeneratedImplementation({
+      returnType: signature.returnType,
+      resultType,
+      resultProperties: extractTypeProperties(typeBlocks, resultType),
+    }),
+    `}`,
+    ``,
+  ].join('\n');
+}
+
+function parseGeneratedFunctionSignature(functionLine: string): {
+  readonly name: string;
+  readonly restParameters: string;
+  readonly returnType: string;
+} {
+  const nameStart = 'export async function '.length;
+  const openParen = functionLine.indexOf('(', nameStart);
+  const promiseStart = functionLine.lastIndexOf('): Promise<');
+  const promiseEnd = functionLine.lastIndexOf('> {');
+  const name = functionLine.slice(nameStart, openParen);
+  const parameters = functionLine.slice(openParen + 1, promiseStart);
+  const restParameters =
+    parameters === 'client: Client | Transaction'
+      ? ''
+      : parameters.slice('client: Client | Transaction, '.length);
+  const returnType = functionLine.slice(promiseStart + '): Promise<'.length, promiseEnd);
+  return {name, restParameters, returnType};
+}
+
+function extractExportedTypeBlocks(contents: string): string {
+  const lines = contents.split('\n');
+  const firstTypeIndex = lines.findIndex((line) => line.startsWith('export type '));
+  const functionIndex = lines.findIndex((line) => line.startsWith('export async function '));
+  return lines.slice(firstTypeIndex, functionIndex).join('\n').trimEnd();
+}
+
+function extractSqlBlock(contents: string): string {
+  const lines = contents.split('\n');
+  const sqlStart = lines.findIndex((line) => line.trimStart().startsWith('const sql = `'));
+  const sqlEnd = lines.findIndex((line, index) => index > sqlStart && line.trim() === '`');
+  return lines.slice(sqlStart, sqlEnd + 1).join('\n');
+}
+
+function extractExecuteArgument(contents: string): string {
+  const executeLine = contents
+    .split('\n')
+    .find((line) => line.includes('return client.execute('));
+  if (!executeLine) {
+    throw new Error('Could not find client.execute(...) in generated wrapper');
+  }
+
+  return executeLine.slice(executeLine.indexOf('return client.execute(') + 'return client.execute('.length, -1);
+}
+
+function buildGeneratedImplementation(input: {
+  returnType: string;
+  resultType: string;
+  resultProperties: ReadonlyArray<{
+    readonly name: string;
+    readonly optional: boolean;
+  }>;
+}): string[] {
+  if (input.returnType.endsWith('[]')) {
+    return [`\treturn executor.query<${input.resultType}>(query);`];
+  }
+
+  if (input.returnType.endsWith(' | null')) {
+    return [
+      `\tconst rows = await executor.query<${input.resultType}>(query);`,
+      `\treturn rows.length > 0 ? rows[0] : null;`,
+    ];
+  }
+
+  const guards = input.resultProperties.flatMap((property) => {
+    if (property.optional) {
+      return [];
+    }
+
+    return [
+      `\tif (result.${property.name} === undefined${property.name === 'lastInsertRowid' ? ' || result.lastInsertRowid === null' : ''}) {`,
+      `\t\tthrow new Error('Expected ${property.name} to be present on query result');`,
+      `\t}`,
+    ];
+  });
+  const resultAssignments = input.resultProperties.map((property) => {
+    if (property.name === 'lastInsertRowid') {
+      return `\t\tlastInsertRowid: Number(result.lastInsertRowid),`;
+    }
+
+    return `\t\t${property.name}: result.${property.name},`;
+  });
+  return [
+    `\tconst result = await executor.query(query);`,
+    ...guards,
+    `\treturn {`,
+    ...resultAssignments,
+    `\t};`,
+  ];
+}
+
+function extractTypeProperties(typeBlocks: string, typeName: string): ReadonlyArray<{
+  readonly name: string;
+  readonly optional: boolean;
+}> {
+  const lines = typeBlocks.split('\n');
+  const typeStart = lines.findIndex((line) => line === `export type ${typeName} = {`);
+  const typeEnd = lines.findIndex((line, index) => index > typeStart && line === `}`);
+  return lines
+    .slice(typeStart + 1, typeEnd)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.slice(0, line.indexOf(':')))
+    .map((name) => ({
+      name: name.replace(/\?$/, ''),
+      optional: name.endsWith('?'),
+    }));
+}
+
+function indent(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => `\t${line}`)
+    .join('\n');
 }
 
 async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, RelationInfo>> {

@@ -27,8 +27,17 @@ export interface D1Client extends AsyncSqlClient {}
 export function createD1Client(database: D1DatabaseLike): D1Client {
   const executor: AsyncExecutor = {
     async query<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
-      const result = await database.prepare(query.sql).bind(...query.args).all<TRow>();
-      return result.results;
+      const statement = database.prepare(query.sql).bind(...query.args);
+      if (returnsRows(query.sql)) {
+        const result = await statement.all<TRow>();
+        return result.results;
+      }
+
+      const result = await statement.run();
+      return Object.assign([], {
+        rowsAffected: result.meta?.changes,
+        lastInsertRowid: result.meta?.last_row_id,
+      });
     },
   };
 
@@ -39,3 +48,14 @@ export function createD1Client(database: D1DatabaseLike): D1Client {
 }
 
 export const createD1Database = createD1Client;
+
+function returnsRows(query: string): boolean {
+  const firstKeyword = query.trimStart().match(/^[a-z]+/iu)?.[0]?.toLowerCase();
+  return (
+    firstKeyword === 'select' ||
+    firstKeyword === 'pragma' ||
+    firstKeyword === 'explain' ||
+    firstKeyword === 'values' ||
+    firstKeyword === 'with'
+  );
+}

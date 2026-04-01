@@ -28,8 +28,11 @@ export function createBetterSqlite3Client(database: BetterSqlite3DatabaseLike): 
         return statement.all(...query.args);
       }
 
-      statement.run(...query.args);
-      return [];
+      const result = statement.run(...query.args);
+      return Object.assign([], {
+        rowsAffected: result.changes,
+        lastInsertRowid: result.lastInsertRowid,
+      });
     },
   };
 

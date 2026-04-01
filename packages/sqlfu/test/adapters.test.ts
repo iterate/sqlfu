@@ -90,7 +90,12 @@ test('createBetterSqlite3Client makes sql.exec native sync for local sqlite', as
   expect(client.sql.exec<{id: number; email: string}>`select * from users where id = ${1}`).toMatchObject([
     {id: 1, email: 'ada@example.com'},
   ]);
-  expect(client.sql.exec`insert into users (email) values (${'ada@example.com'})`).toEqual([]);
+  const writeResult = client.sql.exec`insert into users (email) values (${'ada@example.com'})`;
+  expect(writeResult).toMatchObject({
+    length: 0,
+    rowsAffected: 2,
+    lastInsertRowid: expect.any(Number),
+  });
   await expect(client.sql<{id: number; email: string}>`select * from users where id = ${1}`).resolves.toMatchObject([
     {id: 1, email: 'ada@example.com'},
   ]);
@@ -140,7 +145,12 @@ test('createBunClient routes read queries through query().all() and writes throu
   } as BunSqliteDatabaseLike);
 
   expect(client.sql.exec<{count: number}>`select count(*) as count from users`).toMatchObject([{count: 1}]);
-  expect(client.sql.exec`insert into users (email) values (${'ada@example.com'})`).toEqual([]);
+  const writeResult = client.sql.exec`insert into users (email) values (${'ada@example.com'})`;
+  expect(writeResult).toMatchObject({
+    length: 0,
+    rowsAffected: 3,
+    lastInsertRowid: expect.any(Number),
+  });
   await expect(client.sql<{count: number}>`select count(*) as count from users`).resolves.toMatchObject([{count: 1}]);
   expect(calls).toMatchObject([
     {kind: 'query', sql: 'select count(*) as count from users'},
@@ -165,12 +175,18 @@ test('createDurableObjectClient keeps durable object sql native sync', async () 
     },
   } as DurableObjectSqlStorageLike);
 
-  expect(client.sql.exec<{id: number; email: string}>`select * from users where email = ${'ada@example.com'}`).toMatchObject([
-    {id: 1, email: 'ada@example.com'},
-  ]);
-  await expect(client.sql<{id: number; email: string}>`select * from users where email = ${'ada@example.com'}`).resolves.toMatchObject([
-    {id: 1, email: 'ada@example.com'},
-  ]);
+  const syncResult = client.sql.exec<{id: number; email: string}>`select * from users where email = ${'ada@example.com'}`;
+  expect(syncResult).toMatchObject({
+    0: {id: 1, email: 'ada@example.com'},
+    length: 1,
+    rowsAffected: 4,
+  });
+  const asyncResult = await client.sql<{id: number; email: string}>`select * from users where email = ${'ada@example.com'}`;
+  expect(asyncResult).toMatchObject({
+    0: {id: 1, email: 'ada@example.com'},
+    length: 1,
+    rowsAffected: 4,
+  });
   expect(calls).toMatchObject([
     {sql: 'select * from users where email = ?', args: ['ada@example.com']},
     {sql: 'select * from users where email = ?', args: ['ada@example.com']},

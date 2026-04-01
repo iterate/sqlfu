@@ -26,8 +26,11 @@ export function createBunClient(database: BunSqliteDatabaseLike): BunClient {
         return database.query<TRow>(query.sql).all(...query.args);
       }
 
-      database.run(query.sql, [...query.args]);
-      return [];
+      const result = database.run(query.sql, [...query.args]);
+      return Object.assign([], {
+        rowsAffected: result.changes,
+        lastInsertRowid: result.lastInsertRowid,
+      });
     },
   };
 

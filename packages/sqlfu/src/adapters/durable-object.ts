@@ -21,7 +21,9 @@ export function createDurableObjectClient(storage: DurableObjectSqlStorageLike):
   const executor: SyncExecutor = {
     query<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       const cursor = storage.exec<TRow>(query.sql, ...query.args);
-      return cursor.toArray();
+      return Object.assign(cursor.toArray(), {
+        rowsAffected: cursor.rowsWritten,
+      });
     },
   };
 
