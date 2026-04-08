@@ -4,7 +4,7 @@ import {expect, test} from 'vitest';
 import {createBetterSqlite3Client} from '../src/client.js';
 
 test('createBetterSqlite3Client works with a real better-sqlite3 database', async () => {
-  using fixture = createBetterSqlite3Fixture();
+  using fixture = createBetterSqlite3Fixture(new BetterSqlite3(':memory:'));
   fixture.db.exec('create table users (id integer primary key, email text not null)');
 
   fixture.db.prepare('insert into users (email) values (?)').run('ada@example.com');
@@ -35,7 +35,7 @@ test('createBetterSqlite3Client works with a real better-sqlite3 database', asyn
 });
 
 test('createBetterSqlite3Client turns real sqlite syntax errors into promise rejections for tagged sql', async () => {
-  using fixture = createBetterSqlite3Fixture();
+  using fixture = createBetterSqlite3Fixture(new BetterSqlite3(':memory:'));
   fixture.db.exec('create table users (id integer primary key, email text not null)');
 
   await expect(
@@ -46,9 +46,7 @@ test('createBetterSqlite3Client turns real sqlite syntax errors into promise rej
   ).resolves.toContain('syntax error');
 });
 
-function createBetterSqlite3Fixture() {
-  const db = new BetterSqlite3(':memory:');
-
+function createBetterSqlite3Fixture(db: InstanceType<typeof BetterSqlite3>) {
   return {
     db,
     client: createBetterSqlite3Client(db),

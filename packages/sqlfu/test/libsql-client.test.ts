@@ -8,7 +8,7 @@ import {expect, test} from 'vitest';
 import {createLibsqlClient} from '../src/client.js';
 
 test('createLibsqlClient works with a real @libsql/client database', async () => {
-  await using fixture = await createLibsqlFixture();
+  await using fixture = await createLibsqlFixture(createClient({url: getTmpDbUrl()}));
   await fixture.raw.execute('create table users (id integer primary key, email text not null)');
 
   await fixture.raw.execute({
@@ -43,7 +43,7 @@ test('createLibsqlClient works with a real @libsql/client database', async () =>
 });
 
 test('createLibsqlClient turns real sqlite syntax errors into promise rejections for tagged sql', async () => {
-  await using fixture = await createLibsqlFixture();
+  await using fixture = await createLibsqlFixture(createClient({url: getTmpDbUrl()}));
   await fixture.raw.execute('create table users (id integer primary key, email text not null)');
 
   await expect(
@@ -54,10 +54,8 @@ test('createLibsqlClient turns real sqlite syntax errors into promise rejections
   ).resolves.toContain('syntax error');
 });
 
-async function createLibsqlFixture() {
-  const dbPath = path.join(os.tmpdir(), `sqlfu-libsql-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.db`);
-  const raw = createClient({url: `file:${dbPath}`});
-
+async function createLibsqlFixture(raw: ReturnType<typeof createClient>) {
+  const dbPath = await getDbPath(raw);
   return {
     raw,
     client: createLibsqlClient(raw),
@@ -66,6 +64,18 @@ async function createLibsqlFixture() {
       await fs.rm(dbPath, {force: true});
     },
   };
+}
+
+function getTmpDbUrl() {
+  const dbPath = path.join(os.tmpdir(), `sqlfu-libsql-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.db`);
+  return `file:${dbPath}`;
+}
+
+async function getDbPath(raw: ReturnType<typeof createClient>) {
+  const result = await raw.execute('pragma database_list');
+  const row = result.rows[0] as {file?: string} | undefined;
+  if (!row?.file) throw new Error('expected pragma database_list to return the backing file path');
+  return row.file;
 }
 
 function normalizeUserRows(rows: ReadonlyArray<{id: number; email: string}>) {

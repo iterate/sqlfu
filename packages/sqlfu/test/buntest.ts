@@ -4,7 +4,7 @@ import {Database} from 'bun:sqlite';
 import {createBunClient} from '../src/client.js';
 
 test('createBunClient works with a real bun:sqlite database', async () => {
-  using fixture = createBunFixture();
+  using fixture = createBunFixture(new Database(':memory:'));
   fixture.db.exec('create table users (id integer primary key, email text not null)');
 
   fixture.db.query('insert into users (email) values (?)').run('ada@example.com');
@@ -43,9 +43,7 @@ test('createBunClient works with a real bun:sqlite database', async () => {
   expect(String(error)).toContain('syntax error');
 });
 
-function createBunFixture() {
-  const db = new Database(':memory:');
-
+function createBunFixture(db: InstanceType<typeof Database>) {
   return {
     db,
     client: createBunClient(db),

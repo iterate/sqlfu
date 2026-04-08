@@ -1,10 +1,10 @@
-import Database from 'libsql';
+import Database, {type Database as LibsqlDatabase} from 'libsql';
 import {expect, test} from 'vitest';
 
 import {createLibsqlSyncClient} from '../src/client.js';
 
 test('createLibsqlSyncClient works with a real libsql database', async () => {
-  using fixture = createLibsqlFixture();
+  using fixture = createLibsqlFixture(new Database(':memory:'));
   fixture.db.exec('create table users (id integer primary key, email text not null)');
 
   fixture.db.prepare('insert into users (email) values (?)').run('ada@example.com');
@@ -35,7 +35,7 @@ test('createLibsqlSyncClient works with a real libsql database', async () => {
 });
 
 test('createLibsqlSyncClient turns real sqlite syntax errors into promise rejections for tagged sql', async () => {
-  using fixture = createLibsqlFixture();
+  using fixture = createLibsqlFixture(new Database(':memory:'));
   fixture.db.exec('create table users (id integer primary key, email text not null)');
 
   await expect(
@@ -46,9 +46,7 @@ test('createLibsqlSyncClient turns real sqlite syntax errors into promise reject
   ).resolves.toContain('syntax error');
 });
 
-function createLibsqlFixture() {
-  const db = new Database(':memory:');
-
+function createLibsqlFixture(db: LibsqlDatabase) {
   return {
     db,
     client: createLibsqlSyncClient(db),
