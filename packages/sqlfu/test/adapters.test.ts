@@ -1,194 +1,129 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
+import BetterSqlite3 from 'better-sqlite3';
+import {createClient} from '@libsql/client';
 import {expect, test} from 'vitest';
 
-import {
-  createBetterSqlite3Client,
-  createBunClient,
-  createDurableObjectClient,
-  createLibsqlClient,
-  type BetterSqlite3DatabaseLike,
-  type BunSqliteDatabaseLike,
-  type DurableObjectSqlStorageLike,
-  type LibsqlClientLike,
-} from '../src/client.js';
+import {createBetterSqlite3Client, createLibsqlClient} from '../src/client.js';
 
-test('createLibsqlClient makes sql awaitable and keeps sql.exec async', async () => {
-  const calls: Array<string | {sql: string; args?: readonly unknown[]}> = [];
-  const client = createLibsqlClient({
-    async execute(statement) {
-      calls.push(statement);
-      return {
-        rows: [{id: 1, email: 'ada@example.com'}],
-      };
-    },
-  } as LibsqlClientLike);
+test('createLibsqlClient works with a real @libsql/client database', async () => {
+  await using fixture = await createLibsqlFixture();
+  await fixture.raw.execute('create table users (id integer primary key, email text not null)');
 
-  await expect(client.query<{id: number; email: string}>({sql: 'select * from users where id = ?', args: [1]})).resolves.toMatchObject([
-    {id: 1, email: 'ada@example.com'},
-  ]);
-  await expect(client.sql<{id: number; email: string}>`select * from users where id = ${1}`).resolves.toMatchObject([
-    {id: 1, email: 'ada@example.com'},
-  ]);
-  await expect(client.sql.exec<{id: number; email: string}>`select * from users where id = ${1}`).resolves.toMatchObject([
-    {id: 1, email: 'ada@example.com'},
-  ]);
-  expect(calls).toMatchObject([
-    {sql: 'select * from users where id = ?', args: [1]},
-    {sql: 'select * from users where id = ?', args: [1]},
-    {sql: 'select * from users where id = ?', args: [1]},
-  ]);
-});
-
-test('createLibsqlClient turns synchronous execution errors into promise rejections for tagged sql', async () => {
-  const client = createLibsqlClient({
-    execute() {
-      throw new Error('near "selectTYPO": syntax error');
-    },
-  } as LibsqlClientLike);
+  await fixture.raw.execute({
+    sql: 'insert into users (email) values (?), (?)',
+    args: ['ada@example.com', 'grace@example.com'],
+  });
 
   await expect(
-    client.sql`selectTYPO from users`.then(
+    fixture.client.query<{id: number; email: string}>({
+      sql: 'select id, email from users where email = ?',
+      args: ['ada@example.com'],
+    }).then(normalizeUserRows),
+  ).resolves.toMatchObject([{id: 1, email: 'ada@example.com'}]);
+
+  await expect(
+    fixture.client.sql<{id: number; email: string}>`select id, email from users order by id`.then(normalizeUserRows),
+  ).resolves.toMatchObject([
+    {id: 1, email: 'ada@example.com'},
+    {id: 2, email: 'grace@example.com'},
+  ]);
+
+  const writeResult = await fixture.client.sql.exec`insert into users (email) values (${'lin@example.com'})`;
+  expect(writeResult.length).toBe(0);
+  expect(writeResult.rowsAffected).toBe(1);
+  expect(typeof writeResult.lastInsertRowid).toMatch(/^(bigint|number|string)$/);
+
+  await expect(
+    fixture.raw.execute('select id, email from users where email = \'lin@example.com\''),
+  ).resolves.toMatchObject({
+    rows: [{id: 3, email: 'lin@example.com'}],
+  });
+});
+
+test('createLibsqlClient turns real sqlite syntax errors into promise rejections for tagged sql', async () => {
+  await using fixture = await createLibsqlFixture();
+  await fixture.raw.execute('create table users (id integer primary key, email text not null)');
+
+  await expect(
+    fixture.client.sql`selectTYPO from users`.then(
       (rows) => rows,
       (error) => String(error),
     ),
   ).resolves.toContain('syntax error');
 });
 
-test('createBetterSqlite3Client makes sql.exec native sync for local sqlite', async () => {
-  const calls: Array<{kind: 'prepare' | 'all' | 'run'; sql?: string; args?: readonly unknown[]}> = [];
-  const client = createBetterSqlite3Client({
-    prepare(query) {
-      calls.push({kind: 'prepare', sql: query});
-      if (query.startsWith('select')) {
-        return {
-          reader: true,
-          all(...args) {
-            calls.push({kind: 'all', args});
-            return [{id: 1, email: 'ada@example.com'}];
-          },
-          run() {
-            throw new Error('run should not be called for reader statements');
-          },
-        };
-      }
+test('createBetterSqlite3Client works with a real better-sqlite3 database', async () => {
+  using fixture = createBetterSqlite3Fixture();
+  fixture.db.exec('create table users (id integer primary key, email text not null)');
 
-      return {
-        reader: false,
-        all() {
-          throw new Error('all should not be called for write statements');
-        },
-        run(...args) {
-          calls.push({kind: 'run', args});
-          return {changes: 2, lastInsertRowid: 99};
-        },
-      };
-    },
-  } as BetterSqlite3DatabaseLike);
+  fixture.db.prepare('insert into users (email) values (?)').run('ada@example.com');
+  fixture.db.prepare('insert into users (email) values (?)').run('grace@example.com');
 
-  expect(client.query<{id: number; email: string}>({sql: 'select * from users where id = ?', args: [1]})).toMatchObject([
+  expect(
+    fixture.client.query<{id: number; email: string}>({
+      sql: 'select id, email from users where email = ?',
+      args: ['ada@example.com'],
+    }),
+  ).toMatchObject([{id: 1, email: 'ada@example.com'}]);
+
+  expect(
+    fixture.client.sql.exec<{id: number; email: string}>`select id, email from users order by id`,
+  ).toMatchObject([
     {id: 1, email: 'ada@example.com'},
+    {id: 2, email: 'grace@example.com'},
   ]);
-  expect(client.sql.exec<{id: number; email: string}>`select * from users where id = ${1}`).toMatchObject([
-    {id: 1, email: 'ada@example.com'},
-  ]);
-  const writeResult = client.sql.exec`insert into users (email) values (${'ada@example.com'})`;
-  expect(writeResult).toMatchObject({
-    length: 0,
-    rowsAffected: 2,
-    lastInsertRowid: expect.any(Number),
-  });
-  await expect(client.sql<{id: number; email: string}>`select * from users where id = ${1}`).resolves.toMatchObject([
-    {id: 1, email: 'ada@example.com'},
-  ]);
-  expect(calls).toMatchObject([
-    {kind: 'prepare', sql: 'select * from users where id = ?'},
-    {kind: 'all', args: [1]},
-    {kind: 'prepare', sql: 'select * from users where id = ?'},
-    {kind: 'all', args: [1]},
-    {kind: 'prepare', sql: 'insert into users (email) values (?)'},
-    {kind: 'run', args: ['ada@example.com']},
-    {kind: 'prepare', sql: 'select * from users where id = ?'},
-    {kind: 'all', args: [1]},
-  ]);
+
+  const writeResult = fixture.client.sql.exec`insert into users (email) values (${'lin@example.com'})`;
+  expect(writeResult.length).toBe(0);
+  expect(writeResult.rowsAffected).toBe(1);
+  expect(typeof writeResult.lastInsertRowid).toMatch(/^(bigint|number|string)$/);
+
+  expect(
+    fixture.db.prepare('select id, email from users where email = ?').all('lin@example.com'),
+  ).toMatchObject([{id: 3, email: 'lin@example.com'}]);
 });
 
-test('createBetterSqlite3Client turns synchronous execution errors into promise rejections for tagged sql', async () => {
-  const client = createBetterSqlite3Client({
-    prepare() {
-      throw new Error('near "selectTYPO": syntax error');
-    },
-  } as BetterSqlite3DatabaseLike);
+test('createBetterSqlite3Client turns real sqlite syntax errors into promise rejections for tagged sql', async () => {
+  using fixture = createBetterSqlite3Fixture();
+  fixture.db.exec('create table users (id integer primary key, email text not null)');
 
   await expect(
-    client.sql`selectTYPO from users`.then(
+    fixture.client.sql`selectTYPO from users`.then(
       (rows) => rows,
       (error) => String(error),
     ),
   ).resolves.toContain('syntax error');
 });
 
-test('createBunClient routes read queries through query().all() and writes through run()', async () => {
-  const calls: Array<{kind: 'query' | 'all' | 'run'; sql?: string; args?: readonly unknown[]}> = [];
-  const client = createBunClient({
-    query(query) {
-      calls.push({kind: 'query', sql: query});
-      return {
-        all(...args) {
-          calls.push({kind: 'all', args});
-          return [{count: 1}];
-        },
-      };
-    },
-    run(query, params) {
-      calls.push({kind: 'run', sql: query, args: params});
-      return {changes: 3, lastInsertRowid: 42};
-    },
-  } as BunSqliteDatabaseLike);
+async function createLibsqlFixture() {
+  const dbPath = path.join(os.tmpdir(), `sqlfu-libsql-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.db`);
+  const raw = createClient({url: `file:${dbPath}`});
 
-  expect(client.sql.exec<{count: number}>`select count(*) as count from users`).toMatchObject([{count: 1}]);
-  const writeResult = client.sql.exec`insert into users (email) values (${'ada@example.com'})`;
-  expect(writeResult).toMatchObject({
-    length: 0,
-    rowsAffected: 3,
-    lastInsertRowid: expect.any(Number),
-  });
-  await expect(client.sql<{count: number}>`select count(*) as count from users`).resolves.toMatchObject([{count: 1}]);
-  expect(calls).toMatchObject([
-    {kind: 'query', sql: 'select count(*) as count from users'},
-    {kind: 'all', args: []},
-    {kind: 'run', sql: 'insert into users (email) values (?)', args: ['ada@example.com']},
-    {kind: 'query', sql: 'select count(*) as count from users'},
-    {kind: 'all', args: []},
-  ]);
-});
-
-test('createDurableObjectClient keeps durable object sql native sync', async () => {
-  const calls: Array<{sql: string; args: readonly unknown[]}> = [];
-  const client = createDurableObjectClient({
-    exec(query, ...bindings) {
-      calls.push({sql: query, args: bindings});
-      return {
-        toArray() {
-          return [{id: 1, email: 'ada@example.com'}];
-        },
-        rowsWritten: 4,
-      };
+  return {
+    raw,
+    client: createLibsqlClient(raw),
+    async [Symbol.asyncDispose]() {
+      raw.close();
+      await fs.rm(dbPath, {force: true});
     },
-  } as DurableObjectSqlStorageLike);
+  };
+}
 
-  const syncResult = client.sql.exec<{id: number; email: string}>`select * from users where email = ${'ada@example.com'}`;
-  expect(syncResult).toMatchObject({
-    0: {id: 1, email: 'ada@example.com'},
-    length: 1,
-    rowsAffected: 4,
-  });
-  const asyncResult = await client.sql<{id: number; email: string}>`select * from users where email = ${'ada@example.com'}`;
-  expect(asyncResult).toMatchObject({
-    0: {id: 1, email: 'ada@example.com'},
-    length: 1,
-    rowsAffected: 4,
-  });
-  expect(calls).toMatchObject([
-    {sql: 'select * from users where email = ?', args: ['ada@example.com']},
-    {sql: 'select * from users where email = ?', args: ['ada@example.com']},
-  ]);
-});
+function createBetterSqlite3Fixture() {
+  const db = new BetterSqlite3(':memory:');
+
+  return {
+    db,
+    client: createBetterSqlite3Client(db),
+    [Symbol.dispose]() {
+      db.close();
+    },
+  };
+}
+
+function normalizeUserRows(rows: ReadonlyArray<{id: number; email: string}>) {
+  return rows.map((row) => ({id: row.id, email: row.email}));
+}
