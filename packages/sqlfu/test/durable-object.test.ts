@@ -5,6 +5,7 @@ import path from 'node:path';
 import {Miniflare} from 'miniflare';
 import ts from 'typescript';
 import {expect, test} from 'vitest';
+import dedent from 'dedent';
 
 const packageRoot = path.resolve(path.dirname(import.meta.filename), '..');
 declare const createDurableObjectClient: typeof import('../src/index.ts').createDurableObjectClient;
@@ -96,35 +97,34 @@ async function createDOFixture<TInstance extends object>(
 
   await fs.writeFile(
     workerPath,
-    [
-      `import {createDurableObjectClient} from './runtime/durable-object.js';`,
-      `import {sql} from './runtime/sql.js';`,
-      ``,
-      `${classDefString}`,
-      ``,
-      `export class FixtureObject extends ${className} {`,
-      `  async fetch(request) {`,
-      `    const url = new URL(request.url);`,
-      `    if (request.method !== 'POST' || url.pathname !== '/__rpc__') {`,
-      `      return new Response('not found', {status: 404});`,
-      `    }`,
-      ``,
-      `    const {method, args} = await request.json();`,
-      ``,
-      `    return this[method].apply(this, args).then(`,
-      `      (value) => Response.json({ok: true, value}),`,
-      `      (error) => Response.json({ok: false, error: {message: String(error)}}),`,
-      `    );`,
-      `  }`,
-      `}`,
-      ``,
-      `export default {`,
-      `  fetch() {`,
-      `    return new Response('ok');`,
-      `  },`,
-      `};`,
-      ``,
-    ].join('\n'),
+    dedent`
+      import {createDurableObjectClient} from './runtime/durable-object.js';
+      import {sql} from './runtime/sql.js';
+      
+      ${classDefString}
+      
+      export class FixtureObject extends ${className} {
+        async fetch(request) {
+          const url = new URL(request.url);
+          if (request.method !== 'POST' || url.pathname !== '/__rpc__') {
+            return new Response('not found', {status: 404});
+          }
+      
+          const {method, args} = await request.json();
+      
+          return this[method].apply(this, args).then(
+            (value) => Response.json({ok: true, value}),
+            (error) => Response.json({ok: false, error: {message: String(error)}}),
+          );
+        }
+      }
+      
+      export default {
+        fetch() {
+          return new Response('ok');
+        },
+      };
+    `
   );
 
   const miniflare = new Miniflare({
