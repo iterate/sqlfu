@@ -14,79 +14,57 @@ export interface QueryMetadata {
   readonly lastInsertRowid?: string | number | bigint | null;
 }
 
-export type QueryResult<TRow extends ResultRow = ResultRow> = TRow[] & QueryMetadata;
+export type RunResult = QueryMetadata;
 
-export interface SyncExecutor {
-  query<TRow extends ResultRow = ResultRow>(query: SqlQuery): QueryResult<TRow>;
-}
-
-export interface AsyncExecutor {
-  query<TRow extends ResultRow = ResultRow>(query: SqlQuery): Promise<QueryResult<TRow>>;
-}
-
-export type QueryExecutor = SyncExecutor | AsyncExecutor;
-
-export interface SyncTransaction extends SyncExecutor {}
-
-export interface AsyncTransaction extends AsyncExecutor {}
-
-export interface SyncTransactional {
-  transaction<TResult>(fn: (tx: SyncTransaction) => TResult): TResult;
-}
-
-export interface AsyncTransactional {
-  transaction<TResult>(fn: (tx: AsyncTransaction) => Promise<TResult>): Promise<TResult>;
-}
-
-export interface SyncConnection extends SyncExecutor, SyncTransactional {}
-
-export interface AsyncConnection extends AsyncExecutor, AsyncTransactional {}
-
-export interface SyncClient {
-  connect(): SyncConnection;
-}
-
-export interface AsyncClient {
-  connect(): Promise<AsyncConnection>;
-}
-
-export interface SyncSqlClient extends SyncExecutor {
+export interface SyncClient<TDriver = unknown> {
+  readonly driver: TDriver;
+  all<TRow extends ResultRow = ResultRow>(query: SqlQuery): TRow[];
+  run(query: SqlQuery): RunResult;
+  iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery): Iterable<TRow>;
   readonly sql: SyncSqlTag;
 }
 
-export interface AsyncSqlClient extends AsyncExecutor {
+export interface AsyncClient<TDriver = unknown> {
+  readonly driver: TDriver;
+  all<TRow extends ResultRow = ResultRow>(query: SqlQuery): Promise<TRow[]>;
+  run(query: SqlQuery): Promise<RunResult>;
+  iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery): AsyncIterable<TRow>;
   readonly sql: AsyncSqlTag;
 }
+
+export type Client<TDriver = unknown> = SyncClient<TDriver> | AsyncClient<TDriver>;
 
 export interface SyncSqlTag {
   <TRow extends ResultRow = ResultRow>(
     strings: TemplateStringsArray,
     ...values: readonly SqlValue[]
-  ): SqlQueryPromise<TRow>;
-  exec<TRow extends ResultRow = ResultRow>(
+  ): SqlRowsPromise<TRow>;
+  all<TRow extends ResultRow = ResultRow>(
     strings: TemplateStringsArray,
     ...values: readonly SqlValue[]
-  ): QueryResult<TRow>;
+  ): TRow[];
+  run(strings: TemplateStringsArray, ...values: readonly SqlValue[]): RunResult;
 }
 
 export interface AsyncSqlTag {
   <TRow extends ResultRow = ResultRow>(
     strings: TemplateStringsArray,
     ...values: readonly SqlValue[]
-  ): SqlQueryPromise<TRow>;
-  exec<TRow extends ResultRow = ResultRow>(
+  ): SqlRowsPromise<TRow>;
+  all<TRow extends ResultRow = ResultRow>(
     strings: TemplateStringsArray,
     ...values: readonly SqlValue[]
-  ): Promise<QueryResult<TRow>>;
+  ): Promise<TRow[]>;
+  run(strings: TemplateStringsArray, ...values: readonly SqlValue[]): Promise<RunResult>;
 }
 
 export type SqlTag = SyncSqlTag | AsyncSqlTag;
 
-export interface SqlQueryPromise<TRow extends ResultRow = ResultRow> extends PromiseLike<QueryResult<TRow>> {
+export interface SqlRowsPromise<TRow extends ResultRow = ResultRow> extends PromiseLike<TRow[]> {
   catch<TResult = never>(
     onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
-  ): Promise<QueryResult<TRow> | TResult>;
-  finally(onfinally?: (() => void) | null): Promise<QueryResult<TRow>>;
+  ): Promise<TRow[] | TResult>;
+  finally(onfinally?: (() => void) | null): Promise<TRow[]>;
 }
 
 export type SqlValue = QueryArg | SqlFragment;

@@ -1,51 +1,49 @@
 import {bindAsyncSql} from '../core/sql.js';
-import type {AsyncExecutor, AsyncSqlClient, ResultRow, SqlQuery} from '../core/types.js';
-
-export interface LibsqlStatementLike {
-  readonly sql: string;
-  readonly args?: readonly unknown[];
-}
-
-export interface LibsqlExecuteResultLike<TRow extends ResultRow = ResultRow> {
-  readonly rows: TRow[];
-  readonly rowsAffected?: number;
-  readonly lastInsertRowid?: string | number | bigint | null;
-}
+import type {AsyncClient, ResultRow, SqlQuery} from '../core/types.js';
 
 export interface LibsqlClientLike {
   execute<TRow extends ResultRow = ResultRow>(
-    statement: string | LibsqlStatementLike,
-  ): Promise<LibsqlExecuteResultLike<TRow>>;
+    statement: string | {sql: string; args?: readonly unknown[]},
+  ): Promise<{
+    readonly rows: TRow[];
+    readonly rowsAffected?: number;
+    readonly lastInsertRowid?: string | number | bigint | null;
+  }>;
 }
 
-export interface LibsqlClient extends AsyncSqlClient {
-  readonly client: LibsqlClientLike;
-}
-
-export function createLibsqlClient(client: LibsqlClientLike): LibsqlClient {
-  const executor: AsyncExecutor = {
-    async query<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
-      const result = await client.execute<TRow>(toStatement(query));
-      const rows = result.rows.map(materializeRow);
-      if (rows.length > 0) return rows;
-
-      return Object.assign(rows, {
-        rowsAffected: result.rowsAffected,
-        lastInsertRowid: result.lastInsertRowid,
-      });
-    },
+export function createLibsqlClient(client: LibsqlClientLike): AsyncClient<LibsqlClientLike> {
+  const all: AsyncClient<LibsqlClientLike>['all'] = async <TRow extends ResultRow = ResultRow>(sqlQuery: SqlQuery) => {
+    const result = await client.execute<TRow>(toStatement(sqlQuery));
+    return result.rows.map(materializeRow);
   };
-
-  return {
-    ...executor,
-    client,
-    sql: bindAsyncSql(executor),
+  const run: AsyncClient<LibsqlClientLike>['run'] = async (sqlQuery: SqlQuery) => {
+    const result = await client.execute(toStatement(sqlQuery));
+    return {
+      rowsAffected: result.rowsAffected,
+      lastInsertRowid: result.lastInsertRowid,
+    };
   };
+  const iterate: AsyncClient<LibsqlClientLike>['iterate'] = async function* <TRow extends ResultRow = ResultRow>(sqlQuery: SqlQuery) {
+    for (const row of await all<TRow>(sqlQuery)) {
+      yield row;
+    }
+  };
+  const queryClient = {
+    driver: client,
+    all,
+    run,
+    iterate,
+    sql: undefined as unknown as AsyncClient<LibsqlClientLike>['sql'],
+  } satisfies AsyncClient<LibsqlClientLike>;
+
+  queryClient.sql = bindAsyncSql(queryClient);
+
+  return queryClient;
 }
 
 export const createLibsqlDatabase = createLibsqlClient;
 
-function toStatement(query: SqlQuery): LibsqlStatementLike {
+function toStatement(query: SqlQuery): {readonly sql: string; readonly args: readonly unknown[]} {
   return {
     sql: query.sql,
     args: [...query.args],

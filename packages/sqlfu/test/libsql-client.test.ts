@@ -9,12 +9,12 @@ import {createLibsqlClient} from '../src/client.js';
 
 test('createLibsqlClient works with a real @libsql/client database', async () => {
   await using fixture = await createLibsqlFixture(createClient({url: getTmpDbUrl()}));
-  await fixture.client.sql.exec`create table users (id integer primary key, email text not null)`;
+  await fixture.client.sql.run`create table users (id integer primary key, email text not null)`;
 
-  await fixture.client.sql.exec`insert into users (email) values (${'ada@example.com'}), (${'grace@example.com'})`;
+  await fixture.client.sql.run`insert into users (email) values (${'ada@example.com'}), (${'grace@example.com'})`;
 
   expect(
-    await fixture.client.query<{id: number; email: string}>({
+    await fixture.client.all<{id: number; email: string}>({
       sql: 'select id, email from users where email = ?',
       args: ['ada@example.com'],
     }),
@@ -25,13 +25,12 @@ test('createLibsqlClient works with a real @libsql/client database', async () =>
     {id: 2, email: 'grace@example.com'},
   ]);
 
-  const writeResult = await fixture.client.sql.exec`insert into users (email) values (${'lin@example.com'})`;
-  expect(writeResult.length).toBe(0);
+  const writeResult = await fixture.client.sql.run`insert into users (email) values (${'lin@example.com'})`;
   expect(writeResult.rowsAffected).toBe(1);
   expect(typeof writeResult.lastInsertRowid).toMatch(/^(bigint|number|string)$/);
 
   expect(
-    await fixture.client.query<{id: number; email: string}>({
+    await fixture.client.all<{id: number; email: string}>({
       sql: 'select id, email from users where email = ?',
       args: ['lin@example.com'],
     }),
@@ -40,11 +39,30 @@ test('createLibsqlClient works with a real @libsql/client database', async () =>
 
 test('createLibsqlClient turns real sqlite syntax errors into promise rejections for tagged sql', async () => {
   await using fixture = await createLibsqlFixture(createClient({url: getTmpDbUrl()}));
-  await fixture.client.sql.exec`create table users (id integer primary key, email text not null)`;
+  await fixture.client.sql.run`create table users (id integer primary key, email text not null)`;
 
   await expect(
     fixture.client.sql`selectTYPO from users`.catch(String),
   ).resolves.toContain('syntax error');
+});
+
+test('createLibsqlClient iterates rows', async () => {
+  await using fixture = await createLibsqlFixture(createClient({url: getTmpDbUrl()}));
+  await fixture.client.sql.run`create table users (id integer primary key, email text not null)`;
+  await fixture.client.sql.run`insert into users (email) values (${'ada@example.com'}), (${'grace@example.com'})`;
+
+  const rows = [];
+  for await (const row of fixture.client.iterate<{id: number; email: string}>({
+    sql: 'select id, email from users order by id',
+    args: [],
+  })) {
+    rows.push(row);
+  }
+
+  expect(rows).toMatchObject([
+    {id: 1, email: 'ada@example.com'},
+    {id: 2, email: 'grace@example.com'},
+  ]);
 });
 
 async function createLibsqlFixture(raw: ReturnType<typeof createClient>) {

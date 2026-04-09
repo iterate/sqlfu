@@ -145,11 +145,11 @@ function rewriteGeneratedWrapper(contents: string): string {
       : signature.returnType;
 
   return [
-    `import type {QueryExecutor, SqlQuery} from 'sqlfu';`,
+    `import type {Client, SqlQuery} from 'sqlfu';`,
     ``,
     typeBlocks,
     ``,
-    `export async function ${signature.name}(executor: QueryExecutor${signature.restParameters.length > 0 ? `, ${signature.restParameters}` : ''}): Promise<${signature.returnType}> {`,
+    `export async function ${signature.name}(client: Client${signature.restParameters.length > 0 ? `, ${signature.restParameters}` : ''}): Promise<${signature.returnType}> {`,
     indent(sqlBlock),
     `\tconst query: SqlQuery = ${queryExpression};`,
     ...buildGeneratedImplementation({
@@ -238,19 +238,19 @@ function buildGeneratedImplementation(input: {
   }>;
 }): string[] {
   if (input.resultMode === 'many') {
-    return [`\treturn executor.query<${input.resultType}>(query);`];
+    return [`\treturn client.all<${input.resultType}>(query);`];
   }
 
   if (input.resultMode === 'nullableOne') {
     return [
-      `\tconst rows = await executor.query<${input.resultType}>(query);`,
+      `\tconst rows = await client.all<${input.resultType}>(query);`,
       `\treturn rows.length > 0 ? rows[0] : null;`,
     ];
   }
 
   if (input.resultMode === 'one') {
     return [
-      `\tconst rows = await executor.query<${input.resultType}>(query);`,
+      `\tconst rows = await client.all<${input.resultType}>(query);`,
       `\treturn rows[0];`,
     ];
   }
@@ -274,7 +274,7 @@ function buildGeneratedImplementation(input: {
     return `\t\t${property.name}: result.${property.name},`;
   });
   return [
-    `\tconst result = await executor.query(query);`,
+    `\tconst result = await client.run(query);`,
     ...guards,
     `\treturn {`,
     ...resultAssignments,

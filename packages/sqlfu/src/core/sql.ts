@@ -1,33 +1,34 @@
 import type {
-  AsyncExecutor,
+  AsyncClient,
   AsyncSqlTag,
   QueryArg,
-  QueryResult,
   ResultRow,
+  RunResult,
   SqlFragment,
   SqlQuery,
+  SqlRowsPromise,
   SqlValue,
-  SyncExecutor,
+  SyncClient,
   SyncSqlTag,
 } from './types.js';
 
 const emptyFragment: SqlFragment = {sql: '', args: []};
 
-export class AsyncBoundQuery<TRow extends ResultRow> implements PromiseLike<QueryResult<TRow>> {
+export class AsyncBoundRows<TRow extends ResultRow> implements SqlRowsPromise<TRow> {
   readonly query: SqlQuery;
-  readonly #executor: AsyncExecutor;
+  readonly #client: AsyncClient;
 
-  constructor(executor: AsyncExecutor, query: SqlQuery) {
-    this.#executor = executor;
+  constructor(client: AsyncClient, query: SqlQuery) {
+    this.#client = client;
     this.query = query;
   }
 
-  then<TResult1 = QueryResult<TRow>, TResult2 = never>(
-    onfulfilled?: ((value: QueryResult<TRow>) => TResult1 | PromiseLike<TResult1>) | null,
+  then<TResult1 = TRow[], TResult2 = never>(
+    onfulfilled?: ((value: TRow[]) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ): Promise<TResult1 | TResult2> {
     try {
-      return Promise.resolve(this.#executor.query<TRow>(this.query)).then(onfulfilled, onrejected);
+      return Promise.resolve(this.#client.all<TRow>(this.query)).then(onfulfilled, onrejected);
     } catch (error) {
       return Promise.reject(error).then(onfulfilled, onrejected);
     }
@@ -35,30 +36,30 @@ export class AsyncBoundQuery<TRow extends ResultRow> implements PromiseLike<Quer
 
   catch<TResult = never>(
     onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
-  ): Promise<QueryResult<TRow> | TResult> {
+  ): Promise<TRow[] | TResult> {
     return this.then(undefined, onrejected);
   }
 
-  finally(onfinally?: (() => void) | null): Promise<QueryResult<TRow>> {
+  finally(onfinally?: (() => void) | null): Promise<TRow[]> {
     return Promise.resolve(this.then((value) => value)).finally(onfinally ?? undefined);
   }
 }
 
-export class SyncBoundQuery<TRow extends ResultRow> implements PromiseLike<QueryResult<TRow>> {
+export class SyncBoundRows<TRow extends ResultRow> implements SqlRowsPromise<TRow> {
   readonly query: SqlQuery;
-  readonly #executor: SyncExecutor;
+  readonly #client: SyncClient;
 
-  constructor(executor: SyncExecutor, query: SqlQuery) {
-    this.#executor = executor;
+  constructor(client: SyncClient, query: SqlQuery) {
+    this.#client = client;
     this.query = query;
   }
 
-  then<TResult1 = QueryResult<TRow>, TResult2 = never>(
-    onfulfilled?: ((value: QueryResult<TRow>) => TResult1 | PromiseLike<TResult1>) | null,
+  then<TResult1 = TRow[], TResult2 = never>(
+    onfulfilled?: ((value: TRow[]) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ): Promise<TResult1 | TResult2> {
     try {
-      return Promise.resolve(this.#executor.query<TRow>(this.query)).then(onfulfilled, onrejected);
+      return Promise.resolve(this.#client.all<TRow>(this.query)).then(onfulfilled, onrejected);
     } catch (error) {
       return Promise.reject(error).then(onfulfilled, onrejected);
     }
@@ -66,11 +67,11 @@ export class SyncBoundQuery<TRow extends ResultRow> implements PromiseLike<Query
 
   catch<TResult = never>(
     onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
-  ): Promise<QueryResult<TRow> | TResult> {
+  ): Promise<TRow[] | TResult> {
     return this.then(undefined, onrejected);
   }
 
-  finally(onfinally?: (() => void) | null): Promise<QueryResult<TRow>> {
+  finally(onfinally?: (() => void) | null): Promise<TRow[]> {
     return Promise.resolve(this.then((value) => value)).finally(onfinally ?? undefined);
   }
 }
@@ -136,30 +137,36 @@ export function join(values: readonly SqlValue[], separator = ', '): SqlFragment
   return {sql: text, args};
 }
 
-export function bindSyncSql(executor: SyncExecutor): SyncSqlTag {
+export function bindSyncSql(client: SyncClient): SyncSqlTag {
   const boundSql = <TRow extends ResultRow = ResultRow>(
     strings: TemplateStringsArray,
     ...values: readonly SqlValue[]
-  ) => new SyncBoundQuery<TRow>(executor, sql(strings, ...values));
+  ) => new SyncBoundRows<TRow>(client, sql(strings, ...values));
 
-  boundSql.exec = <TRow extends ResultRow = ResultRow>(
+  boundSql.all = <TRow extends ResultRow = ResultRow>(
     strings: TemplateStringsArray,
     ...values: readonly SqlValue[]
-  ) => executor.query<TRow>(sql(strings, ...values));
+  ) => client.all<TRow>(sql(strings, ...values));
+
+  boundSql.run = (strings: TemplateStringsArray, ...values: readonly SqlValue[]): RunResult =>
+    client.run(sql(strings, ...values));
 
   return boundSql;
 }
 
-export function bindAsyncSql(executor: AsyncExecutor): AsyncSqlTag {
+export function bindAsyncSql(client: AsyncClient): AsyncSqlTag {
   const boundSql = <TRow extends ResultRow = ResultRow>(
     strings: TemplateStringsArray,
     ...values: readonly SqlValue[]
-  ) => new AsyncBoundQuery<TRow>(executor, sql(strings, ...values));
+  ) => new AsyncBoundRows<TRow>(client, sql(strings, ...values));
 
-  boundSql.exec = <TRow extends ResultRow = ResultRow>(
+  boundSql.all = <TRow extends ResultRow = ResultRow>(
     strings: TemplateStringsArray,
     ...values: readonly SqlValue[]
-  ) => executor.query<TRow>(sql(strings, ...values));
+  ) => client.all<TRow>(sql(strings, ...values));
+
+  boundSql.run = (strings: TemplateStringsArray, ...values: readonly SqlValue[]): Promise<RunResult> =>
+    client.run(sql(strings, ...values));
 
   return boundSql;
 }

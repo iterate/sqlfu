@@ -36,7 +36,7 @@ test('generate writes wrappers and a barrel for every checked-in query', async (
   expect(indexTs).toMatch(/find-post-by-slug\.js/);
   await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(listPostSummariesTs).toMatchInlineSnapshot(`
-    "import type {QueryExecutor, SqlQuery} from 'sqlfu';
+    "import type {Client, SqlQuery} from 'sqlfu';
 
     export type ListPostSummariesResult = {
     	id: number;
@@ -45,18 +45,18 @@ test('generate writes wrappers and a barrel for every checked-in query', async (
     	excerpt: string;
     }
 
-    export async function listPostSummaries(executor: QueryExecutor): Promise<ListPostSummariesResult[]> {
+    export async function listPostSummaries(client: Client): Promise<ListPostSummariesResult[]> {
     	const sql = \`
     	select id, slug, published_at, excerpt from post_summaries;
     	
     	\`
     	const query: SqlQuery = { sql, args: [] };
-    	return executor.query<ListPostSummariesResult>(query);
+    	return client.all<ListPostSummariesResult>(query);
     }
     "
   `);
   expect(findPostBySlugTs).toMatchInlineSnapshot(`
-    "import type {QueryExecutor, SqlQuery} from 'sqlfu';
+    "import type {Client, SqlQuery} from 'sqlfu';
 
     export type FindPostBySlugParams = {
     	slug: string;
@@ -68,13 +68,13 @@ test('generate writes wrappers and a barrel for every checked-in query', async (
     	excerpt: string;
     }
 
-    export async function findPostBySlug(executor: QueryExecutor, params: FindPostBySlugParams): Promise<FindPostBySlugResult | null> {
+    export async function findPostBySlug(client: Client, params: FindPostBySlugParams): Promise<FindPostBySlugResult | null> {
     	const sql = \`
     	select id, slug, body as excerpt from posts where slug = ? limit 1;
     	
     	\`
     	const query: SqlQuery = { sql, args: [params.slug] };
-    	const rows = await executor.query<FindPostBySlugResult>(query);
+    	const rows = await client.all<FindPostBySlugResult>(query);
     	return rows.length > 0 ? rows[0] : null;
     }
     "
@@ -128,10 +128,10 @@ test('generate helpers accept sqlfu adapter clients created from real libraries'
 
   const generatedTs = await project.readFile('sql/list-posts.ts');
 
-  expect(generatedTs).toContain(`import type {QueryExecutor, SqlQuery} from 'sqlfu';`);
-  expect(generatedTs).toContain(`export async function listPosts(executor: QueryExecutor): Promise<ListPostsResult[]> {`);
+  expect(generatedTs).toContain(`import type {Client, SqlQuery} from 'sqlfu';`);
+  expect(generatedTs).toContain(`export async function listPosts(client: Client): Promise<ListPostsResult[]> {`);
   expect(generatedTs).toContain(`const query: SqlQuery = { sql, args: [] };`);
-  expect(generatedTs).toContain(`return executor.query<ListPostsResult>(query);`);
+  expect(generatedTs).toContain(`return client.all<ListPostsResult>(query);`);
   await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
 
   const {listPosts} = await project.importTranspiledModule<{
@@ -232,7 +232,7 @@ test('generate emits named param types and a nullable single-row result for limi
 
   await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {QueryExecutor, SqlQuery} from 'sqlfu';
+    "import type {Client, SqlQuery} from 'sqlfu';
 
     export type FindPostBySlugParams = {
     	slug: string;
@@ -244,13 +244,13 @@ test('generate emits named param types and a nullable single-row result for limi
     	title?: string;
     }
 
-    export async function findPostBySlug(executor: QueryExecutor, params: FindPostBySlugParams): Promise<FindPostBySlugResult | null> {
+    export async function findPostBySlug(client: Client, params: FindPostBySlugParams): Promise<FindPostBySlugResult | null> {
     	const sql = \`
     	select id, slug, title from posts where slug = ? limit 1;
     	
     	\`
     	const query: SqlQuery = { sql, args: [params.slug] };
-    	const rows = await executor.query<FindPostBySlugResult>(query);
+    	const rows = await client.all<FindPostBySlugResult>(query);
     	return rows.length > 0 ? rows[0] : null;
     }
     "
@@ -273,20 +273,20 @@ test('generate uses schema types for aliased selected columns instead of leaving
 
   await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {QueryExecutor, SqlQuery} from 'sqlfu';
+    "import type {Client, SqlQuery} from 'sqlfu';
 
     export type FindPostPreviewResult = {
     	id: number;
     	excerpt: string;
     }
 
-    export async function findPostPreview(executor: QueryExecutor): Promise<FindPostPreviewResult[]> {
+    export async function findPostPreview(client: Client): Promise<FindPostPreviewResult[]> {
     	const sql = \`
     	select id, body as excerpt from posts limit 5;
     	
     	\`
     	const query: SqlQuery = { sql, args: [] };
-    	return executor.query<FindPostPreviewResult>(query);
+    	return client.all<FindPostPreviewResult>(query);
     }
     "
   `);
@@ -308,20 +308,20 @@ test('generate treats selected columns as required when the query narrows them w
 
   await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {QueryExecutor, SqlQuery} from 'sqlfu';
+    "import type {Client, SqlQuery} from 'sqlfu';
 
     export type FindPublishedPostBySlugResult = {
     	id: number;
     	published_at: string;
     }
 
-    export async function findPublishedPostBySlug(executor: QueryExecutor): Promise<FindPublishedPostBySlugResult | null> {
+    export async function findPublishedPostBySlug(client: Client): Promise<FindPublishedPostBySlugResult | null> {
     	const sql = \`
     	select id, published_at from posts where published_at is not null limit 1;
     	
     	\`
     	const query: SqlQuery = { sql, args: [] };
-    	const rows = await executor.query<FindPublishedPostBySlugResult>(query);
+    	const rows = await client.all<FindPublishedPostBySlugResult>(query);
     	return rows.length > 0 ? rows[0] : null;
     }
     "
@@ -345,20 +345,20 @@ test('generate preserves useful result types for queries that read through views
 
   await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {QueryExecutor, SqlQuery} from 'sqlfu';
+    "import type {Client, SqlQuery} from 'sqlfu';
 
     export type ListPostSummariesResult = {
     	id: number;
     	excerpt: string;
     }
 
-    export async function listPostSummaries(executor: QueryExecutor): Promise<ListPostSummariesResult[]> {
+    export async function listPostSummaries(client: Client): Promise<ListPostSummariesResult[]> {
     	const sql = \`
     	select id, excerpt from post_summaries;
     	
     	\`
     	const query: SqlQuery = { sql, args: [] };
-    	return executor.query<ListPostSummariesResult>(query);
+    	return client.all<ListPostSummariesResult>(query);
     }
     "
   `);
@@ -401,7 +401,7 @@ test('generate snapshots insert queries', async () => {
 
   await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {QueryExecutor, SqlQuery} from 'sqlfu';
+    "import type {Client, SqlQuery} from 'sqlfu';
 
     export type InsertPostParams = {
     	slug: string;
@@ -412,13 +412,13 @@ test('generate snapshots insert queries', async () => {
     	lastInsertRowid: number;
     }
 
-    export async function insertPost(executor: QueryExecutor, params: InsertPostParams): Promise<InsertPostResult> {
+    export async function insertPost(client: Client, params: InsertPostParams): Promise<InsertPostResult> {
     	const sql = \`
     	insert into posts (slug) values (?);
     	
     	\`
     	const query: SqlQuery = { sql, args: [params.slug] };
-    	const result = await executor.query(query);
+    	const result = await client.run(query);
     	if (result.rowsAffected === undefined) {
     		throw new Error('Expected rowsAffected to be present on query result');
     	}
@@ -450,7 +450,7 @@ test('generate treats insert returning queries as single-row results', async () 
 
   await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {QueryExecutor, SqlQuery} from 'sqlfu';
+    "import type {Client, SqlQuery} from 'sqlfu';
 
     export type AddUserParams = {
     	fullName: string;
@@ -463,13 +463,13 @@ test('generate treats insert returning queries as single-row results', async () 
     	email: string;
     }
 
-    export async function addUser(executor: QueryExecutor, params: AddUserParams): Promise<AddUserResult> {
+    export async function addUser(client: Client, params: AddUserParams): Promise<AddUserResult> {
     	const sql = \`
     	insert into users (name, email) values (?, ?) returning *;
     	
     	\`
     	const query: SqlQuery = { sql, args: [params.fullName, params.emailAddress] };
-    	const rows = await executor.query<AddUserResult>(query);
+    	const rows = await client.all<AddUserResult>(query);
     	return rows[0];
     }
     "
@@ -492,7 +492,7 @@ test('generate snapshots update queries', async () => {
 
   await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {QueryExecutor, SqlQuery} from 'sqlfu';
+    "import type {Client, SqlQuery} from 'sqlfu';
 
     export type UpdatePostData = {
     	slug: string;
@@ -506,13 +506,13 @@ test('generate snapshots update queries', async () => {
     	rowsAffected: number;
     }
 
-    export async function updatePost(executor: QueryExecutor, data: UpdatePostData, params: UpdatePostParams): Promise<UpdatePostResult> {
+    export async function updatePost(client: Client, data: UpdatePostData, params: UpdatePostParams): Promise<UpdatePostResult> {
     	const sql = \`
     	update posts set slug = ? where id = ?;
     	
     	\`
     	const query: SqlQuery = { sql, args: [data.slug, params.id] };
-    	const result = await executor.query(query);
+    	const result = await client.run(query);
     	if (result.rowsAffected === undefined) {
     		throw new Error('Expected rowsAffected to be present on query result');
     	}
@@ -540,7 +540,7 @@ test('generate snapshots delete queries', async () => {
 
   await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {QueryExecutor, SqlQuery} from 'sqlfu';
+    "import type {Client, SqlQuery} from 'sqlfu';
 
     export type DeletePostParams = {
     	id: number;
@@ -550,13 +550,13 @@ test('generate snapshots delete queries', async () => {
     	rowsAffected: number;
     }
 
-    export async function deletePost(executor: QueryExecutor, params: DeletePostParams): Promise<DeletePostResult> {
+    export async function deletePost(client: Client, params: DeletePostParams): Promise<DeletePostResult> {
     	const sql = \`
     	delete from posts where id = ?;
     	
     	\`
     	const query: SqlQuery = { sql, args: [params.id] };
-    	const result = await executor.query(query);
+    	const result = await client.run(query);
     	if (result.rowsAffected === undefined) {
     		throw new Error('Expected rowsAffected to be present on query result');
     	}
@@ -584,19 +584,19 @@ test('generate snapshots function queries', async () => {
 
   await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
   expect(generatedTs).toMatchInlineSnapshot(`
-    "import type {QueryExecutor, SqlQuery} from 'sqlfu';
+    "import type {Client, SqlQuery} from 'sqlfu';
 
     export type CountPostsResult = {
     	total: number;
     }
 
-    export async function countPosts(executor: QueryExecutor): Promise<CountPostsResult | null> {
+    export async function countPosts(client: Client): Promise<CountPostsResult | null> {
     	const sql = \`
     	select count(*) as total from posts;
     	
     	\`
     	const query: SqlQuery = { sql, args: [] };
-    	const rows = await executor.query<CountPostsResult>(query);
+    	const rows = await client.all<CountPostsResult>(query);
     	return rows.length > 0 ? rows[0] : null;
     }
     "

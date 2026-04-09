@@ -1,55 +1,41 @@
 import {bindSyncSql} from '../core/sql.js';
-import type {ResultRow, SqlQuery, SyncExecutor, SyncSqlClient} from '../core/types.js';
-
-export interface BunSqliteRunResult {
-  readonly changes?: number;
-  readonly lastInsertRowid?: string | number | bigint | null;
-}
+import type {ResultRow, SqlQuery, SyncClient} from '../core/types.js';
 
 export interface BunSqliteStatementLike<TRow extends ResultRow = ResultRow> {
   all(...params: readonly unknown[]): TRow[];
+  iterate(...params: readonly unknown[]): IterableIterator<TRow>;
 }
 
 export interface BunSqliteDatabaseLike {
   query<TRow extends ResultRow = ResultRow>(query: string): BunSqliteStatementLike<TRow>;
-  run(query: string, params?: readonly unknown[]): BunSqliteRunResult;
+  run(query: string, params?: readonly unknown[]): {
+    readonly changes?: number;
+    readonly lastInsertRowid?: string | number | bigint | null;
+  };
 }
 
-export interface BunClient extends SyncSqlClient {
-  readonly database: BunSqliteDatabaseLike;
-}
-
-export function createBunClient(database: BunSqliteDatabaseLike): BunClient {
-  const executor: SyncExecutor = {
-    query<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
-      if (returnsRows(query.sql)) {
-        return database.query<TRow>(query.sql).all(...query.args);
-      }
-
+export function createBunClient(database: BunSqliteDatabaseLike): SyncClient<BunSqliteDatabaseLike> {
+  const client = {
+    driver: database,
+    all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
+      return database.query<TRow>(query.sql).all(...query.args);
+    },
+    run(query: SqlQuery) {
       const result = database.run(query.sql, [...query.args]);
-      return Object.assign([], {
+      return {
         rowsAffected: result.changes,
         lastInsertRowid: result.lastInsertRowid,
-      });
+      };
     },
-  };
+    *iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
+      yield* database.query<TRow>(query.sql).iterate(...query.args);
+    },
+    sql: undefined as unknown as SyncClient<BunSqliteDatabaseLike>['sql'],
+  } satisfies SyncClient<BunSqliteDatabaseLike>;
 
-  return {
-    ...executor,
-    database,
-    sql: bindSyncSql(executor),
-  };
+  client.sql = bindSyncSql(client);
+
+  return client;
 }
 
 export const createBunDatabase = createBunClient;
-
-function returnsRows(query: string): boolean {
-  const firstKeyword = query.trimStart().match(/^[a-z]+/iu)?.[0]?.toLowerCase();
-  return (
-    firstKeyword === 'select' ||
-    firstKeyword === 'pragma' ||
-    firstKeyword === 'explain' ||
-    firstKeyword === 'values' ||
-    firstKeyword === 'with'
-  );
-}

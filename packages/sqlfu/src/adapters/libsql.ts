@@ -1,46 +1,45 @@
 import {bindSyncSql} from '../core/sql.js';
-import type {ResultRow, SqlQuery, SyncExecutor, SyncSqlClient} from '../core/types.js';
-
-export interface LibsqlSyncRunResult {
-  readonly changes?: number;
-  readonly lastInsertRowid?: string | number | bigint | null;
-}
+import type {ResultRow, SqlQuery, SyncClient} from '../core/types.js';
 
 export interface LibsqlSyncStatementLike {
   readonly reader: boolean;
   all(...params: readonly unknown[]): unknown[];
-  run(...params: readonly unknown[]): LibsqlSyncRunResult;
+  run(...params: readonly unknown[]): {
+    readonly changes?: number;
+    readonly lastInsertRowid?: string | number | bigint | null;
+  };
 }
 
 export interface LibsqlSyncDatabaseLike {
   prepare(query: string): LibsqlSyncStatementLike;
 }
 
-export interface LibsqlSyncClient extends SyncSqlClient {
-  readonly database: LibsqlSyncDatabaseLike;
-}
-
-export function createLibsqlSyncClient(database: LibsqlSyncDatabaseLike): LibsqlSyncClient {
-  const executor: SyncExecutor = {
-    query<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
-      const statement = database.prepare(query.sql);
-      if (statement.reader) {
-        return statement.all(...query.args) as TRow[];
-      }
-
-      const result = statement.run(...query.args);
-      return Object.assign([], {
-        rowsAffected: result.changes,
-        lastInsertRowid: result.lastInsertRowid,
-      });
-    },
+export function createLibsqlSyncClient(database: LibsqlSyncDatabaseLike): SyncClient<LibsqlSyncDatabaseLike> {
+  const all: SyncClient<LibsqlSyncDatabaseLike>['all'] = <TRow extends ResultRow = ResultRow>(query: SqlQuery) => {
+    return database.prepare(query.sql).all(...query.args) as TRow[];
   };
-
-  return {
-    ...executor,
-    database,
-    sql: bindSyncSql(executor),
+  const run: SyncClient<LibsqlSyncDatabaseLike>['run'] = (query: SqlQuery) => {
+    const statement = database.prepare(query.sql);
+    const result = statement.run(...query.args);
+    return {
+      rowsAffected: result.changes,
+      lastInsertRowid: result.lastInsertRowid,
+    };
   };
+  const iterate: SyncClient<LibsqlSyncDatabaseLike>['iterate'] = function* <TRow extends ResultRow = ResultRow>(query: SqlQuery) {
+    yield* all<TRow>(query);
+  };
+  const client = {
+    driver: database,
+    all,
+    run,
+    iterate,
+    sql: undefined as unknown as SyncClient<LibsqlSyncDatabaseLike>['sql'],
+  } satisfies SyncClient<LibsqlSyncDatabaseLike>;
+
+  client.sql = bindSyncSql(client);
+
+  return client;
 }
 
 export const createLibsqlSyncDatabase = createLibsqlSyncClient;

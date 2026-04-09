@@ -1,37 +1,38 @@
 import {bindSyncSql} from '../core/sql.js';
-import type {ResultRow, SqlQuery, SyncExecutor, SyncSqlClient} from '../core/types.js';
-
-export interface DurableObjectSqlStorageCursorLike<TRow extends ResultRow = ResultRow> {
-  toArray(): TRow[];
-  readonly rowsWritten?: number;
-}
+import type {ResultRow, SqlQuery, SyncClient} from '../core/types.js';
 
 export interface DurableObjectSqlStorageLike {
   exec<TRow extends ResultRow = ResultRow>(
     query: string,
     ...bindings: readonly unknown[]
-  ): DurableObjectSqlStorageCursorLike<TRow>;
+  ): {
+    toArray(): TRow[];
+    readonly rowsWritten?: number;
+  };
 }
 
-export interface DurableObjectClient extends SyncSqlClient {
-  readonly storage: DurableObjectSqlStorageLike;
-}
-
-export function createDurableObjectClient(storage: DurableObjectSqlStorageLike): DurableObjectClient {
-  const executor: SyncExecutor = {
-    query<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
-      const cursor = storage.exec<TRow>(query.sql, ...query.args);
-      return Object.assign(cursor.toArray(), {
-        rowsAffected: cursor.rowsWritten,
-      });
+export function createDurableObjectClient(storage: DurableObjectSqlStorageLike): SyncClient<DurableObjectSqlStorageLike> {
+  const client = {
+    driver: storage,
+    all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
+      return storage.exec<TRow>(query.sql, ...query.args).toArray();
     },
-  };
+    run(query: SqlQuery) {
+      const cursor = storage.exec(query.sql, ...query.args);
+      return {
+        rowsAffected: cursor.rowsWritten,
+      };
+    },
+    *iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
+      const rows = storage.exec<TRow>(query.sql, ...query.args).toArray();
+      yield* rows;
+    },
+    sql: undefined as unknown as SyncClient<DurableObjectSqlStorageLike>['sql'],
+  } satisfies SyncClient<DurableObjectSqlStorageLike>;
 
-  return {
-    ...executor,
-    storage,
-    sql: bindSyncSql(executor),
-  };
+  client.sql = bindSyncSql(client);
+
+  return client;
 }
 
 export const createDurableObjectDatabase = createDurableObjectClient;
