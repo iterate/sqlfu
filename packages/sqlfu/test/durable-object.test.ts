@@ -1,13 +1,12 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 
 import {Miniflare} from 'miniflare';
 import ts from 'typescript';
 import {expect, test} from 'vitest';
 
-const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const packageRoot = path.resolve(path.dirname(import.meta.filename), '..');
 declare const createDurableObjectClient: typeof import('../src/index.ts').createDurableObjectClient;
 declare const sql: typeof import('../src/index.ts').sql;
 

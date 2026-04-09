@@ -1,13 +1,12 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 
 import {Miniflare} from 'miniflare';
 import ts from 'typescript';
 import {expect, test} from 'vitest';
 
-const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const packageRoot = path.resolve(path.dirname(import.meta.filename), '..');
 declare const createD1Client: typeof import('../src/index.ts').createD1Client;
 declare const sql: typeof import('../src/index.ts').sql;
 
@@ -48,10 +47,12 @@ test('createD1Client works in a generated local worker fixture', async () => {
     },
   });
 
-  expect(await fixture.json('/create')).toMatchObject({ok: true});
-  expect(await fixture.json('/insert?id=1&name=bob')).toMatchObject({ok: true});
-  expect(await fixture.json('/insert?id=2&name=ada')).toMatchObject({ok: true});
-  expect(await fixture.json('/list')).toMatchObject([
+  expect(await fixture.fetch('http://fixture/create')).toMatchObject({ok: true});
+  expect(await fixture.fetch('http://fixture/insert?id=1&name=bob')).toMatchObject({ok: true});
+  expect(await fixture.fetch('http://fixture/insert?id=2&name=ada')).toMatchObject({ok: true});
+  
+  const res = await fixture.fetch('http://fixture/list')
+  expect(await res.json()).toMatchObject([
     {id: 1, name: 'bob'},
     {id: 2, name: 'ada'},
   ]);
@@ -106,11 +107,7 @@ async function createD1Fixture(workerDef: {
 
   return {
     async fetch(input: string, init?: RequestInit) {
-      return worker.fetch(`http://fixture${input}`, init);
-    },
-    async json(input: string, init?: RequestInit) {
-      const response = await worker.fetch(`http://fixture${input}`, init);
-      return response.json();
+      return worker.fetch(input, init);
     },
     async [Symbol.asyncDispose]() {
       await miniflare.dispose();
