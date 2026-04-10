@@ -5,8 +5,9 @@ import {DatabaseSync} from 'node:sqlite';
 import {os} from '@orpc/server';
 import {z} from 'zod';
 
-import type {Database, SqlfuProjectConfig} from './core/types.js';
+import type {Client, SqlfuProjectConfig} from './core/types.js';
 import {createNodeSqliteClient} from './client.js';
+import {applyMigrations} from './migrations/index.js';
 import {diffSchemaSql} from './schemadiff/index.js';
 import {generateQueryTypes} from './typegen/index.js';
 
@@ -22,6 +23,11 @@ const migrateInputSchema = z.object({
   includeDraft: z.boolean(),
 });
 
+type DisposableClient = {
+  readonly client: Client;
+  [Symbol.asyncDispose](): Promise<void>;
+};
+
 export const router = {
   generate: base.handler(async () => {
     await generateQueryTypes();
@@ -34,15 +40,15 @@ export const router = {
 
   sync: base.handler(async ({context}) => {
     const definitionsSql = await fs.readFile(context.projectConfig.definitionsPath, 'utf8');
-    await using database = await context.projectConfig.getMainDatabase();
-    const baselineSql = await exportSchema(database);
+    await using database = await openMainDevDatabase(context.projectConfig.db);
+    const baselineSql = await exportSchema(database.client);
     try {
       const diffLines = await diffSchemaSql({
         projectRoot: context.projectConfig.projectRoot,
         baselineSql,
         desiredSql: definitionsSql,
       });
-      await applySqlScript(database, diffLines.join('\n'));
+      await applySqlScript(database.client, diffLines.join('\n'));
     } catch (error) {
       throw new Error(
         [
@@ -126,7 +132,7 @@ export const router = {
       throw new Error('draft migration exists; pass includeDraft: true to apply it');
     }
 
-    await applyMigrationsToDatabase(runtime.getMainDatabase, input.includeDraft ? migrations : migrations.filter((migration) => migration.status === 'final'));
+    await applyMigrationsToDatabase(runtime.projectConfig.db, input.includeDraft ? migrations : migrations.filter((migration) => migration.status === 'final'));
   }),
 
   finalize: base.handler(async ({context}) => {
@@ -188,8 +194,8 @@ export const router = {
 function createRuntime(context: SqlfuRouterContext) {
   return {
     projectRoot: context.projectConfig.projectRoot,
+    projectConfig: context.projectConfig,
     now: () => context.now?.() ?? new Date(),
-    getMainDatabase: context.projectConfig.getMainDatabase,
     readDefinitionsSql: () => fs.readFile(context.projectConfig.definitionsPath, 'utf8'),
     async readMigrations() {
       try {
@@ -286,8 +292,8 @@ async function materializeDefinitionsSchema(
   definitionsSql: string,
 ) {
   await using database = await createScratchDatabase(projectRoot, 'materialize-definitions');
-  await applySqlScript(database, definitionsSql);
-  return exportSchema(database);
+  await applySqlScript(database.client, definitionsSql);
+  return exportSchema(database.client);
 }
 
 async function materializeMigrationsSchema(
@@ -295,23 +301,19 @@ async function materializeMigrationsSchema(
   migrations: readonly {path: string}[],
 ) {
   await using database = await createScratchDatabase(projectRoot, 'materialize-migrations');
-  for (const migration of migrations) {
-    await applySqlScript(database, await fs.readFile(migration.path, 'utf8'));
-  }
-  return exportSchema(database);
+  await applyMigrations(database.client, {migrations: await readMigrationInputs(migrations)});
+  return exportSchema(database.client);
 }
 
 async function applyMigrationsToDatabase(
-  getMainDatabase: SqlfuProjectConfig['getMainDatabase'],
+  dbPath: string,
   migrations: readonly {path: string}[],
 ) {
-  await using database = await getMainDatabase();
-  for (const migration of migrations) {
-    await applySqlScript(database, await fs.readFile(migration.path, 'utf8'));
-  }
+  await using database = await openMainDevDatabase(dbPath);
+  await applyMigrations(database.client, {migrations: await readMigrationInputs(migrations)});
 }
 
-async function createScratchDatabase(projectRoot: string, slug: string): Promise<Database> {
+async function createScratchDatabase(projectRoot: string, slug: string): Promise<DisposableClient> {
   const dbPath = path.join(projectRoot, '.sqlfu', `${slug}.db`);
   await fs.mkdir(path.dirname(dbPath), {recursive: true});
   const database = new DatabaseSync(dbPath);
@@ -328,8 +330,19 @@ async function createScratchDatabase(projectRoot: string, slug: string): Promise
   };
 }
 
-async function exportSchema(database: Database, schemaName = 'main') {
-  const rows = await database.client.all<{sql: string | null}>({
+async function openMainDevDatabase(dbPath: string): Promise<DisposableClient> {
+  await fs.mkdir(path.dirname(dbPath), {recursive: true});
+  const database = new DatabaseSync(dbPath);
+  return {
+    client: createNodeSqliteClient(database),
+    async [Symbol.asyncDispose]() {
+      database.close();
+    },
+  };
+}
+
+async function exportSchema(client: Client, schemaName = 'main') {
+  const rows = await client.all<{sql: string | null}>({
     sql: `
       select sql
       from ${schemaName}.sqlite_schema
@@ -342,17 +355,8 @@ async function exportSchema(database: Database, schemaName = 'main') {
   return rows.map((row) => `${String(row.sql).toLowerCase()};`).join('\n');
 }
 
-async function applySqlScript(database: Database, sql: string) {
-  for (const statement of splitSqlStatements(sql)) {
-    if (stripSqlComments(statement).trim() === '') {
-      continue;
-    }
-    try {
-      await database.client.run({sql: statement, args: []});
-    } catch (error) {
-      throw new Error(summarizeDatabaseError(error));
-    }
-  }
+async function applySqlScript(client: Client, sql: string) {
+  await applyMigrations(client, {migrations: [{path: '<inline>', content: sql}]});
 }
 
 async function createCheckState(runtime: ReturnType<typeof createRuntime>): Promise<CheckState> {
@@ -418,25 +422,9 @@ async function checkMigrationsMatchDefinitions(state: CheckState): Promise<strin
   }
 }
 
-function splitSqlStatements(sql: string) {
-  // Pain point: sqlfu still has to decide how to split multi-statement SQL scripts instead of delegating that to a lower-level primitive.
-  return sql
-    .split(';')
-    .map((statement) => statement.trim())
-    .filter(Boolean)
-    .map((statement) => `${statement};`);
-}
-
 function appendMigrationContents(contents: string, lines: readonly string[]) {
   const trimmed = contents.trimEnd();
   return `${trimmed}${trimmed === '-- status: draft' ? '\n' : '\n\n'}${lines.join('\n')}\n`;
-}
-
-function stripSqlComments(sql: string) {
-  return sql
-    .split('\n')
-    .filter((line) => !line.trim().startsWith('--'))
-    .join('\n');
 }
 
 function summarizeSqlite3defError(error: unknown) {
@@ -449,9 +437,13 @@ function summarizeSqlite3defError(error: unknown) {
   return line.replace(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2} /u, '');
 }
 
-function summarizeDatabaseError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.replace(/^SQLITE_ERROR:\s*/u, '').trim();
+async function readMigrationInputs(migrations: readonly {path: string}[]) {
+  return Promise.all(
+    migrations.map(async (migration) => ({
+      path: migration.path,
+      content: await fs.readFile(migration.path, 'utf8'),
+    })),
+  );
 }
 
 export interface SqlfuRouterContext {

@@ -668,22 +668,11 @@ async function createGenerateFixture(input: {
   await writeFixtureFiles(root, {
     'definitions.sql': input.definitionsSql,
     'sqlfu.config.ts': dedent`
-      import {DatabaseSync} from 'node:sqlite';
-      import {createNodeSqliteClient} from ${JSON.stringify(pathToFileURL(path.join(packageRoot, 'src', 'client.ts')).href)};
-
       export default {
+        db: './app.db',
         migrationsDir: './migrations',
         definitionsPath: './definitions.sql',
         sqlDir: './sql',
-        getMainDatabase() {
-          const database = new DatabaseSync(new URL('./app.db', import.meta.url));
-          return {
-            client: createNodeSqliteClient(database),
-            async [Symbol.asyncDispose]() {
-              database.close();
-            },
-          };
-        },
         ${input.config?.generatedImportExtension ? `generatedImportExtension: '${input.config.generatedImportExtension}',` : ''}
       };
     `,

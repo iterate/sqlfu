@@ -8,8 +8,13 @@ import {expect, test} from 'vitest';
 
 import {router} from '../src/api.js';
 import {createLibsqlClient} from '../src/client.js';
-import type {Database, SqlfuProjectConfig} from '../src/core/types.js';
+import type {Client, SqlfuProjectConfig} from '../src/core/types.js';
 import {createTempFixtureRoot, dumpFixtureFs, withTrailingNewline, writeFixtureFiles} from './fs-fixture.js';
+
+type DisposableClient = {
+  readonly client: Client;
+  [Symbol.asyncDispose](): Promise<void>;
+};
 
 test('draft creates the first draft migration from definitions.sql when there is no migration history yet', async () => {
   await using fixture = await createMigrationsFixture('first-draft-from-empty-history', {
@@ -622,10 +627,10 @@ async function createMigrationsFixture(
   const dbPath = path.join(root, 'dev.db');
   const projectConfig: SqlfuProjectConfig = {
     projectRoot: root,
+    db: dbPath,
     migrationsDir: path.join(root, 'migrations'),
     definitionsPath: path.join(root, 'definitions.sql'),
     sqlDir: path.join(root, 'sql'),
-    getMainDatabase: () => createLibsqlDatabase(dbPath),
     generatedImportExtension: '.js',
   };
 
@@ -668,7 +673,7 @@ async function createMigrationsFixture(
   };
 }
 
-async function createLibsqlDatabase(dbPath: string): Promise<Database> {
+async function createLibsqlDatabase(dbPath: string): Promise<DisposableClient> {
   await fs.mkdir(path.dirname(dbPath), {recursive: true});
   const client = createClient({url: `file:${dbPath}`});
   const sqlfuClient = createLibsqlClient(client);
@@ -678,7 +683,7 @@ async function createLibsqlDatabase(dbPath: string): Promise<Database> {
     async [Symbol.asyncDispose]() {
       client.close();
     },
-  };
+  } satisfies DisposableClient;
 }
 
 async function exportDatabaseSchema(dbPath: string) {

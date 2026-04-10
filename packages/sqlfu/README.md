@@ -40,31 +40,21 @@ Create `sqlfu.config.ts` in your project root:
 
 ```ts
 import {defineConfig} from 'sqlfu';
-import {DatabaseSync} from 'node:sqlite';
-import {createNodeSqliteClient} from 'sqlfu/client';
 
 export default defineConfig({
+  db: './db/app.sqlite',
   migrationsDir: './migrations',
   definitionsPath: './definitions.sql',
   sqlDir: './sql',
-  getMainDatabase() {
-    const database = new DatabaseSync(new URL('./db/app.sqlite', import.meta.url));
-    return {
-      client: createNodeSqliteClient(database),
-      async [Symbol.asyncDispose]() {
-        database.close();
-      },
-    };
-  },
 });
 ```
 
 Required config fields:
 
+- `db`: path to the main dev database used by tooling commands like `sync`, `migrate`, and `generate`
 - `migrationsDir`: directory containing finalized and draft migration files
 - `definitionsPath`: schema source of truth
 - `sqlDir`: directory containing checked-in `.sql` queries
-- `getMainDatabase()`: opens the main database handle used by commands like `sync`, `migrate`, and `generate`
 
 `sqlfu` manages its own temporary files under `.sqlfu/` and uses a fixed bundled `sqlite3def` version internally.
 

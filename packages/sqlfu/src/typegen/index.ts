@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 
 import {loadProjectConfig} from '../core/config.js';
-import type {Database, SqlfuProjectConfig} from '../core/types.js';
+import type {Client, SqlfuProjectConfig} from '../core/types.js';
 import {runPackageBinary} from '../core/tooling.js';
 import {createNodeSqliteClient} from '../client.js';
 
@@ -55,6 +55,11 @@ export async function generateQueryTypes(): Promise<void> {
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(new URL('../../package.json', import.meta.url))));
 
+type DisposableClient = {
+  readonly client: Client;
+  [Symbol.asyncDispose](): Promise<void>;
+};
+
 type TsColumn = {
   readonly name: string;
   readonly tsType: string;
@@ -92,7 +97,9 @@ async function refineGeneratedTypes(databasePath: string, sqlDir: string): Promi
 
 async function materializeTypegenDatabase(config: SqlfuProjectConfig) {
   const tempDbPath = path.join(config.projectRoot, '.sqlfu', 'typegen.db');
-  const schemaSql = await exportSchemaFromDatabase(await config.getMainDatabase());
+  const mainDatabase = await openMainDevDatabase(config.db);
+  await using ownedMainDatabase = mainDatabase;
+  const schemaSql = await exportSchemaFromDatabase(ownedMainDatabase.client);
 
   await fs.mkdir(path.dirname(tempDbPath), {recursive: true});
   await fs.rm(tempDbPath, {force: true});
@@ -113,9 +120,19 @@ async function materializeTypegenDatabase(config: SqlfuProjectConfig) {
   return tempDbPath;
 }
 
-async function exportSchemaFromDatabase(database: Database) {
-  await using ownedDatabase = database;
-  const rows = await ownedDatabase.client.all<{sql: string | null}>({
+async function openMainDevDatabase(dbPath: string): Promise<DisposableClient> {
+  await fs.mkdir(path.dirname(dbPath), {recursive: true});
+  const database = new DatabaseSync(dbPath);
+  return {
+    client: createNodeSqliteClient(database),
+    async [Symbol.asyncDispose]() {
+      database.close();
+    },
+  };
+}
+
+async function exportSchemaFromDatabase(client: Client) {
+  const rows = await client.all<{sql: string | null}>({
     sql: `
       select sql
       from sqlite_schema
