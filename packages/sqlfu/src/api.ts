@@ -142,19 +142,30 @@ export const router = {
 
   check: {
     all: base.meta({default: true}).handler(async ({context}) => {
-      const checks = await runChecks(createRuntime(context));
-      return {
-        ok: Object.values(checks).every((check) => check.ok),
-        checks,
-      };
+      await runChecks(
+        createRuntime(context),
+        checkDraftCount,
+        checkMigrationMetadata,
+        checkDraftIsLast,
+        checkMigrationsMatchDefinitions,
+        checkNoDraft,
+      );
     }),
-    draftCount: base.handler(async ({context}) => (await runChecks(createRuntime(context))).draftCount),
-    migrationMetadata: base.handler(async ({context}) => (await runChecks(createRuntime(context))).migrationMetadata),
-    draftIsLast: base.handler(async ({context}) => (await runChecks(createRuntime(context))).draftIsLast),
-    migrationsMatchDefinitions: base.handler(
-      async ({context}) => (await runChecks(createRuntime(context))).migrationsMatchDefinitions,
-    ),
-    noDraft: base.handler(async ({context}) => (await runChecks(createRuntime(context))).noDraft),
+    draftCount: base.handler(async ({context}) => {
+      await runChecks(createRuntime(context), checkDraftCount);
+    }),
+    migrationMetadata: base.handler(async ({context}) => {
+      await runChecks(createRuntime(context), checkMigrationMetadata);
+    }),
+    draftIsLast: base.handler(async ({context}) => {
+      await runChecks(createRuntime(context), checkDraftIsLast);
+    }),
+    migrationsMatchDefinitions: base.handler(async ({context}) => {
+      await runChecks(createRuntime(context), checkMigrationsMatchDefinitions);
+    }),
+    noDraft: base.handler(async ({context}) => {
+      await runChecks(createRuntime(context), checkNoDraft);
+    }),
   },
 };
 
@@ -325,58 +336,67 @@ async function executeSqlScript(dbPath: string, sql: string) {
   }
 }
 
-async function runChecks(runtime: ReturnType<typeof createRuntime>) {
+async function createCheckState(runtime: ReturnType<typeof createRuntime>): Promise<CheckState> {
   const migrations = await runtime.readMigrations();
-  const draftMigrations = migrations.filter((migration) => migration.status === 'draft');
-
-  const draftCount = draftMigrations.length <= 1 ? okCheck() : failedCheck('multiple draft migrations exist');
-  const migrationMetadata = checkMigrationMetadata(migrations);
-  const draftIsLast =
-    draftMigrations.length === 0 || migrations.at(-1)?.fileName === draftMigrations[0]?.fileName
-      ? okCheck()
-      : failedCheck('draft migration must be lexically last');
-  const noDraft = draftMigrations.length === 0 ? okCheck() : failedCheck('draft migration exists');
-
-  let migrationsMatchDefinitions: CheckResult;
-  try {
-    const [definitionsSchema, migrationsSchema] = await Promise.all([
-      materializeDefinitionsSchema(runtime.projectRoot, await runtime.readDefinitionsSql()),
-      materializeMigrationsSchema(runtime.projectRoot, migrations),
-    ]);
-    migrationsMatchDefinitions =
-      definitionsSchema === migrationsSchema ? okCheck() : failedCheck('replayed migrations do not match definitions.sql');
-  } catch (error) {
-    migrationsMatchDefinitions = failedCheck(
-      `migration replay failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-
   return {
-    draftCount,
-    migrationMetadata,
-    draftIsLast,
-    migrationsMatchDefinitions,
-    noDraft,
+    runtime,
+    migrations,
+    draftMigrations: migrations.filter((migration) => migration.status === 'draft'),
   };
 }
 
-function checkMigrationMetadata(migrations: readonly {contents: string}[]): CheckResult {
-  try {
-    for (const migration of migrations) {
-      parseMigrationStatus(migration.contents);
-    }
-    return okCheck();
-  } catch (error) {
-    return failedCheck(error instanceof Error ? error.message : String(error));
+function combineChecks(...checks: readonly CheckFunction[]): CheckFunction {
+  return async (state) => {
+    const problemGroups = await Promise.all(checks.map((check) => check(state)));
+    return problemGroups.flat();
+  };
+}
+
+async function runChecks(runtime: ReturnType<typeof createRuntime>, ...checks: readonly CheckFunction[]) {
+  const state = await createCheckState(runtime);
+  const check = combineChecks(...checks);
+  const problems = await check(state);
+  if (problems.length > 0) {
+    throw new Error(problems.join('\n'));
   }
 }
 
-function okCheck(): CheckResult {
-  return {ok: true};
+function checkDraftCount(state: CheckState): string[] {
+  return state.draftMigrations.length <= 1 ? [] : ['multiple draft migrations exist'];
 }
 
-function failedCheck(message: string): CheckResult {
-  return {ok: false, message};
+function checkMigrationMetadata(state: CheckState): string[] {
+  try {
+    for (const migration of state.migrations) {
+      parseMigrationStatus(migration.contents);
+    }
+    return [];
+  } catch (error) {
+    return [error instanceof Error ? error.message : String(error)];
+  }
+}
+
+function checkDraftIsLast(state: CheckState): string[] {
+  return state.draftMigrations.length === 0 || state.migrations.at(-1)?.fileName === state.draftMigrations[0]?.fileName
+    ? []
+    : ['draft migration must be lexically last'];
+}
+
+function checkNoDraft(state: CheckState): string[] {
+  return state.draftMigrations.length === 0 ? [] : ['draft migration exists'];
+}
+
+async function checkMigrationsMatchDefinitions(state: CheckState): Promise<string[]> {
+  try {
+    const [definitionsSchema, migrationsSchema] = await Promise.all([
+      materializeDefinitionsSchema(state.runtime.projectRoot, await state.runtime.readDefinitionsSql()),
+      materializeMigrationsSchema(state.runtime.projectRoot, state.migrations),
+    ]);
+
+    return definitionsSchema === migrationsSchema ? [] : ['replayed migrations do not match definitions.sql'];
+  } catch (error) {
+    return [`migration replay failed: ${error instanceof Error ? error.message : String(error)}`];
+  }
 }
 
 function splitSqlStatements(sql: string) {
@@ -392,7 +412,20 @@ export interface SqlfuRouterContext {
   readonly now?: () => Date;
 }
 
-interface CheckResult {
-  readonly ok: boolean;
-  readonly message?: string;
+interface CheckState {
+  readonly runtime: ReturnType<typeof createRuntime>;
+  readonly migrations: readonly {
+    fileName: string;
+    path: string;
+    contents: string;
+    status: 'draft' | 'final';
+  }[];
+  readonly draftMigrations: readonly {
+    fileName: string;
+    path: string;
+    contents: string;
+    status: 'draft' | 'final';
+  }[];
 }
+
+type CheckFunction = (state: CheckState) => string[] | Promise<string[]>;

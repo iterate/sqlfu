@@ -244,7 +244,7 @@ test('draft can bump the existing draft timestamp to restore ordering', async ()
   `);
 });
 
-test('check.all reports that a draft is the only remaining blocker when migrations already match definitions.sql', async () => {
+test('check.all throws when a draft is the only remaining blocker', async () => {
   await using fixture = await createMigrationsFixture('check-ready-to-finalize', {
     definitionsSql: dedent`
       create table person(name text not null);
@@ -262,19 +262,10 @@ test('check.all reports that a draft is the only remaining blocker when migratio
     },
   });
 
-  await expect(fixture.client.check.all()).resolves.toMatchObject({
-    ok: false,
-    checks: {
-      draftCount: {ok: true},
-      migrationMetadata: {ok: true},
-      draftIsLast: {ok: true},
-      migrationsMatchDefinitions: {ok: true},
-      noDraft: {ok: false, message: expect.stringMatching(/draft/i)},
-    },
-  });
+  await expect(fixture.client.check.all()).rejects.toThrow(/draft migration exists/i);
 });
 
-test('check.noDraft can run just the requested subcheck', async () => {
+test('check.noDraft succeeds when no draft exists', async () => {
   await using fixture = await createMigrationsFixture('check-one-subcheck', {
     definitionsSql: dedent`
       create table person(name text not null);
@@ -287,7 +278,7 @@ test('check.noDraft can run just the requested subcheck', async () => {
     },
   });
 
-  await expect(fixture.client.check.noDraft()).resolves.toMatchObject({ok: true});
+  await expect(fixture.client.check.noDraft()).resolves.toBeUndefined();
 });
 
 async function createMigrationsFixture(
