@@ -38,13 +38,24 @@ export const router = {
 
     await fs.mkdir(path.dirname(stagedSqlPath), {recursive: true});
     await fs.writeFile(stagedSqlPath, definitionsSql);
-    await runSqlite3def(
-      {
-        ...sqlite3defConfig,
-        projectRoot: context.projectConfig.projectRoot,
-      },
-      ['--apply', '--file', stagedSqlPath, context.projectConfig.dbPath],
-    );
+    try {
+      await runSqlite3def(
+        {
+          ...sqlite3defConfig,
+          projectRoot: context.projectConfig.projectRoot,
+        },
+        ['--apply', '--file', stagedSqlPath, context.projectConfig.dbPath],
+      );
+    } catch (error) {
+      throw new Error(
+        [
+          'sync could not apply definitions.sql safely to the current database.',
+          'Create or update a draft migration and test it with `sqlfu migrate --include-draft`.',
+          '',
+          `Cause: ${summarizeSqlite3defError(error)}`,
+        ].join('\n'),
+      );
+    }
   }),
 
   draft: base.input(draftInputSchema).handler(async ({context, input}) => {
@@ -432,6 +443,16 @@ function stripSqlComments(sql: string) {
     .split('\n')
     .filter((line) => !line.trim().startsWith('--'))
     .join('\n');
+}
+
+function summarizeSqlite3defError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const line = message
+    .split('\n')
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .at(-1) ?? message.trim();
+  return line.replace(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2} /u, '');
 }
 
 export interface SqlfuRouterContext {

@@ -231,6 +231,70 @@ test('migrate requires explicit includeDraft while a draft exists and can includ
   `);
 });
 
+test('sync applies definitions.sql into an empty database', async () => {
+  await using fixture = await createMigrationsFixture('sync-empty-db', {
+    definitionsSql: dedent`
+      create table person(name text not null);
+      create table pet(name text not null);
+    `,
+  });
+
+  await fixture.client.sync();
+
+  expect(await fixture.dumpDbSchema()).toMatchInlineSnapshot(`
+    "create table person(name text not null);
+    create table pet(name text not null);"
+  `);
+});
+
+test('sync applies a safe additive change to a populated database', async () => {
+  await using fixture = await createMigrationsFixture('sync-additive-change', {
+    definitionsSql: dedent`
+      create table person(name text not null, nickname text);
+    `,
+  });
+
+  await fixture.writeDbSql(`
+    create table person(name text not null);
+    insert into person(name) values ('ada');
+  `);
+
+  await fixture.client.sync();
+
+  expect(await fixture.dumpDbSchema()).toMatchInlineSnapshot(`
+    "create table person(name text not null, "nickname" text);"
+  `);
+});
+
+test('sync fails for a semantic/destructive transition that needs a real migration', async () => {
+  await using fixture = await createMigrationsFixture('sync-semantic-failure', {
+    definitionsSql: dedent`
+      create table person(firstname text not null, lastname text not null);
+    `,
+  });
+
+  await fixture.writeDbSql(`
+    create table person(name text not null);
+    insert into person(name) values ('Ada Lovelace');
+  `);
+
+  let error: Error | undefined;
+  try {
+    await fixture.client.sync();
+  } catch (value) {
+    error = value as Error;
+  }
+
+  expect(error).toBeDefined();
+
+  expect(error!.message).toMatchInlineSnapshot(`
+    "sync could not apply definitions.sql safely to the current database.
+    Create or update a draft migration and test it with \`sqlfu migrate --include-draft\`.
+
+    Cause: SQL logic error: Cannot add a NOT NULL column with default value NULL (1)"
+  `);
+});
+
 test('draft can rewrite the existing draft in place', async () => {
   await using fixture = await createMigrationsFixture('draft-rewrite', {
     definitionsSql: dedent`
@@ -589,6 +653,9 @@ async function createMigrationsFixture(
     async dumpDbSchema() {
       return exportDatabaseSchema(dbPath);
     },
+    async writeDbSql(sql: string) {
+      await executeDatabaseSql(dbPath, sql);
+    },
     async [Symbol.asyncDispose]() {
       await fs.rm(root, {recursive: true, force: true});
     },
@@ -638,4 +705,24 @@ async function exportDatabaseSchema(dbPath: string) {
   } finally {
     client.close();
   }
+}
+
+async function executeDatabaseSql(dbPath: string, sql: string) {
+  const client = createClient({url: `file:${dbPath}`});
+
+  try {
+    for (const statement of sqlStatements(sql)) {
+      await client.execute(statement);
+    }
+  } finally {
+    client.close();
+  }
+}
+
+function sqlStatements(sql: string) {
+  return dedent(sql)
+    .split(';')
+    .map((statement) => statement.trim())
+    .filter(Boolean)
+    .map((statement) => `${statement};`);
 }
