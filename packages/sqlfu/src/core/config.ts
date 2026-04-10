@@ -32,6 +32,8 @@ export function resolveProjectConfig(
     migrationsDir: resolveConfigPathValue(configDir, fileConfig.migrationsDir),
     definitionsPath: resolveConfigPathValue(configDir, fileConfig.definitionsPath),
     sqlDir: resolveConfigPathValue(configDir, fileConfig.sqlDir),
+    createDatabase: fileConfig.createDatabase,
+    getMainDatabase: fileConfig.getMainDatabase,
     generatedImportExtension: fileConfig.generatedImportExtension ?? inferGeneratedImportExtension(tsconfigPreferences),
   };
 }
@@ -142,6 +144,12 @@ function assertConfigShape(configPath: string, config: object): asserts config i
   for (const field of ['dbPath', 'migrationsDir', 'definitionsPath', 'sqlDir'] as const) {
     if (!(field in config) || typeof (config as Record<string, unknown>)[field] !== 'string') {
       throw new Error(`Invalid sqlfu config at ${configPath}: missing required string field "${field}".`);
+    }
+  }
+
+  for (const field of ['createDatabase', 'getMainDatabase'] as const) {
+    if (!(field in config) || typeof (config as Record<string, unknown>)[field] !== 'function') {
+      throw new Error(`Invalid sqlfu config at ${configPath}: missing required function field "${field}".`);
     }
   }
 }

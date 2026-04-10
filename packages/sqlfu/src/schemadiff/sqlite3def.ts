@@ -3,7 +3,7 @@ import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
-import {ensureSqlite3defBinary} from '../schemadiff/binary.js';
+import {ensureSqlite3defBinary} from './binary.js';
 
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url));
 const sharedSqlite3defDir = path.join(packageRoot, '.sqlfu');
@@ -98,4 +98,35 @@ export async function diffSnapshotSqlToDesiredSql(
   } finally {
     await fs.rm(workDir, {recursive: true, force: true});
   }
+}
+
+export async function applySchemaFile(input: {
+  projectRoot: string;
+  schemaPath: string;
+  dbPath: string;
+}): Promise<string> {
+  await fs.mkdir(path.dirname(input.dbPath), {recursive: true});
+  return runSqlite3def(createDefaultSqlite3defConfigForRoot(input.projectRoot), ['--apply', '--file', input.schemaPath, input.dbPath]);
+}
+
+export async function exportDatabaseSchema(input: {
+  projectRoot: string;
+  dbPath: string;
+}): Promise<string> {
+  return runSqlite3def(createDefaultSqlite3defConfigForRoot(input.projectRoot), ['--export', input.dbPath]);
+}
+
+export async function diffDatabaseSchemaFile(input: {
+  projectRoot: string;
+  definitionsPath: string;
+  dbPath: string;
+}): Promise<string> {
+  return runSqlite3def(createDefaultSqlite3defConfigForRoot(input.projectRoot), ['--dry-run', '--file', input.definitionsPath, input.dbPath]);
+}
+
+function createDefaultSqlite3defConfigForRoot(projectRoot: string): Sqlite3defConfig {
+  return {
+    ...createDefaultSqlite3defConfig('project'),
+    projectRoot,
+  };
 }

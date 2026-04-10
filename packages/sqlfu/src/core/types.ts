@@ -69,11 +69,18 @@ export interface SqlRowsPromise<TRow extends ResultRow = ResultRow> extends Prom
 
 export type SqlValue = QueryArg | SqlFragment;
 
+export interface Database {
+  readonly client: Client;
+  [Symbol.asyncDispose](): Promise<void>;
+}
+
 export interface SqlfuConfig {
   readonly dbPath: string;
   readonly migrationsDir: string;
   readonly definitionsPath: string;
   readonly sqlDir: string;
+  readonly createDatabase: (slug: string) => Promise<Database> | Database;
+  readonly getMainDatabase: () => Promise<Database> | Database;
   readonly generatedImportExtension?: '.js' | '.ts';
 }
 
@@ -83,6 +90,8 @@ export interface SqlfuProjectConfig {
   readonly migrationsDir: string;
   readonly definitionsPath: string;
   readonly sqlDir: string;
+  readonly createDatabase: (slug: string) => Promise<Database> | Database;
+  readonly getMainDatabase: () => Promise<Database> | Database;
   readonly generatedImportExtension: '.js' | '.ts';
 }
 

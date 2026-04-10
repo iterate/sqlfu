@@ -6,20 +6,18 @@ import {createClient} from '@libsql/client';
 
 import {loadProjectConfig} from '../core/config.js';
 import {runPackageBinary} from '../core/tooling.js';
-import {materializeSchemaDatabase} from '../schemadiff/index.js';
 
 export async function writeTypesqlConfig(): Promise<string> {
   const config = await loadProjectConfig();
   const tempDir = path.join(config.projectRoot, '.sqlfu');
   const typesqlConfigPath = path.join(tempDir, 'typesql.json');
-  const tempDbPath = path.join(tempDir, 'typegen.db');
   await fs.mkdir(path.dirname(typesqlConfigPath), {recursive: true});
 
   await fs.writeFile(
     typesqlConfigPath,
     JSON.stringify(
       {
-        databaseUri: tempDbPath,
+        databaseUri: config.dbPath,
         sqlDir: relativeToConfigFile(typesqlConfigPath, config.sqlDir),
         client: 'libsql',
         includeCrudTables: [],
@@ -35,12 +33,10 @@ export async function writeTypesqlConfig(): Promise<string> {
 
 export async function generateQueryTypes(): Promise<void> {
   const config = await loadProjectConfig();
-  const tempDbPath = path.join(config.projectRoot, '.sqlfu', 'typegen.db');
   const typesqlConfigPath = path.join(config.projectRoot, '.sqlfu', 'typesql.json');
-  await materializeSchemaDatabase(tempDbPath);
   await writeTypesqlConfig();
   await runPackageBinary('typesql-cli', ['compile', '--config', typesqlConfigPath], config.projectRoot);
-  await refineGeneratedTypes(tempDbPath, config.sqlDir);
+  await refineGeneratedTypes(config.dbPath, config.sqlDir);
   // TODO: If we need custom fs support (for example memfs), column-name transforms such as
   // snake_case -> camelCase, direct access to TypeSQL's intermediate descriptors so sqlfu can
   // emit zod/custom nullability-aware output, or a first-class way to expose the generated SQL

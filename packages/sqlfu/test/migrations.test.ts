@@ -7,9 +7,9 @@ import {createClient} from '@libsql/client';
 import {createRouterClient} from '@orpc/server';
 import {expect, test} from 'vitest';
 
-import type {SqliteFileDatabaseFactory} from '../src/api.js';
 import {router} from '../src/api.js';
-import type {SqlfuProjectConfig} from '../src/core/types.js';
+import {createLibsqlClient} from '../src/client.js';
+import type {Database, SqlfuProjectConfig} from '../src/core/types.js';
 
 test('draft creates the first draft migration from definitions.sql when there is no migration history yet', async () => {
   await using fixture = await createMigrationsFixture('first-draft-from-empty-history', {
@@ -289,7 +289,7 @@ test('sync fails for a semantic/destructive transition that needs a real migrati
     [Error: sync could not apply definitions.sql safely to the current database.
     Create or update a draft migration and test it with \`sqlfu migrate --include-draft\`.
 
-    Cause: SQL logic error: Cannot add a NOT NULL column with default value NULL (1)]
+    Cause: Cannot add a NOT NULL column with default value NULL]
   `);
 });
 
@@ -626,6 +626,8 @@ async function createMigrationsFixture(
     migrationsDir: path.join(root, 'migrations'),
     definitionsPath: path.join(root, 'definitions.sql'),
     sqlDir: path.join(root, 'sql'),
+    createDatabase: (slug) => createLibsqlDatabase(path.join(root, '.sqlfu', `${slug}.db`)),
+    getMainDatabase: () => createLibsqlDatabase(dbPath),
     generatedImportExtension: '.js',
   };
 
@@ -642,7 +644,6 @@ async function createMigrationsFixture(
     context: {
       projectConfig,
       now: () => new Date('2026-04-10T00:00:00.000Z'),
-      createSqliteFileDatabase,
     },
   });
 
@@ -678,7 +679,7 @@ async function createMigrationsFixture(
 async function dumpInto(lines: string[], root: string, relativeDir: string) {
   const dirPath = path.join(root, relativeDir);
   const entries = (await fs.readdir(dirPath, {withFileTypes: true}))
-    .filter((entry) => entry.name !== 'dev.db')
+    .filter((entry) => entry.name !== 'dev.db' && entry.name !== '.sqlfu')
     .sort((left, right) => left.name.localeCompare(right.name));
 
   for (const entry of entries) {
@@ -703,49 +704,38 @@ function withTrailingNewline(value: string) {
   return value.endsWith('\n') ? value : `${value}\n`;
 }
 
-const createSqliteFileDatabase: SqliteFileDatabaseFactory = (dbPath) => {
+async function createLibsqlDatabase(dbPath: string): Promise<Database> {
+  await fs.mkdir(path.dirname(dbPath), {recursive: true});
   const client = createClient({url: `file:${dbPath}`});
+  const sqlfuClient = createLibsqlClient(client);
 
   return {
-    async query(sql: string) {
-      const result = await client.execute(sql);
-      return result.rows.map((row) => ({...row}));
-    },
-    async execute(sql: string) {
-      await client.execute(sql);
-    },
-    async close() {
+    client: sqlfuClient,
+    async [Symbol.asyncDispose]() {
       client.close();
     },
   };
-};
+}
 
 async function exportDatabaseSchema(dbPath: string) {
-  const client = createSqliteFileDatabase(dbPath);
-
-  try {
-    const result = await client.query(`
+  await using database = await createLibsqlDatabase(dbPath);
+  const result = await database.client.all<{sql: string | null}>({
+    sql: `
       select sql
       from sqlite_schema
       where sql is not null
         and name not like 'sqlite_%'
       order by type, name
-    `);
-    return result.map((row) => `${String(row.sql).toLowerCase()};`).join('\n');
-  } finally {
-    await client.close();
-  }
+    `,
+    args: [],
+  });
+  return result.map((row) => `${String(row.sql).toLowerCase()};`).join('\n');
 }
 
 async function executeDatabaseSql(dbPath: string, sql: string) {
-  const client = createSqliteFileDatabase(dbPath);
-
-  try {
-    for (const statement of sqlStatements(sql)) {
-      await client.execute(statement);
-    }
-  } finally {
-    await client.close();
+  await using database = await createLibsqlDatabase(dbPath);
+  for (const statement of sqlStatements(sql)) {
+    await database.client.run({sql: statement, args: []});
   }
 }
 

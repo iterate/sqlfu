@@ -4,12 +4,11 @@ import path from 'node:path';
 import {createRouterClient, os} from '@orpc/server';
 import {z} from 'zod';
 
-import {createDefaultSqlite3defConfig, diffSnapshotSqlToDesiredSql, runSqlite3def} from './core/sqlite3def.js';
-import type {SqlfuProjectConfig} from './core/types.js';
+import type {Database, SqlfuProjectConfig} from './core/types.js';
+import {diffSchemaSql} from './schemadiff/index.js';
 import {generateQueryTypes} from './typegen/index.js';
 
 const base = os.$context<SqlfuRouterContext>();
-const sqlite3defConfig = createDefaultSqlite3defConfig('orpc');
 const draftInputSchema = z
   .object({
     name: z.string().min(1).optional(),
@@ -33,18 +32,15 @@ export const router = {
 
   sync: base.handler(async ({context}) => {
     const definitionsSql = await fs.readFile(context.projectConfig.definitionsPath, 'utf8');
-    const stagedSqlPath = path.join(context.projectConfig.projectRoot, '.sqlfu', 'sync.sql');
-
-    await fs.mkdir(path.dirname(stagedSqlPath), {recursive: true});
-    await fs.writeFile(stagedSqlPath, definitionsSql);
+    await using database = await context.projectConfig.getMainDatabase();
+    const baselineSql = await exportSchema(database);
     try {
-      await runSqlite3def(
-        {
-          ...sqlite3defConfig,
-          projectRoot: context.projectConfig.projectRoot,
-        },
-        ['--apply', '--file', stagedSqlPath, context.projectConfig.dbPath],
-      );
+      const diffLines = await diffSchemaSql({
+        projectRoot: context.projectConfig.projectRoot,
+        baselineSql,
+        desiredSql: definitionsSql,
+      });
+      await applySqlScript(database, diffLines.join('\n'));
     } catch (error) {
       throw new Error(
         [
@@ -94,10 +90,11 @@ export const router = {
     }
 
     const baselineSql = currentDraft
-      ? await materializeMigrationsSchema(runtime.createSqliteFileDatabase, runtime.projectRoot, migrations)
+      ? await materializeMigrationsSchema(runtime.createDatabase, migrations)
       : '';
-    const diffLines = await diffSnapshotSqlToDesiredSql(sqlite3defConfig, {
-      snapshotSql: baselineSql,
+    const diffLines = await diffSchemaSql({
+      projectRoot: runtime.projectRoot,
+      baselineSql,
       desiredSql: definitionsSql,
     });
 
@@ -129,11 +126,7 @@ export const router = {
       throw new Error('draft migration exists; pass includeDraft: true to apply it');
     }
 
-    await applyMigrationsToDatabase(
-      runtime.createSqliteFileDatabase,
-      context.projectConfig.dbPath,
-      input.includeDraft ? migrations : migrations.filter((migration) => migration.status === 'final'),
-    );
+    await applyMigrationsToDatabase(runtime.getMainDatabase, input.includeDraft ? migrations : migrations.filter((migration) => migration.status === 'final'));
   }),
 
   finalize: base.handler(async ({context}) => {
@@ -152,8 +145,8 @@ export const router = {
     const draft = draftMigrations[0]!;
     const definitionsSql = await runtime.readDefinitionsSql();
     const [definitionsSchema, migrationsSchema] = await Promise.all([
-      materializeDefinitionsSchema(runtime.createSqliteFileDatabase, runtime.projectRoot, definitionsSql),
-      materializeMigrationsSchema(runtime.createSqliteFileDatabase, runtime.projectRoot, migrations),
+      materializeDefinitionsSchema(runtime.createDatabase, definitionsSql),
+      materializeMigrationsSchema(runtime.createDatabase, migrations),
     ]);
 
     if (definitionsSchema !== migrationsSchema) {
@@ -196,7 +189,8 @@ function createRuntime(context: SqlfuRouterContext) {
   return {
     projectRoot: context.projectConfig.projectRoot,
     now: () => context.now?.() ?? new Date(),
-    createSqliteFileDatabase: context.createSqliteFileDatabase,
+    createDatabase: context.projectConfig.createDatabase,
+    getMainDatabase: context.projectConfig.getMainDatabase,
     readDefinitionsSql: () => fs.readFile(context.projectConfig.definitionsPath, 'utf8'),
     async readMigrations() {
       try {
@@ -289,96 +283,59 @@ function slugify(value: string) {
 }
 
 async function materializeDefinitionsSchema(
-  createSqliteFileDatabase: SqliteFileDatabaseFactory,
-  projectRoot: string,
+  createDatabase: SqlfuProjectConfig['createDatabase'],
   definitionsSql: string,
 ) {
-  await fs.mkdir(sqlite3defConfig.tempDir, {recursive: true});
-  const workDir = await fs.mkdtemp(path.join(sqlite3defConfig.tempDir, 'definitions-'));
-  const definitionsPath = path.join(workDir, 'definitions.sql');
-  const dbPath = path.join(workDir, 'schema.db');
-
-  try {
-    await fs.writeFile(definitionsPath, definitionsSql);
-    if (definitionsSql.trim()) {
-      await runSqlite3def({...sqlite3defConfig, projectRoot}, ['--apply', '--file', definitionsPath, dbPath]);
-    }
-    return exportSchema(createSqliteFileDatabase, dbPath);
-  } finally {
-    await fs.rm(workDir, {recursive: true, force: true});
-  }
+  await using database = await createDatabase('materialize-definitions');
+  await applySqlScript(database, definitionsSql);
+  return exportSchema(database);
 }
 
 async function materializeMigrationsSchema(
-  createSqliteFileDatabase: SqliteFileDatabaseFactory,
-  projectRoot: string,
+  createDatabase: SqlfuProjectConfig['createDatabase'],
   migrations: readonly {path: string}[],
 ) {
-  await fs.mkdir(sqlite3defConfig.tempDir, {recursive: true});
-  const workDir = await fs.mkdtemp(path.join(sqlite3defConfig.tempDir, 'migrations-'));
-  const dbPath = path.join(workDir, 'schema.db');
-  try {
-    await ensureDatabaseExists(createSqliteFileDatabase, dbPath);
-    for (const migration of migrations) {
-      await executeSqlScript(createSqliteFileDatabase, dbPath, await fs.readFile(migration.path, 'utf8'));
-    }
-    return exportSchema(createSqliteFileDatabase, dbPath);
-  } finally {
-    await fs.rm(workDir, {recursive: true, force: true});
+  await using database = await createDatabase('materialize-migrations');
+  for (const migration of migrations) {
+    await applySqlScript(database, await fs.readFile(migration.path, 'utf8'));
   }
+  return exportSchema(database);
 }
 
 async function applyMigrationsToDatabase(
-  createSqliteFileDatabase: SqliteFileDatabaseFactory,
-  dbPath: string,
+  getMainDatabase: SqlfuProjectConfig['getMainDatabase'],
   migrations: readonly {path: string}[],
 ) {
-  await ensureDatabaseExists(createSqliteFileDatabase, dbPath);
+  await using database = await getMainDatabase();
   for (const migration of migrations) {
-    await executeSqlScript(createSqliteFileDatabase, dbPath, await fs.readFile(migration.path, 'utf8'));
+    await applySqlScript(database, await fs.readFile(migration.path, 'utf8'));
   }
 }
 
-async function exportSchema(createSqliteFileDatabase: SqliteFileDatabaseFactory, dbPath: string) {
-  const database = createSqliteFileDatabase(dbPath);
-  try {
-    const rows = await database.query(`
+async function exportSchema(database: Database, schemaName = 'main') {
+  const rows = await database.client.all<{sql: string | null}>({
+    sql: `
       select sql
-      from sqlite_schema
+      from ${schemaName}.sqlite_schema
       where sql is not null
         and name not like 'sqlite_%'
       order by type, name
-    `);
-    return rows.map((row) => `${String(row.sql).toLowerCase()};`).join('\n');
-  } finally {
-    database.close();
-  }
+    `,
+    args: [],
+  });
+  return rows.map((row) => `${String(row.sql).toLowerCase()};`).join('\n');
 }
 
-async function ensureDatabaseExists(createSqliteFileDatabase: SqliteFileDatabaseFactory, dbPath: string) {
-  const database = createSqliteFileDatabase(dbPath);
-  await database.close();
-}
-
-async function executeSqlScript(
-  createSqliteFileDatabase: SqliteFileDatabaseFactory,
-  dbPath: string,
-  sql: string,
-) {
-  const database = createSqliteFileDatabase(dbPath);
-  try {
-    for (const statement of splitSqlStatements(sql)) {
-      if (stripSqlComments(statement).trim() === '') {
-        continue;
-      }
-      try {
-        await database.execute(statement);
-      } catch (error) {
-        throw new Error(summarizeDatabaseError(error));
-      }
+async function applySqlScript(database: Database, sql: string) {
+  for (const statement of splitSqlStatements(sql)) {
+    if (stripSqlComments(statement).trim() === '') {
+      continue;
     }
-  } finally {
-    await database.close();
+    try {
+      await database.client.run({sql: statement, args: []});
+    } catch (error) {
+      throw new Error(summarizeDatabaseError(error));
+    }
   }
 }
 
@@ -435,16 +392,8 @@ function checkNoDraft(state: CheckState): string[] {
 async function checkMigrationsMatchDefinitions(state: CheckState): Promise<string[]> {
   try {
     const [definitionsSchema, migrationsSchema] = await Promise.all([
-      materializeDefinitionsSchema(
-        state.runtime.createSqliteFileDatabase,
-        state.runtime.projectRoot,
-        await state.runtime.readDefinitionsSql(),
-      ),
-      materializeMigrationsSchema(
-        state.runtime.createSqliteFileDatabase,
-        state.runtime.projectRoot,
-        state.migrations,
-      ),
+      materializeDefinitionsSchema(state.runtime.createDatabase, await state.runtime.readDefinitionsSql()),
+      materializeMigrationsSchema(state.runtime.createDatabase, state.migrations),
     ]);
 
     return definitionsSchema === migrationsSchema ? [] : ['replayed migrations do not match definitions.sql'];
@@ -454,6 +403,7 @@ async function checkMigrationsMatchDefinitions(state: CheckState): Promise<strin
 }
 
 function splitSqlStatements(sql: string) {
+  // Pain point: sqlfu still has to decide how to split multi-statement SQL scripts instead of delegating that to a lower-level primitive.
   return sql
     .split(';')
     .map((statement) => statement.trim())
@@ -491,16 +441,7 @@ function summarizeDatabaseError(error: unknown) {
 export interface SqlfuRouterContext {
   readonly projectConfig: SqlfuProjectConfig;
   readonly now?: () => Date;
-  readonly createSqliteFileDatabase: SqliteFileDatabaseFactory;
 }
-
-export interface SqliteFileDatabase {
-  query(sql: string): Promise<ReadonlyArray<Record<string, unknown>>>;
-  execute(sql: string): Promise<void>;
-  close(): Promise<void>;
-}
-
-export type SqliteFileDatabaseFactory = (dbPath: string) => SqliteFileDatabase;
 
 interface CheckState {
   readonly runtime: ReturnType<typeof createRuntime>;

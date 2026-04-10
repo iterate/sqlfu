@@ -687,6 +687,7 @@ async function createGenerateFixture(input: {
   };
 }) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-generate-'));
+  const dbPath = path.join(root, 'app.db');
   await fs.writeFile(path.join(root, 'definitions.sql'), `${input.definitionsSql.trim()}\n`);
   await fs.writeFile(
     path.join(root, 'sqlfu.config.ts'),
@@ -696,6 +697,12 @@ async function createGenerateFixture(input: {
         migrationsDir: './migrations',
         definitionsPath: './definitions.sql',
         sqlDir: './sql',
+        createDatabase() {
+          throw new Error('unused in generate tests');
+        },
+        getMainDatabase() {
+          throw new Error('unused in generate tests');
+        },
         ${input.config?.generatedImportExtension ? `generatedImportExtension: '${input.config.generatedImportExtension}',` : ''}
       };
     `,
@@ -706,6 +713,8 @@ async function createGenerateFixture(input: {
     await fs.mkdir(path.dirname(fullPath), {recursive: true});
     await fs.writeFile(fullPath, `${contents.trim()}\n`);
   }
+
+  await applyDefinitionsToDatabase(dbPath, input.definitionsSql);
 
   return {
     async generate() {
@@ -772,4 +781,24 @@ async function inWorkingDirectory<TResult>(cwd: string, fn: () => Promise<TResul
   } finally {
     process.chdir(previousCwd);
   }
+}
+
+async function applyDefinitionsToDatabase(dbPath: string, definitionsSql: string) {
+  const client = createClient({url: `file:${dbPath}`});
+
+  try {
+    for (const statement of definitionsSqlStatements(definitionsSql)) {
+      await client.execute(statement);
+    }
+  } finally {
+    client.close();
+  }
+}
+
+function definitionsSqlStatements(sql: string) {
+  return dedent(sql)
+    .split(';')
+    .map((statement) => statement.trim())
+    .filter(Boolean)
+    .map((statement) => `${statement};`);
 }
