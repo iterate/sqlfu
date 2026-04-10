@@ -6,7 +6,7 @@ import {createClient} from '@libsql/client';
 import {createRouterClient} from '@orpc/server';
 import {expect, test} from 'vitest';
 
-import {router} from '../src/api.js';
+import {getMigrationPrefix, router} from '../src/api.js';
 import {createLibsqlClient} from '../src/client.js';
 import type {Client, SqlfuProjectConfig} from '../src/core/types.js';
 import {createTempFixtureRoot, dumpFixtureFs, withTrailingNewline, writeFixtureFiles} from './fs-fixture.js';
@@ -42,7 +42,7 @@ test('finalize validates the draft and flips only the metadata line in place', a
       create table person(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: draft
         create table person(name text not null);
       `,
@@ -70,11 +70,11 @@ test('draft appends new generated SQL to the existing draft without discarding m
       create index pet_name_idx on pet(name);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: final
         create table person(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.001Z_add_pet.sql': dedent`
+      add_pet: dedent`
         -- status: draft
         create table pet(name text not null);
         insert into pet(name) values ('spot');
@@ -93,7 +93,7 @@ test('draft appends new generated SQL to the existing draft without discarding m
       2026-04-10T00.00.00.000Z_create_person.sql
         -- status: final
         create table person(name text not null);
-      2026-04-10T00.00.00.001Z_add_pet.sql
+      2026-04-10T01.00.00.000Z_add_pet.sql
         -- status: draft
         create table pet(name text not null);
         insert into pet(name) values ('spot');
@@ -110,22 +110,22 @@ test('draft is a no-op when the existing draft already matches definitions.sql',
       create table pet(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: final
         create table person(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.001Z_add_pet.sql': dedent`
+      add_pet: dedent`
         -- status: draft
         create table pet(name text not null);
       `,
     },
   });
 
-  const before = await fixture.readFile('migrations/2026-04-10T00.00.00.001Z_add_pet.sql');
+  const before = await fixture.readMigration('add_pet');
 
   await fixture.client.draft();
 
-  expect(await fixture.readFile('migrations/2026-04-10T00.00.00.001Z_add_pet.sql')).toBe(before);
+  expect(await fixture.readMigration('add_pet')).toBe(before);
 });
 
 test('draft fails when the existing draft cannot be replayed', async () => {
@@ -136,11 +136,11 @@ test('draft fails when the existing draft cannot be replayed', async () => {
       create index pet_name_idx on pet(name);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: final
         create table person(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.001Z_add_pet.sql': dedent`
+      add_pet: dedent`
         -- status: draft
         create table pet(name text not null);
         this is not valid sql;
@@ -157,7 +157,7 @@ test('draft fails when migration metadata is malformed', async () => {
       create table person(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         create table person(name text not null);
       `,
     },
@@ -174,7 +174,7 @@ test('draft fails when migration status metadata is invalid', async () => {
       create table person(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: maybe
         create table person(name text not null);
       `,
@@ -194,15 +194,15 @@ test('draft fails when multiple draft migrations exist', async () => {
       create table toy(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: final
         create table person(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.001Z_add_pet.sql': dedent`
+      add_pet: dedent`
         -- status: draft
         create table pet(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.002Z_add_toy.sql': dedent`
+      add_toy: dedent`
         -- status: draft
         create table toy(name text not null);
       `,
@@ -219,11 +219,11 @@ test('migrate requires explicit includeDraft while a draft exists and can includ
       create table pet(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: final
         create table person(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.001Z_add_pet.sql': dedent`
+      add_pet: dedent`
         -- status: draft
         create table pet(name text not null);
       `,
@@ -231,7 +231,7 @@ test('migrate requires explicit includeDraft while a draft exists and can includ
   });
 
   await expect(fixture.client.migrate({includeDraft: false})).rejects.toMatchInlineSnapshot(
-    `[Error: draft migration exists; pass includeDraft: true to apply it]`,
+    `[Error: draft migration exists]`,
   );
   expect(await fixture.dumpDbSchema()).toBe('');
 
@@ -306,11 +306,11 @@ test('draft can rewrite the existing draft in place', async () => {
       create index pet_name_idx on pet(name);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: final
         create table person(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.001Z_add_pet.sql': dedent`
+      add_pet: dedent`
         -- status: draft
         create table pet(name text not null);
         insert into pet(name) values ('spot');
@@ -329,7 +329,7 @@ test('draft can rewrite the existing draft in place', async () => {
       2026-04-10T00.00.00.000Z_create_person.sql
         -- status: final
         create table person(name text not null);
-      2026-04-10T00.00.00.001Z_add_pet.sql
+      2026-04-10T01.00.00.000Z_add_pet.sql
         -- status: draft
         create table pet(name text not null);
         create index pet_name_idx on pet(name);
@@ -345,15 +345,15 @@ test('draft fails when the draft migration is not lexically last', async () => {
       create table toy(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: final
         create table person(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.001Z_add_pet.sql': dedent`
+      add_pet: dedent`
         -- status: draft
         create table pet(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.002Z_add_toy.sql': dedent`
+      add_toy: dedent`
         -- status: final
         create table toy(name text not null);
       `,
@@ -373,15 +373,15 @@ test('draft can bump the existing draft timestamp to restore ordering', async ()
       create table toy(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: final
         create table person(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.001Z_add_pet.sql': dedent`
+      add_pet: dedent`
         -- status: draft
         create table pet(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.002Z_add_toy.sql': dedent`
+      add_toy: dedent`
         -- status: final
         create table toy(name text not null);
       `,
@@ -399,10 +399,10 @@ test('draft can bump the existing draft timestamp to restore ordering', async ()
       2026-04-10T00.00.00.000Z_create_person.sql
         -- status: final
         create table person(name text not null);
-      2026-04-10T00.00.00.002Z_add_toy.sql
+      2026-04-10T02.00.00.000Z_add_toy.sql
         -- status: final
         create table toy(name text not null);
-      2026-04-10T00.00.00.003Z_add_pet.sql
+      2026-04-10T03.00.00.000Z_add_pet.sql
         -- status: draft
         create table pet(name text not null);
     "
@@ -416,11 +416,11 @@ test('check.all throws when a draft is the only remaining blocker', async () => 
       create table pet(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: final
         create table person(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.001Z_add_pet.sql': dedent`
+      add_pet: dedent`
         -- status: draft
         create table pet(name text not null);
       `,
@@ -437,11 +437,11 @@ test('check.migrationsMatchDefinitions throws a replay failure when migrations c
       create table pet(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: final
         create table person(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.001Z_add_pet.sql': dedent`
+      add_pet: dedent`
         -- status: draft
         this is not valid sql;
       `,
@@ -460,7 +460,7 @@ test('check.migrationsMatchDefinitions throws a schema mismatch when replay succ
       create table pet(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: final
         create table person(name text not null);
       `,
@@ -480,11 +480,11 @@ test('finalize fails when replay succeeds but the resulting schema still differs
       create index pet_name_idx on pet(name);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: final
         create table person(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.001Z_add_pet.sql': dedent`
+      add_pet: dedent`
         -- status: draft
         create table pet(name text not null);
       `,
@@ -502,7 +502,7 @@ test('check.noDraft succeeds when no draft exists', async () => {
       create table person(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: final
         create table person(name text not null);
       `,
@@ -518,7 +518,7 @@ test('check.migrationMetadata throws when status metadata is invalid', async () 
       create table person(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      create_person: dedent`
         -- status: maybe
         create table person(name text not null);
       `,
@@ -538,15 +538,15 @@ test('check.draftIsLast throws when the draft is not lexically last', async () =
       create table toy(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      add_pet: dedent`
         -- status: final
         create table person(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.001Z_add_pet.sql': dedent`
+      add_toy: dedent`
         -- status: draft
         create table pet(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.002Z_add_toy.sql': dedent`
+      create_person: dedent`
         -- status: final
         create table toy(name text not null);
       `,
@@ -566,15 +566,15 @@ test('check.draftCount throws when multiple drafts exist', async () => {
       create table toy(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      add_pet: dedent`
         -- status: final
         create table person(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.001Z_add_pet.sql': dedent`
+      add_toy: dedent`
         -- status: draft
         create table pet(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.002Z_add_toy.sql': dedent`
+      create_person: dedent`
         -- status: draft
         create table toy(name text not null);
       `,
@@ -594,15 +594,15 @@ test('check.all joins multiple failures together', async () => {
       create table toy(name text not null);
     `,
     migrations: {
-      'migrations/2026-04-10T00.00.00.000Z_create_person.sql': dedent`
+      add_pet: dedent`
         -- status: final
         create table person(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.001Z_add_pet.sql': dedent`
+      add_toy: dedent`
         -- status: draft
         create table pet(name text not null);
       `,
-      'migrations/2026-04-10T00.00.00.002Z_add_toy.sql': dedent`
+      create_person: dedent`
         -- status: draft
         create table toy(name text not null);
       `,
@@ -634,15 +634,29 @@ async function createMigrationsFixture(
     generatedImportExtension: '.js',
   };
 
+
+  let nowUsage = 0;
+  const fakeNow = () => {
+    const addHours = nowUsage++
+    return new Date(new Date(`2026-04-10T00:00:00.000Z`).getTime() + addHours * 60 * 60_000)
+  }
+
+  const migrations = Object.fromEntries(
+    Object.entries(input.migrations ?? {}).map(([name, content]) => [
+      `migrations/${getMigrationPrefix(fakeNow())}_${name}.sql`,
+      content,
+    ]),
+  );
+
   await writeFixtureFiles(root, {
     'definitions.sql': input.definitionsSql,
-    ...(input.migrations ?? {}),
+    ...migrations,
   });
 
   const client = createRouterClient(router, {
     context: {
-      projectConfig,
-      now: () => new Date('2026-04-10T00:00:00.000Z'),
+      config: projectConfig,
+      now: fakeNow,
     },
   });
 
@@ -657,6 +671,14 @@ async function createMigrationsFixture(
       const fullPath = path.join(root, relativePath);
       await fs.mkdir(path.dirname(fullPath), {recursive: true});
       await fs.writeFile(fullPath, contents);
+    },
+    async globOne(pattern: string) {
+      const results = await Array.fromAsync(fs.glob(pattern, {cwd: root}));
+      if (results.length !== 1) throw new Error(`expected 1 file for ${pattern}, got ${results.join(',') || 'none'}`);
+      return results[0];
+    },
+    async readMigration(name: string) {
+      return this.readFile(await this.globOne(`migrations/*${name}*`));
     },
     async dumpFs() {
       return dumpFixtureFs(root, {ignoredNames: ['dev.db', '.sqlfu']});

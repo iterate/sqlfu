@@ -13,7 +13,7 @@ export async function createSqlfuCli() {
     name: 'sqlfu',
     version: '0.0.0',
     description: `migrations, schema sync, and type generation for sqlite`,
-    context: {projectConfig},
+    context: {config: projectConfig},
   });
 }
 
