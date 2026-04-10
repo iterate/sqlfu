@@ -63,50 +63,48 @@ export const router = {
     let migrations = await runtime.readMigrations();
     const definitionsSql = await runtime.readDefinitionsSql();
     const draftMigrations = migrations.filter((migration) => migration.status === 'draft');
-    const rewrite = input?.rewrite;
 
     if (draftMigrations.length > 1) {
       throw new Error('multiple draft migrations exist');
     }
 
-    let draft = draftMigrations[0];
-    if (draft && migrations.at(-1)?.fileName !== draft.fileName) {
+    let currentDraft = draftMigrations[0];
+    if (currentDraft && migrations.at(-1)?.fileName !== currentDraft.fileName) {
       if (input?.bumpTimestamp !== true) {
         throw new Error('draft migration must be lexically last; rerun with bumpTimestamp: true');
       }
 
-      const bumpedFileName = `${nextMigrationId(migrations, runtime.now())}_${draft.fileName.replace(/^\d{14}_/u, '')}`;
-      await fs.rename(draft.path, path.join(context.projectConfig.migrationsDir, bumpedFileName));
+      const bumpedFileName = `${nextMigrationId(migrations, runtime.now())}_${currentDraft.fileName.replace(/^\d{14}_/u, '')}`;
+      await fs.rename(currentDraft.path, path.join(context.projectConfig.migrationsDir, bumpedFileName));
       migrations = await runtime.readMigrations();
       const bumpedDraft = migrations.find((migration) => migration.status === 'draft');
       if (!bumpedDraft) {
         throw new Error('draft migration disappeared after bumpTimestamp');
       }
-      draft = bumpedDraft;
+      currentDraft = bumpedDraft;
     }
 
-    if (draft && rewrite) {
-      await fs.writeFile(draft.path, '-- status: draft\n');
+    if (currentDraft && input?.rewrite) {
+      await fs.writeFile(currentDraft.path, '-- status: draft\n');
       migrations = await runtime.readMigrations();
       const rewrittenDraft = migrations.find((migration) => migration.status === 'draft');
       if (!rewrittenDraft) {
         throw new Error('draft migration disappeared after rewrite');
       }
-      draft = rewrittenDraft;
+      currentDraft = rewrittenDraft;
     }
 
-    const baselineSql = draft ? await materializeMigrationsSchema(runtime.projectRoot, migrations) : '';
+    const baselineSql = currentDraft ? await materializeMigrationsSchema(runtime.projectRoot, migrations) : '';
     const diffLines = await diffSnapshotSqlToDesiredSql(sqlite3defConfig, {
       snapshotSql: baselineSql,
       desiredSql: definitionsSql,
     });
 
-    if (draft) {
-      if (diffLines.length === 0) {
-        return;
+    if (currentDraft) {
+      if (diffLines.length) {
+        await fs.writeFile(currentDraft.path, appendMigrationContents(currentDraft.contents, diffLines));
       }
 
-      await fs.writeFile(draft.path, appendMigrationContents(draft.contents, diffLines));
       return;
     }
 
@@ -192,14 +190,6 @@ export const router = {
   },
 };
 
-export const sqlfuRouter = router;
-
-export function createCaller(context: SqlfuRouterContext) {
-  return createRouterClient(router, {context});
-}
-
-export const createSqlfuCaller = createCaller;
-
 function createRuntime(context: SqlfuRouterContext) {
   return {
     projectRoot: context.projectConfig.projectRoot,
@@ -245,7 +235,7 @@ function parseMigrationMetadata(contents: string) {
   const firstLine = contents.split('\n', 1)[0];
   const match = firstLine.match(/^--\s*(.*)$/u);
   if (!match) {
-    throw new Error('migration metadata must be on the first line');
+    throw new Error('migration metadata (looking like "-- status: final") must be on the first line');
   }
 
   return Object.fromEntries(

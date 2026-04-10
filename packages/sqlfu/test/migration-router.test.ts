@@ -7,7 +7,7 @@ import {createClient} from '@libsql/client';
 import {createRouterClient} from '@orpc/server';
 import {expect, test} from 'vitest';
 
-import {sqlfuRouter} from '../src/api.js';
+import {router} from '../src/api.js';
 import type {SqlfuProjectConfig} from '../src/core/types.js';
 
 test('draft creates the first draft migration from definitions.sql when there is no migration history yet', async () => {
@@ -617,7 +617,7 @@ async function createMigrationsFixture(
     await fs.writeFile(fullPath, withTrailingNewline(contents));
   }
 
-  const client = createRouterClient(sqlfuRouter, {
+  const client = createRouterClient(router, {
     context: {
       projectConfig,
       now: () => new Date('2026-04-10T00:00:00.000Z'),
