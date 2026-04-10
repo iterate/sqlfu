@@ -8,6 +8,7 @@ import {expect, test} from 'vitest';
 
 import {getMigrationPrefix, router} from '../src/api.js';
 import {createLibsqlClient} from '../src/client.js';
+import {extractSchema, runSqlStatements} from '../src/core/sqlite.js';
 import type {Client, SqlfuProjectConfig} from '../src/core/types.js';
 import {createTempFixtureRoot, dumpFixtureFs, withTrailingNewline, writeFixtureFiles} from './fs-fixture.js';
 
@@ -710,30 +711,10 @@ async function createLibsqlDatabase(dbPath: string): Promise<DisposableClient> {
 
 async function exportDatabaseSchema(dbPath: string) {
   await using database = await createLibsqlDatabase(dbPath);
-  const result = await database.client.all<{sql: string | null}>({
-    sql: `
-      select sql
-      from sqlite_schema
-      where sql is not null
-        and name not like 'sqlite_%'
-      order by type, name
-    `,
-    args: [],
-  });
-  return result.map((row) => `${String(row.sql).toLowerCase()};`).join('\n');
+  return extractSchema(database.client);
 }
 
 async function executeDatabaseSql(dbPath: string, sql: string) {
   await using database = await createLibsqlDatabase(dbPath);
-  for (const statement of sqlStatements(sql)) {
-    await database.client.run({sql: statement, args: []});
-  }
-}
-
-function sqlStatements(sql: string) {
-  return dedent(sql)
-    .split(';')
-    .map((statement) => statement.trim())
-    .filter(Boolean)
-    .map((statement) => `${statement};`);
+  await runSqlStatements(database.client, dedent(sql));
 }

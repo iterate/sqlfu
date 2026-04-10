@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 
 import {loadProjectConfig} from '../core/config.js';
 import type {Client, SqlfuProjectConfig} from '../core/types.js';
+import {extractSchema, splitSqlStatements} from '../core/sqlite.js';
 import {runPackageBinary} from '../core/tooling.js';
 import {createNodeSqliteClient} from '../client.js';
 
@@ -99,7 +100,7 @@ async function materializeTypegenDatabase(config: SqlfuProjectConfig) {
   const tempDbPath = path.join(config.projectRoot, '.sqlfu', 'typegen.db');
   const mainDatabase = await openMainDevDatabase(config.db);
   await using ownedMainDatabase = mainDatabase;
-  const schemaSql = await exportSchemaFromDatabase(ownedMainDatabase.client);
+  const schemaSql = await extractSchema(ownedMainDatabase.client);
 
   await fs.mkdir(path.dirname(tempDbPath), {recursive: true});
   await fs.rm(tempDbPath, {force: true});
@@ -129,28 +130,6 @@ async function openMainDevDatabase(dbPath: string): Promise<DisposableClient> {
       database.close();
     },
   };
-}
-
-async function exportSchemaFromDatabase(client: Client) {
-  const rows = await client.all<{sql: string | null}>({
-    sql: `
-      select sql
-      from sqlite_schema
-      where sql is not null
-        and name not like 'sqlite_%'
-      order by type, name
-    `,
-    args: [],
-  });
-  return rows.map((row) => `${String(row.sql).toLowerCase()};`).join('\n');
-}
-
-function splitSqlStatements(sql: string) {
-  return sql
-    .split(';')
-    .map((statement) => statement.trim())
-    .filter(Boolean)
-    .map((statement) => `${statement};`);
 }
 
 async function rewriteGeneratedWrappers(sqlDir: string, generatedImportExtension: '.js' | '.ts'): Promise<void> {

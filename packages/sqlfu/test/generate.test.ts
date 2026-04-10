@@ -7,6 +7,7 @@ import {Project, ts} from 'ts-morph';
 import {expect, test} from 'vitest';
 
 import {createNodeSqliteClient} from '../src/client.js';
+import {runSqlStatements} from '../src/core/sqlite.js';
 import {generateQueryTypes} from '../src/typegen/index.js';
 import {createTempFixtureRoot, dumpFixtureFs, withTrailingNewline, writeFixtureFiles} from './fs-fixture.js';
 
@@ -758,18 +759,8 @@ async function applyDefinitionsToDatabase(dbPath: string, definitionsSql: string
   const client = createNodeSqliteClient(database);
 
   try {
-    for (const statement of definitionsSqlStatements(definitionsSql)) {
-      client.run({sql: statement, args: []});
-    }
+    await runSqlStatements(client, withTrailingNewline(dedent(definitionsSql)));
   } finally {
     database.close();
   }
-}
-
-function definitionsSqlStatements(sql: string) {
-  return withTrailingNewline(dedent(sql))
-    .split(';')
-    .map((statement) => statement.trim())
-    .filter(Boolean)
-    .map((statement) => `${statement};`);
 }

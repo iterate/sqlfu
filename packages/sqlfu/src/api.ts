@@ -7,6 +7,7 @@ import {z} from 'zod';
 
 import type {Client, SqlfuProjectConfig} from './core/types.js';
 import {createNodeSqliteClient, generateRandomName} from './client.js';
+import {extractSchema, runSqlStatements} from './core/sqlite.js';
 import {applyMigrations, type Migration} from './migrations/index.js';
 import {diffSchemaSql} from './schemadiff/index.js';
 import {generateQueryTypes} from './typegen/index.js';
@@ -35,14 +36,14 @@ export const router = {
     .handler(async ({context}) => {
       const definitionsSql = await fs.readFile(context.config.definitionsPath, 'utf8');
       await using database = await openMainDevDatabase(context.config.db);
-      const baselineSql = await exportSchema(database.client);
+      const baselineSql = await extractSchema(database.client);
       try {
         const diffLines = await diffSchemaSql({
           projectRoot: context.config.projectRoot,
           baselineSql,
           desiredSql: definitionsSql,
         });
-        await applySqlScript(database.client, diffLines.join('\n'));
+        await runSqlStatements(database.client, diffLines.join('\n'));
       } catch (error) {
         throw new Error(
           [
@@ -279,8 +280,8 @@ async function materializeDefinitionsSchema(
   definitionsSql: string,
 ) {
   await using database = await createScratchDatabase(config, 'materialize-definitions');
-  await applySqlScript(database.client, definitionsSql);
-  return exportSchema(database.client);
+  await runSqlStatements(database.client, definitionsSql);
+  return extractSchema(database.client);
 }
 
 async function materializeMigrationsSchema(
@@ -289,7 +290,7 @@ async function materializeMigrationsSchema(
 ) {
   await using database = await createScratchDatabase(config, 'materialize-migrations');
   await applyMigrations(database.client, {migrations: await readMigrationInputs(migrations)});
-  return exportSchema(database.client);
+  return extractSchema(database.client);
 }
 
 async function applyMigrationsToDatabase(
@@ -331,24 +332,6 @@ async function openMainDevDatabase(dbPath: string): Promise<DisposableClient> {
       database.close();
     },
   };
-}
-
-async function exportSchema(client: Client, schemaName = 'main') {
-  const rows = await client.all<{sql: string | null}>({
-    sql: `
-      select sql
-      from ${schemaName}.sqlite_schema
-      where sql is not null
-        and name not like 'sqlite_%'
-      order by type, name
-    `,
-    args: [],
-  });
-  return rows.map((row) => `${String(row.sql).toLowerCase()};`).join('\n');
-}
-
-async function applySqlScript(client: Client, sql: string) {
-  await applyMigrations(client, {migrations: [{path: '<inline>', content: sql}]});
 }
 
 async function createCheckState(runtime: ReturnType<typeof createRuntime>): Promise<CheckState> {
