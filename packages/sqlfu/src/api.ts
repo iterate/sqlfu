@@ -15,6 +15,7 @@ const draftInputSchema = z
   .object({
     name: z.string().min(1).optional(),
     bumpTimestamp: z.boolean().optional(),
+    rewrite: z.boolean().optional(),
   })
   .optional();
 const migrateInputSchema = z.object({
@@ -51,6 +52,7 @@ export const router = {
     let migrations = await runtime.readMigrations();
     const definitionsSql = await runtime.readDefinitionsSql();
     const draftMigrations = migrations.filter((migration) => migration.status === 'draft');
+    const rewrite = input?.rewrite;
 
     if (draftMigrations.length > 1) {
       throw new Error('multiple draft migrations exist');
@@ -72,6 +74,16 @@ export const router = {
       draft = bumpedDraft;
     }
 
+    if (draft && rewrite) {
+      await fs.writeFile(draft.path, '-- status: draft\n');
+      migrations = await runtime.readMigrations();
+      const rewrittenDraft = migrations.find((migration) => migration.status === 'draft');
+      if (!rewrittenDraft) {
+        throw new Error('draft migration disappeared after rewrite');
+      }
+      draft = rewrittenDraft;
+    }
+
     const baselineSql = draft ? await materializeMigrationsSchema(runtime.projectRoot, migrations) : '';
     const diffLines = await diffSnapshotSqlToDesiredSql(sqlite3defConfig, {
       snapshotSql: baselineSql,
@@ -83,7 +95,7 @@ export const router = {
         return;
       }
 
-      await fs.writeFile(draft.path, `${draft.contents.trimEnd()}\n\n${diffLines.join('\n')}\n`);
+      await fs.writeFile(draft.path, appendMigrationContents(draft.contents, diffLines));
       return;
     }
 
@@ -329,6 +341,9 @@ async function executeSqlScript(dbPath: string, sql: string) {
   const client = createClient({url: `file:${dbPath}`});
   try {
     for (const statement of splitSqlStatements(sql)) {
+      if (stripSqlComments(statement).trim() === '') {
+        continue;
+      }
       await client.execute(statement);
     }
   } finally {
@@ -405,6 +420,18 @@ function splitSqlStatements(sql: string) {
     .map((statement) => statement.trim())
     .filter(Boolean)
     .map((statement) => `${statement};`);
+}
+
+function appendMigrationContents(contents: string, lines: readonly string[]) {
+  const trimmed = contents.trimEnd();
+  return `${trimmed}${trimmed === '-- status: draft' ? '\n' : '\n\n'}${lines.join('\n')}\n`;
+}
+
+function stripSqlComments(sql: string) {
+  return sql
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('--'))
+    .join('\n');
 }
 
 export interface SqlfuRouterContext {

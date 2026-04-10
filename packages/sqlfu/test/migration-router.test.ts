@@ -145,6 +145,47 @@ test('draft fails when the existing draft cannot be replayed', async () => {
   await expect(fixture.client.draft()).rejects.toThrow(/valid sql|syntax/i);
 });
 
+test('draft fails when migration metadata is malformed', async () => {
+  await using fixture = await createMigrationsFixture('malformed-metadata', {
+    definitionsSql: dedent`
+      create table person(name text not null);
+    `,
+    migrations: {
+      'migrations/20260410000000_create_person.sql': dedent`
+        create table person(name text not null);
+      `,
+    },
+  });
+
+  await expect(fixture.client.draft()).rejects.toThrow(/metadata must be on the first line/i);
+});
+
+test('draft fails when multiple draft migrations exist', async () => {
+  await using fixture = await createMigrationsFixture('multiple-drafts', {
+    definitionsSql: dedent`
+      create table person(name text not null);
+      create table pet(name text not null);
+      create table toy(name text not null);
+    `,
+    migrations: {
+      'migrations/20260410000000_create_person.sql': dedent`
+        -- status: final
+        create table person(name text not null);
+      `,
+      'migrations/20260410000001_add_pet.sql': dedent`
+        -- status: draft
+        create table pet(name text not null);
+      `,
+      'migrations/20260410000002_add_toy.sql': dedent`
+        -- status: draft
+        create table toy(name text not null);
+      `,
+    },
+  });
+
+  await expect(fixture.client.draft()).rejects.toThrow(/multiple draft migrations exist/i);
+});
+
 test('migrate requires explicit includeDraft while a draft exists and can include it when requested', async () => {
   await using fixture = await createMigrationsFixture('migrate-include-draft', {
     definitionsSql: dedent`
@@ -171,6 +212,45 @@ test('migrate requires explicit includeDraft while a draft exists and can includ
   expect(await fixture.dumpDbSchema()).toMatchInlineSnapshot(`
     "create table person(name text not null);
     create table pet(name text not null);"
+  `);
+});
+
+test('draft can rewrite the existing draft in place', async () => {
+  await using fixture = await createMigrationsFixture('draft-rewrite', {
+    definitionsSql: dedent`
+      create table person(name text not null);
+      create table pet(name text not null);
+      create index pet_name_idx on pet(name);
+    `,
+    migrations: {
+      'migrations/20260410000000_create_person.sql': dedent`
+        -- status: final
+        create table person(name text not null);
+      `,
+      'migrations/20260410000001_add_pet.sql': dedent`
+        -- status: draft
+        create table pet(name text not null);
+        insert into pet(name) values ('spot');
+      `,
+    },
+  });
+
+  await fixture.client.draft({name: 'ignored_by_rewrite', rewrite: true});
+
+  expect(await fixture.dumpFs()).toMatchInlineSnapshot(`
+    "definitions.sql
+      create table person(name text not null);
+      create table pet(name text not null);
+      create index pet_name_idx on pet(name);
+    migrations/
+      20260410000000_create_person.sql
+        -- status: final
+        create table person(name text not null);
+      20260410000001_add_pet.sql
+        -- status: draft
+        create table pet(name text not null);
+        create index pet_name_idx on pet(name);
+    "
   `);
 });
 
@@ -263,6 +343,68 @@ test('check.all throws when a draft is the only remaining blocker', async () => 
   });
 
   await expect(fixture.client.check.all()).rejects.toThrow(/draft migration exists/i);
+});
+
+test('check.migrationsMatchDefinitions throws a replay failure when migrations cannot be replayed', async () => {
+  await using fixture = await createMigrationsFixture('check-replay-failure', {
+    definitionsSql: dedent`
+      create table person(name text not null);
+      create table pet(name text not null);
+    `,
+    migrations: {
+      'migrations/20260410000000_create_person.sql': dedent`
+        -- status: final
+        create table person(name text not null);
+      `,
+      'migrations/20260410000001_add_pet.sql': dedent`
+        -- status: draft
+        this is not valid sql;
+      `,
+    },
+  });
+
+  await expect(fixture.client.check.migrationsMatchDefinitions()).rejects.toThrow(/migration replay failed/i);
+});
+
+test('check.migrationsMatchDefinitions throws a schema mismatch when replay succeeds but definitions differ', async () => {
+  await using fixture = await createMigrationsFixture('check-schema-mismatch', {
+    definitionsSql: dedent`
+      create table person(name text not null);
+      create table pet(name text not null);
+    `,
+    migrations: {
+      'migrations/20260410000000_create_person.sql': dedent`
+        -- status: final
+        create table person(name text not null);
+      `,
+    },
+  });
+
+  await expect(fixture.client.check.migrationsMatchDefinitions()).rejects.toThrow(
+    /replayed migrations do not match definitions\.sql/i,
+  );
+});
+
+test('finalize fails when replay succeeds but the resulting schema still differs from definitions.sql', async () => {
+  await using fixture = await createMigrationsFixture('finalize-mismatch', {
+    definitionsSql: dedent`
+      create table person(name text not null);
+      create table pet(name text not null);
+      create index pet_name_idx on pet(name);
+    `,
+    migrations: {
+      'migrations/20260410000000_create_person.sql': dedent`
+        -- status: final
+        create table person(name text not null);
+      `,
+      'migrations/20260410000001_add_pet.sql': dedent`
+        -- status: draft
+        create table pet(name text not null);
+      `,
+    },
+  });
+
+  await expect(fixture.client.finalize()).rejects.toThrow(/does not match definitions\.sql/i);
 });
 
 test('check.noDraft succeeds when no draft exists', async () => {
