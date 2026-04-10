@@ -1,5 +1,33 @@
 Refactor `sqlfu`'s migration model to remove `snapshot.sql`, make draft/final migration status explicit, and align code, tests, and docs around one coherent workflow.
 
+## Current Status
+
+The core migration-model replacement is now in place.
+
+Implemented:
+
+- `api.ts` is the single router surface again.
+- `draft`, `migrate`, `finalize`, and `check` now follow the new no-snapshot model.
+- `check` is an ORPC sub-router with `all` marked as the default procedure.
+- the old `migrations2.ts` prototype has been merged back into `api.ts` and deleted.
+- `src/migrator/` has been renamed to `src/schemadiff/`.
+- `snapshotFile` has been removed from config/types.
+- the old snapshot-era router test and smoke test have been deleted.
+- the main migration router spec has been rewritten around the new story-driven workflow.
+- the migration model doc and README now describe the no-snapshot model.
+
+Verified currently:
+
+- `pnpm --filter sqlfu test:node --run test/migration-router.test.ts test/generate.test.ts`
+- `pnpm --filter sqlfu typecheck`
+
+Still to do:
+
+- add missing migration-router specs for the remaining integrity and failure cases
+- decide whether to refactor internal migration/replay helpers out of `api.ts`
+- tighten `sync` semantics around destructive or semantic data migrations
+- do a final sweep for obsolete wording and leftover dead code outside the current focused paths
+
 ## Problem Statement
 
 The current migration model mixes a few competing ideas:
@@ -164,6 +192,14 @@ The goal is to land this in small, understandable steps while deleting obsolete 
 - Rename command descriptions and help text to center `draft`, `migrate`, `finalize`, and `check`.
 - Remove or rewrite references to old snapshot terminology in comments and test names.
 
+Status:
+
+- mostly complete
+- migration design doc is updated
+- README is updated away from `snapshot.sql`
+- old migration terminology has been removed from the main router/test path
+- another short sweep is still worthwhile after the remaining implementation settles
+
 Exit criteria:
 
 - a reader cannot learn the old snapshot-based mental model from current docs
@@ -187,6 +223,27 @@ Exit criteria:
   - the case where only `no-draft` fails, indicating readiness to finalize
   - `sync` refusing semantic/destructive changes where automatic transformation is unsafe
 
+Status:
+
+- partially complete
+- covered now:
+  - creating the first draft from empty finalized history
+  - finalizing by metadata flip only
+  - appending to an existing draft after more `definitions.sql` changes
+  - `draft` failing when the existing draft is broken
+  - `draft` failing when the draft is not lexically last
+  - `draft --bump-timestamp` repairing order and preserving contents
+  - `migrate` requiring explicit `includeDraft`
+  - `check` named subchecks and report shape
+  - the case where only `no-draft` fails, indicating readiness to finalize
+- not covered yet:
+  - `draft --rewrite`
+  - invalid metadata cases
+  - multiple-draft cases
+  - `migrations-match-definitions` replay failure vs schema mismatch as distinct tested cases
+  - `finalize` failure when replay succeeds but schema still mismatches
+  - `sync` refusing semantic/destructive transitions
+
 Exit criteria:
 
 - the desired workflow is documented in tests before the implementation is swapped over fully
@@ -197,6 +254,13 @@ Exit criteria:
 - Build finalized baseline by replaying finalized migrations into a temporary database.
 - If a draft exists, build effective migration state by applying it after finalized history.
 - Keep this baseline logic centralized so `draft`, `finalize`, and `check` all use the same replay model.
+
+Status:
+
+- largely complete
+- replayed migrations are now the baseline for `draft`, `finalize`, and `check`
+- `snapshot.sql` is no longer part of the migration model
+- the remaining question is whether the replay/materialization helpers should stay embedded in `api.ts` or move to a focused internal module
 
 Exit criteria:
 
@@ -211,6 +275,13 @@ Exit criteria:
 - Implement `--bump-timestamp`.
 - Make command errors targeted and explicit when metadata or ordering is invalid.
 
+Status:
+
+- partially complete
+- draft count, draft ordering, and `bumpTimestamp` behavior are implemented
+- strict first-line status parsing exists
+- still worth adding explicit test coverage for malformed metadata and multiple drafts
+
 Exit criteria:
 
 - migration status resolution is deterministic
@@ -224,6 +295,14 @@ Exit criteria:
 - Implement in-place `--rewrite`.
 - Ensure no-op behavior when migrations already match `definitions.sql`.
 
+Status:
+
+- partially complete
+- append behavior is implemented
+- draft replay before append is implemented
+- no-op behavior is implemented
+- `--rewrite` is still missing
+
 Exit criteria:
 
 - repeated `sqlfu draft` runs support iterative schema work without throwing away manual migration edits
@@ -235,6 +314,14 @@ Exit criteria:
 - Implement named `check` subcommands.
 - Implement all-checks report output.
 - Ensure `migrations-match-definitions` distinguishes replay failure from schema mismatch.
+
+Status:
+
+- mostly complete
+- `finalize` validates replayed migrations against `definitions.sql`
+- `finalize` mutates only the metadata line
+- `check` is implemented as a sub-router with `all` as the default procedure
+- still worth adding explicit tests around replay failure vs schema mismatch messaging
 
 Exit criteria:
 
@@ -250,6 +337,14 @@ Exit criteria:
   - any snapshot-based baseline derivation
 - Rename APIs or functions whose names still encode snapshot thinking.
 - Delete compatibility shims rather than keeping both models alive.
+
+Status:
+
+- mostly complete
+- snapshot-era config, API paths, router tests, and smoke test have been removed
+- `src/migrator/` has been renamed to `src/schemadiff/`
+- compatibility shims were avoided
+- one last dead-code/terminology sweep is still appropriate after the next test additions
 
 Exit criteria:
 
@@ -293,3 +388,15 @@ The following old concepts should be removed, not merely deprecated in place:
 6. Implement finalize validation and metadata-only finalize behavior.
 7. Implement `check` subcommands and multi-status output.
 8. Delete snapshot-era code, commands, and docs that are still hanging around.
+
+## Recommended Next Slices
+
+1. Add missing migration-router specs for:
+   - malformed metadata
+   - multiple drafts
+   - finalize mismatch failure
+   - `migrations-match-definitions` replay failure vs schema mismatch
+2. Decide and implement the `draft --rewrite` behavior.
+3. Define and test `sync` behavior for semantic/destructive schema changes.
+4. Decide whether to extract the replay/materialization helpers from `api.ts` into a focused internal module.
+5. Do a final dead-code and terminology sweep once the above lands.
