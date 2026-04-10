@@ -18,7 +18,7 @@ Implemented:
 
 Verified currently:
 
-- `pnpm --filter sqlfu test:node --run test/migration-router.test.ts test/generate.test.ts`
+- `pnpm --filter sqlfu test:node --run test/migrations.test.ts test/generate.test.ts`
 - `pnpm --filter sqlfu typecheck`
 
 Still to do:

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import {createClient} from '@libsql/client';
+import {DatabaseSync} from 'node:sqlite';
 import {createRouterClient, os} from '@orpc/server';
 import {z} from 'zod';
 
@@ -70,11 +70,11 @@ export const router = {
 
     let currentDraft = draftMigrations[0];
     if (currentDraft && migrations.at(-1)?.fileName !== currentDraft.fileName) {
-      if (input?.bumpTimestamp !== true) {
+      if (!input?.bumpTimestamp) {
         throw new Error('draft migration must be lexically last; rerun with bumpTimestamp: true');
       }
 
-      const bumpedFileName = `${nextMigrationId(migrations, runtime.now())}_${currentDraft.fileName.replace(/^\d{14}_/u, '')}`;
+      const bumpedFileName = `${nextMigrationId(migrations, runtime.now())}_${currentDraft.fileName.replace(/^[^_]+_/u, '')}`;
       await fs.rename(currentDraft.path, path.join(context.projectConfig.migrationsDir, bumpedFileName));
       migrations = await runtime.readMigrations();
       const bumpedDraft = migrations.find((migration) => migration.status === 'draft');
@@ -94,7 +94,9 @@ export const router = {
       currentDraft = rewrittenDraft;
     }
 
-    const baselineSql = currentDraft ? await materializeMigrationsSchema(runtime.projectRoot, migrations) : '';
+    const baselineSql = currentDraft
+      ? await materializeMigrationsSchema(runtime.createSqliteFileDatabase, runtime.projectRoot, migrations)
+      : '';
     const diffLines = await diffSnapshotSqlToDesiredSql(sqlite3defConfig, {
       snapshotSql: baselineSql,
       desiredSql: definitionsSql,
@@ -129,6 +131,7 @@ export const router = {
     }
 
     await applyMigrationsToDatabase(
+      runtime.createSqliteFileDatabase,
       context.projectConfig.dbPath,
       input.includeDraft ? migrations : migrations.filter((migration) => migration.status === 'final'),
     );
@@ -150,8 +153,8 @@ export const router = {
     const draft = draftMigrations[0]!;
     const definitionsSql = await runtime.readDefinitionsSql();
     const [definitionsSchema, migrationsSchema] = await Promise.all([
-      materializeDefinitionsSchema(runtime.projectRoot, definitionsSql),
-      materializeMigrationsSchema(runtime.projectRoot, migrations),
+      materializeDefinitionsSchema(runtime.createSqliteFileDatabase, runtime.projectRoot, definitionsSql),
+      materializeMigrationsSchema(runtime.createSqliteFileDatabase, runtime.projectRoot, migrations),
     ]);
 
     if (definitionsSchema !== migrationsSchema) {
@@ -194,6 +197,7 @@ function createRuntime(context: SqlfuRouterContext) {
   return {
     projectRoot: context.projectConfig.projectRoot,
     now: () => context.now?.() ?? new Date(),
+    createSqliteFileDatabase: context.createSqliteFileDatabase ?? createNodeSqliteFileDatabase,
     readDefinitionsSql: () => fs.readFile(context.projectConfig.definitionsPath, 'utf8'),
     async readMigrations() {
       try {
@@ -251,21 +255,29 @@ function parseMigrationMetadata(contents: string) {
 
 function nextMigrationId(existingMigrations: readonly {fileName: string}[], now: Date) {
   const nowId = formatMigrationTimestamp(now);
-  const lastExistingId = existingMigrations.at(-1)?.fileName.match(/^(\d{14})_/u)?.[1];
+  const lastExistingId = existingMigrations.at(-1)?.fileName.match(/^([^_]+)_/u)?.[1];
   if (!lastExistingId || lastExistingId < nowId) {
     return nowId;
   }
-  return String(Number(lastExistingId) + 1).padStart(14, '0');
+
+  let next = new Date(parseMigrationTimestamp(lastExistingId).getTime() + 1);
+  while (formatMigrationTimestamp(next) <= lastExistingId) {
+    next = new Date(next.getTime() + 1);
+  }
+  return formatMigrationTimestamp(next);
 }
 
 function formatMigrationTimestamp(value: Date) {
-  const year = String(value.getUTCFullYear());
-  const month = String(value.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(value.getUTCDate()).padStart(2, '0');
-  const hours = String(value.getUTCHours()).padStart(2, '0');
-  const minutes = String(value.getUTCMinutes()).padStart(2, '0');
-  const seconds = String(value.getUTCSeconds()).padStart(2, '0');
-  return `${year}${month}${day}${hours}${minutes}${seconds}`;
+  return value.toISOString().replaceAll(':', '.');
+}
+
+function parseMigrationTimestamp(value: string) {
+  const match = value.match(/^(\d{4}-\d{2}-\d{2}T\d{2})\.(\d{2})\.(\d{2})\.(\d{3}Z)$/u);
+  if (!match) {
+    throw new Error(`invalid migration timestamp: ${value}`);
+  }
+
+  return new Date(`${match[1]}:${match[2]}:${match[3]}.${match[4]}`);
 }
 
 function slugify(value: string) {
@@ -277,7 +289,11 @@ function slugify(value: string) {
     .replace(/_+/gu, '_');
 }
 
-async function materializeDefinitionsSchema(projectRoot: string, definitionsSql: string) {
+async function materializeDefinitionsSchema(
+  createSqliteFileDatabase: SqliteFileDatabaseFactory,
+  projectRoot: string,
+  definitionsSql: string,
+) {
   await fs.mkdir(sqlite3defConfig.tempDir, {recursive: true});
   const workDir = await fs.mkdtemp(path.join(sqlite3defConfig.tempDir, 'definitions-'));
   const definitionsPath = path.join(workDir, 'definitions.sql');
@@ -288,67 +304,78 @@ async function materializeDefinitionsSchema(projectRoot: string, definitionsSql:
     if (definitionsSql.trim()) {
       await runSqlite3def({...sqlite3defConfig, projectRoot}, ['--apply', '--file', definitionsPath, dbPath]);
     }
-    return exportSchema(dbPath);
+    return exportSchema(createSqliteFileDatabase, dbPath);
   } finally {
     await fs.rm(workDir, {recursive: true, force: true});
   }
 }
 
-async function materializeMigrationsSchema(projectRoot: string, migrations: readonly {path: string}[]) {
+async function materializeMigrationsSchema(
+  createSqliteFileDatabase: SqliteFileDatabaseFactory,
+  projectRoot: string,
+  migrations: readonly {path: string}[],
+) {
   await fs.mkdir(sqlite3defConfig.tempDir, {recursive: true});
   const workDir = await fs.mkdtemp(path.join(sqlite3defConfig.tempDir, 'migrations-'));
   const dbPath = path.join(workDir, 'schema.db');
-
   try {
-    await ensureDatabaseExists(dbPath);
+    await ensureDatabaseExists(createSqliteFileDatabase, dbPath);
     for (const migration of migrations) {
-      await executeSqlScript(dbPath, await fs.readFile(migration.path, 'utf8'));
+      await executeSqlScript(createSqliteFileDatabase, dbPath, await fs.readFile(migration.path, 'utf8'));
     }
-    return exportSchema(dbPath);
+    return exportSchema(createSqliteFileDatabase, dbPath);
   } finally {
     await fs.rm(workDir, {recursive: true, force: true});
   }
 }
 
-async function applyMigrationsToDatabase(dbPath: string, migrations: readonly {path: string}[]) {
-  await ensureDatabaseExists(dbPath);
+async function applyMigrationsToDatabase(
+  createSqliteFileDatabase: SqliteFileDatabaseFactory,
+  dbPath: string,
+  migrations: readonly {path: string}[],
+) {
+  await ensureDatabaseExists(createSqliteFileDatabase, dbPath);
   for (const migration of migrations) {
-    await executeSqlScript(dbPath, await fs.readFile(migration.path, 'utf8'));
+    await executeSqlScript(createSqliteFileDatabase, dbPath, await fs.readFile(migration.path, 'utf8'));
   }
 }
 
-async function exportSchema(dbPath: string) {
-  const client = createClient({url: `file:${dbPath}`});
+async function exportSchema(createSqliteFileDatabase: SqliteFileDatabaseFactory, dbPath: string) {
+  const database = createSqliteFileDatabase(dbPath);
   try {
-    const result = await client.execute(`
+    const rows = database.query(`
       select sql
       from sqlite_schema
       where sql is not null
         and name not like 'sqlite_%'
       order by type, name
     `);
-    return result.rows.map((row) => `${String(row.sql).toLowerCase()};`).join('\n');
+    return rows.map((row) => `${String(row.sql).toLowerCase()};`).join('\n');
   } finally {
-    client.close();
+    database.close();
   }
 }
 
-async function ensureDatabaseExists(dbPath: string) {
-  const client = createClient({url: `file:${dbPath}`});
-  client.close();
+async function ensureDatabaseExists(createSqliteFileDatabase: SqliteFileDatabaseFactory, dbPath: string) {
+  const database = createSqliteFileDatabase(dbPath);
+  database.close();
 }
 
-async function executeSqlScript(dbPath: string, sql: string) {
-  const client = createClient({url: `file:${dbPath}`});
+async function executeSqlScript(
+  createSqliteFileDatabase: SqliteFileDatabaseFactory,
+  dbPath: string,
+  sql: string,
+) {
+  const database = createSqliteFileDatabase(dbPath);
   try {
     for (const statement of splitSqlStatements(sql)) {
       if (stripSqlComments(statement).trim() === '') {
         continue;
       }
-      await client.execute(statement);
+      database.execute(statement);
     }
   } finally {
-    client.close();
+    database.close();
   }
 }
 
@@ -405,8 +432,16 @@ function checkNoDraft(state: CheckState): string[] {
 async function checkMigrationsMatchDefinitions(state: CheckState): Promise<string[]> {
   try {
     const [definitionsSchema, migrationsSchema] = await Promise.all([
-      materializeDefinitionsSchema(state.runtime.projectRoot, await state.runtime.readDefinitionsSql()),
-      materializeMigrationsSchema(state.runtime.projectRoot, state.migrations),
+      materializeDefinitionsSchema(
+        state.runtime.createSqliteFileDatabase,
+        state.runtime.projectRoot,
+        await state.runtime.readDefinitionsSql(),
+      ),
+      materializeMigrationsSchema(
+        state.runtime.createSqliteFileDatabase,
+        state.runtime.projectRoot,
+        state.migrations,
+      ),
     ]);
 
     return definitionsSchema === migrationsSchema ? [] : ['replayed migrations do not match definitions.sql'];
@@ -448,6 +483,30 @@ function summarizeSqlite3defError(error: unknown) {
 export interface SqlfuRouterContext {
   readonly projectConfig: SqlfuProjectConfig;
   readonly now?: () => Date;
+  readonly createSqliteFileDatabase?: SqliteFileDatabaseFactory;
+}
+
+export interface SqliteFileDatabase {
+  query(sql: string): ReadonlyArray<Record<string, unknown>>;
+  execute(sql: string): void;
+  close(): void;
+}
+
+export type SqliteFileDatabaseFactory = (dbPath: string) => SqliteFileDatabase;
+
+function createNodeSqliteFileDatabase(dbPath: string): SqliteFileDatabase {
+  const database = new DatabaseSync(dbPath);
+  return {
+    query(sql: string) {
+      return database.prepare(sql).all() as ReadonlyArray<Record<string, unknown>>;
+    },
+    execute(sql: string) {
+      database.exec(sql);
+    },
+    close() {
+      database.close();
+    },
+  };
 }
 
 interface CheckState {

@@ -76,7 +76,12 @@ test('createBunClient turns real sqlite syntax errors into promise rejections fo
     },
   );
 
-  await expect(fixture.stub.selectTypo()).rejects.toThrow(/syntax error/i);
+  await expect(fixture.stub.selectTypo()).rejects.toMatchInlineSnapshot(`
+    [Error: SQLiteError: near "selectTYPO": syntax error
+
+    Server logs:
+    (none)]
+  `);
 });
 
 test('createBunClient iterates rows with native statement iteration in a bun subprocess', async () => {
