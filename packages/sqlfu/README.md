@@ -47,15 +47,6 @@ export default defineConfig({
   migrationsDir: './migrations',
   definitionsPath: './definitions.sql',
   sqlDir: './sql',
-  createDatabase(slug) {
-    const database = new DatabaseSync(new URL(`./.sqlfu/${slug}.db`, import.meta.url));
-    return {
-      client: createNodeSqliteClient(database),
-      async [Symbol.asyncDispose]() {
-        database.close();
-      },
-    };
-  },
   getMainDatabase() {
     const database = new DatabaseSync(new URL('./db/app.sqlite', import.meta.url));
     return {
@@ -73,7 +64,6 @@ Required config fields:
 - `migrationsDir`: directory containing finalized and draft migration files
 - `definitionsPath`: schema source of truth
 - `sqlDir`: directory containing checked-in `.sql` queries
-- `createDatabase(slug)`: creates scratch databases that `sqlfu` can use for replay, validation, and draft generation
 - `getMainDatabase()`: opens the main database handle used by commands like `sync`, `migrate`, and `generate`
 
 `sqlfu` manages its own temporary files under `.sqlfu/` and uses a fixed bundled `sqlite3def` version internally.

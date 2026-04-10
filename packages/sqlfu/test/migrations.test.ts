@@ -625,7 +625,6 @@ async function createMigrationsFixture(
     migrationsDir: path.join(root, 'migrations'),
     definitionsPath: path.join(root, 'definitions.sql'),
     sqlDir: path.join(root, 'sql'),
-    createDatabase: (slug) => createLibsqlDatabase(path.join(root, '.sqlfu', `${slug}.db`)),
     getMainDatabase: () => createLibsqlDatabase(dbPath),
     generatedImportExtension: '.js',
   };

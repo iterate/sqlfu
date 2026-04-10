@@ -78,7 +78,6 @@ export interface SqlfuConfig {
   readonly migrationsDir: string;
   readonly definitionsPath: string;
   readonly sqlDir: string;
-  readonly createDatabase: (slug: string) => Promise<Database> | Database;
   readonly getMainDatabase: () => Promise<Database> | Database;
   readonly generatedImportExtension?: '.js' | '.ts';
 }
@@ -88,7 +87,6 @@ export interface SqlfuProjectConfig {
   readonly migrationsDir: string;
   readonly definitionsPath: string;
   readonly sqlDir: string;
-  readonly createDatabase: (slug: string) => Promise<Database> | Database;
   readonly getMainDatabase: () => Promise<Database> | Database;
   readonly generatedImportExtension: '.js' | '.ts';
 }

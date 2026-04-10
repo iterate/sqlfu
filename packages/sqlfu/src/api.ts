@@ -1,10 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import {DatabaseSync} from 'node:sqlite';
 
 import {os} from '@orpc/server';
 import {z} from 'zod';
 
 import type {Database, SqlfuProjectConfig} from './core/types.js';
+import {createNodeSqliteClient} from './client.js';
 import {diffSchemaSql} from './schemadiff/index.js';
 import {generateQueryTypes} from './typegen/index.js';
 
@@ -89,9 +91,7 @@ export const router = {
       currentDraft = rewrittenDraft;
     }
 
-    const baselineSql = currentDraft
-      ? await materializeMigrationsSchema(runtime.createDatabase, migrations)
-      : '';
+    const baselineSql = currentDraft ? await materializeMigrationsSchema(runtime.projectRoot, migrations) : '';
     const diffLines = await diffSchemaSql({
       projectRoot: runtime.projectRoot,
       baselineSql,
@@ -145,8 +145,8 @@ export const router = {
     const draft = draftMigrations[0]!;
     const definitionsSql = await runtime.readDefinitionsSql();
     const [definitionsSchema, migrationsSchema] = await Promise.all([
-      materializeDefinitionsSchema(runtime.createDatabase, definitionsSql),
-      materializeMigrationsSchema(runtime.createDatabase, migrations),
+      materializeDefinitionsSchema(runtime.projectRoot, definitionsSql),
+      materializeMigrationsSchema(runtime.projectRoot, migrations),
     ]);
 
     if (definitionsSchema !== migrationsSchema) {
@@ -189,7 +189,6 @@ function createRuntime(context: SqlfuRouterContext) {
   return {
     projectRoot: context.projectConfig.projectRoot,
     now: () => context.now?.() ?? new Date(),
-    createDatabase: context.projectConfig.createDatabase,
     getMainDatabase: context.projectConfig.getMainDatabase,
     readDefinitionsSql: () => fs.readFile(context.projectConfig.definitionsPath, 'utf8'),
     async readMigrations() {
@@ -283,19 +282,19 @@ function slugify(value: string) {
 }
 
 async function materializeDefinitionsSchema(
-  createDatabase: SqlfuProjectConfig['createDatabase'],
+  projectRoot: string,
   definitionsSql: string,
 ) {
-  await using database = await createDatabase('materialize-definitions');
+  await using database = await createScratchDatabase(projectRoot, 'materialize-definitions');
   await applySqlScript(database, definitionsSql);
   return exportSchema(database);
 }
 
 async function materializeMigrationsSchema(
-  createDatabase: SqlfuProjectConfig['createDatabase'],
+  projectRoot: string,
   migrations: readonly {path: string}[],
 ) {
-  await using database = await createDatabase('materialize-migrations');
+  await using database = await createScratchDatabase(projectRoot, 'materialize-migrations');
   for (const migration of migrations) {
     await applySqlScript(database, await fs.readFile(migration.path, 'utf8'));
   }
@@ -310,6 +309,23 @@ async function applyMigrationsToDatabase(
   for (const migration of migrations) {
     await applySqlScript(database, await fs.readFile(migration.path, 'utf8'));
   }
+}
+
+async function createScratchDatabase(projectRoot: string, slug: string): Promise<Database> {
+  const dbPath = path.join(projectRoot, '.sqlfu', `${slug}.db`);
+  await fs.mkdir(path.dirname(dbPath), {recursive: true});
+  const database = new DatabaseSync(dbPath);
+  return {
+    client: createNodeSqliteClient(database),
+    async [Symbol.asyncDispose]() {
+      database.close();
+      await Promise.allSettled([
+        fs.rm(dbPath, {force: true}),
+        fs.rm(`${dbPath}-shm`, {force: true}),
+        fs.rm(`${dbPath}-wal`, {force: true}),
+      ]);
+    },
+  };
 }
 
 async function exportSchema(database: Database, schemaName = 'main') {
@@ -392,8 +408,8 @@ function checkNoDraft(state: CheckState): string[] {
 async function checkMigrationsMatchDefinitions(state: CheckState): Promise<string[]> {
   try {
     const [definitionsSchema, migrationsSchema] = await Promise.all([
-      materializeDefinitionsSchema(state.runtime.createDatabase, await state.runtime.readDefinitionsSql()),
-      materializeMigrationsSchema(state.runtime.createDatabase, state.migrations),
+      materializeDefinitionsSchema(state.runtime.projectRoot, await state.runtime.readDefinitionsSql()),
+      materializeMigrationsSchema(state.runtime.projectRoot, state.migrations),
     ]);
 
     return definitionsSchema === migrationsSchema ? [] : ['replayed migrations do not match definitions.sql'];

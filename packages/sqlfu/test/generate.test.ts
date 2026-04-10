@@ -675,9 +675,6 @@ async function createGenerateFixture(input: {
         migrationsDir: './migrations',
         definitionsPath: './definitions.sql',
         sqlDir: './sql',
-        createDatabase() {
-          throw new Error('unused in generate tests');
-        },
         getMainDatabase() {
           const database = new DatabaseSync(new URL('./app.db', import.meta.url));
           return {
