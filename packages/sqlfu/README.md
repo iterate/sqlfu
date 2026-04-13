@@ -56,7 +56,7 @@ Required config fields:
 - `definitionsPath`: schema source of truth
 - `sqlDir`: directory containing checked-in `.sql` queries
 
-`sqlfu` manages its own temporary files under `.sqlfu/` and uses a fixed bundled `sqlite3def` version internally.
+`sqlfu` manages its own temporary files under `.sqlfu/` and uses a fixed bundled `sqlite3def` version internally. These are generally safe to delete at any time, they will regenerate as needed.
 
 ## Commands
 
@@ -69,7 +69,7 @@ sqlfu generate
 Draft a migration file from the diff between replayed migrations and `definitions.sql`:
 
 ```sh
-sqlfu draft --name add_posts_table
+sqlfu draft
 ```
 
 Apply migrations:
@@ -78,16 +78,10 @@ Apply migrations:
 sqlfu migrate
 ```
 
-Run all migration checks:
+Run all migration checks - if migrations need to be generated, applied, or fixed, this will always give a recommendation, so if you only remember one migration-related command, remember this one:
 
 ```sh
 sqlfu check
-```
-
-Run a single named check:
-
-```sh
-sqlfu check migrations-match-definitions
 ```
 
 ## Migration Model
@@ -115,6 +109,58 @@ You should still review and edit the generated migration, especially for renames
 
 There is no committed `snapshot.sql` file.
 If you want the guarantees a snapshot file would normally provide, run `sqlfu check`, which verifies that replayed migrations still reproduce `definitions.sql`.
+
+## Migration Mental Model
+
+`sqlfu` reasons about migrations using four "authorities". These are referred to often in docs, help text and error messages:
+
+| Authority | Meaning |
+| ------------------- | --------------------------------------------------------------------- |
+| `Desired Schema`    | `definitions.sql`, which says what the schema should look like now    |
+| `Migrations`        | the ordered transition program, usually `migrations/*.sql`            |
+| `Migration History` | the `sqlfu_migrations` table in a specific database                   |
+| `Live Schema`       | the schema the database actually has right now                        |
+
+The usual chain of database changes is:
+
+- `Desired Schema` produces `Migrations` via `sqlfu draft`
+- `Migrations` produce `Migration History` and `Live Schema` via `sqlfu migrate`
+- `Desired Schema` *can* mutate `Live Schema` directly via `sqlfu sync` - typically you'd only want to do this for a dev db
+
+`sqlfu check` names the important ways those authorities can disagree:
+
+| Mismatch | Meaning |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `Repo Drift`           | `Desired Schema` does not match `Migrations`                                                                  |
+| `Pending Migrations`   | `Migration History` is behind `Migrations`                                                                    |
+| `History Drift`        | `Migration History` conflicts with the known `Migrations`, for example because an applied migration was edited or deleted |
+| `Schema Drift`         | `Live Schema` does not match `Migration History`                                                              |
+
+The commands each reconcile a different part of that model. "Smart" ones use schema-diffing to produce "A to B" sql, and are generally less safe to run directly in production environments:
+
+| Command                    | What It Does                                                                 | Is smart? |
+| -------------------------- | ---------------------------------------------------------------------------- | --------- |
+| `sqlfu draft`             | uses `Desired Schema` to generate a new `Migration` so `Migrations` can catch up | yes       |
+| `sqlfu migrate`           | uses `Migrations` to update `Migration History` and `Live Schema` with pending migrations | no        |
+| `sqlfu baseline <target>` | uses `Migrations` to rewrite `Migration History` to an exact target without changing `Live Schema` | no        |
+| `sqlfu goto <target>`     | uses `Migrations` to move `Live Schema` and `Migration History` to an exact target | yes       |
+| `sqlfu sync`              | uses `Desired Schema` to update `Live Schema` directly, ignoring `Migration History` | yes       |
+| `sqlfu check`             | compares the authorities, names the mismatch, and recommends the least-destructive next step when possible | no        |
+
+For the full model and mismatch tables, see [docs/migration-model.md](./docs/migration-model.md).
+
+## Deliberate Exclusions
+
+`sqlfu` deliberately leaves out a few migration features that are common elsewhere:
+
+**No repeatable migrations**
+`definitions.sql` already plays the role of “what this object should look like now”, and normal versioned migrations capture how you got there. Adding repeatables would create another moving part for the same job.
+
+**No down migrations**
+They tend not to be exercised regularly, which means they are usually unverified when you need them most. `sqlfu goto <target>` covers the same operational space while making the danger explicit.
+
+**No JavaScript migrations**
+There are legitimate use cases, but they also make migrations harder to reason about, harder to inspect, and easier to couple to application code. `sqlfu` stays SQL-first for now. This may be revisited later if a clear use case justifies the extra complexity.
 
 ## What `generate` Does
 
