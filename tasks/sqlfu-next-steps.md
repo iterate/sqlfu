@@ -2,7 +2,7 @@ Continue the `sqlfu` work in `/Users/mmkal/src/sqlfu`.
 
 Current status:
 - The repo is now a pnpm workspace with a single package at `packages/sqlfu`.
-- `sqlfu` now has a router-driven migration workflow built around `draft`, `migrate`, `finalize`, and `check`.
+- `sqlfu` now has a router-driven migration workflow built around `migration`, `migrate`, and `check`.
 - `definitions.sql` is the schema-authoring surface, and there is no committed `snapshot.sql`.
 - migration replay and validation use injected database provisioning from `sqlfu.config.*`.
 - `src/migrator/` has been renamed to `src/schemadiff/`.

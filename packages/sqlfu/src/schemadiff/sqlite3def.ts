@@ -76,10 +76,11 @@ export async function diffBaselineSqlToDesiredSql(
   input: {
     baselineSql: string;
     desiredSql: string;
+    enableDrop: boolean;
   },
 ): Promise<string[]> {
   await fs.mkdir(config.tempDir, {recursive: true});
-  const workDir = await fs.mkdtemp(path.join(config.tempDir, 'draft-'));
+  const workDir = await fs.mkdtemp(path.join(config.tempDir, 'schemadiff-'));
   const baselineSqlPath = path.join(workDir, 'baseline.sql');
   const definitionsPath = path.join(workDir, 'definitions.sql');
   const baselineDbPath = path.join(workDir, 'baseline.db');
@@ -93,7 +94,13 @@ export async function diffBaselineSqlToDesiredSql(
       await runSqlite3def(config, ['--apply', '--file', baselineSqlPath, baselineDbPath]);
     }
 
-    const diffOutput = await runSqlite3def(config, ['--dry-run', '--file', definitionsPath, baselineDbPath]);
+    const diffOutput = await runSqlite3def(config, [
+      '--dry-run',
+      '--file',
+      definitionsPath,
+      ...(input.enableDrop ? ['--enable-drop'] : []),
+      baselineDbPath,
+    ]);
     return getMeaningfulDiffLines(diffOutput);
   } finally {
     await fs.rm(workDir, {recursive: true, force: true});

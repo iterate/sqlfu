@@ -7,6 +7,7 @@ export async function extractSchema(client: Client, schemaName = 'main'): Promis
       from ${schemaName}.sqlite_schema
       where sql is not null
         and name not like 'sqlite_%'
+        and name != 'sqlfu_migrations'
       order by type, name
     `,
     args: [],

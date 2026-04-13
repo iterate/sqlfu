@@ -52,7 +52,7 @@ export default defineConfig({
 Required config fields:
 
 - `db`: path to the main dev database used by tooling commands like `sync`, `migrate`, and `generate`
-- `migrationsDir`: directory containing finalized and draft migration files
+- `migrationsDir`: directory containing migration files
 - `definitionsPath`: schema source of truth
 - `sqlDir`: directory containing checked-in `.sql` queries
 
@@ -66,28 +66,16 @@ Generate query wrappers from your schema and `.sql` files:
 sqlfu generate
 ```
 
-Create or update the draft migration:
+Draft a migration file from the diff between replayed migrations and `definitions.sql`:
 
 ```sh
 sqlfu draft --name add_posts_table
 ```
 
-Apply finalized migrations only:
+Apply migrations:
 
 ```sh
 sqlfu migrate
-```
-
-Apply finalized migrations plus the draft in a disposable or explicitly in-progress environment:
-
-```sh
-sqlfu migrate --include-draft
-```
-
-Finalize the current draft after validation:
-
-```sh
-sqlfu finalize
 ```
 
 Run all migration checks:
@@ -99,15 +87,15 @@ sqlfu check
 Run a single named check:
 
 ```sh
-sqlfu check no-draft
+sqlfu check migrations-match-definitions
 ```
 
 ## Migration Model
 
 `sqlfu` uses:
 
-- versioned SQL migration files with explicit `draft`/`final` metadata
-- `sqlite3def` to draft structural SQL from the difference between replayed migration state and `definitions.sql`
+- versioned SQL migration files applied in filename order
+- `sqlite3def` to produce structural SQL from the difference between replayed migration state and `definitions.sql`
 
 That means the production path is replayed versioned migrations, not direct declarative apply.
 
@@ -119,10 +107,9 @@ sqlfu draft --name add_posts_table
 
 `sqlfu` will:
 
-1. replay finalized migrations into a temporary SQLite database
-2. if a draft already exists, replay that too
-3. diff that effective migration state against `definitions.sql`
-4. create or update the single draft migration in `migrations/`
+1. replay migrations into a temporary SQLite database
+2. diff that replayed state against `definitions.sql`
+3. create a new migration file in `migrations/`
 
 You should still review and edit the generated migration, especially for renames, data backfills, and destructive changes.
 
