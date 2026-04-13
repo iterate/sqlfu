@@ -52,9 +52,15 @@ export async function baselineMigrationHistory(client: Client, params: {
   }
 
   const applied = params.migrations.slice(0, targetIndex + 1);
+  await client.transaction(async (tx) => {
+    await replaceMigrationHistory(tx, applied);
+  });
+}
+
+export async function replaceMigrationHistory(client: Client, migrations: readonly Migration[]) {
   await ensureMigrationTable(client);
   await client.run({sql: 'delete from sqlfu_migrations', args: []});
-  for (const migration of applied) {
+  for (const migration of migrations) {
     await client.run({
       sql: `
         insert into sqlfu_migrations(name, content, applied_at)
@@ -96,13 +102,15 @@ export async function applyMigrations(client: Client, params: {
       continue;
     }
 
-    await runSqlStatements(client, migration.content);
-    await client.run({
-      sql: `
-        insert into sqlfu_migrations(name, content, applied_at)
-        values (?, ?, ?)
-      `,
-      args: [name, migration.content, new Date().toISOString()],
+    await client.transaction(async (tx) => {
+      await runSqlStatements(tx, migration.content);
+      await tx.run({
+        sql: `
+          insert into sqlfu_migrations(name, content, applied_at)
+          values (?, ?, ?)
+        `,
+        args: [name, migration.content, new Date().toISOString()],
+      });
     });
   }
 }

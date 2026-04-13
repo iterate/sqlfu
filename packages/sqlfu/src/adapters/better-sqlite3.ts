@@ -1,4 +1,5 @@
 import {bindSyncSql} from '../core/sql.js';
+import {surroundWithBeginCommitRollbackSync} from '../core/sqlite.js';
 import type {ResultRow, SqlQuery, SyncClient} from '../core/types.js';
 
 export interface BetterSqlite3StatementLike<TRow extends ResultRow = ResultRow> {
@@ -16,7 +17,7 @@ export interface BetterSqlite3DatabaseLike {
 }
 
 export function createBetterSqlite3Client(database: BetterSqlite3DatabaseLike): SyncClient<BetterSqlite3DatabaseLike> {
-  const client = {
+  const client: Omit<SyncClient<BetterSqlite3DatabaseLike>, 'sql'> & {sql: SyncClient<BetterSqlite3DatabaseLike>['sql']} = {
     driver: database,
     all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       return database.prepare<TRow>(query.sql).all(...query.args);
@@ -36,6 +37,9 @@ export function createBetterSqlite3Client(database: BetterSqlite3DatabaseLike): 
       }
 
       yield* statement.all(...query.args);
+    },
+    transaction<TResult>(fn: (tx: SyncClient<BetterSqlite3DatabaseLike>) => TResult | Promise<TResult>) {
+      return surroundWithBeginCommitRollbackSync(client, fn);
     },
     sql: undefined as unknown as SyncClient<BetterSqlite3DatabaseLike>['sql'],
   } satisfies SyncClient<BetterSqlite3DatabaseLike>;

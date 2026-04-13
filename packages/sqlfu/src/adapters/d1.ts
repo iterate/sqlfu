@@ -1,4 +1,5 @@
 import {bindAsyncSql} from '../core/sql.js';
+import {surroundWithBeginCommitRollbackAsync} from '../core/sqlite.js';
 import type {AsyncClient, ResultRow, SqlQuery} from '../core/types.js';
 
 export interface D1PreparedStatement {
@@ -36,11 +37,14 @@ export function createD1Client(database: D1DatabaseLike): AsyncClient<D1Database
       yield row;
     }
   };
-  const d1Client = {
+  const d1Client: Omit<AsyncClient<D1DatabaseLike>, 'sql'> & {sql: AsyncClient<D1DatabaseLike>['sql']} = {
     driver: database,
     all,
     run,
     iterate,
+    async transaction<TResult>(fn: (tx: AsyncClient<D1DatabaseLike>) => Promise<TResult> | TResult) {
+      return surroundWithBeginCommitRollbackAsync(d1Client, fn);
+    },
     sql: undefined as unknown as AsyncClient<D1DatabaseLike>['sql'],
   } satisfies AsyncClient<D1DatabaseLike>;
 

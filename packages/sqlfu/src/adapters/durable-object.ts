@@ -1,4 +1,5 @@
 import {bindSyncSql} from '../core/sql.js';
+import {surroundWithBeginCommitRollbackSync} from '../core/sqlite.js';
 import type {ResultRow, SqlQuery, SyncClient} from '../core/types.js';
 
 export interface DurableObjectSqlStorageLike {
@@ -12,7 +13,7 @@ export interface DurableObjectSqlStorageLike {
 }
 
 export function createDurableObjectClient(storage: DurableObjectSqlStorageLike): SyncClient<DurableObjectSqlStorageLike> {
-  const client = {
+  const client: Omit<SyncClient<DurableObjectSqlStorageLike>, 'sql'> & {sql: SyncClient<DurableObjectSqlStorageLike>['sql']} = {
     driver: storage,
     all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       return storage.exec<TRow>(query.sql, ...query.args).toArray();
@@ -26,6 +27,9 @@ export function createDurableObjectClient(storage: DurableObjectSqlStorageLike):
     *iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       const rows = storage.exec<TRow>(query.sql, ...query.args).toArray();
       yield* rows;
+    },
+    transaction<TResult>(fn: (tx: SyncClient<DurableObjectSqlStorageLike>) => TResult | Promise<TResult>) {
+      return surroundWithBeginCommitRollbackSync(client, fn);
     },
     sql: undefined as unknown as SyncClient<DurableObjectSqlStorageLike>['sql'],
   } satisfies SyncClient<DurableObjectSqlStorageLike>;

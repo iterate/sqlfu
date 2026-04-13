@@ -211,6 +211,21 @@ describe('migrate', () => {
       [Error: migration history is not a prefix of migrations]
     `);
   });
+
+  test('rolls back a failed multi-statement migration', async () => {
+    await using fixture = await createMigrationsFixture('migrate-transaction-per-migration');
+
+    await fixture.writeMigration('create_person_then_fail', dedent`
+      create table person(name text);
+      this is not valid sql;
+    `);
+
+    await expect(fixture.api.migrate()).rejects.toMatchInlineSnapshot(`
+      [Error: near "this": syntax error]
+    `);
+    await expect(fixture.db.sql`select name from sqlite_schema where name = 'person'`).resolves.toMatchObject([]);
+    await expect(fixture.readMigrationHistory()).resolves.toMatchObject([]);
+  });
 });
 
 describe('check recommendations', () => {
@@ -475,6 +490,35 @@ describe('baseline', () => {
       "create_pet",
     ]);
   });
+
+  test('rolls back history changes if baseline fails halfway through', async () => {
+    await using fixture = await createMigrationsFixture('baseline-transaction', {
+      migrations: {
+        create_person: `create table person(name text)`,
+        create_pet: `create table pet(name text)`,
+      },
+    });
+
+    await runSqlStatements(fixture.db, `
+      create table sqlfu_migrations(
+        name text primary key check(name = '2026-04-10T00.00.00.000Z_create_person'),
+        content text not null,
+        applied_at text not null
+      );
+      insert into sqlfu_migrations(name, content, applied_at)
+      values ('2026-04-10T00.00.00.000Z_create_person', 'original content', '2026-04-10T00:00:00.000Z');
+    `);
+
+    await expect(fixture.api.baseline({target: '2026-04-10T01.00.00.000Z_create_pet'})).rejects.toMatchInlineSnapshot(`
+      [Error: CHECK constraint failed: name = '2026-04-10T00.00.00.000Z_create_person']
+    `);
+    await expect(fixture.readMigrationHistory()).resolves.toMatchObject([
+      {
+        name: '2026-04-10T00.00.00.000Z_create_person',
+        content: 'original content',
+      },
+    ]);
+  });
 });
 
 describe('goto', () => {
@@ -573,6 +617,27 @@ describe('goto', () => {
       {name: 'alice'},
     ]);
   });
+
+  test('rolls back live schema and history if goto fails partway through', async () => {
+    await using fixture = await createMigrationsFixture('goto-transaction', {
+      migrations: {
+        upgrade_person: `create table person(name text, nickname text, birthdate text not null)`,
+      },
+    });
+
+    await runSqlStatements(fixture.db, `
+      create table person(name text);
+      insert into person(name) values ('alice');
+    `);
+
+    await expect(fixture.api.goto({target: '2026-04-10T00.00.00.000Z_upgrade_person'})).rejects.toMatchInlineSnapshot(`
+      [Error: Cannot add a NOT NULL column with default value NULL]
+    `);
+    await expect(extractSchema(fixture.db)).resolves.toMatchInlineSnapshot(`
+      "create table person(name text);"
+    `);
+    await expect(fixture.readMigrationHistory()).resolves.toMatchObject([]);
+  });
 });
 
 describe('sync', () => {
@@ -611,6 +676,27 @@ describe('sync', () => {
       Create a migration with \`sqlfu draft\`, edit it if needed, then run \`sqlfu migrate\`.
 
       Cause: Cannot add a NOT NULL column with default value NULL]
+    `);
+  });
+
+  test('rolls back live schema changes if sync fails partway through', async () => {
+    await using fixture = await createMigrationsFixture('sync-transaction', {
+      desiredSchema: `create table person(name text, nickname text, birthdate text not null)`,
+    });
+
+    await runSqlStatements(fixture.db, `
+      create table person(name text);
+      insert into person(name) values ('alice');
+    `);
+
+    await expect(fixture.api.sync()).rejects.toMatchInlineSnapshot(`
+      [Error: sync could not apply definitions.sql safely to the current database.
+      Create a migration with \`sqlfu draft\`, edit it if needed, then run \`sqlfu migrate\`.
+
+      Cause: Cannot add a NOT NULL column with default value NULL]
+    `);
+    await expect(extractSchema(fixture.db)).resolves.toMatchInlineSnapshot(`
+      "create table person(name text);"
     `);
   });
 

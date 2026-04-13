@@ -1,4 +1,5 @@
 import {bindAsyncSql} from '../core/sql.js';
+import {surroundWithBeginCommitRollbackAsync} from '../core/sqlite.js';
 import type {AsyncClient, ResultRow, SqlQuery} from '../core/types.js';
 
 export interface ExpoSqliteRunResult {
@@ -28,11 +29,14 @@ export function createExpoSqliteClient(database: ExpoSqliteDatabaseLike): AsyncC
       yield row;
     }
   };
-  const client = {
+  const client: Omit<AsyncClient<ExpoSqliteDatabaseLike>, 'sql'> & {sql: AsyncClient<ExpoSqliteDatabaseLike>['sql']} = {
     driver: database,
     all,
     run,
     iterate,
+    async transaction<TResult>(fn: (tx: AsyncClient<ExpoSqliteDatabaseLike>) => Promise<TResult> | TResult) {
+      return surroundWithBeginCommitRollbackAsync(client, fn);
+    },
     sql: undefined as unknown as AsyncClient<ExpoSqliteDatabaseLike>['sql'],
   } satisfies AsyncClient<ExpoSqliteDatabaseLike>;
 

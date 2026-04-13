@@ -1,4 +1,5 @@
 import {bindSyncSql} from '../core/sql.js';
+import {surroundWithBeginCommitRollbackSync} from '../core/sqlite.js';
 import type {ResultRow, SqlQuery, SyncClient} from '../core/types.js';
 
 export interface LibsqlSyncStatementLike {
@@ -29,11 +30,14 @@ export function createLibsqlSyncClient(database: LibsqlSyncDatabaseLike): SyncCl
   const iterate: SyncClient<LibsqlSyncDatabaseLike>['iterate'] = function* <TRow extends ResultRow = ResultRow>(query: SqlQuery) {
     yield* all<TRow>(query);
   };
-  const client = {
+  const client: Omit<SyncClient<LibsqlSyncDatabaseLike>, 'sql'> & {sql: SyncClient<LibsqlSyncDatabaseLike>['sql']} = {
     driver: database,
     all,
     run,
     iterate,
+    transaction<TResult>(fn: (tx: SyncClient<LibsqlSyncDatabaseLike>) => TResult | Promise<TResult>) {
+      return surroundWithBeginCommitRollbackSync(client, fn);
+    },
     sql: undefined as unknown as SyncClient<LibsqlSyncDatabaseLike>['sql'],
   } satisfies SyncClient<LibsqlSyncDatabaseLike>;
 

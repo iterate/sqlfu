@@ -13,6 +13,7 @@ import {
   baselineMigrationHistory,
   migrationName,
   readMigrationHistory,
+  replaceMigrationHistory,
   type Migration,
 } from './migrations/index.js';
 import {diffSchemaSql} from './schemadiff/index.js';
@@ -50,7 +51,9 @@ export const router = {
           desiredSql: definitionsSql,
           enableDrop: false,
         });
-        await runSqlStatements(database.client, diffLines.join('\n'));
+        await database.client.transaction(async (tx) => {
+          await runSqlStatements(tx, diffLines.join('\n'));
+        });
       } catch (error) {
         throw new Error(
           [
@@ -186,10 +189,12 @@ export const router = {
         desiredSql: targetSchema,
         enableDrop: true,
       });
-      if (diffLines.length > 0) {
-        await runSqlStatements(database.client, diffLines.join('\n'));
-      }
-      await baselineMigrationHistory(database.client, {migrations, target: input.target});
+      await database.client.transaction(async (tx) => {
+        if (diffLines.length > 0) {
+          await runSqlStatements(tx, diffLines.join('\n'));
+        }
+        await replaceMigrationHistory(tx, targetMigrations);
+      });
     }),
 
   check: {

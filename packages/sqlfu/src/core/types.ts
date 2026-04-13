@@ -21,6 +21,8 @@ export interface SyncClient<TDriver = unknown> {
   all<TRow extends ResultRow = ResultRow>(query: SqlQuery): TRow[];
   run(query: SqlQuery): RunResult;
   iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery): Iterable<TRow>;
+  transaction<TResult>(fn: (tx: SyncClient<TDriver>) => TResult): TResult;
+  transaction<TResult>(fn: (tx: SyncClient<TDriver>) => Promise<TResult>): Promise<TResult>;
   readonly sql: SyncSqlTag;
 }
 
@@ -29,6 +31,7 @@ export interface AsyncClient<TDriver = unknown> {
   all<TRow extends ResultRow = ResultRow>(query: SqlQuery): Promise<TRow[]>;
   run(query: SqlQuery): Promise<RunResult>;
   iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery): AsyncIterable<TRow>;
+  transaction<TResult>(fn: (tx: AsyncClient<TDriver>) => Promise<TResult> | TResult): Promise<TResult>;
   readonly sql: AsyncSqlTag;
 }
 
