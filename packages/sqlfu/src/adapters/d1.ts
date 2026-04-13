@@ -1,5 +1,5 @@
 import {bindAsyncSql} from '../core/sql.js';
-import {surroundWithBeginCommitRollbackAsync} from '../core/sqlite.js';
+import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../core/sqlite.js';
 import type {AsyncClient, ResultRow, SqlQuery} from '../core/types.js';
 
 export interface D1PreparedStatement {
@@ -32,6 +32,16 @@ export function createD1Client(database: D1DatabaseLike): AsyncClient<D1Database
       lastInsertRowid: result.meta?.last_row_id,
     };
   };
+  const raw: AsyncClient<D1DatabaseLike>['raw'] = async (sql: string) => {
+    return rawSqlWithSqlSplittingAsync(async (singleQuery) => {
+      const statement = database.prepare(singleQuery.sql).bind(...singleQuery.args);
+      const result = await statement.run();
+      return {
+        rowsAffected: result.meta?.changes,
+        lastInsertRowid: result.meta?.last_row_id,
+      };
+    }, sql);
+  };
   const iterate: AsyncClient<D1DatabaseLike>['iterate'] = async function* <TRow extends ResultRow = ResultRow>(sqlQuery: SqlQuery) {
     for (const row of await all<TRow>(sqlQuery)) {
       yield row;
@@ -41,6 +51,7 @@ export function createD1Client(database: D1DatabaseLike): AsyncClient<D1Database
     driver: database,
     all,
     run,
+    raw,
     iterate,
     async transaction<TResult>(fn: (tx: AsyncClient<D1DatabaseLike>) => Promise<TResult> | TResult) {
       return surroundWithBeginCommitRollbackAsync(d1Client, fn);

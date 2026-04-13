@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 
 import {loadProjectConfig} from '../core/config.js';
 import type {Client, SqlfuProjectConfig} from '../core/types.js';
-import {extractSchema, splitSqlStatements} from '../core/sqlite.js';
+import {extractSchema} from '../core/sqlite.js';
 import {runPackageBinary} from '../core/tooling.js';
 import {createNodeSqliteClient} from '../client.js';
 
@@ -111,9 +111,7 @@ async function materializeTypegenDatabase(config: SqlfuProjectConfig) {
   const client = createNodeSqliteClient(database);
 
   try {
-    for (const statement of splitSqlStatements(schemaSql)) {
-      client.run({sql: statement, args: []});
-    }
+    client.raw(schemaSql);
   } finally {
     database.close();
   }

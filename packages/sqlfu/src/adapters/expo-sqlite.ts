@@ -1,5 +1,5 @@
 import {bindAsyncSql} from '../core/sql.js';
-import {surroundWithBeginCommitRollbackAsync} from '../core/sqlite.js';
+import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../core/sqlite.js';
 import type {AsyncClient, ResultRow, SqlQuery} from '../core/types.js';
 
 export interface ExpoSqliteRunResult {
@@ -24,6 +24,15 @@ export function createExpoSqliteClient(database: ExpoSqliteDatabaseLike): AsyncC
       lastInsertRowid: result.lastInsertRowId,
     };
   };
+  const raw: AsyncClient<ExpoSqliteDatabaseLike>['raw'] = async (sql: string) => {
+    return rawSqlWithSqlSplittingAsync(async (singleQuery) => {
+      const result = await database.runAsync(singleQuery.sql, [...singleQuery.args]);
+      return {
+        rowsAffected: result.changes,
+        lastInsertRowid: result.lastInsertRowId,
+      };
+    }, sql);
+  };
   const iterate: AsyncClient<ExpoSqliteDatabaseLike>['iterate'] = async function* <TRow extends ResultRow = ResultRow>(query: SqlQuery) {
     for await (const row of database.getEachAsync<TRow>(query.sql, [...query.args])) {
       yield row;
@@ -33,6 +42,7 @@ export function createExpoSqliteClient(database: ExpoSqliteDatabaseLike): AsyncC
     driver: database,
     all,
     run,
+    raw,
     iterate,
     async transaction<TResult>(fn: (tx: AsyncClient<ExpoSqliteDatabaseLike>) => Promise<TResult> | TResult) {
       return surroundWithBeginCommitRollbackAsync(client, fn);

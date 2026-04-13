@@ -1,7 +1,6 @@
 import path from 'node:path';
 
 import type {Client} from '../core/types.js';
-import {runSqlStatements} from '../core/sqlite.js';
 
 export type Migration = {
   path: string;
@@ -103,7 +102,7 @@ export async function applyMigrations(client: Client, params: {
     }
 
     await client.transaction(async (tx) => {
-      await runSqlStatements(tx, migration.content);
+      await tx.raw(migration.content);
       await tx.run({
         sql: `
           insert into sqlfu_migrations(name, content, applied_at)

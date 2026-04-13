@@ -108,6 +108,37 @@ test('createBunClient iterates rows with native statement iteration in a bun sub
   ]);
 });
 
+test('createBunClient.raw runs multiple statements in a bun subprocess', async () => {
+  await using fixture = await createBunFixture(
+    class ClientMultiStatementTest {
+      client: ReturnType<typeof createBunClient>;
+
+      constructor(db: any) {
+        this.client = createBunClient(db);
+      }
+
+      seedUsers() {
+        return this.client.raw(`
+          create table users (id integer primary key, email text not null);
+          insert into users (email) values ('ada@example.com');
+          insert into users (email) values ('grace@example.com');
+        `);
+      }
+
+      listUsers() {
+        return this.client.sql.all<{email: string}>`select email from users order by email`;
+      }
+    },
+  );
+
+  await fixture.stub.seedUsers();
+
+  expect(await fixture.stub.listUsers()).toMatchObject([
+    {email: 'ada@example.com'},
+    {email: 'grace@example.com'},
+  ]);
+});
+
 async function createBunFixture<TInstance extends object>(classDef: new (...args: any[]) => TInstance) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-bun-fixture-'));
   const port = await getAvailablePort();

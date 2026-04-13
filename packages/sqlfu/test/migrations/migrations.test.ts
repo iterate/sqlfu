@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import {describe, expect, test} from 'vitest';
 
-import {extractSchema, runSqlStatements} from '../../src/core/sqlite.js';
+import {extractSchema} from '../../src/core/sqlite.js';
 import {createMigrationsFixture} from './fixture.js';
 
 describe('draft', () => {
@@ -174,9 +174,7 @@ describe('check recommendations', () => {
       },
     });
 
-    await runSqlStatements(fixture.db, `
-      create table person(name text)
-    `);
+    await fixture.db.raw(`create table person(name text)`);
 
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Schema Drift
@@ -200,7 +198,7 @@ describe('check recommendations', () => {
       },
     });
 
-    await runSqlStatements(fixture.db, `
+    await fixture.db.raw(`
       create table person(name text);
       create table pet(name text);
     `);
@@ -223,9 +221,7 @@ describe('baseline', () => {
       },
     });
 
-    await runSqlStatements(fixture.db, `
-      create table person(name text)
-    `);
+    await fixture.db.raw(`create table person(name text)`);
 
     await fixture.api.baseline({target: '2026-04-10T00.00.00.000Z_create_person'});
 
@@ -264,7 +260,7 @@ describe('goto', () => {
       },
     });
 
-    await runSqlStatements(fixture.db, `
+    await fixture.db.raw(`
       create table person(name text);
       create table pet(name text);
       create table toy(name text);
@@ -309,7 +305,7 @@ describe('goto', () => {
       },
     });
 
-    await runSqlStatements(fixture.db, `
+    await fixture.db.raw(`
       create table person(name text);
       create table toy(name text);
       insert into person(name) values ('alice');
@@ -334,7 +330,7 @@ describe('sync', () => {
       desiredSchema: `create table person(name text, nickname text)`,
     });
 
-    await runSqlStatements(fixture.db, `
+    await fixture.db.raw(`
       create table person(name text);
       insert into person(name) values ('ada');
     `);
@@ -354,7 +350,7 @@ describe('sync', () => {
       desiredSchema: `create table person(id integer primary key, name text)`,
     });
 
-    await runSqlStatements(fixture.db, `
+    await fixture.db.raw(`
       create table person(name text);
       insert into person(name) values ('Ada Lovelace');
     `);

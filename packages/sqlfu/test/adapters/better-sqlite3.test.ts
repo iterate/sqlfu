@@ -58,6 +58,23 @@ test('createBetterSqlite3Client iterates rows with native statement iteration', 
   ]);
 });
 
+test('createBetterSqlite3Client.raw runs multiple statements', () => {
+  using fixture = createBetterSqlite3Fixture(new BetterSqlite3(':memory:'));
+
+  fixture.client.raw(`
+    create table users (id integer primary key, email text not null);
+    insert into users (email) values ('ada@example.com');
+    insert into users (email) values ('grace@example.com');
+  `);
+
+  expect(
+    fixture.client.sql.all<{email: string}>`select email from users order by email`,
+  ).toMatchObject([
+    {email: 'ada@example.com'},
+    {email: 'grace@example.com'},
+  ]);
+});
+
 function createBetterSqlite3Fixture(db: InstanceType<typeof BetterSqlite3>) {
   return {
     client: createBetterSqlite3Client(db),

@@ -65,6 +65,23 @@ test('createLibsqlClient iterates rows', async () => {
   ]);
 });
 
+test('createLibsqlClient.raw runs multiple statements', async () => {
+  await using fixture = await createLibsqlFixture(createClient({url: getTmpDbUrl()}));
+
+  await fixture.client.raw(`
+    create table users (id integer primary key, email text not null);
+    insert into users (email) values ('ada@example.com');
+    insert into users (email) values ('grace@example.com');
+  `);
+
+  expect(
+    await fixture.client.sql.all<{email: string}>`select email from users order by email`,
+  ).toMatchObject([
+    {email: 'ada@example.com'},
+    {email: 'grace@example.com'},
+  ]);
+});
+
 async function createLibsqlFixture(raw: ReturnType<typeof createClient>) {
   const dbPath = await getDbPath(raw);
   return {

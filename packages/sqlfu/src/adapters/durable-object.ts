@@ -1,5 +1,5 @@
 import {bindSyncSql} from '../core/sql.js';
-import {surroundWithBeginCommitRollbackSync} from '../core/sqlite.js';
+import {rawSqlWithSqlSplittingSync, surroundWithBeginCommitRollbackSync} from '../core/sqlite.js';
 import type {ResultRow, SqlQuery, SyncClient} from '../core/types.js';
 
 export interface DurableObjectSqlStorageLike {
@@ -23,6 +23,14 @@ export function createDurableObjectClient(storage: DurableObjectSqlStorageLike):
       return {
         rowsAffected: cursor.rowsWritten,
       };
+    },
+    raw(sql: string) {
+      return rawSqlWithSqlSplittingSync((singleQuery) => {
+        const cursor = storage.exec(singleQuery.sql, ...singleQuery.args);
+        return {
+          rowsAffected: cursor.rowsWritten,
+        };
+      }, sql);
     },
     *iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       const rows = storage.exec<TRow>(query.sql, ...query.args).toArray();

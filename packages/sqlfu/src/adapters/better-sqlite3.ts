@@ -1,5 +1,5 @@
 import {bindSyncSql} from '../core/sql.js';
-import {surroundWithBeginCommitRollbackSync} from '../core/sqlite.js';
+import {rawSqlWithSqlSplittingSync, surroundWithBeginCommitRollbackSync} from '../core/sqlite.js';
 import type {ResultRow, SqlQuery, SyncClient} from '../core/types.js';
 
 export interface BetterSqlite3StatementLike<TRow extends ResultRow = ResultRow> {
@@ -28,6 +28,15 @@ export function createBetterSqlite3Client(database: BetterSqlite3DatabaseLike): 
         rowsAffected: result.changes,
         lastInsertRowid: result.lastInsertRowid,
       };
+    },
+    raw(sql: string) {
+      return rawSqlWithSqlSplittingSync((singleQuery) => {
+        const result = database.prepare(singleQuery.sql).run(...singleQuery.args);
+        return {
+          rowsAffected: result.changes,
+          lastInsertRowid: result.lastInsertRowid,
+        };
+      }, sql);
     },
     *iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       const statement = database.prepare<TRow>(query.sql);

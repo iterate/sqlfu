@@ -59,6 +59,23 @@ test('createLibsqlSyncClient iterates rows', () => {
   ]);
 });
 
+test('createLibsqlSyncClient.raw runs multiple statements', () => {
+  using fixture = createLibsqlFixture(new Database(':memory:'));
+
+  fixture.client.raw(`
+    create table users (id integer primary key, email text not null);
+    insert into users (email) values ('ada@example.com');
+    insert into users (email) values ('grace@example.com');
+  `);
+
+  expect(
+    fixture.client.sql.all<{email: string}>`select email from users order by email`,
+  ).toMatchObject([
+    {email: 'ada@example.com'},
+    {email: 'grace@example.com'},
+  ]);
+});
+
 function createLibsqlFixture(db: LibsqlDatabase) {
   return {
     client: createLibsqlSyncClient(db),

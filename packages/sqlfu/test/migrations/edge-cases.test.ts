@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import {describe, expect, test} from 'vitest';
 
-import {extractSchema, runSqlStatements} from '../../src/core/sqlite.js';
+import {extractSchema} from '../../src/core/sqlite.js';
 import {createMigrationsFixture} from './fixture.js';
 
 describe('draft edge cases', () => {
@@ -115,7 +115,7 @@ describe('check recommendation edge cases', () => {
       },
     });
 
-    await runSqlStatements(fixture.db, `
+    await fixture.db.raw(`
       create table person(name text);
       create table toy(name text);
     `);
@@ -140,9 +140,7 @@ describe('check recommendation edge cases', () => {
     });
 
     await fixture.api.migrate();
-    await runSqlStatements(fixture.db, `
-      create table toy(name text);
-    `);
+    await fixture.db.raw(`create table toy(name text);`);
     await fixture.writeFile(await fixture.globOne('migrations/*create_person.sql'), `create table person(first_name text, last_name text)`);
 
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
@@ -197,7 +195,7 @@ describe('history drift recommendations', () => {
     });
 
     await fixture.api.migrate();
-    await runSqlStatements(fixture.db, dedent`
+    await fixture.db.raw(dedent`
       update sqlfu_migrations
       set content = 'oops this is wrong'
     `);
@@ -252,9 +250,7 @@ describe('baseline edge cases', () => {
       },
     });
 
-    await runSqlStatements(fixture.db, `
-      create table person(name text)
-    `);
+    await fixture.db.raw(`create table person(name text)`);
 
     await fixture.api.baseline({target: '2026-04-10T01.00.00.000Z_create_pet'});
 
@@ -275,7 +271,7 @@ describe('baseline edge cases', () => {
       },
     });
 
-    await runSqlStatements(fixture.db, `
+    await fixture.db.raw(`
       create table sqlfu_migrations(
         name text primary key check(name = '2026-04-10T00.00.00.000Z_create_person'),
         content text not null,
@@ -329,7 +325,7 @@ describe('goto edge cases', () => {
       },
     });
 
-    await runSqlStatements(fixture.db, `
+    await fixture.db.raw(`
       create table person(name text);
       insert into person(name) values ('alice');
     `);
@@ -350,7 +346,7 @@ describe('sync edge cases', () => {
       desiredSchema: `create table person(name text, nickname text, birthdate text not null)`,
     });
 
-    await runSqlStatements(fixture.db, `
+    await fixture.db.raw(`
       create table person(name text);
       insert into person(name) values ('alice');
     `);

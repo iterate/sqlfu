@@ -7,7 +7,7 @@ import {z} from 'zod';
 
 import type {Client, SqlfuProjectConfig} from './core/types.js';
 import {createNodeSqliteClient, migrationNickname} from './client.js';
-import {extractSchema, runSqlStatements} from './core/sqlite.js';
+import {extractSchema} from './core/sqlite.js';
 import {
   applyMigrations,
   baselineMigrationHistory,
@@ -52,7 +52,7 @@ export const router = {
           enableDrop: false,
         });
         await database.client.transaction(async (tx) => {
-          await runSqlStatements(tx, diffLines.join('\n'));
+          await tx.raw(diffLines.join('\n'));
         });
       } catch (error) {
         throw new Error(
@@ -191,7 +191,7 @@ export const router = {
       });
       await database.client.transaction(async (tx) => {
         if (diffLines.length > 0) {
-          await runSqlStatements(tx, diffLines.join('\n'));
+          await tx.raw(diffLines.join('\n'));
         }
         await replaceMigrationHistory(tx, targetMigrations);
       });
@@ -276,7 +276,7 @@ function slugify(value: string) {
 
 async function materializeDefinitionsSchema(config: SqlfuProjectConfig, definitionsSql: string) {
   await using database = await createScratchDatabase(config, 'materialize-definitions');
-  await runSqlStatements(database.client, definitionsSql);
+  await database.client.raw(definitionsSql);
   return extractSchema(database.client);
 }
 

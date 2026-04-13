@@ -1,5 +1,5 @@
 import {bindSyncSql} from '../core/sql.js';
-import {surroundWithBeginCommitRollbackSync} from '../core/sqlite.js';
+import {rawSqlWithSqlSplittingSync, surroundWithBeginCommitRollbackSync} from '../core/sqlite.js';
 import type {ResultRow, SqlQuery, SyncClient} from '../core/types.js';
 
 export interface BunSqliteStatementLike<TRow extends ResultRow = ResultRow> {
@@ -27,6 +27,15 @@ export function createBunClient(database: BunSqliteDatabaseLike): SyncClient<Bun
         rowsAffected: result.changes,
         lastInsertRowid: result.lastInsertRowid,
       };
+    },
+    raw(sql: string) {
+      return rawSqlWithSqlSplittingSync((singleQuery) => {
+        const result = database.run(singleQuery.sql, [...singleQuery.args]);
+        return {
+          rowsAffected: result.changes,
+          lastInsertRowid: result.lastInsertRowid,
+        };
+      }, sql);
     },
     *iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       yield* database.query<TRow>(query.sql).iterate(...query.args);

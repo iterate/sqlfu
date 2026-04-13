@@ -5,7 +5,7 @@ import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 
 import {createNodeSqliteClient} from '../src/client.js';
-import {extractSchema, runSqlStatements} from '../src/core/sqlite.js';
+import {extractSchema} from '../src/core/sqlite.js';
 import {applyMigrations} from '../src/migrations/index.js';
 import {diffSchemaSql} from '../src/schemadiff/index.js';
 
@@ -73,7 +73,7 @@ test('the goto shape works when destructive drops are explicitly enabled', async
     const liveClient = createNodeSqliteClient(liveDb);
     const targetClient = createNodeSqliteClient(targetDb);
 
-    await runSqlStatements(liveClient, `
+    await liveClient.raw(`
       create table person(name text not null);
       create table pet(name text not null);
       create table toy(name text not null);
@@ -102,7 +102,7 @@ test('the goto shape works when destructive drops are explicitly enabled', async
       ]
     `);
 
-    await runSqlStatements(liveClient, diff.join('\n'));
+    await liveClient.raw(diff.join('\n'));
 
     expect(await extractSchema(liveClient)).toBe('create table person(name text not null);');
   } finally {

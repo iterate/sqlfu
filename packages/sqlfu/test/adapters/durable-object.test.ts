@@ -3,11 +3,11 @@ import os from 'node:os';
 import path from 'node:path';
 
 import {Miniflare} from 'miniflare';
-import ts from 'typescript';
 import {expect, test} from 'vitest';
 import dedent from 'dedent';
 
-const packageRoot = path.resolve(path.dirname(import.meta.filename), '../..');
+import {ensureBuilt, packageRoot} from './ensure-built.js';
+
 declare const createDurableObjectClient: typeof import('../../src/index.ts').createDurableObjectClient;
 declare const sql: typeof import('../../src/index.ts').sql;
 
@@ -69,24 +69,53 @@ test('createDurableObjectClient can write and read rows in a durable object', as
   ]);
 });
 
+test('createDurableObjectClient.raw runs multiple statements', async () => {
+  await using fixture = await createDOFixture(
+    class ClientMultiStatementTest {
+      client: ReturnType<typeof createDurableObjectClient>;
+
+      constructor(state: any) {
+        this.client = createDurableObjectClient(state.storage.sql);
+      }
+
+      async seedPeople() {
+        return this.client.raw(`
+          create table person (
+            id integer primary key,
+            name text not null
+          );
+          insert into person (id, name) values (1, 'bob');
+          insert into person (id, name) values (2, 'ada');
+        `);
+      }
+
+      async listPeople() {
+        return this.client.all<{id: number; name: string}>(sql`
+          select id, name
+          from person
+          order by id
+        `);
+      }
+    },
+  );
+
+  await fixture.stub.seedPeople();
+
+  expect(await fixture.stub.listPeople()).toMatchObject([
+    {id: 1, name: 'bob'},
+    {id: 2, name: 'ada'},
+  ]);
+});
+
 async function createDOFixture<TInstance extends object>(
   classDef: new (...args: any[]) => TInstance,
 ) {
+  await ensureBuilt();
+
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-do-fixture-'));
   const workerPath = path.join(tempDir, 'worker.js');
-  const sqlRuntimePath = path.join(tempDir, 'runtime/sql.js');
-  const durableObjectRuntimePath = path.join(tempDir, 'runtime/durable-object.js');
-
   await Promise.all([
-    writeTranspiledModule(
-      path.join(packageRoot, 'src/core/sql.ts'),
-      sqlRuntimePath,
-    ),
-    writeTranspiledModule(
-      path.join(packageRoot, 'src/adapters/durable-object.ts'),
-      durableObjectRuntimePath,
-      [['../core/sql.js', './sql.js']],
-    ),
+    fs.cp(path.join(packageRoot, 'dist'), path.join(tempDir, 'runtime'), {recursive: true}),
   ]);
 
   const classDefString = classDef.toString().trim();
@@ -98,8 +127,8 @@ async function createDOFixture<TInstance extends object>(
   await fs.writeFile(
     workerPath,
     dedent`
-      import {createDurableObjectClient} from './runtime/durable-object.js';
-      import {sql} from './runtime/sql.js';
+      import {createDurableObjectClient} from './runtime/adapters/durable-object.js';
+      import {sql} from './runtime/core/sql.js';
       
       ${classDefString}
       
@@ -154,30 +183,6 @@ async function createDOFixture<TInstance extends object>(
       await fs.rm(tempDir, {recursive: true, force: true});
     },
   };
-}
-
-async function writeTranspiledModule(
-  sourcePath: string,
-  outputPath: string,
-  replacements: ReadonlyArray<readonly [from: string, to: string]> = [],
-) {
-  const source = await fs.readFile(sourcePath, 'utf8');
-  const transpiled = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.ES2022,
-      target: ts.ScriptTarget.ES2022,
-      verbatimModuleSyntax: true,
-    },
-    fileName: sourcePath,
-  });
-
-  let output = transpiled.outputText;
-  for (const [from, to] of replacements) {
-    output = output.replaceAll(from, to);
-  }
-
-  await fs.mkdir(path.dirname(outputPath), {recursive: true});
-  await fs.writeFile(outputPath, output);
 }
 
 interface DurableObjectNamespaceLike {

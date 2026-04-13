@@ -6,10 +6,10 @@ import path from 'node:path';
 import dedent from 'dedent';
 import {execa} from 'execa';
 import {chromium, type Page} from 'playwright';
-import ts from 'typescript';
 import {expect, test} from 'vitest';
 
-const packageRoot = path.resolve(path.dirname(import.meta.filename), '../..');
+import {ensureBuilt, packageRoot} from './ensure-built.js';
+
 declare const createExpoSqliteClient: typeof import('../../src/client.js').createExpoSqliteClient;
 declare const sql: typeof import('../../src/client.js').sql;
 type ExecaProcess = ReturnType<typeof execa>;
@@ -88,7 +88,50 @@ test(
   },
 );
 
+test(
+  'createExpoSqliteClient.raw runs multiple statements in a real expo web app',
+  {timeout: 180_000},
+  async () => {
+    await using fixture = await createExpoWebFixture(
+      class ClientMultiStatementTest {
+        client: ReturnType<typeof createExpoSqliteClient>;
+
+        constructor(db: any) {
+          this.client = createExpoSqliteClient(db);
+        }
+
+        async seedPeople() {
+          return this.client.raw(`
+            create table person (
+              id integer primary key,
+              name text not null
+            );
+            insert into person (id, name) values (1, 'bob');
+            insert into person (id, name) values (2, 'ada');
+          `);
+        }
+
+        async listPeople() {
+          return this.client.all<{id: number; name: string}>(sql`
+            select id, name
+            from person
+            order by id
+          `);
+        }
+      },
+    );
+
+    await fixture.stub.seedPeople();
+
+    expect(await fixture.stub.listPeople()).toMatchObject([
+      {id: 1, name: 'bob'},
+      {id: 2, name: 'ada'},
+    ]);
+  },
+);
+
 async function createExpoWebFixture<TInstance extends object>(classDef: new (...args: any[]) => TInstance) {
+  await ensureBuilt();
   await ensurePlaywrightBrowserInstalled();
 
   const classDefString = classDef.toString().trim();
@@ -105,27 +148,31 @@ async function createExpoWebFixture<TInstance extends object>(classDef: new (...
   await Promise.all([
     fs.writeFile(
       path.join(root, 'package.json'),
-      JSON.stringify({
-        name: 'sqlfu-expo-web-fixture',
-        private: true,
-        dependencies: {
-          expo: '55.0.13',
-          'expo-sqlite': '55.0.15',
-          react: '19.2.0',
-          'react-dom': '19.2.0',
-          'react-native': '0.83.4',
-          'react-native-web': '0.21.2',
-        },
-      }),
+      dedent`
+        {
+          "name": "sqlfu-expo-web-fixture",
+          "private": true,
+          "dependencies": {
+            "expo": "55.0.13",
+            "expo-sqlite": "55.0.15",
+            "react": "19.2.0",
+            "react-dom": "19.2.0",
+            "react-native": "0.83.4",
+            "react-native-web": "0.21.2"
+          }
+        }
+      ` + '\n',
     ),
     fs.writeFile(
       path.join(root, 'app.json'),
-      JSON.stringify({
-        expo: {
-          name: 'sqlfu expo web fixture',
-          slug: 'sqlfu-expo-web-fixture',
-        },
-      }),
+      dedent`
+        {
+          "expo": {
+            "name": "sqlfu expo web fixture",
+            "slug": "sqlfu-expo-web-fixture"
+          }
+        }
+      ` + '\n',
     ),
     fs.writeFile(
       path.join(root, 'metro.config.js'),
@@ -136,16 +183,7 @@ async function createExpoWebFixture<TInstance extends object>(classDef: new (...
         module.exports = config;
       ` + '\n',
     ),
-    fs.mkdir(path.join(root, 'runtime'), {recursive: true}),
-  ]);
-
-  await Promise.all([
-    writeTranspiledModule(path.join(packageRoot, 'src/core/sql.ts'), path.join(root, 'runtime', 'sql.js')),
-    writeTranspiledModule(
-      path.join(packageRoot, 'src/adapters/expo-sqlite.ts'),
-      path.join(root, 'runtime', 'expo-sqlite.js'),
-      [['../core/sql.js', './sql.js']],
-    ),
+    fs.cp(path.join(packageRoot, 'dist'), path.join(root, 'runtime'), {recursive: true}),
   ]);
 
   await fs.writeFile(
@@ -154,8 +192,8 @@ async function createExpoWebFixture<TInstance extends object>(classDef: new (...
       import React, {useEffect, useState} from 'react';
       import {Button, Text, TextInput, View} from 'react-native';
       import * as SQLite from 'expo-sqlite';
-      import {createExpoSqliteClient} from './runtime/expo-sqlite.js';
-      import {sql} from './runtime/sql.js';
+      import {createExpoSqliteClient} from './runtime/adapters/expo-sqlite.js';
+      import {sql} from './runtime/core/sql.js';
 
       ${classDefString}
 
@@ -363,30 +401,6 @@ async function ensurePlaywrightBrowserInstalled(): Promise<void> {
   }
 
   await runCommand('pnpm', ['exec', 'playwright', 'install', 'chromium'], packageRoot);
-}
-
-async function writeTranspiledModule(
-  sourcePath: string,
-  outputPath: string,
-  replacements: ReadonlyArray<readonly [from: string, to: string]> = [],
-) {
-  const source = await fs.readFile(sourcePath, 'utf8');
-  const transpiled = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.ES2022,
-      target: ts.ScriptTarget.ES2022,
-      verbatimModuleSyntax: true,
-    },
-    fileName: sourcePath,
-  });
-
-  let output = transpiled.outputText;
-  for (const [from, to] of replacements) {
-    output = output.replaceAll(from, to);
-  }
-
-  await fs.mkdir(path.dirname(outputPath), {recursive: true});
-  await fs.writeFile(outputPath, output);
 }
 
 async function getAvailablePort(): Promise<number> {

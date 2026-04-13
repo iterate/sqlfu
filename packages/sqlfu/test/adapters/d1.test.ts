@@ -2,11 +2,12 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import dedent from 'dedent';
 import {Miniflare} from 'miniflare';
-import ts from 'typescript';
 import {expect, test} from 'vitest';
 
-const packageRoot = path.resolve(path.dirname(import.meta.filename), '../..');
+import {ensureBuilt, packageRoot} from './ensure-built.js';
+
 declare const createD1Client: typeof import('../../src/index.ts').createD1Client;
 declare const sql: typeof import('../../src/index.ts').sql;
 
@@ -43,6 +44,18 @@ test('createD1Client works in a generated local worker fixture', async () => {
         return Response.json(rows);
       }
 
+      if (url.pathname === '/multi') {
+        await db.raw(`
+          create table person (
+            id integer primary key,
+            name text not null
+          );
+          insert into person (id, name) values (1, 'bob');
+          insert into person (id, name) values (2, 'ada');
+        `);
+        return Response.json({ok: true});
+      }
+
       return new Response('not found', {status: 404});
     },
   });
@@ -58,38 +71,65 @@ test('createD1Client works in a generated local worker fixture', async () => {
   ]);
 });
 
+test('createD1Client runs multiple statements in one query', async () => {
+  await using fixture = await createD1Fixture({
+    async fetch(request: Request, env: {DB: unknown}) {
+      const db = createD1Client(env.DB as Parameters<typeof createD1Client>[0]);
+      const url = new URL(request.url);
+
+      if (url.pathname === '/multi') {
+        await db.raw(`
+          create table person (
+            id integer primary key,
+            name text not null
+          );
+          insert into person (id, name) values (1, 'bob');
+          insert into person (id, name) values (2, 'ada');
+        `);
+        return Response.json({ok: true});
+      }
+
+      if (url.pathname === '/list') {
+        return Response.json(await db.all(sql`select id, name from person order by id`));
+      }
+
+      return new Response('not found', {status: 404});
+    },
+  });
+
+  expect(await fixture.fetch('http://fixture/multi')).toMatchObject({ok: true});
+  const res = await fixture.fetch('http://fixture/list');
+  expect(await res.json()).toMatchObject([
+    {id: 1, name: 'bob'},
+    {id: 2, name: 'ada'},
+  ]);
+});
+
 async function createD1Fixture(workerDef: {
   fetch(request: Request, env: {DB: unknown}, ctx: unknown): Promise<Response> | Response;
 }) {
+  await ensureBuilt();
+
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-d1-fixture-'));
   const workerPath = path.join(tempDir, 'worker.js');
-  const sqlRuntimePath = path.join(tempDir, 'runtime/sql.js');
-  const d1RuntimePath = path.join(tempDir, 'runtime/d1.js');
-
   await Promise.all([
-    writeTranspiledModule(path.join(packageRoot, 'src/core/sql.ts'), sqlRuntimePath),
-    writeTranspiledModule(
-      path.join(packageRoot, 'src/adapters/d1.ts'),
-      d1RuntimePath,
-      [['../core/sql.js', './sql.js']],
-    ),
+    fs.cp(path.join(packageRoot, 'dist'), path.join(tempDir, 'runtime'), {recursive: true}),
   ]);
 
   await fs.writeFile(
     workerPath,
-    [
-      `import {createD1Client} from './runtime/d1.js';`,
-      `import {sql} from './runtime/sql.js';`,
-      ``,
-      `const userFetch = ${toCallableFunctionSource(workerDef.fetch.toString())};`,
-      ``,
-      `export default {`,
-      `  fetch(request, env, ctx) {`,
-      `    return userFetch(request, env, ctx);`,
-      `  },`,
-      `};`,
-      ``,
-    ].join('\n'),
+    dedent`
+      import {createD1Client} from './runtime/adapters/d1.js';
+      import {sql} from './runtime/core/sql.js';
+
+      const userFetch = ${toCallableFunctionSource(workerDef.fetch.toString())};
+
+      export default {
+        fetch(request, env, ctx) {
+          return userFetch(request, env, ctx);
+        },
+      };
+    ` + '\n',
   );
 
   const miniflare = new Miniflare({
@@ -126,30 +166,6 @@ function toCallableFunctionSource(source: string): string {
   }
 
   return source;
-}
-
-async function writeTranspiledModule(
-  sourcePath: string,
-  outputPath: string,
-  replacements: ReadonlyArray<readonly [from: string, to: string]> = [],
-) {
-  const source = await fs.readFile(sourcePath, 'utf8');
-  const transpiled = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.ES2022,
-      target: ts.ScriptTarget.ES2022,
-      verbatimModuleSyntax: true,
-    },
-    fileName: sourcePath,
-  });
-
-  let output = transpiled.outputText;
-  for (const [from, to] of replacements) {
-    output = output.replaceAll(from, to);
-  }
-
-  await fs.mkdir(path.dirname(outputPath), {recursive: true});
-  await fs.writeFile(outputPath, output);
 }
 
 interface WorkerFetcherLike {

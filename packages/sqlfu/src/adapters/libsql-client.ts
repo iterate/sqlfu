@@ -1,5 +1,5 @@
 import {bindAsyncSql} from '../core/sql.js';
-import {surroundWithBeginCommitRollbackAsync} from '../core/sqlite.js';
+import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../core/sqlite.js';
 import type {AsyncClient, ResultRow, SqlQuery} from '../core/types.js';
 
 export interface LibsqlClientLike {
@@ -24,6 +24,15 @@ export function createLibsqlClient(client: LibsqlClientLike): AsyncClient<Libsql
       lastInsertRowid: result.lastInsertRowid,
     };
   };
+  const raw: AsyncClient<LibsqlClientLike>['raw'] = async (sql: string) => {
+    return rawSqlWithSqlSplittingAsync(async (singleQuery) => {
+      const result = await client.execute(toStatement(singleQuery));
+      return {
+        rowsAffected: result.rowsAffected,
+        lastInsertRowid: result.lastInsertRowid,
+      };
+    }, sql);
+  };
   const iterate: AsyncClient<LibsqlClientLike>['iterate'] = async function* <TRow extends ResultRow = ResultRow>(sqlQuery: SqlQuery) {
     for (const row of await all<TRow>(sqlQuery)) {
       yield row;
@@ -33,6 +42,7 @@ export function createLibsqlClient(client: LibsqlClientLike): AsyncClient<Libsql
     driver: client,
     all,
     run,
+    raw,
     iterate,
     async transaction<TResult>(fn: (tx: AsyncClient<LibsqlClientLike>) => Promise<TResult> | TResult) {
       return surroundWithBeginCommitRollbackAsync(queryClient, fn);

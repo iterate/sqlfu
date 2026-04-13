@@ -1,4 +1,4 @@
-import type {AsyncClient, Client, SyncClient} from './types.js';
+import type {AsyncClient, Client, QueryArg, SyncClient} from './types.js';
 
 export async function extractSchema(client: Client, schemaName = 'main'): Promise<string> {
   const rows = await client.all<{sql: string | null}>({
@@ -16,10 +16,36 @@ export async function extractSchema(client: Client, schemaName = 'main'): Promis
   return rows.map((row) => `${String(row.sql).toLowerCase()};`).join('\n');
 }
 
-export async function runSqlStatements(client: Client, sql: string): Promise<void> {
-  for (const statement of splitSqlStatements(sql)) {
-    await client.run({sql: statement, args: []});
+export function rawSqlWithSqlSplittingSync(
+  runOne: (query: {sql: string; args: readonly QueryArg[]}) => {rowsAffected?: number; lastInsertRowid?: string | number | bigint | null},
+  sql: string,
+) {
+  const statements = splitSqlStatements(sql);
+  if (statements.length <= 1) {
+    return runOne({sql, args: []});
   }
+
+  let lastResult = {};
+  for (const statement of statements) {
+    lastResult = runOne({sql: statement, args: []});
+  }
+  return lastResult;
+}
+
+export async function rawSqlWithSqlSplittingAsync(
+  runOne: (query: {sql: string; args: readonly QueryArg[]}) => Promise<{rowsAffected?: number; lastInsertRowid?: string | number | bigint | null}>,
+  sql: string,
+) {
+  const statements = splitSqlStatements(sql);
+  if (statements.length <= 1) {
+    return runOne({sql, args: []});
+  }
+
+  let lastResult = {};
+  for (const statement of statements) {
+    lastResult = await runOne({sql: statement, args: []});
+  }
+  return lastResult;
 }
 
 export function splitSqlStatements(sql: string): string[] {

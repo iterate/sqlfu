@@ -1,5 +1,5 @@
 import {bindSyncSql} from '../core/sql.js';
-import {surroundWithBeginCommitRollbackSync} from '../core/sqlite.js';
+import {rawSqlWithSqlSplittingSync, surroundWithBeginCommitRollbackSync} from '../core/sqlite.js';
 import type {ResultRow, SqlQuery, SyncClient} from '../core/types.js';
 
 export interface NodeSqliteStatementLike<TRow extends ResultRow = ResultRow> {
@@ -27,6 +27,15 @@ export function createNodeSqliteClient(database: NodeSqliteDatabaseLike): SyncCl
         rowsAffected: result.changes == null ? undefined : Number(result.changes),
         lastInsertRowid: result.lastInsertRowid,
       };
+    },
+    raw(sql: string) {
+      return rawSqlWithSqlSplittingSync((singleQuery) => {
+        const result = database.prepare(singleQuery.sql).run(...singleQuery.args);
+        return {
+          rowsAffected: result.changes == null ? undefined : Number(result.changes),
+          lastInsertRowid: result.lastInsertRowid,
+        };
+      }, sql);
     },
     *iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       for (const row of database.prepare(query.sql).iterate(...query.args)) {
