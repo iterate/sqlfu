@@ -627,6 +627,56 @@ describe('sync', () => {
   });
 });
 
+describe('viewing migrations', () => {
+  test('lists pending migrations in filename order', async () => {
+    await using fixture = await createMigrationsFixture('pending-migrations', {
+      migrations: {
+        create_person: `create table person(name text)`,
+        create_pet: `create table pet(name text)`,
+      },
+    });
+
+    await fixture.api.baseline({target: '2026-04-10T00.00.00.000Z_create_person'});
+
+    await expect(fixture.api.pending()).resolves.toMatchObject([
+      '2026-04-10T01.00.00.000Z_create_pet',
+    ]);
+  });
+
+  test('lists applied migrations in filename order', async () => {
+    await using fixture = await createMigrationsFixture('applied-migrations', {
+      migrations: {
+        create_person: `create table person(name text)`,
+        create_pet: `create table pet(name text)`,
+      },
+    });
+
+    await fixture.api.migrate();
+
+    await expect(fixture.api.applied()).resolves.toMatchObject([
+      '2026-04-10T00.00.00.000Z_create_person',
+      '2026-04-10T01.00.00.000Z_create_pet',
+    ]);
+  });
+
+  test('finds migrations by substring and marks whether they are applied', async () => {
+    await using fixture = await createMigrationsFixture('find-migrations', {
+      migrations: {
+        create_person: `create table person(name text)`,
+        create_pet: `create table pet(name text)`,
+        create_person_audit: `create table person_audit(name text)`,
+      },
+    });
+
+    await fixture.api.baseline({target: '2026-04-10T00.00.00.000Z_create_person'});
+
+    await expect(fixture.api.find({text: 'person'})).resolves.toMatchObject([
+      {name: '2026-04-10T00.00.00.000Z_create_person', applied: true},
+      {name: '2026-04-10T02.00.00.000Z_create_person_audit', applied: false},
+    ]);
+  });
+});
+
 async function createMigrationsFixture(
   slug: string,
   input: {

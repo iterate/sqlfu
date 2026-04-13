@@ -103,6 +103,51 @@ export const router = {
       await applyMigrationsToDatabase(context.config.db, migrations);
     }),
 
+  pending: base
+    .meta({
+      description: `List migrations that exist but have not been applied to the configured database.`,
+    })
+    .handler(async ({context}) => {
+      const migrations = await createRuntime(context).readMigrations();
+      await using database = await openMainDevDatabase(context.config.db);
+      const applied = await readMigrationHistory(database.client);
+      const appliedNames = new Set(applied.map((migration) => migration.name));
+      return migrations
+        .map((migration) => migrationName(migration))
+        .filter((name) => !appliedNames.has(name));
+    }),
+
+  applied: base
+    .meta({
+      description: `List migrations recorded in the configured database history.`,
+    })
+    .handler(async ({context}) => {
+      await using database = await openMainDevDatabase(context.config.db);
+      const applied = await readMigrationHistory(database.client);
+      return applied.map((migration) => migration.name);
+    }),
+
+  find: base
+    .meta({
+      description: `Find migrations by substring and show whether each one is applied.`,
+    })
+    .input(z.object({
+      text: z.string().min(1),
+    }))
+    .handler(async ({context, input}) => {
+      const migrations = await createRuntime(context).readMigrations();
+      await using database = await openMainDevDatabase(context.config.db);
+      const applied = await readMigrationHistory(database.client);
+      const appliedNames = new Set(applied.map((migration) => migration.name));
+      return migrations
+        .map((migration) => migrationName(migration))
+        .filter((name) => name.includes(input.text))
+        .map((name) => ({
+          name,
+          applied: appliedNames.has(name),
+        }));
+    }),
+
   baseline: base
     .meta({
       description: `Set migration history to an exact target without changing the live schema.`,
@@ -124,7 +169,7 @@ export const router = {
     })
     .input(
       z.object({
-        target: z.string().min(1),
+        target: z.string().min(1).meta({positional: true}),
       }),
     )
     .handler(async ({context, input}) => {
