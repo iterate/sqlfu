@@ -184,9 +184,10 @@ test('sql runner keeps line numbers aligned with editor lines', async ({page}) =
 
   await replaceCodeMirrorText(page, 'SQL editor', 'select *\nfrom posts\nwhere posts.slug like :slug');
 
-  const lineNumberOne = page.locator('.cm-lineNumbers .cm-gutterElement').first();
+  const lineNumberOne = page.locator('.cm-lineNumbers .cm-gutterElement').filter({hasText: /^1$/}).first();
   const firstLine = page.locator('.cm-line').first();
   await expect.poll(() => page.locator('.cm-lineNumbers .cm-gutterElement').count()).toBeGreaterThan(0);
+  await expect.poll(async () => Boolean(await lineNumberOne.boundingBox())).toBe(true);
   const [lineNumberOneBox, firstLineBox] = await Promise.all([
     lineNumberOne.boundingBox(),
     firstLine.boundingBox(),
