@@ -512,6 +512,7 @@ async function getSchemaResponse(dbPath: string): Promise<StudioSchemaResponse> 
     }));
 
     return {
+      projectName: path.basename(process.cwd()),
       projectRoot: process.cwd(),
       relations,
     };

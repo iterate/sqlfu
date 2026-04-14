@@ -64,7 +64,7 @@ function Studio() {
       <aside className="sidebar">
         <div className="sidebar-block">
           <h1>sqlfu/ui</h1>
-          <p className="lede">{schemaQuery.data.projectRoot}</p>
+          <p className="lede">{schemaQuery.data.projectName}</p>
         </div>
 
         <nav className="sidebar-block">
@@ -109,7 +109,7 @@ function Studio() {
       <main className="main">
         {route.kind === 'schema' ? (
           <SchemaPanel
-            projectRoot={schemaQuery.data.projectRoot}
+            projectName={schemaQuery.data.projectName}
             check={schemaCheckQuery.data}
           />
         ) : route.kind === 'sql' ? (
@@ -127,7 +127,7 @@ function Studio() {
 }
 
 function SchemaPanel(input: {
-  projectRoot: string;
+  projectName: string;
   check: SchemaCheckResponse;
 }) {
   const runCommandMutation = useMutation({
@@ -143,7 +143,7 @@ function SchemaPanel(input: {
       <header className="panel-header">
         <div>
           <h2>Schema</h2>
-          <p className="muted">{input.projectRoot}</p>
+          <p className="muted">{input.projectName}</p>
         </div>
       </header>
 
