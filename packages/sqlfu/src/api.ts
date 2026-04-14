@@ -563,7 +563,9 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
       lines: [
         'Pending Migrations',
         'Migration History is behind Migrations.',
-        'Recommendation: run `sqlfu migrate`.',
+        ...(recommendedTarget ? [
+          'Recommendation: Address Schema Drift.',
+        ] : ['Recommendation: run `sqlfu migrate`.']),
       ],
     });
   }

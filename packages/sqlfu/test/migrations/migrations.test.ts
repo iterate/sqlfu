@@ -201,7 +201,7 @@ describe('check recommendations', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Pending Migrations
       Migration History is behind Migrations.
-      Recommendation: run \`sqlfu migrate\`.
+      Recommendation: Address Schema Drift.
 
       Schema Drift
       Live Schema does not match Migration History.
@@ -232,7 +232,7 @@ describe('check recommendations', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Pending Migrations
       Migration History is behind Migrations.
-      Recommendation: run \`sqlfu migrate\`.
+      Recommendation: Address Schema Drift.
 
       Schema Drift
       Live Schema does not match Migration History.
