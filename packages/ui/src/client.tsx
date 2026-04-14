@@ -20,6 +20,7 @@ import type {
   QueryExecutionResponse,
   SaveSqlResponse,
   SqlAnalysisResponse,
+  SqlEditorDiagnostic,
   SqlRunnerResponse,
   StudioRelation,
   StudioSchemaResponse,
@@ -231,6 +232,7 @@ function SqlRunnerPanel(input: {
       editable
       workbenchKey={`sql:${draft.sql}`}
       sqlEditorRelations={input.relations}
+      sqlEditorDiagnostics={analysisQuery.data?.diagnostics}
       sqlEditorOnExecute={() => runMutation.mutate({sql: draft.sql, params: sanitizedParams})}
       paramsSchema={detectedParamsSchema}
       paramsData={sanitizedParams}
@@ -309,6 +311,12 @@ function QueryPanel(input: {
         method: 'DELETE',
       }),
   });
+  const analysisQuery = useQuery({
+    queryKey: ['query-sql-analysis', entry.id, sqlDraft],
+    queryFn: () => postJson<SqlAnalysisResponse>('/api/sql/analyze', {sql: sqlDraft}),
+    placeholderData: (previousData) => previousData,
+    enabled: sqlEditMode && sqlDraft.trim().length > 0,
+  });
   const handleRename = async () => {
     const result = await renameMutation.mutateAsync({name: renameDraft});
     setRenameMode(false);
@@ -377,6 +385,7 @@ function QueryPanel(input: {
       paramsSchema={buildExecutionSchema(entry)}
       paramsData={undefined}
       sqlEditorRelations={input.relations}
+      sqlEditorDiagnostics={sqlEditMode ? analysisQuery.data?.diagnostics : undefined}
       sqlReadonlyActions={!sqlEditMode ? (
         <button className="icon-button" type="button" aria-label="Edit query SQL" onClick={() => setSqlEditMode(true)}>
           ✎
@@ -427,6 +436,7 @@ function QueryWorkbench(input: {
   sql: string;
   editable?: boolean;
   sqlEditorRelations?: readonly StudioRelation[];
+  sqlEditorDiagnostics?: readonly SqlEditorDiagnostic[];
   sqlEditorOnExecute?: (value: string) => void;
   paramsSchema?: RJSFSchema;
   paramsData?: Record<string, unknown>;
@@ -473,6 +483,7 @@ function QueryWorkbench(input: {
                   value={input.sql}
                   ariaLabel={input.sqlEditorLabel ?? 'SQL editor'}
                   relations={input.sqlEditorRelations ?? []}
+                  diagnostics={input.sqlEditorDiagnostics}
                   onExecute={input.sqlEditorOnExecute}
                   onChange={(value) => input.onSqlChange?.(value)}
                 />

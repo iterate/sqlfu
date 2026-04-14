@@ -44,8 +44,15 @@ export type SaveSqlResponse = {
   readonly savedPath: string;
 };
 
+export type SqlEditorDiagnostic = {
+  readonly from: number;
+  readonly to: number;
+  readonly message: string;
+};
+
 export type SqlAnalysisResponse = {
   readonly paramsSchema?: JsonSchemaObject;
+  readonly diagnostics?: readonly SqlEditorDiagnostic[];
 };
 
 export type QueryFileMutationResponse = {

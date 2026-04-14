@@ -1,17 +1,19 @@
 import {SQLite, sql} from '@codemirror/lang-sql';
 import type {SQLNamespace} from '@codemirror/lang-sql';
 import {type Extension, Prec} from '@codemirror/state';
+import {lintGutter, linter} from '@codemirror/lint';
 import {EditorView, keymap} from '@codemirror/view';
 import {acceptCompletion, autocompletion} from '@codemirror/autocomplete';
 import CodeMirror from '@uiw/react-codemirror';
 
-import type {StudioRelation} from './shared.js';
+import type {SqlEditorDiagnostic, StudioRelation} from './shared.js';
 
 export function SqlCodeMirror(input: {
   value: string;
   onChange: (value: string) => void;
   ariaLabel: string;
   relations: readonly StudioRelation[];
+  diagnostics?: readonly SqlEditorDiagnostic[];
   onExecute?: (sql: string) => void;
 }) {
   const schema = buildSqlSchema(input.relations);
@@ -27,6 +29,14 @@ export function SqlCodeMirror(input: {
     autocompletion({
       interactionDelay: 0,
     }),
+    linter(() =>
+      (input.diagnostics ?? []).map((diagnostic) => ({
+        from: diagnostic.from,
+        to: diagnostic.to,
+        message: diagnostic.message,
+        severity: 'error' as const,
+      }))),
+    lintGutter(),
     EditorView.lineWrapping,
     Prec.highest(
       keymap.of([

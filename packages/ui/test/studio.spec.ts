@@ -159,6 +159,49 @@ test('sql runner provides syntax highlighting and schema autocomplete', async ({
   await expect(await readCodeMirrorText(page, 'SQL editor')).toContain(`select * from ${selectedLabel}`);
 });
 
+test('sql runner shows inline analysis diagnostics before execution', async ({page}) => {
+  await page.addInitScript(() => window.localStorage.clear());
+  await page.goto('/#sql');
+
+  await replaceCodeMirrorText(page, 'SQL editor', 'select * fro posts');
+
+  await expect.poll(() => page.locator('.cm-lintRange-error').count()).toBeGreaterThan(0);
+});
+
+test('saved query edit mode shows inline analysis diagnostics before saving', async ({page}) => {
+  await page.addInitScript(() => window.localStorage.clear());
+  await page.goto('/#query/list-post-cards');
+
+  await page.getByRole('button', {name: 'Edit query SQL'}).click();
+  await replaceCodeMirrorText(page, 'Query SQL editor', 'select * fro posts');
+
+  await expect.poll(() => page.locator('.cm-lintRange-error').count()).toBeGreaterThan(0);
+});
+
+test('sql runner keeps line numbers aligned with editor lines', async ({page}) => {
+  await page.addInitScript(() => window.localStorage.clear());
+  await page.goto('/#sql');
+
+  await replaceCodeMirrorText(page, 'SQL editor', 'select *\nfrom posts\nwhere posts.slug like :slug');
+
+  const lineNumberOne = page.locator('.cm-lineNumbers .cm-gutterElement').first();
+  const firstLine = page.locator('.cm-line').first();
+  await expect.poll(() => page.locator('.cm-lineNumbers .cm-gutterElement').count()).toBeGreaterThan(0);
+  const [lineNumberOneBox, firstLineBox] = await Promise.all([
+    lineNumberOne.boundingBox(),
+    firstLine.boundingBox(),
+  ]);
+
+  expect({
+    lineNumberOneBox,
+    firstLineBox,
+  }).toMatchObject({
+    lineNumberOneBox: expect.anything(),
+    firstLineBox: expect.anything(),
+  });
+  expect(Math.abs((lineNumberOneBox?.y ?? 0) - (firstLineBox?.y ?? 0))).toBeLessThanOrEqual(4);
+});
+
 test('sql runner executes from the editor with cmd-or-ctrl-enter', async ({page}) => {
   await page.addInitScript(() => window.localStorage.clear());
   await page.goto('/#sql');

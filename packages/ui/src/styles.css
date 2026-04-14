@@ -309,12 +309,14 @@ h3 {
 .cm-scroller {
   min-height: 16rem;
   font-family: "IBM Plex Mono", "SFMono-Regular", "Menlo", monospace;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
 }
 
 .cm-content,
 .cm-gutter {
-  padding-top: 1rem;
-  padding-bottom: 1rem;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .inline-editor input {
