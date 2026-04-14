@@ -8,7 +8,7 @@ test('schema page shows mismatch cards and can run the recommended sqlfu draft c
 
   await page.goto('/#schema');
 
-  await expect(page.getByRole('heading', {name: 'Schema'})).toBeVisible();
+  await expect(page.getByRole('heading', {name: 'Schema', exact: true})).toBeVisible();
   await expect(page.getByText('Repo Drift')).toBeVisible();
   await expect(page.getByText('Desired Schema does not match Migrations.')).toBeVisible();
   await expect(page.getByText('✅ No Pending Migrations')).toBeVisible();
@@ -25,6 +25,24 @@ test('schema page shows mismatch cards and can run the recommended sqlfu draft c
       return 0;
     }
   }).toBe(1);
+
+  await expect(page.getByRole('heading', {name: 'Desired Schema', exact: true})).toBeVisible();
+  await expect(await readCodeMirrorText(page, 'Desired Schema editor')).toContain('create table posts');
+
+  await expect(page.getByRole('heading', {name: 'Migrations', exact: true})).toBeVisible();
+  const migrationToggle = page.getByRole('button', {name: /create table posts/i}).first();
+  await expect(migrationToggle).toBeVisible();
+  await expect(migrationToggle).toContainText('Pending');
+  await migrationToggle.click();
+  await expect(
+    await readCodeMirrorText(page, 'create table posts migration editor'),
+  ).toContain('create view post_cards as');
+
+  await expect(page.getByRole('heading', {name: 'Migration History', exact: true})).toBeVisible();
+  await expect(page.getByText('No applied migrations.')).toBeVisible();
+
+  await expect(page.getByRole('heading', {name: 'Live Schema', exact: true})).toBeVisible();
+  await expect(await readCodeMirrorText(page, 'Live Schema editor')).toContain('create table posts');
 });
 
 test('table browser, sql runner, and generated query form work against a live fixture project', async ({page}) => {
@@ -305,8 +323,7 @@ test('sql runner suggests a generated name in the save prompt and does not save 
 async function replaceCodeMirrorText(page: any, ariaLabel: string, value: string) {
   const content = page.locator(`[aria-label="${ariaLabel}"] .cm-content`);
   await content.click();
-  await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+a`);
-  await page.keyboard.type(value);
+  await content.fill(value);
 }
 
 async function readCodeMirrorText(page: any, ariaLabel: string) {

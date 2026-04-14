@@ -226,6 +226,27 @@ export async function getCheckProblems(context: SqlfuRouterContext): Promise<rea
   return result.problems;
 }
 
+export async function getSchemaAuthorities(context: SqlfuRouterContext) {
+  const runtime = createRuntime(context);
+  const definitionsSql = await runtime.readDefinitionsSql();
+  const migrations = await runtime.readMigrations();
+
+  await using database = await openMainDevDatabase(context.config.db);
+  const applied = await readMigrationHistory(database.client);
+  const liveSchema = await extractSchema(database.client);
+
+  return {
+    desiredSchemaSql: definitionsSql,
+    migrations: migrations.map((migration) => ({
+      id: migrationName(migration),
+      content: migration.content,
+      applied: applied.some((historical) => historical.name === migrationName(migration)),
+    })),
+    migrationHistory: applied.map((migration) => migration.name),
+    liveSchemaSql: liveSchema,
+  };
+}
+
 export async function runSqlfuCommand(context: SqlfuRouterContext, command: string): Promise<void> {
   const normalized = command.trim();
 

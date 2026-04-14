@@ -1,6 +1,6 @@
 import {SQLite, sql} from '@codemirror/lang-sql';
 import type {SQLNamespace} from '@codemirror/lang-sql';
-import {type Extension, Prec} from '@codemirror/state';
+import {EditorState, type Extension, Prec} from '@codemirror/state';
 import {lintGutter, linter} from '@codemirror/lint';
 import {EditorView, keymap} from '@codemirror/view';
 import {acceptCompletion, autocompletion} from '@codemirror/autocomplete';
@@ -15,6 +15,7 @@ export function SqlCodeMirror(input: {
   relations: readonly StudioRelation[];
   diagnostics?: readonly SqlEditorDiagnostic[];
   onExecute?: (sql: string) => void;
+  readOnly?: boolean;
 }) {
   const schema = buildSqlSchema(input.relations);
   const executeKeymapHandler = (view: EditorView) => {
@@ -38,6 +39,8 @@ export function SqlCodeMirror(input: {
       }))),
     lintGutter(),
     EditorView.lineWrapping,
+    EditorState.readOnly.of(Boolean(input.readOnly)),
+    EditorView.editable.of(!input.readOnly),
     Prec.highest(
       keymap.of([
         {

@@ -19,6 +19,7 @@ import type {
   QueryFileMutationResponse,
   QueryExecutionResponse,
   SaveSqlResponse,
+  SchemaAuthoritiesResponse,
   SchemaCheckResponse,
   SqlAnalysisResponse,
   SqlEditorDiagnostic,
@@ -54,6 +55,10 @@ function Studio() {
   const schemaCheckQuery = useSuspenseQuery({
     queryKey: ['schema-check'],
     queryFn: () => fetchJson<SchemaCheckResponse>('/api/schema/check'),
+  });
+  const schemaAuthoritiesQuery = useSuspenseQuery({
+    queryKey: ['schema-authorities'],
+    queryFn: () => fetchJson<SchemaAuthoritiesResponse>('/api/schema/authorities'),
   });
 
   const selectedTable = selectTable(route, schemaQuery.data.relations);
@@ -111,6 +116,7 @@ function Studio() {
           <SchemaPanel
             projectName={schemaQuery.data.projectName}
             check={schemaCheckQuery.data}
+            authorities={schemaAuthoritiesQuery.data}
           />
         ) : route.kind === 'sql' ? (
           <SqlRunnerPanel relations={schemaQuery.data.relations} />
@@ -129,12 +135,14 @@ function Studio() {
 function SchemaPanel(input: {
   projectName: string;
   check: SchemaCheckResponse;
+  authorities: SchemaAuthoritiesResponse;
 }) {
   const runCommandMutation = useMutation({
     mutationFn: (body: {command: string}) =>
       postJson<{ok: true}>('/api/schema/command', body),
     onSuccess: async () => {
       await queryClient.invalidateQueries({queryKey: ['schema-check']});
+      await queryClient.invalidateQueries({queryKey: ['schema-authorities']});
     },
   });
 
@@ -150,7 +158,7 @@ function SchemaPanel(input: {
       <div className="stack">
         {input.check.cards.map((card) => (
           <section key={card.key} className={`card schema-card ${card.ok ? 'ok' : 'warn'}`}>
-            <div className="card-title">{card.ok ? card.okTitle : card.title}</div>
+            <h3 className="card-title">{card.ok ? card.okTitle : card.title}</h3>
             {!card.ok ? <p>{card.summary}</p> : null}
             {!card.ok && card.recommendation ? <p className="muted">{card.recommendation}</p> : null}
             {!card.ok && card.commands && card.commands.length > 0 ? (
@@ -175,6 +183,75 @@ function SchemaPanel(input: {
             ) : null}
           </section>
         ))}
+      </div>
+
+      <div className="split-grid authorities-grid">
+        <section className="card">
+          <h3 className="card-title">Desired Schema</h3>
+          <SqlCodeMirror
+            value={input.authorities.desiredSchemaSql}
+            ariaLabel="Desired Schema editor"
+            relations={[]}
+            onChange={() => {}}
+            readOnly
+          />
+        </section>
+
+        <section className="card">
+          <h3 className="card-title">Migrations</h3>
+          {input.authorities.migrations.length === 0 ? (
+            <p className="muted">No migrations.</p>
+          ) : (
+            <div className="stack">
+              {input.authorities.migrations.map((migration) => (
+                <details key={migration.id} className="migration-item">
+                  <summary role="button">
+                    <span>{humanizeMigrationName(migration.name)}</span>
+                    <span className={`pill ${migration.applied ? 'pill-ok' : ''}`}>
+                      {migration.applied ? 'Applied' : 'Pending'}
+                    </span>
+                  </summary>
+                  <div className="migration-meta muted">
+                    {migration.timestamp ?? 'No timestamp'}
+                  </div>
+                  <SqlCodeMirror
+                    value={migration.content}
+                    ariaLabel={`${humanizeMigrationName(migration.name)} migration editor`}
+                    relations={[]}
+                    onChange={() => {}}
+                    readOnly
+                  />
+                </details>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="card">
+          <h3 className="card-title">Migration History</h3>
+          {input.authorities.migrationHistory.length === 0 ? (
+            <p className="muted">No applied migrations.</p>
+          ) : (
+            <div className="column-list">
+              {input.authorities.migrationHistory.map((migration) => (
+                <div key={migration} className="column-item">
+                  <strong>{migration}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="card">
+          <h3 className="card-title">Live Schema</h3>
+          <SqlCodeMirror
+            value={input.authorities.liveSchemaSql}
+            ariaLabel="Live Schema editor"
+            relations={[]}
+            onChange={() => {}}
+            readOnly
+          />
+        </section>
       </div>
     </section>
   );
@@ -836,6 +913,10 @@ function slugifyPromptName(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+function humanizeMigrationName(value: string) {
+  return value.replaceAll('_', ' ');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

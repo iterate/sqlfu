@@ -20,6 +20,21 @@ export type SchemaCheckResponse = {
   readonly cards: readonly SchemaCheckCard[];
 };
 
+export type SchemaAuthorityMigration = {
+  readonly id: string;
+  readonly timestamp?: string;
+  readonly name: string;
+  readonly content: string;
+  readonly applied: boolean;
+};
+
+export type SchemaAuthoritiesResponse = {
+  readonly desiredSchemaSql: string;
+  readonly migrations: readonly SchemaAuthorityMigration[];
+  readonly migrationHistory: readonly string[];
+  readonly liveSchemaSql: string;
+};
+
 export type StudioRelation = {
   readonly name: string;
   readonly kind: 'table' | 'view';

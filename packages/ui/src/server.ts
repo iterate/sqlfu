@@ -3,8 +3,8 @@ import path from 'node:path';
 import {Database} from 'bun:sqlite';
 
 import type {QueryCatalog, QueryCatalogEntry, QueryArg, SqlfuProjectConfig, SqlfuRouterContext} from 'sqlfu/experimental';
-import {analyzeAdHocSqlForConfig, createBunClient, getCheckProblems, loadProjectConfig, runSqlfuCommand, splitSqlStatements} from 'sqlfu/experimental';
-import type {QueryFileMutationResponse, SaveSqlResponse, SchemaCheckCard, SchemaCheckResponse, SqlAnalysisResponse, SqlEditorDiagnostic, StudioColumn, StudioRelation, StudioSchemaResponse, TableRowsResponse} from './shared.js';
+import {analyzeAdHocSqlForConfig, createBunClient, getCheckProblems, getSchemaAuthorities, loadProjectConfig, runSqlfuCommand, splitSqlStatements} from 'sqlfu/experimental';
+import type {QueryFileMutationResponse, SaveSqlResponse, SchemaAuthoritiesResponse, SchemaCheckCard, SchemaCheckResponse, SqlAnalysisResponse, SqlEditorDiagnostic, StudioColumn, StudioRelation, StudioSchemaResponse, TableRowsResponse} from './shared.js';
 
 const clientEntryPath = path.join(import.meta.dir, 'client.tsx');
 const stylesPath = path.join(import.meta.dir, 'styles.css');
@@ -34,6 +34,10 @@ export async function startSqlfuUiServer(input: {
 
         if (url.pathname === '/api/schema/check') {
           return json(await getSchemaCheckResponse(config));
+        }
+
+        if (url.pathname === '/api/schema/authorities') {
+          return json(await getSchemaAuthoritiesResponse(config));
         }
 
         if (url.pathname.startsWith('/api/table/')) {
@@ -202,6 +206,21 @@ async function runSchemaCommand(
   } as const;
 }
 
+async function getSchemaAuthoritiesResponse(config: SqlfuProjectConfig): Promise<SchemaAuthoritiesResponse> {
+  const authorities = await getSchemaAuthorities(toSqlfuRouterContext(config));
+  return {
+    desiredSchemaSql: authorities.desiredSchemaSql,
+    migrations: authorities.migrations.map((migration) => ({
+      ...parseMigrationId(migration.id),
+      id: migration.id,
+      content: migration.content,
+      applied: migration.applied,
+    })),
+    migrationHistory: authorities.migrationHistory,
+    liveSchemaSql: authorities.liveSchemaSql,
+  };
+}
+
 function toSqlfuRouterContext(config: SqlfuProjectConfig): SqlfuRouterContext {
   return {config};
 }
@@ -255,6 +274,21 @@ function toSchemaCheckCard(
 function extractCommands(lines: readonly string[]) {
   return [...new Set(lines.flatMap((line) => [...line.matchAll(/`(sqlfu [^`]+)`/g)].map((match) => match[1]!)))]
     .filter((command) => !/[<>]/.test(command));
+}
+
+function parseMigrationId(id: string) {
+  const separatorIndex = id.indexOf('_');
+  if (separatorIndex === -1) {
+    return {
+      timestamp: undefined,
+      name: id,
+    };
+  }
+
+  return {
+    timestamp: id.slice(0, separatorIndex),
+    name: id.slice(separatorIndex + 1),
+  };
 }
 
 function toSqlEditorDiagnostic(sql: string, error: unknown): SqlEditorDiagnostic {
