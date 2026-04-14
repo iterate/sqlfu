@@ -6,7 +6,9 @@ import path from 'node:path';
 import dedent from 'dedent';
 import {execa} from 'execa';
 import {chromium, type Page} from 'playwright';
-import {expect, test} from 'vitest';
+import {expect, test as baseTest} from 'vitest';
+
+const test = baseTest.skipIf(!process.env.EXPO_TEST)
 
 import {ensureBuilt, packageRoot} from './ensure-built.js';
 

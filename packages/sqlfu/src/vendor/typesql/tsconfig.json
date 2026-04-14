@@ -1,0 +1,32 @@
+{
+  "extends": "../../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "outDir": "../../../dist/vendor",
+    "allowJs": true,
+    "noCheck": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "verbatimModuleSyntax": false,
+    "skipLibCheck": true,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": [
+    "./**/*.ts",
+    "../code-block-writer/**/*.ts",
+    "../small-utils.ts",
+    "../typesql-parser/**/*.ts",
+    "../antlr4/**/*.js"
+  ],
+  "exclude": [
+    "../../../../../node_modules",
+    "../../../dist",
+    "./codegen/pg.ts",
+    "./drivers/libsql.ts",
+    "./drivers/postgres.ts",
+    "./drivers/types.ts",
+    "./postgres-query-analyzer/**/*",
+    "./queryExectutor.ts"
+  ]
+}

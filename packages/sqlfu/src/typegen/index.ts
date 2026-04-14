@@ -1,60 +1,46 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {fileURLToPath} from 'node:url';
 
+import {analyzeVendoredTypesqlQueries} from './analyze-vendored-typesql.js';
 import {loadProjectConfig} from '../core/config.js';
 import type {Client, SqlfuProjectConfig} from '../core/types.js';
 import {extractSchema} from '../core/sqlite.js';
-import {runPackageBinary} from '../core/tooling.js';
 import {createNodeSqliteClient} from '../client.js';
-
-export async function writeTypesqlConfig(databaseUri: string): Promise<string> {
-  const config = await loadProjectConfig();
-  const tempDir = path.join(config.projectRoot, '.sqlfu');
-  const typesqlConfigPath = path.join(tempDir, 'typesql.json');
-  await fs.mkdir(path.dirname(typesqlConfigPath), {recursive: true});
-
-  await fs.writeFile(
-    typesqlConfigPath,
-    JSON.stringify(
-      {
-        databaseUri,
-        sqlDir: relativeToConfigFile(typesqlConfigPath, config.sqlDir),
-        client: 'libsql',
-        includeCrudTables: [],
-        target: 'node',
-      },
-      null,
-      2,
-    ) + '\n',
-  );
-
-  return typesqlConfigPath;
-}
 
 export async function generateQueryTypes(): Promise<void> {
   const config = await loadProjectConfig();
   const databasePath = await materializeTypegenDatabase(config);
-  const typesqlConfigPath = path.join(config.projectRoot, '.sqlfu', 'typesql.json');
-  await writeTypesqlConfig(databasePath);
-  await runPackageBinary('typesql-cli', ['compile', '--config', typesqlConfigPath], config.projectRoot);
-  await refineGeneratedTypes(databasePath, config.sqlDir);
-  // TODO: If we need custom fs support (for example memfs), column-name transforms such as
-  // snake_case -> camelCase, direct access to TypeSQL's intermediate descriptors so sqlfu can
-  // emit zod/custom nullability-aware output, or a first-class way to expose the generated SQL
-  // itself instead of hiding it inside wrapper functions, we may need to vendor TypeSQL instead
-  // of continuing to treat it as a black-box compiler plus post-processing step. Another concrete
-  // reason: TypeSQL currently falls over on writable CTE shapes; if sqlfu owns the parser/analyzer
-  // path we could AST-rewrite `insert/update ... returning ...` branches into equivalent select-ish
-  // analysis queries, similar to how pgkit handles those cases. Also, `sqlfu generate` currently
-  // depends on consumers having `typesql-cli` available even though it is an internal implementation
-  // detail; that's another reason to eventually vendor the TypeSQL pieces we rely on.
-  await rewriteGeneratedWrappers(config.sqlDir, config.generatedImportExtension);
-  await writeTypesqlConfig(databasePath);
-}
+  const schema = await loadSchema(databasePath);
+  const queryFiles = await loadQueryFiles(config.sqlDir);
+  const queryAnalyses = await analyzeVendoredTypesqlQueries(
+    databasePath,
+    queryFiles.map((query) => ({
+      sqlPath: query.sqlPath,
+      sqlContent: query.sqlContent,
+    })),
+  );
 
-const packageRoot = path.resolve(path.dirname(fileURLToPath(new URL('../../package.json', import.meta.url))));
+  await Promise.all(
+    queryFiles.map(async (queryFile) => {
+      const analysis = queryAnalyses.find((query) => query.sqlPath === queryFile.sqlPath);
+      if (!analysis) {
+        throw new Error(`Missing vendored TypeSQL analysis for ${queryFile.sqlPath}`);
+      }
+
+      const wrapperPath = path.join(config.sqlDir, replaceExtension(path.basename(queryFile.sqlPath), '.ts'));
+      const contents = analysis.ok
+        ? renderQueryWrapper({
+          sqlPath: queryFile.sqlPath,
+          descriptor: refineDescriptor(analysis.descriptor, queryFile.sqlContent, schema),
+        })
+        : `//Invalid SQL\nexport {};\n`;
+      await fs.writeFile(wrapperPath, contents);
+    }),
+  );
+
+  await writeGeneratedBarrel(config.sqlDir, queryFiles, config.generatedImportExtension);
+}
 
 type DisposableClient = {
   readonly client: Client;
@@ -74,27 +60,33 @@ type RelationInfo = {
   readonly sql?: string;
 };
 
-async function refineGeneratedTypes(databasePath: string, sqlDir: string): Promise<void> {
-  const schema = await loadSchema(databasePath);
-  const sqlEntries = await fs.readdir(sqlDir, {withFileTypes: true});
+type GeneratedField = {
+  readonly name: string;
+  readonly tsType: string;
+  readonly notNull: boolean;
+  readonly optional?: boolean;
+};
 
-  await Promise.all(
-    sqlEntries
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.sql'))
-      .map(async (entry) => {
-        const sqlPath = path.join(sqlDir, entry.name);
-        const resultColumns = inferQueryResultColumns(await fs.readFile(sqlPath, 'utf8'), schema);
-        if (resultColumns.size === 0) {
-          return;
-        }
+type GeneratedQueryDescriptor = {
+  readonly sql: string;
+  readonly queryType: 'Select' | 'Insert' | 'Update' | 'Delete' | 'Copy';
+  readonly returning?: true;
+  readonly multipleRowsResult: boolean;
+  readonly columns: readonly GeneratedField[];
+  readonly parameters: readonly (GeneratedField & {
+    readonly toDriver: string;
+    readonly isArray: boolean;
+  })[];
+  readonly data?: readonly (GeneratedField & {
+    readonly toDriver: string;
+    readonly isArray: boolean;
+  })[];
+};
 
-        await Promise.all([
-          patchGeneratedTypeFile(path.join(sqlDir, replaceExtension(entry.name, '.ts')), resultColumns),
-          patchGeneratedTypeFile(path.join(sqlDir, replaceExtension(entry.name, '.d.ts')), resultColumns),
-        ]);
-      }),
-  );
-}
+type QueryFile = {
+  readonly sqlPath: string;
+  readonly sqlContent: string;
+};
 
 async function materializeTypegenDatabase(config: SqlfuProjectConfig) {
   const tempDbPath = path.join(config.projectRoot, '.sqlfu', 'typegen.db');
@@ -130,141 +122,243 @@ async function openMainDevDatabase(dbPath: string): Promise<DisposableClient> {
   };
 }
 
-async function rewriteGeneratedWrappers(sqlDir: string, generatedImportExtension: '.js' | '.ts'): Promise<void> {
-  const sqlEntries = await fs.readdir(sqlDir, {withFileTypes: true});
+async function loadQueryFiles(sqlDir: string): Promise<readonly QueryFile[]> {
+  const entries = await fs.readdir(sqlDir, {withFileTypes: true});
+  const sqlEntries = entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.sql'))
+    .sort((left, right) => left.name.localeCompare(right.name));
 
-  await Promise.all(
-    sqlEntries
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
-      .map(async (entry) => {
-        const filePath = path.join(sqlDir, entry.name);
-        const contents = await fs.readFile(filePath, 'utf8');
-        const nextContents =
-          entry.name === 'index.ts'
-            ? rewriteGeneratedBarrel(contents, generatedImportExtension)
-            : rewriteGeneratedWrapper(contents);
-        if (nextContents !== contents) {
-          await fs.writeFile(filePath, nextContents);
-        }
-      }),
+  return Promise.all(
+    sqlEntries.map(async (entry) => {
+      const sqlPath = path.join(sqlDir, entry.name);
+      return {
+        sqlPath,
+        sqlContent: await fs.readFile(sqlPath, 'utf8'),
+      };
+    }),
   );
 }
 
-function rewriteGeneratedBarrel(contents: string, generatedImportExtension: '.js' | '.ts'): string {
-  return contents.replace(/(?<=export \* from "\.\/[^"]+)\.js(?=";)/g, generatedImportExtension);
+async function writeGeneratedBarrel(
+  sqlDir: string,
+  queryFiles: readonly QueryFile[],
+  generatedImportExtension: '.js' | '.ts',
+): Promise<void> {
+  const lines = queryFiles
+    .map((queryFile) => path.basename(queryFile.sqlPath, '.sql'))
+    .sort((left, right) => left.localeCompare(right))
+    .map((baseName) => `export * from "./${baseName}${generatedImportExtension}";`);
+  await fs.writeFile(path.join(sqlDir, 'index.ts'), lines.join('\n') + (lines.length > 0 ? '\n' : ''));
 }
 
-function rewriteGeneratedWrapper(contents: string): string {
-  if (contents.trim() === '//Invalid SQL') {
-    return `//Invalid SQL\nexport {};\n`;
-  }
-
-  if (!contents.startsWith(`import type { Client, Transaction } from '@libsql/client';\n\n`)) {
-    return contents;
-  }
-
-  const functionLine = contents
-    .split('\n')
-    .find((line) => line.startsWith('export async function '));
-  if (!functionLine) {
-    return contents;
-  }
-
-  const signature = parseGeneratedFunctionSignature(functionLine);
-  const typeBlocks = extractExportedTypeBlocks(contents);
-  const sqlBlock = extractSqlBlock(contents);
-  const executeArg = extractExecuteArgument(contents);
-  const resultMode = extractResultMode(contents);
-  const queryExpression = executeArg === 'sql' ? '{ sql, args: [] }' : executeArg;
-  const resultType = signature.returnType.endsWith('[]')
-    ? signature.returnType.slice(0, -2)
-    : signature.returnType.endsWith(' | null')
-      ? signature.returnType.slice(0, -7)
-      : signature.returnType;
+function renderQueryWrapper(input: {
+  sqlPath: string;
+  descriptor: GeneratedQueryDescriptor;
+}): string {
+  const functionName = toCamelCase(path.basename(input.sqlPath, '.sql'));
+  const capitalizedName = functionName[0]!.toUpperCase() + functionName.slice(1);
+  const dataTypeName = `${capitalizedName}Data`;
+  const paramsTypeName = `${capitalizedName}Params`;
+  const resultTypeName = `${capitalizedName}Result`;
+  const sqlConstantName = `${capitalizedName}Sql`;
+  const returnType = getReturnType(input.descriptor, resultTypeName);
+  const typeBlocks = buildTypeBlocks(input.descriptor, {
+    dataTypeName,
+    paramsTypeName,
+    resultTypeName,
+  });
+  const queryArgs = buildQueryArgs(input.descriptor);
+  const restParameters = buildFunctionParameters(input.descriptor, {
+    dataTypeName,
+    paramsTypeName,
+  });
 
   return [
     `import type {Client, SqlQuery} from 'sqlfu';`,
     ``,
-    typeBlocks,
+    ...typeBlocks,
     ``,
-    `export async function ${signature.name}(client: Client${signature.restParameters.length > 0 ? `, ${signature.restParameters}` : ''}): Promise<${signature.returnType}> {`,
-    indent(sqlBlock),
-    `\tconst query: SqlQuery = ${queryExpression};`,
+    `const ${sqlConstantName} = \``,
+    normalizeSqlForTemplate(input.descriptor.sql).join('\n').trim(),
+    `\``,
+    ``,
+    `export async function ${functionName}(client: Client${restParameters ? `, ${restParameters}` : ''}): Promise<${returnType}> {`,
+    `\tconst query: SqlQuery = { sql: ${sqlConstantName}, args: ${queryArgs} };`,
     ...buildGeneratedImplementation({
-      resultMode,
-      resultType,
-      resultProperties: extractTypeProperties(typeBlocks, resultType),
+      resultMode: getResultMode(input.descriptor),
+      resultType: resultTypeName,
+      resultProperties: getResultProperties(input.descriptor),
     }),
     `}`,
     ``,
   ].join('\n');
 }
 
-function parseGeneratedFunctionSignature(functionLine: string): {
-  readonly name: string;
-  readonly restParameters: string;
-  readonly returnType: string;
-} {
-  const nameStart = 'export async function '.length;
-  const openParen = functionLine.indexOf('(', nameStart);
-  const promiseStart = functionLine.lastIndexOf('): Promise<');
-  const promiseEnd = functionLine.lastIndexOf('> {');
-  const name = functionLine.slice(nameStart, openParen);
-  const parameters = functionLine.slice(openParen + 1, promiseStart);
-  const restParameters =
-    parameters === 'client: Client | Transaction'
-      ? ''
-      : parameters.slice('client: Client | Transaction, '.length);
-  const returnType = functionLine.slice(promiseStart + '): Promise<'.length, promiseEnd);
-  return {name, restParameters, returnType};
-}
-
-function extractExportedTypeBlocks(contents: string): string {
-  const lines = contents.split('\n');
-  const firstTypeIndex = lines.findIndex((line) => line.startsWith('export type '));
-  const functionIndex = lines.findIndex((line) => line.startsWith('export async function '));
-  return lines.slice(firstTypeIndex, functionIndex).join('\n').trimEnd();
-}
-
-function extractSqlBlock(contents: string): string {
-  const lines = contents.split('\n');
-  const sqlStart = lines.findIndex((line) => line.trimStart().startsWith('const sql = `'));
-  const sqlEnd = lines.findIndex((line, index) => index > sqlStart && line.trim() === '`');
-  return lines
-    .slice(sqlStart, sqlEnd + 1)
-    .map((line) => line.replace(/^\t/, ''))
-    .join('\n');
-}
-
-function extractExecuteArgument(contents: string): string {
-  const executeLine = contents
-    .split('\n')
-    .find((line) => line.includes('return client.execute('));
-  if (!executeLine) {
-    throw new Error('Could not find client.execute(...) in generated wrapper');
+function getReturnType(descriptor: GeneratedQueryDescriptor, resultTypeName: string): string {
+  const resultMode = getResultMode(descriptor);
+  if (resultMode === 'many') {
+    return `${resultTypeName}[]`;
   }
-
-  return executeLine.slice(executeLine.indexOf('return client.execute(') + 'return client.execute('.length, -1);
+  if (resultMode === 'nullableOne') {
+    return `${resultTypeName} | null`;
+  }
+  return resultTypeName;
 }
 
-function extractResultMode(contents: string): 'many' | 'nullableOne' | 'one' | 'metadata' {
-  if (!contents.includes(`.then(res => res.rows)`)) {
+function getResultMode(descriptor: GeneratedQueryDescriptor): 'many' | 'nullableOne' | 'one' | 'metadata' {
+  if (!descriptor.returning && descriptor.queryType !== 'Select') {
     return 'metadata';
   }
-
-  if (contents.includes(`.then(rows => rows.map(`)) {
+  if (descriptor.multipleRowsResult) {
     return 'many';
   }
-
-  if (contents.includes(`.then(rows => rows.length > 0 ?`)) {
+  if (descriptor.queryType === 'Select') {
     return 'nullableOne';
   }
+  return 'one';
+}
 
-  if (contents.includes(`.then(rows => mapArrayTo`)) {
-    return 'one';
+function buildTypeBlocks(
+  descriptor: GeneratedQueryDescriptor,
+  names: {
+    dataTypeName: string;
+    paramsTypeName: string;
+    resultTypeName: string;
+  },
+): string[] {
+  const blocks: string[] = [];
+  if ((descriptor.data?.length ?? 0) > 0) {
+    blocks.push(renderObjectType(names.dataTypeName, descriptor.data!, 'parameter'));
+  }
+  if (descriptor.parameters.length > 0) {
+    blocks.push(renderObjectType(names.paramsTypeName, descriptor.parameters, 'parameter'));
+  }
+  blocks.push(renderObjectType(names.resultTypeName, getResultFields(descriptor), 'result'));
+  return blocks.flatMap((block, index) => (index === 0 ? [block] : ['', block]));
+}
+
+function renderObjectType(
+  typeName: string,
+  fields: readonly GeneratedField[],
+  fieldKind: 'parameter' | 'result',
+): string {
+  const lines = fields.map((field) => {
+    const optional = fieldKind === 'parameter' ? Boolean(field.optional) : !field.notNull;
+    const orNull = fieldKind === 'parameter' && !field.notNull ? ' | null' : '';
+    return `\t${field.name}${optional ? '?' : ''}: ${field.tsType}${orNull};`;
+  });
+  return [`export type ${typeName} = {`, ...lines, `}`].join('\n');
+}
+
+function getResultFields(descriptor: GeneratedQueryDescriptor): readonly GeneratedField[] {
+  if (descriptor.returning || descriptor.queryType === 'Select') {
+    return descriptor.columns;
+  }
+  if (descriptor.queryType === 'Insert') {
+    return [
+      {name: 'rowsAffected', tsType: 'number', notNull: true},
+      {name: 'lastInsertRowid', tsType: 'number', notNull: true},
+    ];
+  }
+  return [
+    {name: 'rowsAffected', tsType: 'number', notNull: true},
+  ];
+}
+
+function buildFunctionParameters(
+  descriptor: GeneratedQueryDescriptor,
+  names: {
+    dataTypeName: string;
+    paramsTypeName: string;
+  },
+): string {
+  const parameters: string[] = [];
+  if ((descriptor.data?.length ?? 0) > 0) {
+    parameters.push(`data: ${names.dataTypeName}`);
+  }
+  if (descriptor.parameters.length > 0) {
+    parameters.push(`params: ${names.paramsTypeName}`);
+  }
+  return parameters.join(', ');
+}
+
+function buildQueryArgs(descriptor: GeneratedQueryDescriptor): string {
+  const args = [
+    ...(descriptor.data ?? []).map((field) => toDriver('data', field)),
+    ...descriptor.parameters.map((field) => toDriver('params', field)),
+  ];
+  return args.length > 0 ? `[${args.join(', ')}]` : '[]';
+}
+
+function toDriver(
+  variableName: 'data' | 'params',
+  param: GeneratedField & {
+    readonly toDriver: string;
+    readonly isArray: boolean;
+  },
+): string {
+  if (param.tsType === 'Date') {
+    return `${variableName}.${param.toDriver}`;
+  }
+  if (param.tsType === 'boolean') {
+    const variable = `${variableName}.${param.name}`;
+    return `${variable} != null ? Number(${variable}) : ${variable}`;
+  }
+  if (param.tsType.endsWith('[]')) {
+    return `...${variableName}.${param.name}`;
+  }
+  return `${variableName}.${param.name}`;
+}
+
+function normalizeSqlForTemplate(sql: string): string[] {
+  return `${sql.trimEnd()}\n`.split('\n');
+}
+
+function refineDescriptor(
+  descriptor: GeneratedQueryDescriptor,
+  sql: string,
+  schema: ReadonlyMap<string, RelationInfo>,
+): GeneratedQueryDescriptor {
+  const inferredColumns = inferQueryResultColumns(sql, schema);
+  if (inferredColumns.size === 0) {
+    return descriptor;
   }
 
-  throw new Error('Could not determine generated wrapper result mode');
+  return {
+    ...descriptor,
+    columns: descriptor.columns.map((column) => {
+      const inferredColumn = inferredColumns.get(column.name.replaceAll('"', ''));
+      if (!inferredColumn) {
+        return column;
+      }
+      return {
+        ...column,
+        tsType: column.tsType === 'any' ? inferredColumn.tsType : column.tsType,
+        notNull: column.notNull || inferredColumn.notNull,
+      };
+    }),
+  };
+}
+
+function getResultProperties(descriptor: GeneratedQueryDescriptor): ReadonlyArray<{
+  readonly name: string;
+  readonly optional: boolean;
+}> {
+  return getResultFields(descriptor).map((field) => ({
+    name: field.name,
+    optional: !field.notNull,
+  }));
+}
+
+function toCamelCase(value: string): string {
+  const parts = value
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((part) => part.toLowerCase());
+  if (parts.length === 0) {
+    return '';
+  }
+  return parts[0]! + parts.slice(1).map((part) => part[0]!.toUpperCase() + part.slice(1)).join('');
 }
 
 function buildGeneratedImplementation(input: {
@@ -318,31 +412,6 @@ function buildGeneratedImplementation(input: {
     ...resultAssignments,
     `\t};`,
   ];
-}
-
-function extractTypeProperties(typeBlocks: string, typeName: string): ReadonlyArray<{
-  readonly name: string;
-  readonly optional: boolean;
-}> {
-  const lines = typeBlocks.split('\n');
-  const typeStart = lines.findIndex((line) => line === `export type ${typeName} = {`);
-  const typeEnd = lines.findIndex((line, index) => index > typeStart && line === `}`);
-  return lines
-    .slice(typeStart + 1, typeEnd)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => line.slice(0, line.indexOf(':')))
-    .map((name) => ({
-      name: name.replace(/\?$/, ''),
-      optional: name.endsWith('?'),
-    }));
-}
-
-function indent(text: string): string {
-  return text
-    .split('\n')
-    .map((line) => `\t${line}`)
-    .join('\n');
 }
 
 async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, RelationInfo>> {
@@ -680,39 +749,6 @@ function mapSqliteTypeToTs(columnType: string): string {
     return 'Date';
   }
   return 'number';
-}
-
-async function patchGeneratedTypeFile(filePath: string, columns: ReadonlyMap<string, TsColumn>): Promise<void> {
-  let contents: string;
-  try {
-    contents = await fs.readFile(filePath, 'utf8');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return;
-    }
-    throw error;
-  }
-
-  const nextContents = contents.replace(
-    /^(\s*)([A-Za-z_][A-Za-z0-9_]*)\??:\s*any;$/gm,
-    (match, indentation: string, fieldName: string) => {
-      const column = columns.get(fieldName);
-      if (!column || column.tsType === 'any') {
-        return match;
-      }
-
-      return `${indentation}${fieldName}${column.notNull ? '' : '?'}: ${column.tsType};`;
-    },
-  );
-
-  if (nextContents !== contents) {
-    await fs.writeFile(filePath, nextContents);
-  }
-}
-
-function relativeToConfigFile(configFilePath: string, targetPath: string): string {
-  const relative = path.relative(path.dirname(configFilePath), targetPath);
-  return relative.length > 0 ? relative : '.';
 }
 
 function replaceExtension(fileName: string, nextExtension: '.ts' | '.d.ts'): string {
