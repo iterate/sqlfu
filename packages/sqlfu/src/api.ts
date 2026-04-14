@@ -6,7 +6,7 @@ import {z} from 'zod';
 
 import type {Client, SqlfuProjectConfig} from './core/types.js';
 import {createBunClient, createNodeSqliteClient, migrationNickname} from './client.js';
-import {extractSchema} from './core/sqlite.js';
+import {extractSchema, splitSqlStatements} from './core/sqlite.js';
 import {
   applyMigrations,
   baselineMigrationHistory,
@@ -37,32 +37,10 @@ export const router = {
   sync: base
     .meta({
       description: `Update the current database to match definitions.sql. Note: this should only be used for local development. For production databases, use 'sqlfu migrate' instead. ` +
-        `This command fails if semantic or destructive changes are required. You can run 'sqlfu draft' to create a migration file with the necessary changes.`,
+        `This command fails if semantic changes are required. You can run 'sqlfu draft' to create a migration file with the necessary changes.`,
     })
     .handler(async ({context}) => {
-      const definitionsSql = await readDefinitionsSql(context.config.definitionsPath);
-      await using database = await openMainDevDatabase(context.config.db);
-      const baselineSql = await extractSchema(database.client);
-      try {
-        const diffLines = await diffSchemaSql({
-          projectRoot: context.config.projectRoot,
-          baselineSql,
-          desiredSql: definitionsSql,
-          enableDrop: false,
-        });
-        await database.client.transaction(async (tx) => {
-          await tx.raw(diffLines.join('\n'));
-        });
-      } catch (error) {
-        throw new Error(
-          [
-            'sync could not apply definitions.sql safely to the current database.',
-            'Create a migration with `sqlfu draft`, edit it if needed, then run `sqlfu migrate`.',
-            '',
-            `Cause: ${summarizeSqlite3defError(error)}`,
-          ].join('\n'),
-        );
-      }
+      await syncSql(context);
     }),
 
   draft: base
@@ -204,8 +182,8 @@ export const router = {
       })
       .handler(async ({context}) => {
         const result = await analyzeDatabase(createRuntime(context));
-        if (result.problems.length > 0) {
-          throw new Error(result.problems.join('\n'));
+        if (result.mismatches.length > 0) {
+          throw new Error(result.mismatches.map((mismatch) => mismatch.lines.join('\n')).join('\n\n'));
         }
       }),
     migrationsMatchDefinitions: base.handler(async ({context}) => {
@@ -214,16 +192,20 @@ export const router = {
         materializeDefinitionsSchema(runtime.config, await runtime.readDefinitionsSql()),
         materializeMigrationsSchema(runtime.config, await runtime.readMigrations()),
       ]);
-      if (definitionsSchema !== migrationsSchema) {
+      if (!schemasEqual(definitionsSchema, migrationsSchema)) {
         throw new Error('replayed migrations do not match definitions.sql');
       }
     }),
   },
 };
 
-export async function getCheckProblems(context: SqlfuRouterContext): Promise<readonly string[]> {
+export async function getCheckMismatches(context: SqlfuRouterContext): Promise<readonly CheckMismatch[]> {
   const result = await analyzeDatabase(createRuntime(context));
-  return result.problems;
+  return result.mismatches;
+}
+
+export async function writeDefinitionsSql(context: SqlfuRouterContext, sql: string): Promise<void> {
+  await fs.writeFile(context.config.definitionsPath, `${sql.trimEnd()}\n`);
 }
 
 export async function getSchemaAuthorities(context: SqlfuRouterContext) {
@@ -255,6 +237,11 @@ export async function runSqlfuCommand(context: SqlfuRouterContext, command: stri
     return;
   }
 
+  if (normalized === 'sqlfu sync') {
+    await syncSql(context);
+    return;
+  }
+
   if (normalized === 'sqlfu migrate') {
     await migrateSql(context);
     return;
@@ -276,8 +263,8 @@ export async function runSqlfuCommand(context: SqlfuRouterContext, command: stri
 
   if (normalized === 'sqlfu check') {
     const result = await analyzeDatabase(createRuntime(context));
-    if (result.problems.length > 0) {
-      throw new Error(result.problems.join('\n'));
+    if (result.mismatches.length > 0) {
+      throw new Error(result.mismatches.map((mismatch) => mismatch.lines.join('\n')).join('\n\n'));
     }
     return;
   }
@@ -344,6 +331,37 @@ async function draftSql(context: SqlfuRouterContext, input?: {name?: string}) {
   const fileName = `${getMigrationPrefix(runtime.now())}_${slugify(input?.name ?? migrationNickname(body))}.sql`;
   await fs.mkdir(context.config.migrationsDir, {recursive: true});
   await fs.writeFile(path.join(context.config.migrationsDir, fileName), `${body}\n`);
+}
+
+async function syncSql(context: SqlfuRouterContext) {
+  const definitionsSql = await readDefinitionsSql(context.config.definitionsPath);
+  await using database = await openMainDevDatabase(context.config.db);
+  const baselineSql = await extractSchema(database.client);
+  try {
+    const diffLines = await diffSchemaSql({
+      projectRoot: context.config.projectRoot,
+      baselineSql,
+      desiredSql: definitionsSql,
+      enableDrop: true,
+    });
+
+    if (diffLines.length === 0) {
+      return;
+    }
+
+    await database.client.transaction(async (tx) => {
+      await tx.raw(diffLines.join('\n'));
+    });
+  } catch (error) {
+    throw new Error(
+      [
+        'sync could not apply definitions.sql safely to the current database.',
+        'Create a migration with `sqlfu draft`, edit it if needed, then run `sqlfu migrate`.',
+        '',
+        `Cause: ${summarizeSqlite3defError(error)}`,
+      ].join('\n'),
+    );
+  }
 }
 
 async function migrateSql(context: SqlfuRouterContext) {
@@ -475,13 +493,15 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
     materializeMigrationsSchema(runtime.config, migrations),
   ]);
 
+  let liveSchema: string;
+  let applied: readonly {name: string; content: string}[];
   await using database = await openMainDevDatabase(runtime.config.db);
-  const liveSchema = await extractSchema(database.client);
-  const applied = await readMigrationHistory(database.client);
+  liveSchema = await extractSchema(database.client);
+  applied = await readMigrationHistory(database.client);
   const appliedNames = new Set(applied.map((migration) => migration.name));
   const migrationByName = new Map(migrations.map((migration) => [migrationName(migration), migration]));
 
-  const hasRepoDrift = desiredSchema !== migrationsSchema;
+  const hasRepoDrift = !schemasEqual(desiredSchema, migrationsSchema);
   const historyMismatch = findHistoryMismatch(applied, migrationByName);
   const hasPendingMigrations = !historyMismatch && migrations.some((migration) => !appliedNames.has(migrationName(migration)));
 
@@ -489,9 +509,10 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
     .map((historical) => migrationByName.get(historical.name))
     .filter((migration): migration is Migration => Boolean(migration));
   const historicalSchema = await materializeMigrationsSchema(runtime.config, historicalMigrations);
-  const hasSchemaDrift = historicalSchema !== liveSchema;
-  const hasSchemaNotCurrent = desiredSchema !== liveSchema;
+  const hasSchemaDrift = !schemasEqual(historicalSchema, liveSchema);
+  const hasSchemaNotCurrent = !schemasEqual(desiredSchema, liveSchema);
   const recommendedTarget = await findRecommendedTarget(runtime.config, migrations, liveSchema);
+  const mismatches: CheckMismatch[] = [];
 
   if (historyMismatch) {
     const problemLine = historyMismatch.kind === 'deleted'
@@ -512,39 +533,45 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
           : [
             'Recommendation: restore the original migration from git.',
           ];
-    return {
-      problems: [
+    mismatches.push({
+      name: 'History Drift',
+      lines: [
         'History Drift',
         'Migration History does not match Migrations.',
         problemLine,
         ...recommendation,
       ],
-    };
+    });
   }
 
-  if (hasRepoDrift && !hasPendingMigrations && !hasSchemaDrift && !hasSchemaNotCurrent) {
-    return {
-      problems: [
+  if (hasRepoDrift) {
+    mismatches.push({
+      name: 'Repo Drift',
+      lines: [
         'Repo Drift',
         'Desired Schema does not match Migrations.',
-        'Recommendation: run `sqlfu draft`.',
+        hasSchemaNotCurrent
+          ? 'Recommendation: run `sqlfu draft` (reviewable migration).'
+          : 'Recommendation: run `sqlfu draft` (reviewable migration). Then maybe `sqlfu baseline <new-migration>` for a synced dev db.',
       ],
-    };
+    });
   }
 
-  if (!hasRepoDrift && hasPendingMigrations && !hasSchemaDrift) {
-    return {
-      problems: [
+  if (!historyMismatch && hasPendingMigrations) {
+    mismatches.push({
+      name: 'Pending Migrations',
+      lines: [
         'Pending Migrations',
         'Migration History is behind Migrations.',
         'Recommendation: run `sqlfu migrate`.',
       ],
-    };
+    });
   }
 
-  if (!hasRepoDrift && hasSchemaDrift) {
-    return {
-      problems: [
+  if (!historyMismatch && hasSchemaDrift) {
+    mismatches.push({
+      name: 'Schema Drift',
+      lines: [
         'Schema Drift',
         'Live Schema does not match Migration History.',
         ...(recommendedTarget ? [
@@ -552,40 +579,21 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
           `Recommendation: run \`sqlfu baseline ${recommendedTarget}\`.`,
         ] : ['Recommendation: run `sqlfu goto <target>`.']),
       ],
-    };
+    });
   }
 
-  if (hasRepoDrift) {
-    return {
-      problems: [
-        'Repo Drift',
-        'Desired Schema does not match Migrations.',
-        'Recommendation: run `sqlfu draft`.',
+  if (hasSchemaNotCurrent) {
+    mismatches.push({
+      name: 'Sync Drift',
+      lines: [
+        'Sync Drift',
+        'Desired Schema does not match Live Schema.',
+        'Recommendation: run `sqlfu sync`.',
       ],
-    };
+    });
   }
 
-  if (hasPendingMigrations) {
-    return {
-      problems: [
-        'Pending Migrations',
-        'Migration History is behind Migrations.',
-        'Recommendation: run `sqlfu migrate`.',
-      ],
-    };
-  }
-
-  if (hasSchemaDrift) {
-    return {
-      problems: [
-        'Schema Drift',
-        'Live Schema does not match Migration History.',
-        'Recommendation: run `sqlfu baseline <target>` or `sqlfu goto <target>`.',
-      ],
-    };
-  }
-
-  return {problems: []};
+  return {mismatches};
 }
 
 function findHistoryMismatch(
@@ -608,11 +616,22 @@ async function findRecommendedTarget(config: SqlfuProjectConfig, migrations: rea
   for (let index = 0; index < migrations.length; index += 1) {
     const candidate = migrations.slice(0, index + 1);
     const candidateSchema = await materializeMigrationsSchema(config, candidate);
-    if (candidateSchema === liveSchema) {
+    if (schemasEqual(candidateSchema, liveSchema)) {
       return migrationName(candidate.at(-1)!);
     }
   }
   return null;
+}
+
+function schemasEqual(left: string, right: string) {
+  return normalizeSchemaSql(left) === normalizeSchemaSql(right);
+}
+
+function normalizeSchemaSql(sql: string) {
+  return splitSqlStatements(sql)
+    .map((statement: string) => statement.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n');
 }
 
 function summarizeSqlite3defError(error: unknown) {
@@ -629,3 +648,8 @@ export interface SqlfuRouterContext {
   readonly config: SqlfuProjectConfig;
   readonly now?: () => Date;
 }
+
+export type CheckMismatch = {
+  readonly name: 'Repo Drift' | 'Pending Migrations' | 'History Drift' | 'Schema Drift' | 'Sync Drift';
+  readonly lines: readonly string[];
+};

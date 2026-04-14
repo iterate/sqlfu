@@ -4,6 +4,7 @@ import path from 'node:path';
 import {expect, test} from '@playwright/test';
 
 test('schema page shows mismatch cards and can run the recommended sqlfu draft command', async ({page}) => {
+  await using _project = await preserveSchemaProjectState(path.join(import.meta.dirname, 'projects', 'fixture-project'));
   const migrationsDir = path.join(import.meta.dirname, 'projects', 'fixture-project', 'migrations');
 
   await page.goto('/#schema');
@@ -13,7 +14,15 @@ test('schema page shows mismatch cards and can run the recommended sqlfu draft c
   await expect(page.getByText('Desired Schema does not match Migrations.')).toBeVisible();
   await expect(page.getByText('✅ No Pending Migrations')).toBeVisible();
   await expect(page.getByText('✅ No History Drift')).toBeVisible();
-  await expect(page.getByText('✅ No Schema Drift')).toBeVisible();
+  await expect(page.getByText('Schema Drift')).toBeVisible();
+  await expect(page.getByText('Live Schema does not match Migration History.')).toBeVisible();
+  await expect(page.getByText('✅ No Sync Drift')).toBeVisible();
+  await expect.poll(() => page.locator('.authority-card > summary').allTextContents()).toEqual([
+    'Desired Schema▾',
+    'Migrations▾',
+    'Migration History▾',
+    'Live Schema▾',
+  ]);
 
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', {name: 'sqlfu draft'}).click();
@@ -26,23 +35,119 @@ test('schema page shows mismatch cards and can run the recommended sqlfu draft c
     }
   }).toBe(1);
 
-  await expect(page.getByRole('heading', {name: 'Desired Schema', exact: true})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Desired Schema'})).toBeVisible();
   await expect(await readCodeMirrorText(page, 'Desired Schema editor')).toContain('create table posts');
 
-  await expect(page.getByRole('heading', {name: 'Migrations', exact: true})).toBeVisible();
-  const migrationToggle = page.getByRole('button', {name: /create table posts/i}).first();
+  await expect(page.getByRole('button', {name: 'Migrations'})).toBeVisible();
+  const migrationToggle = page.locator('.authority-migrations .migration-item').first().getByRole('button').first();
   await expect(migrationToggle).toBeVisible();
   await expect(migrationToggle).toContainText('Pending');
   await migrationToggle.click();
+  await expect(page.getByText(/_create_table_posts\.sql$/)).toBeVisible();
   await expect(
-    await readCodeMirrorText(page, 'create table posts migration editor'),
+    await readCodeMirrorText(page, 'create_table_posts migration editor'),
   ).toContain('create view post_cards as');
 
-  await expect(page.getByRole('heading', {name: 'Migration History', exact: true})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Migration History'})).toBeVisible();
   await expect(page.getByText('No applied migrations.')).toBeVisible();
 
-  await expect(page.getByRole('heading', {name: 'Live Schema', exact: true})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Live Schema'})).toBeVisible();
   await expect(await readCodeMirrorText(page, 'Live Schema editor')).toContain('create table posts');
+});
+
+test('desired schema can be edited and saved, and sync is disabled while it is dirty', async ({page}) => {
+  await using _project = await preserveSchemaProjectState(path.join(import.meta.dirname, 'projects', 'fixture-project'));
+  const projectRoot = path.join(import.meta.dirname, 'projects', 'fixture-project');
+  const definitionsPath = path.join(projectRoot, 'definitions.sql');
+
+  await page.goto('/#schema');
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', {name: 'sqlfu draft'}).click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', {name: /sqlfu baseline /}).click();
+  await expect(page.getByText('✅ No Repo Drift')).toBeVisible();
+
+  await expect(page.getByRole('button', {name: 'Save Desired Schema'})).toHaveCount(0);
+
+  await replaceCodeMirrorText(page, 'Desired Schema editor', `
+    create table posts (
+      id integer primary key,
+      slug text not null unique,
+      title text not null,
+      body text not null,
+      published integer not null
+    );
+
+    create view post_cards as
+    select id, slug, title, published
+    from posts;
+
+    create view published_posts as
+    select id, slug, title
+    from posts
+    where published = 1;
+  `);
+
+  await expect(page.getByRole('button', {name: 'Save Desired Schema'})).toBeVisible();
+
+  await page.getByRole('button', {name: 'Save Desired Schema'}).click();
+  await expect(fs.readFile(definitionsPath, 'utf8')).resolves.toContain('create view published_posts as');
+  await expect(page.getByText('Repo Drift')).toBeVisible();
+});
+
+test('history to live flow shows a baseline action when check recommends it', async ({page}) => {
+  await using _project = await preserveSchemaProjectState(path.join(import.meta.dirname, 'projects', 'fixture-project'));
+
+  await page.goto('/#schema');
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', {name: 'sqlfu draft'}).click();
+
+  const baselineButton = page.getByRole('button', {name: /sqlfu baseline /});
+  await expect(baselineButton).toBeVisible();
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await baselineButton.click();
+  await expect(page.getByText('✅ No History Drift')).toBeVisible();
+});
+
+test('history to live flow shows a goto action when check recommends it', async ({page}) => {
+  await using _project = await preserveSchemaProjectState(path.join(import.meta.dirname, 'projects', 'fixture-project'));
+  const projectRoot = path.join(import.meta.dirname, 'projects', 'fixture-project');
+  const migrationsDir = path.join(projectRoot, 'migrations');
+  const definitionsPath = path.join(projectRoot, 'definitions.sql');
+
+  await page.goto('/#schema');
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', {name: 'sqlfu draft'}).click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', {name: /sqlfu baseline /}).click();
+
+  const [migrationFileName] = (await fs.readdir(migrationsDir)).filter((name) => name.endsWith('.sql'));
+  await fs.appendFile(path.join(migrationsDir, migrationFileName!), `
+
+create view post_titles as
+select title
+from posts;
+`);
+  await fs.appendFile(definitionsPath, `
+
+create view post_titles as
+select title
+from posts;
+`);
+
+  await page.reload();
+
+  const gotoButton = page.getByRole('button', {name: /sqlfu goto /});
+  await expect(gotoButton).toBeVisible();
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await gotoButton.click();
+  await expect.poll(() => readCodeMirrorText(page, 'Live Schema editor')).toContain('create view post_titles as');
+  await expect(page.getByText('✅ No History Drift')).toBeVisible();
 });
 
 test('table browser, sql runner, and generated query form work against a live fixture project', async ({page}) => {
@@ -328,4 +433,43 @@ async function replaceCodeMirrorText(page: any, ariaLabel: string, value: string
 
 async function readCodeMirrorText(page: any, ariaLabel: string) {
   return (await page.locator(`[aria-label="${ariaLabel}"] .cm-content`).textContent()) ?? '';
+}
+
+async function preserveSchemaProjectState(projectRoot: string) {
+  const snapshotRoot = path.join(import.meta.dirname, '.tmp', `${path.basename(projectRoot)}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const targets = [
+    'definitions.sql',
+    'migrations',
+    'app.db',
+    '.sqlfu',
+  ] as const;
+
+  await fs.mkdir(path.dirname(snapshotRoot), {recursive: true});
+  await fs.mkdir(snapshotRoot, {recursive: true});
+  for (const target of targets) {
+    const sourcePath = path.join(projectRoot, target);
+    try {
+      await fs.cp(sourcePath, path.join(snapshotRoot, target), {recursive: true});
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+
+  return {
+    async [Symbol.asyncDispose]() {
+      for (const target of targets) {
+        await fs.rm(path.join(projectRoot, target), {recursive: true, force: true});
+        try {
+          await fs.cp(path.join(snapshotRoot, target), path.join(projectRoot, target), {recursive: true});
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            throw error;
+          }
+        }
+      }
+      await fs.rm(snapshotRoot, {recursive: true, force: true});
+    },
+  };
 }

@@ -147,7 +147,11 @@ describe('check recommendations', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Repo Drift
       Desired Schema does not match Migrations.
-      Recommendation: run \`sqlfu draft\`.]
+      Recommendation: run \`sqlfu draft\` (reviewable migration).
+
+      Sync Drift
+      Desired Schema does not match Live Schema.
+      Recommendation: run \`sqlfu sync\`.]
     `);
   });
 
@@ -162,7 +166,11 @@ describe('check recommendations', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Pending Migrations
       Migration History is behind Migrations.
-      Recommendation: run \`sqlfu migrate\`.]
+      Recommendation: run \`sqlfu migrate\`.
+
+      Sync Drift
+      Desired Schema does not match Live Schema.
+      Recommendation: run \`sqlfu sync\`.]
     `);
   });
 
@@ -177,7 +185,11 @@ describe('check recommendations', () => {
     await fixture.db.raw(`create table person(name text)`);
 
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
-      [Error: Schema Drift
+      [Error: Pending Migrations
+      Migration History is behind Migrations.
+      Recommendation: run \`sqlfu migrate\`.
+
+      Schema Drift
       Live Schema does not match Migration History.
       Recommended Baseline Target: 2026-04-10T00.00.00.000Z_create_person
       Recommendation: run \`sqlfu baseline 2026-04-10T00.00.00.000Z_create_person\`.]
@@ -204,10 +216,18 @@ describe('check recommendations', () => {
     `);
 
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
-      [Error: Schema Drift
+      [Error: Pending Migrations
+      Migration History is behind Migrations.
+      Recommendation: run \`sqlfu migrate\`.
+
+      Schema Drift
       Live Schema does not match Migration History.
       Recommended Baseline Target: 2026-04-10T01.00.00.000Z_create_pet
-      Recommendation: run \`sqlfu baseline 2026-04-10T01.00.00.000Z_create_pet\`.]
+      Recommendation: run \`sqlfu baseline 2026-04-10T01.00.00.000Z_create_pet\`.
+
+      Sync Drift
+      Desired Schema does not match Live Schema.
+      Recommendation: run \`sqlfu sync\`.]
     `);
   });
 });

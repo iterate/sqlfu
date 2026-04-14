@@ -3,7 +3,7 @@ import path from 'node:path';
 import {Database} from 'bun:sqlite';
 
 import type {QueryCatalog, QueryCatalogEntry, QueryArg, SqlfuProjectConfig, SqlfuRouterContext} from 'sqlfu/experimental';
-import {analyzeAdHocSqlForConfig, createBunClient, getCheckProblems, getSchemaAuthorities, loadProjectConfig, runSqlfuCommand, splitSqlStatements} from 'sqlfu/experimental';
+import {analyzeAdHocSqlForConfig, createBunClient, getCheckMismatches, getSchemaAuthorities, loadProjectConfig, runSqlfuCommand, splitSqlStatements, writeDefinitionsSql} from 'sqlfu/experimental';
 import type {QueryFileMutationResponse, SaveSqlResponse, SchemaAuthoritiesResponse, SchemaCheckCard, SchemaCheckResponse, SqlAnalysisResponse, SqlEditorDiagnostic, StudioColumn, StudioRelation, StudioSchemaResponse, TableRowsResponse} from './shared.js';
 
 const clientEntryPath = path.join(import.meta.dir, 'client.tsx');
@@ -73,6 +73,13 @@ export async function startSqlfuUiServer(input: {
           const body = await request.json() as {command?: unknown};
           return json(await runSchemaCommand(config, {
             command: typeof body.command === 'string' ? body.command : '',
+          }));
+        }
+
+        if (url.pathname === '/api/schema/definitions' && request.method === 'PUT') {
+          const body = await request.json() as {sql?: unknown};
+          return json(await saveDefinitionsSql(config, {
+            sql: typeof body.sql === 'string' ? body.sql : '',
           }));
         }
 
@@ -184,9 +191,9 @@ async function analyzeSql(
 }
 
 async function getSchemaCheckResponse(config: SqlfuProjectConfig): Promise<SchemaCheckResponse> {
-  const problems = await getCheckProblems(toSqlfuRouterContext(config));
+  const mismatches = await getCheckMismatches(toSqlfuRouterContext(config));
   return {
-    cards: buildSchemaCheckCards(problems),
+    cards: buildSchemaCheckCards(mismatches),
   };
 }
 
@@ -206,6 +213,22 @@ async function runSchemaCommand(
   } as const;
 }
 
+async function saveDefinitionsSql(
+  config: SqlfuProjectConfig,
+  input: {
+    sql: string;
+  },
+) {
+  if (!input.sql.trim()) {
+    throw new Error('Desired Schema is required');
+  }
+
+  await writeDefinitionsSql(toSqlfuRouterContext(config), input.sql);
+  return {
+    ok: true,
+  } as const;
+}
+
 async function getSchemaAuthoritiesResponse(config: SqlfuProjectConfig): Promise<SchemaAuthoritiesResponse> {
   const authorities = await getSchemaAuthorities(toSqlfuRouterContext(config));
   return {
@@ -213,6 +236,7 @@ async function getSchemaAuthoritiesResponse(config: SqlfuProjectConfig): Promise
     migrations: authorities.migrations.map((migration) => ({
       ...parseMigrationId(migration.id),
       id: migration.id,
+      fileName: `${migration.id}.sql`,
       content: migration.content,
       applied: migration.applied,
     })),
@@ -225,15 +249,20 @@ function toSqlfuRouterContext(config: SqlfuProjectConfig): SqlfuRouterContext {
   return {config};
 }
 
-function buildSchemaCheckCards(problems: readonly string[]): readonly SchemaCheckCard[] {
+function buildSchemaCheckCards(
+  mismatches: readonly {
+    readonly name: string;
+    readonly lines: readonly string[];
+  }[],
+): readonly SchemaCheckCard[] {
   const mismatchByTitle = new Map<string, {
     readonly summary: string;
     readonly recommendation?: string;
     readonly commands: readonly string[];
   }>();
 
-  if (problems.length > 0) {
-    const [title, summary, ...rest] = problems;
+  for (const mismatch of mismatches) {
+    const [title, summary, ...rest] = mismatch.lines;
     const recommendation = rest.find((line) => line.startsWith('Recommendation:'));
     mismatchByTitle.set(title ?? '', {
       summary: summary ?? '',
@@ -270,6 +299,13 @@ function buildSchemaCheckCards(problems: readonly string[]): readonly SchemaChec
       '✅ No Schema Drift',
       'Live Schema matches Migration History.',
       mismatchByTitle.get('Schema Drift'),
+    ),
+    toSchemaCheckCard(
+      'syncDrift',
+      'Sync Drift',
+      '✅ No Sync Drift',
+      'Desired Schema matches Live Schema.',
+      mismatchByTitle.get('Sync Drift'),
     ),
   ];
 }

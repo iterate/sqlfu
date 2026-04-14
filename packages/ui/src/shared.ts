@@ -7,7 +7,7 @@ export type StudioSchemaResponse = {
 };
 
 export type SchemaCheckCard = {
-  readonly key: 'repoDrift' | 'pendingMigrations' | 'historyDrift' | 'schemaDrift';
+  readonly key: 'repoDrift' | 'pendingMigrations' | 'historyDrift' | 'schemaDrift' | 'syncDrift';
   readonly title: string;
   readonly okTitle: string;
   readonly explainer: string;
@@ -23,6 +23,7 @@ export type SchemaCheckResponse = {
 
 export type SchemaAuthorityMigration = {
   readonly id: string;
+  readonly fileName: string;
   readonly timestamp?: string;
   readonly name: string;
   readonly content: string;

@@ -137,14 +137,45 @@ function SchemaPanel(input: {
   check: SchemaCheckResponse;
   authorities: SchemaAuthoritiesResponse;
 }) {
+  const [desiredSchemaDraft, setDesiredSchemaDraft] = useLocalStorageState(
+    `sqlfu-ui/schema-desired/${input.projectName}`,
+    {
+      defaultValue: input.authorities.desiredSchemaSql,
+    },
+  );
   const runCommandMutation = useMutation({
     mutationFn: (body: {command: string}) =>
       postJson<{ok: true}>('/api/schema/command', body),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({queryKey: ['schema-check']});
-      await queryClient.invalidateQueries({queryKey: ['schema-authorities']});
+      await Promise.all([
+        queryClient.refetchQueries({queryKey: ['schema']}),
+        queryClient.refetchQueries({queryKey: ['schema-check']}),
+        queryClient.refetchQueries({queryKey: ['schema-authorities']}),
+      ]);
     },
   });
+  const saveDesiredSchemaMutation = useMutation({
+    mutationFn: (body: {sql: string}) =>
+      fetchJson<{ok: true}>('/api/schema/definitions', {
+        method: 'PUT',
+        body,
+      }),
+    onSuccess: async (_, variables) => {
+      setDesiredSchemaDraft(normalizeSqlDraft(variables.sql));
+      await Promise.all([
+        queryClient.refetchQueries({queryKey: ['schema-check']}),
+        queryClient.refetchQueries({queryKey: ['schema-authorities']}),
+      ]);
+    },
+  });
+  const desiredSchemaSql = desiredSchemaDraft ?? input.authorities.desiredSchemaSql;
+  const desiredSchemaDirty = normalizeSqlDraft(desiredSchemaSql) !== normalizeSqlDraft(input.authorities.desiredSchemaSql);
+  const handleSchemaCommand = (command: string) => {
+    if (!window.confirm(`Run ${command}?`)) {
+      return;
+    }
+    runCommandMutation.mutate({command});
+  };
 
   return (
     <section className="panel">
@@ -155,12 +186,12 @@ function SchemaPanel(input: {
         </div>
       </header>
 
-      <div className="stack">
+      <div className="stack schema-cards">
         {input.check.cards.map((card) => (
-          <section key={card.key} className={`card schema-card ${card.ok ? 'ok' : 'warn'}`}>
+          <section key={card.key} className={`card schema-card ${card.ok ? 'ok compact' : 'warn'}`}>
             <div className="card-title-row schema-card-title-row">
               <h3 className="card-title">{card.ok ? card.okTitle : card.title}</h3>
-              <span className="muted schema-card-explainer">{card.explainer}</span>
+              {card.ok ? <span className="muted schema-card-explainer">{card.explainer}</span> : null}
             </div>
             {!card.ok ? <p>{card.summary}</p> : null}
             {!card.ok && card.recommendation ? <p className="muted">{card.recommendation}</p> : null}
@@ -173,10 +204,7 @@ function SchemaPanel(input: {
                     type="button"
                     aria-label={command}
                     onClick={() => {
-                      if (!window.confirm(`Run ${command}?`)) {
-                        return;
-                      }
-                      runCommandMutation.mutate({command});
+                      handleSchemaCommand(command);
                     }}
                   >
                     {command}
@@ -188,73 +216,118 @@ function SchemaPanel(input: {
         ))}
       </div>
 
-      <div className="split-grid authorities-grid">
-        <section className="card authority-card authority-desired">
-          <h3 className="card-title">Desired Schema</h3>
-          <SqlCodeMirror
-            value={input.authorities.desiredSchemaSql}
-            ariaLabel="Desired Schema editor"
-            relations={[]}
-            onChange={() => {}}
-            readOnly
-          />
-        </section>
+      <div className="authorities-grid">
+        <details open className="card authority-card authority-desired">
+          <summary className="authority-card-summary" role="button">
+            <span className="card-title">Desired Schema</span>
+            <span className="accordion-chevron" aria-hidden="true">
+              ▾
+            </span>
+          </summary>
+          <div className="authority-card-body">
+            <div className="card-title-row authority-card-toolbar">
+              <div />
+              {desiredSchemaDirty ? (
+                <button
+                  className="icon-button"
+                  type="button"
+                  aria-label="Save Desired Schema"
+                  onClick={() => saveDesiredSchemaMutation.mutate({sql: desiredSchemaSql})}
+                >
+                  💾
+                </button>
+              ) : null}
+            </div>
+            <SqlCodeMirror
+              value={desiredSchemaSql}
+              ariaLabel="Desired Schema editor"
+              relations={[]}
+              onChange={setDesiredSchemaDraft}
+            />
+          </div>
+        </details>
 
-        <section className="card authority-card authority-migrations">
-          <h3 className="card-title">Migrations</h3>
-          {input.authorities.migrations.length === 0 ? (
-            <p className="muted">No migrations.</p>
-          ) : (
-            <div className="stack">
-              {input.authorities.migrations.map((migration) => (
-                <details key={migration.id} className="migration-item">
-                  <summary role="button">
-                    <span>{humanizeMigrationName(migration.name)}</span>
-                    <span className={`pill ${migration.applied ? 'pill-ok' : ''}`}>
-                      {migration.applied ? 'Applied' : 'Pending'}
-                    </span>
-                  </summary>
-                  <div className="migration-meta muted">
-                    {migration.timestamp ?? 'No timestamp'}
+        <details open className="card authority-card authority-migrations">
+          <summary className="authority-card-summary" role="button">
+            <span className="card-title">Migrations</span>
+            <span className="accordion-chevron" aria-hidden="true">
+              ▾
+            </span>
+          </summary>
+          <div className="authority-card-body">
+            {input.authorities.migrations.length === 0 ? (
+              <p className="muted">No migrations.</p>
+            ) : (
+              <div className="stack">
+                {input.authorities.migrations.map((migration) => (
+                  <details key={migration.id} className="migration-item">
+                    <summary role="button" className="migration-summary">
+                      <span>{migration.name}</span>
+                      <span className="migration-summary-right">
+                        <span className={`pill ${migration.applied ? 'pill-ok' : ''}`}>
+                          {migration.applied ? 'Applied' : 'Pending'}
+                        </span>
+                        <span className="accordion-chevron" aria-hidden="true">
+                          ▾
+                        </span>
+                      </span>
+                    </summary>
+                    <div className="migration-meta muted">
+                      {migration.fileName}
+                    </div>
+                    <SqlCodeMirror
+                      value={migration.content}
+                      ariaLabel={`${migration.name} migration editor`}
+                      relations={[]}
+                      onChange={() => {}}
+                      readOnly
+                    />
+                  </details>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
+
+        <details open className="card authority-card authority-history">
+          <summary className="authority-card-summary" role="button">
+            <span className="card-title">Migration History</span>
+            <span className="accordion-chevron" aria-hidden="true">
+              ▾
+            </span>
+          </summary>
+          <div className="authority-card-body">
+            {input.authorities.migrationHistory.length === 0 ? (
+              <p className="muted">No applied migrations.</p>
+            ) : (
+              <div className="column-list">
+                {input.authorities.migrationHistory.map((migration) => (
+                  <div key={migration} className="column-item">
+                    <strong>{migration}</strong>
                   </div>
-                  <SqlCodeMirror
-                    value={migration.content}
-                    ariaLabel={`${humanizeMigrationName(migration.name)} migration editor`}
-                    relations={[]}
-                    onChange={() => {}}
-                    readOnly
-                  />
-                </details>
-              ))}
-            </div>
-          )}
-        </section>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
 
-        <section className="card authority-card authority-history">
-          <h3 className="card-title">Migration History</h3>
-          {input.authorities.migrationHistory.length === 0 ? (
-            <p className="muted">No applied migrations.</p>
-          ) : (
-            <div className="column-list">
-              {input.authorities.migrationHistory.map((migration) => (
-                <div key={migration} className="column-item">
-                  <strong>{migration}</strong>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="card authority-card authority-live">
-          <h3 className="card-title">Live Schema</h3>
-          <SqlCodeMirror
-            value={input.authorities.liveSchemaSql}
-            ariaLabel="Live Schema editor"
-            relations={[]}
-            onChange={() => {}}
-            readOnly
-          />
-        </section>
+        <details open className="card authority-card authority-live">
+          <summary className="authority-card-summary" role="button">
+            <span className="card-title">Live Schema</span>
+            <span className="accordion-chevron" aria-hidden="true">
+              ▾
+            </span>
+          </summary>
+          <div className="authority-card-body">
+            <SqlCodeMirror
+              value={input.authorities.liveSchemaSql}
+              ariaLabel="Live Schema editor"
+              relations={[]}
+              onChange={() => {}}
+              readOnly
+            />
+          </div>
+        </details>
       </div>
     </section>
   );
@@ -918,8 +991,8 @@ function slugifyPromptName(value: string) {
     .replace(/^-+|-+$/g, '');
 }
 
-function humanizeMigrationName(value: string) {
-  return value.replaceAll('_', ' ');
+function normalizeSqlDraft(value: string) {
+  return value.trimEnd();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
