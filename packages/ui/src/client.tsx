@@ -58,9 +58,8 @@ function Studio() {
     <Shell>
       <aside className="sidebar">
         <div className="sidebar-block">
-          <div className="eyebrow">Explorer</div>
           <h1>sqlfu/ui</h1>
-          <p className="lede">SQLite browsing, ad hoc SQL, and generated query forms from the current `sqlfu` project.</p>
+          <p className="lede">{schemaQuery.data.projectRoot}</p>
         </div>
 
         <nav className="sidebar-block">
@@ -226,7 +225,6 @@ function SqlRunnerPanel(input: {
 
   return (
     <QueryWorkbench
-      eyebrow="Tool"
       title="SQL runner"
       sql={draft.sql}
       editable
@@ -234,7 +232,7 @@ function SqlRunnerPanel(input: {
       sqlEditorRelations={input.relations}
       sqlEditorDiagnostics={analysisQuery.data?.diagnostics}
       sqlEditorOnExecute={() => runMutation.mutate({sql: draft.sql, params: sanitizedParams})}
-      paramsSchema={detectedParamsSchema}
+      paramsSchema={omitSchemaTitle(detectedParamsSchema)}
       paramsData={sanitizedParams}
       onSqlChange={(sql) => setDraft({...draft, sql})}
       onParamsChange={(params) => setDraft({...draft, params: sanitizeFormData(params, detectedParamsSchema)})}
@@ -247,6 +245,7 @@ function SqlRunnerPanel(input: {
       emptyMessage="Submit SQL to inspect rows or metadata."
       runLabel="Run SQL"
       saveLabel="Save query"
+      paramsCardTitle="Params"
     />
   );
 }
@@ -351,7 +350,6 @@ function QueryPanel(input: {
   return (
     <QueryWorkbench
       workbenchKey={entry.id}
-      eyebrow={entry.queryType.toLowerCase()}
       title={renameMode ? renameDraft : entry.id}
       titleEditor={renameMode ? (
         <div className="inline-editor">
@@ -409,6 +407,7 @@ function QueryPanel(input: {
       onSqlChange={setSqlDraft}
       readonlyMeta={
         <>
+          <span className="pill">{entry.queryType.toLowerCase()}</span>
           <span className="pill">{input.entry.resultMode}</span>
           <span className="pill">{entry.sqlFile}</span>
         </>
@@ -423,13 +422,13 @@ function QueryPanel(input: {
       executionResult={mutation.data}
       emptyMessage="Submit form data to execute the query."
       runLabel="Run generated query"
+      paramsCardTitle="Params"
     />
   );
 }
 
 function QueryWorkbench(input: {
   workbenchKey?: string;
-  eyebrow: string;
   title: string;
   titleEditor?: ReactNode;
   titleActions?: ReactNode;
@@ -455,12 +454,13 @@ function QueryWorkbench(input: {
   emptyMessage: string;
   runLabel: string;
   saveLabel?: string;
+  sqlCardTitle?: string;
+  paramsCardTitle?: string;
 }) {
   return (
     <section className="panel">
       <header className="panel-header">
         <div>
-          <div className="eyebrow">{input.eyebrow}</div>
           {input.titleEditor ?? <h2>{input.title}</h2>}
         </div>
         <div className="panel-header-actions">
@@ -471,14 +471,15 @@ function QueryWorkbench(input: {
 
       <div className="split-grid">
         <section className="card">
-          <div className="card-title-row">
-            <div className="card-title">SQL</div>
-            {input.sqlReadonlyActions}
-          </div>
+          {input.sqlCardTitle || input.sqlReadonlyActions ? (
+            <div className="card-title-row">
+              {input.sqlCardTitle ? <div className="card-title">{input.sqlCardTitle}</div> : <div />}
+              {input.sqlReadonlyActions}
+            </div>
+          ) : null}
           {input.editable ? (
             <div className="stack">
               <label className="form-label">
-                <span>{input.sqlEditorLabel ?? 'SQL editor'}</span>
                 <SqlCodeMirror
                   value={input.sql}
                   ariaLabel={input.sqlEditorLabel ?? 'SQL editor'}
@@ -496,7 +497,7 @@ function QueryWorkbench(input: {
         </section>
 
         <section className="card">
-          <div className="card-title">Run query</div>
+          <div className="card-title">{input.paramsCardTitle ?? 'Params'}</div>
           <div className="form-stack">
             {input.paramsSchema ? (
               <Form
@@ -718,6 +719,17 @@ function buildSqlRunnerParamsSchema(sql: string): RJSFSchema | undefined {
     properties: Object.fromEntries(parameterNames.map((name) => [name, {type: 'string', title: name}])),
     required: parameterNames,
     additionalProperties: false,
+  };
+}
+
+function omitSchemaTitle(schema: RJSFSchema | undefined): RJSFSchema | undefined {
+  if (!schema) {
+    return undefined;
+  }
+
+  return {
+    ...schema,
+    title: undefined,
   };
 }
 

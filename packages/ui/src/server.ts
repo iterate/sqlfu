@@ -422,7 +422,10 @@ async function getSchemaResponse(dbPath: string): Promise<StudioSchemaResponse> 
       sql: row.sql ?? undefined,
     }));
 
-    return {relations};
+    return {
+      projectRoot: process.cwd(),
+      relations,
+    };
   } finally {
     database.close();
   }

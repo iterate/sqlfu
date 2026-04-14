@@ -1,6 +1,7 @@
 import type {JsonSchemaObject} from 'sqlfu/experimental';
 
 export type StudioSchemaResponse = {
+  readonly projectRoot: string;
   readonly relations: readonly StudioRelation[];
 };
 
