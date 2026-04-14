@@ -1,6 +1,5 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
 
 import {analyzeVendoredTypesqlQueries} from './analyze-vendored-typesql.js';
 import type {
@@ -14,7 +13,7 @@ import type {
 import {loadProjectConfig} from '../core/config.js';
 import type {Client, SqlfuProjectConfig} from '../core/types.js';
 import {extractSchema} from '../core/sqlite.js';
-import {createNodeSqliteClient} from '../client.js';
+import {createBunClient, createNodeSqliteClient} from '../client.js';
 
 export type {
   JsonSchema,
@@ -121,23 +120,58 @@ async function materializeTypegenDatabase(config: SqlfuProjectConfig) {
   await fs.rm(`${tempDbPath}-shm`, {force: true});
   await fs.rm(`${tempDbPath}-wal`, {force: true});
 
-  const database = new DatabaseSync(tempDbPath);
-  const client = createNodeSqliteClient(database);
-
-  try {
-    client.raw(schemaSql);
-  } finally {
-    database.close();
-  }
+  await using typegenDatabase = await openMainDevDatabase(tempDbPath);
+  await typegenDatabase.client.raw(schemaSql);
 
   return tempDbPath;
 }
 
 async function openMainDevDatabase(dbPath: string): Promise<DisposableClient> {
   await fs.mkdir(path.dirname(dbPath), {recursive: true});
+  const runtime = process.env.SQLFU_SQLITE_RUNTIME
+    ?? ('Bun' in globalThis ? 'bun' : 'node');
+
+  if (runtime === 'bun') {
+    const moduleName = 'bun:sqlite';
+    const {Database} = await import(moduleName) as {
+      Database: new (path: string) => {
+        close(): void;
+        query(query: string): {
+          all(...params: readonly unknown[]): Record<string, unknown>[];
+          iterate(...params: readonly unknown[]): IterableIterator<Record<string, unknown>>;
+        };
+        run(query: string, params?: readonly unknown[]): {
+          readonly changes?: number;
+          readonly lastInsertRowid?: string | number | bigint | null;
+        };
+      };
+    };
+    const database = new Database(dbPath);
+    return {
+      client: createBunClient(database as Parameters<typeof createBunClient>[0]),
+      async [Symbol.asyncDispose]() {
+        database.close();
+      },
+    };
+  }
+
+  const moduleName = 'node:sqlite';
+  const {DatabaseSync} = await import(moduleName) as {
+    DatabaseSync: new (path: string) => {
+      close(): void;
+      prepare(query: string): {
+        all(...params: readonly unknown[]): Record<string, unknown>[];
+        iterate(...params: readonly unknown[]): IterableIterator<Record<string, unknown>>;
+        run(...params: readonly unknown[]): {
+          readonly changes?: number | bigint;
+          readonly lastInsertRowid?: string | number | bigint | null;
+        };
+      };
+    };
+  };
   const database = new DatabaseSync(dbPath);
   return {
-    client: createNodeSqliteClient(database),
+    client: createNodeSqliteClient(database as Parameters<typeof createNodeSqliteClient>[0]),
     async [Symbol.asyncDispose]() {
       database.close();
     },
@@ -619,11 +653,11 @@ function buildGeneratedImplementation(input: {
 }
 
 async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, RelationInfo>> {
-  const database = new DatabaseSync(databasePath);
-  const client = createNodeSqliteClient(database);
+  await using database = await openMainDevDatabase(databasePath);
+  const client = database.client;
 
   try {
-    const schemaResult = client.all<{name: string; type: string; sql: string | null}>({
+    const schemaResult = await client.all<{name: string; type: string; sql: string | null}>({
       sql: `
         select name, type, sql
         from sqlite_schema
@@ -665,16 +699,14 @@ async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, Rel
     }
 
     return relations;
-  } finally {
-    database.close();
-  }
+  } finally {}
 }
 
 async function loadRelationColumns(
-  client: ReturnType<typeof createNodeSqliteClient>,
+  client: Client,
   relationName: string,
 ): Promise<ReadonlyMap<string, TsColumn>> {
-  const pragmaResult = client.all<Record<string, unknown>>({
+  const pragmaResult = await client.all<Record<string, unknown>>({
     sql: `PRAGMA table_xinfo("${escapeSqliteIdentifier(relationName)}")`,
     args: [],
   });

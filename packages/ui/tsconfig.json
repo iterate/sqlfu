@@ -8,5 +8,5 @@
     "types": ["node", "bun"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts"],
-  "exclude": ["test/fixture-project/sql/**/*.ts"]
+  "exclude": ["test/projects/**/*.ts", "test/fixture-project/**/*.ts"]
 }

@@ -1,3 +1,3 @@
-import {generateQueryTypes} from '../../sqlfu/src/typegen/index.ts';
+import {generateQueryTypes} from 'sqlfu/experimental';
 
 await generateQueryTypes();

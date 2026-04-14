@@ -14,7 +14,8 @@
     ".": "./dist/index.js",
     "./client": "./dist/client.js",
     "./api": "./dist/api.js",
-    "./cli": "./dist/cli.js"
+    "./cli": "./dist/cli.js",
+    "./experimental": "./src/experimental.ts"
   },
   "files": [
     "dist"

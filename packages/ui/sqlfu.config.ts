@@ -1,4 +1,4 @@
-import {defineConfig} from '../sqlfu/src/core/config.js';
+import {defineConfig} from 'sqlfu/experimental';
 
 export default defineConfig({
   db: './db/app.sqlite',

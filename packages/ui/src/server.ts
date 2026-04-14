@@ -2,11 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {Database} from 'bun:sqlite';
 
-import type {QueryCatalog, QueryCatalogEntry} from '../../sqlfu/src/typegen/index.ts';
-import {createBunClient} from '../../sqlfu/src/adapters/bun.ts';
-import {loadProjectConfig} from '../../sqlfu/src/core/config.ts';
-import {splitSqlStatements} from '../../sqlfu/src/core/sqlite.ts';
-import type {QueryArg, SqlfuProjectConfig} from '../../sqlfu/src/core/types.ts';
+import type {QueryCatalog, QueryCatalogEntry, QueryArg, SqlfuProjectConfig} from 'sqlfu/experimental';
+import {createBunClient, loadProjectConfig, splitSqlStatements} from 'sqlfu/experimental';
 import type {StudioColumn, StudioRelation, StudioSchemaResponse, TableRowsResponse} from './shared.js';
 
 const clientEntryPath = path.join(import.meta.dir, 'client.tsx');
@@ -100,7 +97,7 @@ async function buildClientBundle() {
 }
 
 async function loadCatalog(config: SqlfuProjectConfig): Promise<QueryCatalog> {
-  await generateCatalogWithNode(config.projectRoot);
+  await generateCatalogForProject(config.projectRoot);
   const catalogPath = path.join(config.projectRoot, '.sqlfu', 'query-catalog.json');
   return JSON.parse(await fs.readFile(catalogPath, 'utf8')) as QueryCatalog;
 }
@@ -370,7 +367,7 @@ function readOption(name: string) {
   return Bun.argv[index + 1];
 }
 
-async function generateCatalogWithNode(projectRoot: string) {
+export async function generateCatalogForProject(projectRoot: string) {
   await runCommand(['tsx', generateCatalogScriptPath], projectRoot);
 }
 

@@ -8,11 +8,10 @@ import {
   QueryClient,
   QueryClientProvider,
   useMutation,
-  useQuery,
   useSuspenseQuery,
 } from '@tanstack/react-query';
 
-import type {QueryCatalog, QueryCatalogEntry} from '../../sqlfu/src/typegen/index.ts';
+import type {QueryCatalog, QueryCatalogEntry} from 'sqlfu/experimental';
 import type {
   QueryExecutionResponse,
   SqlRunnerResponse,
