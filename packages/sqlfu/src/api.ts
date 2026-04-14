@@ -1,12 +1,13 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import {randomUUID} from 'node:crypto';
 
 import {os} from '@orpc/server';
 import {z} from 'zod';
 
 import type {Client, SqlfuProjectConfig} from './core/types.js';
 import {createBunClient, createNodeSqliteClient, migrationNickname} from './client.js';
-import {extractSchema} from './core/sqlite.js';
+import {extractSchema, inspectSchemaFingerprint} from './core/sqlite.js';
 import {
   applyMigrations,
   baselineMigrationHistory,
@@ -413,13 +414,13 @@ function slugify(value: string) {
 async function materializeDefinitionsSchema(config: SqlfuProjectConfig, definitionsSql: string) {
   await using database = await createScratchDatabase(config, 'materialize-definitions');
   await database.client.raw(definitionsSql);
-  return extractSchema(database.client);
+  return await extractSchema(database.client);
 }
 
 async function materializeMigrationsSchema(config: SqlfuProjectConfig, migrations: readonly Migration[]) {
   await using database = await createScratchDatabase(config, 'materialize-migrations');
   await applyMigrations(database.client, {migrations});
-  return extractSchema(database.client);
+  return await extractSchema(database.client);
 }
 
 async function applyMigrationsToDatabase(dbPath: string, migrations: readonly Migration[]) {
@@ -441,7 +442,7 @@ type DisposableClient = {
 };
 
 async function createScratchDatabase(config: SqlfuProjectConfig, slug: string): Promise<DisposableClient> {
-  const dbPath = path.join(config.projectRoot, '.sqlfu', `${slug}.db`);
+  const dbPath = path.join(config.projectRoot, '.sqlfu', `${slug}-${randomUUID()}.db`);
   await fs.mkdir(path.dirname(dbPath), {recursive: true});
   const database = await openSqliteDatabase(dbPath);
   return {
@@ -641,7 +642,21 @@ async function schemasEqual(config: SqlfuProjectConfig, left: string, right: str
     }),
   ]);
 
-  return leftToRight.length === 0 && rightToLeft.length === 0;
+  if (leftToRight.length !== 0 || rightToLeft.length !== 0) {
+    return false;
+  }
+
+  const leftFingerprint = await materializeSchemaFingerprint(config, left);
+  const rightFingerprint = await materializeSchemaFingerprint(config, right);
+  return JSON.stringify(leftFingerprint) === JSON.stringify(rightFingerprint);
+}
+
+async function materializeSchemaFingerprint(config: SqlfuProjectConfig, sql: string) {
+  await using database = await createScratchDatabase(config, 'materialize-fingerprint');
+  if (sql.trim()) {
+    await database.client.raw(sql);
+  }
+  return await inspectSchemaFingerprint(database.client);
 }
 
 function summarizeSqlite3defError(error: unknown) {

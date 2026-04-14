@@ -16,6 +16,113 @@ export async function extractSchema(client: Client, schemaName = 'main'): Promis
   return rows.map((row) => `${String(row.sql).toLowerCase()};`).join('\n');
 }
 
+export type SqliteSchemaFingerprint = {
+  readonly tables: readonly {
+    readonly name: string;
+    readonly columns: readonly {
+      readonly name: string;
+      readonly type: string;
+      readonly notNull: boolean;
+      readonly defaultValue: string | null;
+      readonly primaryKeyPosition: number;
+      readonly hidden: number;
+    }[];
+    readonly indexes: readonly {
+      readonly unique: boolean;
+      readonly origin: string;
+      readonly partial: boolean;
+      readonly columns: readonly string[];
+    }[];
+  }[];
+  readonly views: readonly {
+    readonly name: string;
+    readonly sql: string;
+  }[];
+};
+
+export async function inspectSchemaFingerprint(client: Client, schemaName = 'main'): Promise<SqliteSchemaFingerprint> {
+  const objects = await client.all<{
+    readonly type: 'table' | 'view';
+    readonly name: string;
+    readonly sql: string | null;
+  }>({
+    sql: `
+      select type, name, sql
+      from ${schemaName}.sqlite_schema
+      where type in ('table', 'view')
+        and name not like 'sqlite_%'
+        and name != 'sqlfu_migrations'
+      order by type, name
+    `,
+    args: [],
+  });
+
+  const tables = [];
+  const views = [];
+
+  for (const object of objects) {
+    if (object.type === 'view') {
+      views.push({
+        name: object.name,
+        sql: normalizeSchemaStatement(object.sql ?? ''),
+      });
+      continue;
+    }
+
+    const tableNameLiteral = quoteSqlString(object.name);
+    const columns = await client.all<{
+      readonly name: string;
+      readonly type: string;
+      readonly notnull: number;
+      readonly dflt_value: string | null;
+      readonly pk: number;
+      readonly hidden: number;
+    }>({
+      sql: `select name, type, "notnull", dflt_value, pk, hidden from pragma_table_xinfo(${tableNameLiteral}) order by cid`,
+      args: [],
+    });
+    const indexList = await client.all<{
+      readonly name: string;
+      readonly unique: number;
+      readonly origin: string;
+      readonly partial: number;
+    }>({
+      sql: `select name, "unique", origin, partial from pragma_index_list(${tableNameLiteral}) order by name`,
+      args: [],
+    });
+
+    const indexes = [];
+    for (const index of indexList) {
+      const indexNameLiteral = quoteSqlString(index.name);
+      const indexColumns = await client.all<{readonly name: string}>({
+        sql: `select name from pragma_index_info(${indexNameLiteral}) order by seqno`,
+        args: [],
+      });
+      indexes.push({
+        unique: Boolean(index.unique),
+        origin: index.origin,
+        partial: Boolean(index.partial),
+        columns: indexColumns.map((column) => column.name),
+      });
+    }
+
+    tables.push({
+      name: object.name,
+      columns: columns.map((column) => ({
+        name: column.name,
+        type: String(column.type ?? '').toLowerCase(),
+        notNull: Boolean(column.notnull),
+        defaultValue: column.dflt_value,
+        primaryKeyPosition: column.pk,
+        hidden: column.hidden,
+      })),
+      indexes,
+    });
+  }
+
+  return {tables, views};
+}
+
 export function rawSqlWithSqlSplittingSync(
   runOne: (query: {sql: string; args: readonly QueryArg[]}) => {rowsAffected?: number; lastInsertRowid?: string | number | bigint | null},
   sql: string,
@@ -199,6 +306,14 @@ function stripSqlComments(sql: string): string {
     .split('\n')
     .filter((line) => !line.trim().startsWith('--'))
     .join('\n');
+}
+
+function normalizeSchemaStatement(sql: string) {
+  return sql.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function quoteSqlString(value: string) {
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 function isPromiseLike<TResult>(value: TResult | Promise<TResult>): value is Promise<TResult> {

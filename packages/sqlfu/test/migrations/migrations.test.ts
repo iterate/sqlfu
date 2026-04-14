@@ -153,6 +153,28 @@ describe('check recommendations', () => {
     await expect(fixture.api.check.all()).resolves.toBeUndefined();
   });
 
+  test('detects stricter live column constraints as schema drift and sync drift', async () => {
+    await using fixture = await createMigrationsFixture('check-live-has-stricter-column-constraints', {
+      desiredSchema: `create table a(b text)`,
+      migrations: {
+        create_a: `create table a(b text)`,
+      },
+    });
+
+    await fixture.db.raw(`create table a(b text not null unique)`);
+    await fixture.api.baseline({target: '2026-04-10T00.00.00.000Z_create_a'});
+
+    await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
+      [Error: Schema Drift
+      Live Schema does not match Migration History.
+      Recommendation: run \`sqlfu goto <target>\`.
+
+      Sync Drift
+      Desired Schema does not match Live Schema.
+      Recommendation: run \`sqlfu sync\`.]
+    `);
+  });
+
   test('recommends draft for repo drift only', async () => {
     await using fixture = await createMigrationsFixture('check-repo-drift-only', {
       desiredSchema: `create table person(name text)`,

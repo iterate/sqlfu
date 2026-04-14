@@ -65,7 +65,7 @@ test('desired schema can be edited and saved, and sync is disabled while it is d
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', {name: 'sqlfu draft'}).click();
   page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', {name: /sqlfu baseline /}).click();
+  await page.getByRole('button', {name: /sqlfu baseline /}).first().click();
   await expect(page.getByText('✅ No Repo Drift')).toBeVisible();
 
   await expect(page.getByRole('button', {name: 'Save Desired Schema'})).toHaveCount(0);
@@ -105,7 +105,7 @@ test('history to live flow shows a baseline action when check recommends it', as
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', {name: 'sqlfu draft'}).click();
 
-  const baselineButton = page.getByRole('button', {name: /sqlfu baseline /});
+  const baselineButton = page.getByRole('button', {name: /sqlfu baseline /}).first();
   await expect(baselineButton).toBeVisible();
 
   page.once('dialog', (dialog) => dialog.accept());
@@ -124,7 +124,7 @@ test('history to live flow shows a goto action when check recommends it', async 
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', {name: 'sqlfu draft'}).click();
   page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', {name: /sqlfu baseline /}).click();
+  await page.getByRole('button', {name: /sqlfu baseline /}).first().click();
 
   const [migrationFileName] = (await fs.readdir(migrationsDir)).filter((name) => name.endsWith('.sql'));
   await fs.appendFile(path.join(migrationsDir, migrationFileName!), `
@@ -156,17 +156,30 @@ test('schema command failures stay visible next to the failing command button', 
 
   await page.goto('/#schema');
 
+  await replaceCodeMirrorText(page, 'Desired Schema editor', `
+    create table posts (
+      id integer primary key,
+      slug text not null unique,
+      title text not null,
+      body text not null,
+      published integer not null,
+      birthdate text not null
+    );
+
+    create view post_cards as
+    select id, slug, title, published
+    from posts;
+  `);
+  await expect.poll(() => readCodeMirrorText(page, 'Desired Schema editor')).toContain('birthdate text not null');
+  await page.getByRole('button', {name: 'Save Desired Schema'}).click();
+
   page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', {name: 'sqlfu draft'}).click();
+  const syncButton = page.getByRole('button', {name: 'sqlfu sync'});
+  await expect(syncButton).toBeVisible();
+  await syncButton.click();
 
-  const migrateButton = page.getByRole('button', {name: 'sqlfu migrate'});
-  await expect(migrateButton).toBeVisible();
-
-  page.once('dialog', (dialog) => dialog.accept());
-  await migrateButton.click();
-
-  await expect(page.getByText(/table posts already exists/i)).toBeVisible();
-  await expect(page.locator('.schema-command-error').filter({hasText: 'table posts already exists'})).toBeVisible();
+  await expect(page.getByText(/cannot add a not null column with default value null/i)).toBeVisible();
+  await expect(page.locator('.schema-command-error').filter({hasText: 'Cannot add a NOT NULL column with default value NULL'})).toBeVisible();
 });
 
 test('table browser, sql runner, and generated query form work against a live fixture project', async ({page}) => {
