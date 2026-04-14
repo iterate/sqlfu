@@ -3,13 +3,34 @@ import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 
 import {analyzeVendoredTypesqlQueries} from './analyze-vendored-typesql.js';
+import type {
+  JsonSchema,
+  JsonSchemaObject,
+  QueryCatalog,
+  QueryCatalogArgument,
+  QueryCatalogEntry,
+  QueryCatalogField,
+} from './query-catalog.js';
 import {loadProjectConfig} from '../core/config.js';
 import type {Client, SqlfuProjectConfig} from '../core/types.js';
 import {extractSchema} from '../core/sqlite.js';
 import {createNodeSqliteClient} from '../client.js';
 
+export type {
+  JsonSchema,
+  JsonSchemaObject,
+  QueryCatalog,
+  QueryCatalogArgument,
+  QueryCatalogEntry,
+  QueryCatalogField,
+} from './query-catalog.js';
+
 export async function generateQueryTypes(): Promise<void> {
   const config = await loadProjectConfig();
+  await generateQueryTypesForConfig(config);
+}
+
+export async function generateQueryTypesForConfig(config: SqlfuProjectConfig): Promise<void> {
   const databasePath = await materializeTypegenDatabase(config);
   const schema = await loadSchema(databasePath);
   const queryFiles = await loadQueryFiles(config.sqlDir);
@@ -40,6 +61,7 @@ export async function generateQueryTypes(): Promise<void> {
   );
 
   await writeGeneratedBarrel(config.sqlDir, queryFiles, config.generatedImportExtension);
+  await writeQueryCatalog(config, queryFiles, queryAnalyses, schema);
 }
 
 type DisposableClient = {
@@ -151,6 +173,65 @@ async function writeGeneratedBarrel(
   await fs.writeFile(path.join(sqlDir, 'index.ts'), lines.join('\n') + (lines.length > 0 ? '\n' : ''));
 }
 
+async function writeQueryCatalog(
+  config: SqlfuProjectConfig,
+  queryFiles: readonly QueryFile[],
+  queryAnalyses: Awaited<ReturnType<typeof analyzeVendoredTypesqlQueries>>,
+  schema: ReadonlyMap<string, RelationInfo>,
+): Promise<void> {
+  const entries: QueryCatalogEntry[] = queryFiles.map((queryFile) => {
+    const analysis = queryAnalyses.find((query) => query.sqlPath === queryFile.sqlPath);
+    if (!analysis) {
+      throw new Error(`Missing vendored TypeSQL analysis for ${queryFile.sqlPath}`);
+    }
+
+    const functionName = toCamelCase(path.basename(queryFile.sqlPath, '.sql'));
+    const id = path.basename(queryFile.sqlPath, '.sql');
+
+    if (!analysis.ok) {
+      return {
+        kind: 'error',
+        id,
+        sqlFile: path.relative(config.projectRoot, queryFile.sqlPath).split(path.sep).join('/'),
+        functionName,
+        error: analysis.error,
+      };
+    }
+
+    const descriptor = refineDescriptor(analysis.descriptor, queryFile.sqlContent, schema);
+    const columns = getResultFields(descriptor).map((field) => toCatalogField(field));
+    const args = [
+      ...(descriptor.data ?? []).map((field) => toCatalogArgument('data', field)),
+      ...descriptor.parameters.map((field) => toCatalogArgument('params', field)),
+    ];
+
+    return {
+      kind: 'query',
+      id,
+      sqlFile: path.relative(config.projectRoot, queryFile.sqlPath).split(path.sep).join('/'),
+      functionName,
+      sql: descriptor.sql,
+      queryType: descriptor.queryType,
+      multipleRowsResult: descriptor.multipleRowsResult,
+      resultMode: getResultMode(descriptor),
+      args,
+      dataSchema: descriptor.data?.length ? objectSchema(`${functionName} data`, descriptor.data) : undefined,
+      paramsSchema: descriptor.parameters.length ? objectSchema(`${functionName} params`, descriptor.parameters) : undefined,
+      resultSchema: objectSchema(`${functionName} result`, getResultFields(descriptor), {fieldKind: 'result'}),
+      columns,
+    };
+  });
+
+  const catalog: QueryCatalog = {
+    generatedAt: new Date().toISOString(),
+    queries: entries,
+  };
+
+  const outputPath = path.join(config.projectRoot, '.sqlfu', 'query-catalog.json');
+  await fs.mkdir(path.dirname(outputPath), {recursive: true});
+  await fs.writeFile(outputPath, JSON.stringify(catalog, null, 2) + '\n');
+}
+
 function renderQueryWrapper(input: {
   sqlPath: string;
   descriptor: GeneratedQueryDescriptor;
@@ -250,6 +331,87 @@ function renderObjectType(
   return [`export type ${typeName} = {`, ...lines, `}`].join('\n');
 }
 
+function objectSchema(
+  title: string,
+  fields: readonly GeneratedField[],
+  input: {
+    fieldKind?: 'parameter' | 'result';
+  } = {},
+): JsonSchemaObject {
+  const fieldKind = input.fieldKind ?? 'parameter';
+  const properties = Object.fromEntries(fields.map((field) => [field.name, schemaForField(field)]));
+  const required = fields
+    .filter((field) => fieldKind === 'parameter' ? !Boolean(field.optional) : field.notNull)
+    .map((field) => field.name);
+
+  return {
+    type: 'object',
+    title,
+    properties,
+    required,
+    additionalProperties: false,
+  };
+}
+
+function schemaForField(field: GeneratedField): JsonSchema {
+  const schema = schemaForTsType(field.tsType);
+  if (field.notNull) {
+    return schema;
+  }
+
+  return {
+    anyOf: [schema, {type: 'null'}],
+  };
+}
+
+function schemaForTsType(tsType: string): JsonSchemaObject {
+  if (tsType === 'string') {
+    return {type: 'string'};
+  }
+  if (tsType === 'number') {
+    return {type: 'number'};
+  }
+  if (tsType === 'boolean') {
+    return {type: 'boolean'};
+  }
+  if (tsType === 'Date') {
+    return {type: 'string', format: 'date-time'};
+  }
+  if (tsType === 'Uint8Array' || tsType === 'ArrayBuffer') {
+    return {type: 'string'};
+  }
+  if (tsType.endsWith('[]')) {
+    return {
+      type: 'array',
+      items: schemaForTsType(tsType.slice(0, -2)),
+    };
+  }
+
+  const enumValues = parseStringLiteralUnion(tsType);
+  if (enumValues) {
+    return {
+      type: 'string',
+      enum: enumValues,
+    };
+  }
+
+  return {};
+}
+
+function parseStringLiteralUnion(tsType: string): readonly string[] | undefined {
+  const parts = tsType
+    .replace(/^\(/, '')
+    .replace(/\)$/, '')
+    .split('|')
+    .map((part) => part.trim());
+
+  if (parts.length === 0 || parts.some((part) => !/^(['"]).*\1$/.test(part))) {
+    return undefined;
+  }
+
+  return parts.map((part) => part.slice(1, -1));
+}
+
 function getResultFields(descriptor: GeneratedQueryDescriptor): readonly GeneratedField[] {
   if (descriptor.returning || descriptor.queryType === 'Select') {
     return descriptor.columns;
@@ -288,6 +450,48 @@ function buildQueryArgs(descriptor: GeneratedQueryDescriptor): string {
     ...descriptor.parameters.map((field) => toDriver('params', field)),
   ];
   return args.length > 0 ? `[${args.join(', ')}]` : '[]';
+}
+
+function toCatalogArgument(
+  scope: 'data' | 'params',
+  field: GeneratedField & {
+    readonly toDriver: string;
+    readonly isArray: boolean;
+  },
+): QueryCatalogArgument {
+  return {
+    scope,
+    name: field.name,
+    tsType: field.tsType,
+    notNull: field.notNull,
+    optional: Boolean(field.optional),
+    isArray: field.isArray || field.tsType.endsWith('[]'),
+    driverEncoding: inferDriverEncoding(field),
+  };
+}
+
+function inferDriverEncoding(field: {
+  readonly tsType: string;
+  readonly toDriver: string;
+}): QueryCatalogArgument['driverEncoding'] {
+  if (field.tsType === 'boolean') {
+    return 'boolean-number';
+  }
+  if (field.tsType === 'Date') {
+    return field.toDriver.includes(`split('T')[0]`) && !field.toDriver.includes(`replace('T', ' ')`)
+      ? 'date'
+      : 'datetime';
+  }
+  return 'identity';
+}
+
+function toCatalogField(field: GeneratedField): QueryCatalogField {
+  return {
+    name: field.name,
+    tsType: field.tsType,
+    notNull: field.notNull,
+    optional: Boolean(field.optional),
+  };
 }
 
 function toDriver(

@@ -79,6 +79,107 @@ test('generate writes wrappers and a barrel for every checked-in query', async (
   `);
 });
 
+test('generate writes a runtime query catalog with json schema for forms', async () => {
+  await using project = await createGenerateFixture({
+    definitionsSql: dedent`
+      create table posts (
+        id integer primary key,
+        slug text not null,
+        title text,
+        is_published boolean not null,
+        status text not null check (status in ('draft', 'published'))
+      );
+    `,
+    files: {
+      'sql/find-posts.sql': dedent`
+        select id, slug, title, is_published, status
+        from posts
+        where status = :status and is_published = :is_published
+        limit 10;
+      `,
+    },
+  });
+
+  await project.generate();
+
+  expect(await project.readJson('.sqlfu/query-catalog.json')).toMatchObject({
+    queries: [
+      {
+        kind: 'query',
+        id: 'find-posts',
+        sqlFile: 'sql/find-posts.sql',
+        functionName: 'findPosts',
+        queryType: 'Select',
+        resultMode: 'many',
+        args: [
+          {
+            scope: 'params',
+            name: 'status',
+            tsType: `('draft' | 'published')`,
+            driverEncoding: 'identity',
+          },
+          {
+            scope: 'params',
+            name: 'is_published',
+            tsType: 'number',
+            driverEncoding: 'identity',
+          },
+        ],
+        paramsSchema: {
+          type: 'object',
+          required: ['status', 'is_published'],
+          properties: {
+            status: {
+              type: 'string',
+              enum: ['draft', 'published'],
+            },
+            is_published: {
+              type: 'number',
+            },
+          },
+        },
+        resultSchema: {
+          type: 'object',
+          properties: {
+            id: {type: 'number'},
+            slug: {type: 'string'},
+            title: {anyOf: [{type: 'string'}, {type: 'null'}]},
+            is_published: {type: 'number'},
+            status: {type: 'string', enum: ['draft', 'published']},
+          },
+        },
+      },
+    ],
+  });
+});
+
+test('generate includes invalid queries in the runtime query catalog', async () => {
+  await using project = await createGenerateFixture({
+    definitionsSql: dedent`
+      create table posts (id integer primary key, slug text not null);
+    `,
+    files: {
+      'sql/broken.sql': `select nope from missing_table;`,
+    },
+  });
+
+  await project.generate();
+
+  expect(await project.readJson('.sqlfu/query-catalog.json')).toMatchObject({
+    queries: [
+      {
+        kind: 'error',
+        id: 'broken',
+        sqlFile: 'sql/broken.sql',
+        functionName: 'broken',
+        error: {
+          name: 'Invalid sql',
+        },
+      },
+    ],
+  });
+});
+
 test('generate can use .ts extensions in the barrel file', async () => {
   await using project = await createGenerateFixture({
     definitionsSql: dedent`
@@ -687,6 +788,9 @@ async function createGenerateFixture(input: {
     },
     async readFile(relativePath: string) {
       return fs.readFile(path.join(root, relativePath), 'utf8');
+    },
+    async readJson(relativePath: string) {
+      return JSON.parse(await fs.readFile(path.join(root, relativePath), 'utf8'));
     },
     async dumpFs(input?: {
       includeGlobs?: readonly string[];

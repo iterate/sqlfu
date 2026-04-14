@@ -1,0 +1,398 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {Database} from 'bun:sqlite';
+
+import type {QueryCatalog, QueryCatalogEntry} from '../../sqlfu/src/typegen/index.ts';
+import {createBunClient} from '../../sqlfu/src/adapters/bun.ts';
+import {loadProjectConfig} from '../../sqlfu/src/core/config.ts';
+import {splitSqlStatements} from '../../sqlfu/src/core/sqlite.ts';
+import type {QueryArg, SqlfuProjectConfig} from '../../sqlfu/src/core/types.ts';
+import type {StudioColumn, StudioRelation, StudioSchemaResponse, TableRowsResponse} from './shared.js';
+
+const clientEntryPath = path.join(import.meta.dir, 'client.tsx');
+const stylesPath = path.join(import.meta.dir, 'styles.css');
+const generateCatalogScriptPath = path.join(import.meta.dir, 'generate-catalog.ts');
+
+export async function startSqlfuUiServer(input: {
+  port?: number;
+  projectRoot?: string;
+}) {
+  const projectRoot = path.resolve(input.projectRoot ?? process.cwd());
+  process.chdir(projectRoot);
+  const config = await loadProjectConfig();
+
+  const server = Bun.serve({
+    port: input.port ?? 3017,
+    async fetch(request: Request) {
+      const url = new URL(request.url);
+
+      if (url.pathname === '/api/schema') {
+        return json(await getSchemaResponse(config.db));
+      }
+
+      if (url.pathname === '/api/catalog') {
+        return json(await loadCatalog(config));
+      }
+
+      if (url.pathname.startsWith('/api/table/')) {
+        const relationName = decodeURIComponent(url.pathname.replace('/api/table/', ''));
+        const page = Number(url.searchParams.get('page') ?? '0');
+        return json(await getTableRows(config.db, relationName, Number.isFinite(page) ? page : 0));
+      }
+
+      if (url.pathname === '/api/sql' && request.method === 'POST') {
+        const body = await request.json() as {sql?: unknown};
+        return json(await executeSql(config.db, typeof body.sql === 'string' ? body.sql : ''));
+      }
+
+      if (url.pathname.startsWith('/api/query/') && request.method === 'POST') {
+        const queryId = decodeURIComponent(url.pathname.replace('/api/query/', ''));
+        const body = await request.json() as {data?: Record<string, unknown>; params?: Record<string, unknown>};
+        return json(await executeCatalogQuery(config, queryId, body));
+      }
+
+      if (url.pathname === '/assets/app.js') {
+        return javascript(await buildClientBundle());
+      }
+
+      if (url.pathname === '/assets/app.css') {
+        return css(await fs.readFile(stylesPath, 'utf8'));
+      }
+
+      return html(renderIndexHtml());
+    },
+  });
+
+  return server;
+}
+
+if (import.meta.main) {
+  const projectRoot = readOption('--project-root');
+  const port = readOption('--port');
+  const server = await startSqlfuUiServer({
+    projectRoot,
+    port: port ? Number(port) : undefined,
+  });
+  console.log(`sqlfu/ui listening on http://localhost:${server.port}`);
+}
+
+async function buildClientBundle() {
+  const result = await Bun.build({
+    entrypoints: [clientEntryPath],
+    target: 'browser',
+    format: 'esm',
+    minify: false,
+    sourcemap: 'inline',
+    naming: 'app.js',
+  });
+
+  if (!result.success) {
+    const details = result.logs.map((log: {message: string}) => log.message).join('\n');
+    throw new Error(`Failed to build client bundle:\n${details}`);
+  }
+
+  const output = result.outputs.find((item: {path: string}) => item.path.endsWith('.js'));
+  if (!output) {
+    throw new Error('Missing built client bundle');
+  }
+
+  return output.text();
+}
+
+async function loadCatalog(config: SqlfuProjectConfig): Promise<QueryCatalog> {
+  await generateCatalogWithNode(config.projectRoot);
+  const catalogPath = path.join(config.projectRoot, '.sqlfu', 'query-catalog.json');
+  return JSON.parse(await fs.readFile(catalogPath, 'utf8')) as QueryCatalog;
+}
+
+async function executeCatalogQuery(
+  config: SqlfuProjectConfig,
+  queryId: string,
+  input: {
+    data?: Record<string, unknown>;
+    params?: Record<string, unknown>;
+  },
+) {
+  const catalog = await loadCatalog(config);
+  const query = catalog.queries.find((entry) => entry.id === queryId);
+  if (!query || query.kind !== 'query') {
+    throw new Error(`Unknown query: ${queryId}`);
+  }
+
+  const args = query.args.flatMap((arg) => {
+    const source = arg.scope === 'data' ? input.data : input.params;
+    return encodeArgument(arg, source?.[arg.name]);
+  }) as readonly QueryArg[];
+
+  const database = new Database(config.db);
+  const client = createBunClient(database);
+
+  try {
+    if (query.resultMode === 'metadata') {
+      return {
+        mode: 'metadata',
+        metadata: client.run({sql: query.sql, args}),
+      } as const;
+    }
+
+    return {
+      mode: 'rows',
+      rows: client.all({sql: query.sql, args}).map(materializeRow),
+    } as const;
+  } finally {
+    database.close();
+  }
+}
+
+function encodeArgument(
+  arg: Extract<QueryCatalogEntry, {kind: 'query'}>['args'][number],
+  value: unknown,
+): readonly QueryArg[] {
+  if (arg.isArray) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value.map((item) => encodeScalar(arg.driverEncoding, item));
+  }
+
+  return [encodeScalar(arg.driverEncoding, value)];
+}
+
+function encodeScalar(
+  encoding: Extract<QueryCatalogEntry, {kind: 'query'}>['args'][number]['driverEncoding'],
+  value: unknown,
+): QueryArg {
+  if (value == null) {
+    return null;
+  }
+  if (encoding === 'boolean-number') {
+    return Number(Boolean(value));
+  }
+  if (encoding === 'date') {
+    return typeof value === 'string' ? value.split('T')[0] : String(value);
+  }
+  if (encoding === 'datetime') {
+    if (typeof value !== 'string') {
+      return String(value);
+    }
+    return value.replace('T', ' ').replace(/\.\d+Z?$/, '');
+  }
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean' || value instanceof Uint8Array) {
+    return value;
+  }
+  return JSON.stringify(value);
+}
+
+async function getSchemaResponse(dbPath: string): Promise<StudioSchemaResponse> {
+  const database = new Database(dbPath);
+  const client = createBunClient(database);
+
+  try {
+    const rows = client.all<{name: string; type: string; sql: string | null}>({
+      sql: `
+        select name, type, sql
+        from sqlite_schema
+        where type in ('table', 'view')
+          and name not like 'sqlite_%'
+        order by type, name
+      `,
+      args: [],
+    });
+
+    const relations: StudioRelation[] = rows.map((row) => ({
+      name: row.name,
+      kind: row.type === 'view' ? 'view' : 'table',
+      columns: getRelationColumns(client, row.name),
+      rowCount: row.type === 'table' ? getRelationCount(client, row.name) : undefined,
+      sql: row.sql ?? undefined,
+    }));
+
+    return {relations};
+  } finally {
+    database.close();
+  }
+}
+
+function getRelationColumns(client: ReturnType<typeof createBunClient>, relationName: string): readonly StudioColumn[] {
+  return client
+    .all<Record<string, unknown>>({
+      sql: `PRAGMA table_xinfo("${escapeIdentifier(relationName)}")`,
+      args: [],
+    })
+    .filter((row) => Number(row.hidden ?? 0) === 0)
+    .map((row) => ({
+      name: String(row.name),
+      type: typeof row.type === 'string' ? row.type : '',
+      notNull: Number(row.notnull ?? 0) === 1,
+      primaryKey: Number(row.pk ?? 0) >= 1,
+    }));
+}
+
+function getRelationCount(client: ReturnType<typeof createBunClient>, relationName: string) {
+  const rows = client.all<{count: number}>({
+    sql: `select count(*) as count from "${escapeIdentifier(relationName)}"`,
+    args: [],
+  });
+  return rows[0]?.count ?? 0;
+}
+
+async function getTableRows(dbPath: string, relationName: string, page: number): Promise<TableRowsResponse> {
+  const safePage = Math.max(0, page);
+  const pageSize = 25;
+  const database = new Database(dbPath);
+  const client = createBunClient(database);
+
+  try {
+    const columns = getRelationColumns(client, relationName).map((column) => column.name);
+    const rows = client.all<Record<string, unknown>>({
+      sql: `select * from "${escapeIdentifier(relationName)}" limit ? offset ?`,
+      args: [pageSize, safePage * pageSize],
+    });
+
+    return {
+      relation: relationName,
+      page: safePage,
+      pageSize,
+      columns,
+      rows: rows.map(materializeRow),
+    };
+  } finally {
+    database.close();
+  }
+}
+
+async function executeSql(dbPath: string, sql: string) {
+  const trimmedSql = sql.trim();
+  if (!trimmedSql) {
+    throw new Error('SQL is required');
+  }
+
+  const statements = splitSqlStatements(trimmedSql);
+  const database = new Database(dbPath);
+  const client = createBunClient(database);
+
+  try {
+    if (statements.length === 1) {
+      try {
+        const rows = client.all<Record<string, unknown>>({sql: statements[0]!, args: []});
+        return {
+          sql: trimmedSql,
+          mode: 'rows',
+          rows: rows.map(materializeRow),
+        } as const;
+      } catch {}
+    }
+
+    return {
+      sql: trimmedSql,
+      mode: 'metadata',
+      metadata: client.raw(trimmedSql),
+    } as const;
+  } finally {
+    database.close();
+  }
+}
+
+function materializeRow(row: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(row).map(([key, value]) => {
+      if (typeof value === 'bigint') {
+        return [key, Number(value)];
+      }
+      if (value instanceof ArrayBuffer) {
+        return [key, `[ArrayBuffer ${value.byteLength}]`];
+      }
+      if (value instanceof Uint8Array) {
+        return [key, `[Uint8Array ${value.byteLength}]`];
+      }
+      return [key, value];
+    }),
+  );
+}
+
+function escapeIdentifier(value: string) {
+  return value.replaceAll('"', '""');
+}
+
+function json(value: unknown) {
+  return new Response(JSON.stringify(value, null, 2), {
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+    },
+  });
+}
+
+function html(value: string) {
+  return new Response(value, {
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+    },
+  });
+}
+
+function css(value: string) {
+  return new Response(value, {
+    headers: {
+      'content-type': 'text/css; charset=utf-8',
+    },
+  });
+}
+
+function javascript(value: string) {
+  return new Response(value, {
+    headers: {
+      'content-type': 'text/javascript; charset=utf-8',
+    },
+  });
+}
+
+function renderIndexHtml() {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>sqlfu/ui</title>
+    <link rel="stylesheet" href="/assets/app.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/assets/app.js"></script>
+  </body>
+</html>`;
+}
+
+function readOption(name: string) {
+  const index = Bun.argv.indexOf(name);
+  if (index === -1) {
+    return undefined;
+  }
+  return Bun.argv[index + 1];
+}
+
+async function generateCatalogWithNode(projectRoot: string) {
+  await runCommand(['tsx', generateCatalogScriptPath], projectRoot);
+}
+
+async function runCommand(command: readonly string[], cwd: string) {
+  const process = Bun.spawn([...command], {
+    cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(process.stdout).text(),
+    new Response(process.stderr).text(),
+    process.exited,
+  ]);
+
+  if (exitCode !== 0) {
+    throw new Error(
+      [
+        `Command failed: ${command.join(' ')}`,
+        stdout.trim(),
+        stderr.trim(),
+      ].filter(Boolean).join('\n'),
+    );
+  }
+}

@@ -4,5 +4,5 @@
     "noEmit": true
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "test/**/*.d.ts"],
-  "exclude": ["src/vendor/**/*"]
+  "exclude": ["src/vendor/**/*", "test/**/*.old-test-ignoreme.ts"]
 }
