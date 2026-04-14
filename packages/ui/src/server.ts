@@ -243,10 +243,34 @@ function buildSchemaCheckCards(problems: readonly string[]): readonly SchemaChec
   }
 
   return [
-    toSchemaCheckCard('repoDrift', 'Repo Drift', '✅ No Repo Drift', mismatchByTitle.get('Repo Drift')),
-    toSchemaCheckCard('pendingMigrations', 'Pending Migrations', '✅ No Pending Migrations', mismatchByTitle.get('Pending Migrations')),
-    toSchemaCheckCard('historyDrift', 'History Drift', '✅ No History Drift', mismatchByTitle.get('History Drift')),
-    toSchemaCheckCard('schemaDrift', 'Schema Drift', '✅ No Schema Drift', mismatchByTitle.get('Schema Drift')),
+    toSchemaCheckCard(
+      'repoDrift',
+      'Repo Drift',
+      '✅ No Repo Drift',
+      'Desired Schema matches Migrations.',
+      mismatchByTitle.get('Repo Drift'),
+    ),
+    toSchemaCheckCard(
+      'pendingMigrations',
+      'Pending Migrations',
+      '✅ No Pending Migrations',
+      'Migration History matches Migrations.',
+      mismatchByTitle.get('Pending Migrations'),
+    ),
+    toSchemaCheckCard(
+      'historyDrift',
+      'History Drift',
+      '✅ No History Drift',
+      'Applied migrations still match the repo versions.',
+      mismatchByTitle.get('History Drift'),
+    ),
+    toSchemaCheckCard(
+      'schemaDrift',
+      'Schema Drift',
+      '✅ No Schema Drift',
+      'Live Schema matches Migration History.',
+      mismatchByTitle.get('Schema Drift'),
+    ),
   ];
 }
 
@@ -254,6 +278,7 @@ function toSchemaCheckCard(
   key: SchemaCheckCard['key'],
   title: string,
   okTitle: string,
+  explainer: string,
   mismatch: {
     readonly summary: string;
     readonly recommendation?: string;
@@ -264,6 +289,7 @@ function toSchemaCheckCard(
     key,
     title,
     okTitle,
+    explainer,
     ok: !mismatch,
     summary: mismatch?.summary ?? '',
     recommendation: mismatch?.recommendation,

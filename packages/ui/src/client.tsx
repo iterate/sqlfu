@@ -158,7 +158,10 @@ function SchemaPanel(input: {
       <div className="stack">
         {input.check.cards.map((card) => (
           <section key={card.key} className={`card schema-card ${card.ok ? 'ok' : 'warn'}`}>
-            <h3 className="card-title">{card.ok ? card.okTitle : card.title}</h3>
+            <div className="card-title-row schema-card-title-row">
+              <h3 className="card-title">{card.ok ? card.okTitle : card.title}</h3>
+              <span className="muted schema-card-explainer">{card.explainer}</span>
+            </div>
             {!card.ok ? <p>{card.summary}</p> : null}
             {!card.ok && card.recommendation ? <p className="muted">{card.recommendation}</p> : null}
             {!card.ok && card.commands && card.commands.length > 0 ? (

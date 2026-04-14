@@ -340,6 +340,15 @@ h3 {
   border-color: rgba(178, 76, 43, 0.22);
 }
 
+.schema-card-title-row {
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.schema-card-explainer {
+  font-size: 0.94rem;
+}
+
 .authorities-grid {
   align-items: start;
 }

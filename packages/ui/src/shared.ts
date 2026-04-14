@@ -10,6 +10,7 @@ export type SchemaCheckCard = {
   readonly key: 'repoDrift' | 'pendingMigrations' | 'historyDrift' | 'schemaDrift';
   readonly title: string;
   readonly okTitle: string;
+  readonly explainer: string;
   readonly ok: boolean;
   readonly summary: string;
   readonly recommendation?: string;
