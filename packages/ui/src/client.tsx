@@ -184,11 +184,12 @@ function SchemaPanel(input: {
   });
   const desiredSchemaSql = desiredSchemaDraft ?? input.authorities.desiredSchemaSql;
   const desiredSchemaDirty = normalizeSqlDraft(desiredSchemaSql) !== normalizeSqlDraft(input.authorities.desiredSchemaSql);
-  const handleSchemaCommand = (command: string) => {
-    if (!window.confirm(`Run ${command}?`)) {
+  const handleSchemaCommand = (command: readonly [string, ...string[]]) => {
+    const commandText = formatSchemaCommand(command);
+    if (!window.confirm(`Run ${commandText}?`)) {
       return;
     }
-    runCommandMutation.mutate({command});
+    runCommandMutation.mutate({command: commandText});
   };
 
   return (
@@ -245,7 +246,7 @@ function SchemaPanel(input: {
                 const command = recommendation.command;
                 return (
                   <div
-                    key={`${recommendation.kind}/${command ?? recommendation.label}`}
+                    key={`${recommendation.kind}/${command?.join(' ') ?? recommendation.label}`}
                     className="schema-recommendation-row"
                   >
                     <div className="schema-recommendation-command">
@@ -253,13 +254,13 @@ function SchemaPanel(input: {
                         <button
                           className="button inline-command-button"
                           type="button"
-                          aria-label={command}
-                          title={command}
+                          aria-label={formatSchemaCommand(command)}
+                          title={formatSchemaCommand(command)}
                           onClick={() => {
                             handleSchemaCommand(command);
                           }}
                         >
-                          {command}
+                          {formatSchemaCommand(command)}
                         </button>
                       ) : null}
                     </div>
@@ -267,9 +268,9 @@ function SchemaPanel(input: {
                       <p className="schema-recommendation">
                         {renderSchemaRecommendationSummary(recommendation)}
                       </p>
-                      {command && commandErrors?.[command] ? (
+                      {command && commandErrors?.[formatSchemaCommand(command)] ? (
                         <div className="schema-command">
-                          <span className="schema-command-error">{commandErrors[command]}</span>
+                          <span className="schema-command-error">{commandErrors[formatSchemaCommand(command)]}</span>
                         </div>
                       ) : null}
                     </div>
@@ -1583,12 +1584,24 @@ function renderSchemaRecommendationSummary(
   recommendation: SchemaCheckResponse['recommendations'][number],
 ): ReactNode {
   const nodes: ReactNode[] = [
-    <span key="label">{recommendation.label.replace(/\.$/u, '')}.</span>,
+    <span key="label">{formatSchemaRecommendationLabel(recommendation)}</span>,
   ];
   if (recommendation.rationale) {
     nodes.push(<span key="rationale"> ({recommendation.rationale})</span>);
   }
   return nodes;
+}
+
+function formatSchemaCommand(command: readonly [string, ...string[]]) {
+  return ['sqlfu', ...command].join(' ');
+}
+
+function formatSchemaRecommendationLabel(
+  recommendation: SchemaCheckResponse['recommendations'][number],
+) {
+  const label = recommendation.label.replace(/\.$/u, '');
+  const target = recommendation.command?.at(1);
+  return target ? `${label}. Target: ${target}.` : `${label}.`;
 }
 
 function getSchemaCardLabel(card: SchemaCheckResponse['cards'][number]) {

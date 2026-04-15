@@ -616,7 +616,7 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
       });
       addRecommendation(recommendations, {
         kind: 'baseline',
-        command: `sqlfu baseline ${recommendedBaselineTarget}`,
+        command: ['baseline', recommendedBaselineTarget],
         label: 'Keep the current live schema.',
       });
     } else if (syncDrift.isDifferent) {
@@ -626,7 +626,7 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
       });
       addRecommendation(recommendations, {
         kind: 'goto',
-        command: `sqlfu goto ${historyMismatch.name}`,
+        command: ['goto', historyMismatch.name],
         label: 'Reconcile the database to the current repo state.',
       });
     } else {
@@ -646,7 +646,7 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
     });
     addRecommendation(recommendations, {
       kind: 'draft',
-      command: 'sqlfu draft',
+      command: ['draft'],
       label: 'Create a reviewable migration.',
     });
   }
@@ -661,7 +661,7 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
     if (!schemaDrift.isDifferent) {
       addRecommendation(recommendations, {
         kind: 'migrate',
-        command: 'sqlfu migrate',
+        command: ['migrate'],
         label: 'Apply pending migrations to the database.',
       });
     }
@@ -683,13 +683,13 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
     if (!repoDriftWithLiveAlreadySynced && recommendedBaselineTarget) {
       addRecommendation(recommendations, {
         kind: 'baseline',
-        command: `sqlfu baseline ${recommendedBaselineTarget}`,
-        label: 'Record the current schema as already applied.',
+        command: ['baseline', recommendedBaselineTarget],
+        label: `Record the current schema as already applied.`,
       });
     } else if (!repoDriftWithLiveAlreadySynced && recommendedGotoTarget) {
       addRecommendation(recommendations, {
         kind: 'goto',
-        command: `sqlfu goto ${recommendedGotoTarget}`,
+        command: ['goto', recommendedGotoTarget],
         label: 'Move the database to the selected migration target.',
       });
     } else if (!repoDriftWithLiveAlreadySynced && !repoDrift.isDifferent) {
@@ -711,13 +711,13 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
     if (!historyMismatch && repoDrift.isDifferent) {
       addRecommendation(recommendations, {
         kind: 'sync',
-        command: 'sqlfu sync',
+        command: ['sync'],
         label: 'Update the database from Desired Schema, useful while iterating locally.',
       });
     } else if (!historyMismatch && !repoDrift.isDifferent && !hasPendingMigrations && !schemaDrift.isDifferent) {
       addRecommendation(recommendations, {
         kind: 'sync',
-        command: 'sqlfu sync',
+        command: ['sync'],
         label: 'Update the database from Desired Schema.',
       });
     }
@@ -824,7 +824,7 @@ export type CheckRecommendation = {
     | 'restoreMissingMigration'
     | 'restoreOriginalMigration'
     ;
-  readonly command?: string;
+  readonly command?: readonly [string, ...string[]];
   readonly label: string;
   readonly rationale?: string;
 };
@@ -835,8 +835,9 @@ export type CheckAnalysis = {
 };
 
 function addRecommendation(target: CheckRecommendation[], recommendation: CheckRecommendation) {
-  const key = `${recommendation.kind}|${recommendation.command ?? ''}|${recommendation.label}|${recommendation.rationale ?? ''}`;
-  if (target.some((existing) => `${existing.kind}|${existing.command ?? ''}|${existing.label}|${existing.rationale ?? ''}` === key)) {
+  const commandKey = recommendation.command?.join('\0') ?? '';
+  const key = `${recommendation.kind}|${commandKey}|${recommendation.label}|${recommendation.rationale ?? ''}`;
+  if (target.some((existing) => `${existing.kind}|${existing.command?.join('\0') ?? ''}|${existing.label}|${existing.rationale ?? ''}` === key)) {
     return;
   }
   target.push(recommendation);
@@ -892,9 +893,13 @@ function formatCheckFailure(analysis: CheckAnalysis) {
 
 function formatRecommendationText(recommendation: CheckRecommendation) {
   const parts = [
-    recommendation.command ? `\`${recommendation.command}\`` : null,
+    recommendation.command ? `\`${formatRecommendationCommand(recommendation.command)}\`` : null,
     recommendation.label.replace(/\.$/u, ''),
   ].filter(Boolean);
   const sentence = parts.join(' ');
   return recommendation.rationale ? `${sentence}. (${recommendation.rationale})` : `${sentence}.`;
+}
+
+function formatRecommendationCommand(command: readonly [string, ...string[]]) {
+  return ['sqlfu', ...command].join(' ');
 }

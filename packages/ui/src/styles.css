@@ -537,15 +537,14 @@ h3 {
 
 .schema-recommendation-command {
   display: table-cell;
-  width: 1%;
+  width: clamp(12rem, 24vw, 20rem);
   padding-right: 0.75rem;
-  vertical-align: top;
-  max-width: 12rem;
+  vertical-align: baseline;
 }
 
 .schema-recommendation-content {
   display: table-cell;
-  vertical-align: top;
+  vertical-align: baseline;
 }
 
 .schema-recommendation {
