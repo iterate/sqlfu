@@ -6,45 +6,38 @@ import {test as base} from '@playwright/test';
 const currentDir = import.meta.dirname;
 const projectsRoot = path.join(currentDir, 'projects');
 const templateRoot = path.join(currentDir, 'template-project');
+const serverOrigin = 'http://localhost:3218';
 
 export const test = base.extend<{
-  projectName: string;
-  projectRoot: string;
+  slug: string;
+  projectDir: string;
   projectUrl: string;
 }>({
-  projectName: async ({}, use, testInfo) => {
-    const slug = slugify([
-      testInfo.title,
-      String(testInfo.workerIndex),
-      String(Date.now()),
-      Math.random().toString(36).slice(2, 8),
-    ].join('-'));
-    await use(`test-${slug}`);
+  slug: async ({}, use, testInfo) => {
+    const slug = slugify(testInfo.title);
+    await use(slug);
   },
-  projectRoot: async ({projectName}, use) => {
-    const projectRoot = path.join(projectsRoot, projectName);
-    await removeProjectRoot(projectRoot);
-    await fs.cp(templateRoot, projectRoot, {recursive: true});
+  projectDir: async ({slug}, use) => {
+    const projectDir = path.join(projectsRoot, slug);
+    await removeProjectDir(projectDir);
+    await fs.cp(templateRoot, projectDir, {recursive: true});
     try {
-      await use(projectRoot);
+      await use(projectDir);
     } finally {
-      await removeProjectRoot(projectRoot);
+      await removeProjectDir(projectDir);
     }
   },
-  projectUrl: async ({projectName, projectRoot}, use) => {
-    void projectName;
-    void projectRoot;
-    await use('http://localhost:3218');
+  projectUrl: async ({slug, projectDir}, use) => {
+    void projectDir;
+    await use(serverOrigin.replace('://localhost', `://${slug}.localhost`));
   },
-  page: async ({browser, projectName}, use) => {
+  context: async ({browser, projectUrl, contextOptions}, use) => {
     const context = await browser.newContext({
-      extraHTTPHeaders: {
-        'x-sqlfu-project': projectName,
-      },
+      ...contextOptions,
+      baseURL: projectUrl,
     });
-    const page = await context.newPage();
     try {
-      await use(page);
+      await use(context);
     } finally {
       await context.close();
     }
@@ -54,16 +47,21 @@ export const test = base.extend<{
 export {expect} from '@playwright/test';
 
 function slugify(value: string) {
-  return value
+  const slug = value
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80);
+
+  if (!slug) {
+    throw new Error(`Could not derive slug from test title: ${value}`);
+  }
+  return slug;
 }
 
-function removeProjectRoot(projectRoot: string) {
-  return fs.rm(projectRoot, {
+function removeProjectDir(projectDir: string) {
+  return fs.rm(projectDir, {
     recursive: true,
     force: true,
     maxRetries: 10,
