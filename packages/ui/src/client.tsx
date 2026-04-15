@@ -34,6 +34,7 @@ import type {
 import {columnWidthAlgorithm} from './column-width.js';
 import type {UiRouter} from './server.js';
 import {SqlCodeMirror, TextCodeMirror, TextDiffCodeMirror} from './sql-codemirror.js';
+import './styles.css';
 
 const queryClient = new QueryClient();
 const orpcClient: RouterClient<UiRouter> = createORPCClient(new RPCLink({
@@ -657,7 +658,7 @@ function SqlRunnerPanel(input: {
     ...orpc.sql.save.mutationOptions(),
   });
   const handleSave = async () => {
-    const suggestedName = slugifyPromptName(queryNickname(draft.sql));
+    const suggestedName = suggestSqlRunnerName(draft.sql);
     const providedName = window.prompt('Save query as', suggestedName);
     if (providedName == null) {
       return;
@@ -1743,6 +1744,14 @@ function slugifyPromptName(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+function suggestSqlRunnerName(sql: string) {
+  const simpleFromMatch = /^\s*select\s+\*\s+from\s+([a-z_][a-z0-9_]*)\b/im.exec(sql);
+  if (simpleFromMatch?.[1] && !simpleFromMatch[1].startsWith('sqlfu_')) {
+    return slugifyPromptName(`from ${simpleFromMatch[1]}`);
+  }
+  return slugifyPromptName(queryNickname(sql));
 }
 
 function normalizeSqlDraft(value: string) {

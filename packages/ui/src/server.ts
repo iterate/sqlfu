@@ -1,17 +1,25 @@
 import fs from 'node:fs/promises';
+import http from 'node:http';
 import path from 'node:path';
-import {Database} from 'bun:sqlite';
-import {os} from '@orpc/server';
+import {spawn} from 'node:child_process';
+import {DatabaseSync} from 'node:sqlite';
+import {fileURLToPath} from 'node:url';
+import {ORPCError, os} from '@orpc/server';
 import {RPCHandler} from '@orpc/server/fetch';
+import type {ViteDevServer} from 'vite';
+import {createServer as createViteServer} from 'vite';
 import {z} from 'zod';
 
 import type {QueryCatalog, QueryCatalogEntry, QueryArg, SqlfuProjectConfig} from 'sqlfu/experimental';
-import {analyzeAdHocSqlForConfig, createBunClient, getCheckMismatches, getMigrationResultantSchema, getSchemaAuthorities, loadProjectConfig, runSqlfuCommand, splitSqlStatements, writeDefinitionsSql} from 'sqlfu/experimental';
+import {analyzeAdHocSqlForConfig, getCheckMismatches, getMigrationResultantSchema, getSchemaAuthorities, loadProjectConfig, runSqlfuCommand, splitSqlStatements, writeDefinitionsSql} from 'sqlfu/experimental';
+import {createNodeSqliteClient} from 'sqlfu/client';
 import type {QueryExecutionResponse, SchemaCheckCard, SqlAnalysisResponse, SqlEditorDiagnostic, StudioColumn, TableRowKey, TableRowsResponse} from './shared.js';
 
-const clientEntryPath = path.join(import.meta.dir, 'client.tsx');
-const stylesPath = path.join(import.meta.dir, 'styles.css');
-const generateCatalogScriptPath = path.join(import.meta.dir, 'generate-catalog.ts');
+const sourceDir = path.dirname(fileURLToPath(import.meta.url));
+const packageRoot = path.resolve(sourceDir, '..');
+const distDir = path.join(packageRoot, 'dist');
+const indexHtmlPath = path.join(packageRoot, 'index.html');
+const generateCatalogScriptPath = path.join(sourceDir, 'generate-catalog.ts');
 
 type UiRouterContext = {
   config: SqlfuProjectConfig;
@@ -38,8 +46,8 @@ const uiRouter = {
   schema: {
     get: uiBase.handler(async ({context}) => {
       const projectRoot = path.dirname(context.config.db);
-      const database = new Database(context.config.db);
-      const client = createBunClient(database);
+      const database = new DatabaseSync(context.config.db);
+      const client = createNodeSqliteClient(database);
 
       try {
         const relations = client.all<{name: string; type: 'table' | 'view'; sql: string | null}>({
@@ -124,7 +132,11 @@ const uiRouter = {
           throw new Error('Command is required');
         }
 
-        await runSqlfuCommand({config: context.config}, input.command);
+        try {
+          await runSqlfuCommand({config: context.config}, input.command);
+        } catch (error) {
+          throw toClientError(error);
+        }
         return {ok: true} as const;
       }),
     definitions: uiBase
@@ -180,12 +192,12 @@ const uiRouter = {
 
         const statements = splitSqlStatements(trimmedSql);
         const params = normalizeSqlRunnerParams(input.params);
-        const database = new Database(context.config.db);
+        const database = new DatabaseSync(context.config.db);
 
         try {
           if (statements.length === 1) {
             try {
-              const rows = database.query<Record<string, unknown>, any>(statements[0]!).all(params as never);
+              const rows = executePreparedAll<Record<string, unknown>>(database.prepare(statements[0]!), params);
               return {
                 sql: trimmedSql,
                 mode: 'rows' as const,
@@ -251,8 +263,8 @@ const uiRouter = {
           return encodeArgument(arg, source?.[arg.name]);
         }) as readonly QueryArg[];
 
-        const database = new Database(context.config.db);
-        const client = createBunClient(database);
+        const database = new DatabaseSync(context.config.db);
+        const client = createNodeSqliteClient(database);
 
         try {
           if (query.resultMode === 'metadata') {
@@ -343,75 +355,90 @@ export type UiRouter = typeof uiRouter;
 export async function startSqlfuUiServer(input: {
   port?: number;
   projectRoot?: string;
+  dev?: boolean;
 }) {
   const projectRoot = path.resolve(input.projectRoot ?? process.cwd());
-  process.chdir(projectRoot);
-  const config = await loadProjectConfig();
+  const config = await loadProjectConfigFrom(projectRoot);
   const rpcHandler = new RPCHandler(uiRouter);
+  const httpServer = http.createServer();
+  const vite = input.dev
+    ? await createViteServer({
+        root: packageRoot,
+        appType: 'custom',
+        server: {
+          middlewareMode: true,
+          hmr: {
+            server: httpServer,
+          },
+        },
+      })
+    : undefined;
 
-  const server = Bun.serve({
-    port: input.port ?? 3017,
-    async fetch(request: Request) {
-      try {
-        const url = new URL(request.url);
+  httpServer.on('request', async (req, res) => {
+    try {
+      const url = new URL(req.url ?? '/', `http://${req.headers.host ?? '127.0.0.1'}`);
 
-        if (url.pathname.startsWith('/api/rpc')) {
-          const {matched, response} = await rpcHandler.handle(request, {
-            prefix: '/api/rpc',
-            context: {config},
-          });
-          return matched ? response : new Response('Not found', {status: 404});
-        }
-
-        if (url.pathname === '/assets/app.js') {
-          return javascript(await buildClientBundle());
-        }
-
-        if (url.pathname === '/assets/app.css') {
-          return css(await fs.readFile(stylesPath, 'utf8'));
-        }
-
-        return html(renderIndexHtml());
-      } catch (error) {
-        return apiError(error);
+      if (url.pathname.startsWith('/api/rpc')) {
+        const request = await toWebRequest(req, url);
+        const {matched, response} = await rpcHandler.handle(request, {
+          prefix: '/api/rpc',
+          context: {config},
+        });
+        await sendWebResponse(res, matched ? response : new Response('Not found', {status: 404}));
+        return;
       }
-    },
+
+      if (vite) {
+        await serveViteRequest(vite, req, res, url);
+        return;
+      }
+
+      await serveBuiltUi(res, url);
+    } catch (error) {
+      await sendWebResponse(res, apiError(error));
+    }
   });
 
-  return server;
+  await new Promise<void>((resolve, reject) => {
+    httpServer.once('error', reject);
+    httpServer.listen(input.port ?? 3017, () => {
+      httpServer.off('error', reject);
+      resolve();
+    });
+  });
+
+  if (vite) {
+    httpServer.on('close', () => {
+      void vite.close();
+    });
+  }
+
+  return {
+    port: getServerPort(httpServer),
+    stop: () =>
+      new Promise<void>((resolve, reject) => {
+        httpServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      }),
+    server: httpServer,
+  };
 }
 
-if (import.meta.main) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const projectRoot = readOption('--project-root');
   const port = readOption('--port');
+  const dev = process.argv.includes('--dev');
   const server = await startSqlfuUiServer({
     projectRoot,
     port: port ? Number(port) : undefined,
+    dev,
   });
   console.log(`sqlfu/ui listening on http://localhost:${server.port}`);
-}
-
-async function buildClientBundle() {
-  const result = await Bun.build({
-    entrypoints: [clientEntryPath],
-    target: 'browser',
-    format: 'esm',
-    minify: false,
-    sourcemap: 'inline',
-    naming: 'app.js',
-  });
-
-  if (!result.success) {
-    const details = result.logs.map((log: {message: string}) => log.message).join('\n');
-    throw new Error(`Failed to build client bundle:\n${details}`);
-  }
-
-  const output = result.outputs.find((item: {path: string}) => item.path.endsWith('.js'));
-  if (!output) {
-    throw new Error('Missing built client bundle');
-  }
-
-  return output.text();
 }
 
 async function loadCatalog(config: SqlfuProjectConfig): Promise<QueryCatalog> {
@@ -672,7 +699,7 @@ function encodeScalar(
   return JSON.stringify(value);
 }
 
-function getRelationColumns(client: ReturnType<typeof createBunClient>, relationName: string): readonly StudioColumn[] {
+function getRelationColumns(client: ReturnType<typeof createNodeSqliteClient>, relationName: string): readonly StudioColumn[] {
   return client
     .all<Record<string, unknown>>({
       sql: `PRAGMA table_xinfo("${escapeIdentifier(relationName)}")`,
@@ -687,7 +714,7 @@ function getRelationColumns(client: ReturnType<typeof createBunClient>, relation
     }));
 }
 
-function getRelationCount(client: ReturnType<typeof createBunClient>, relationName: string) {
+function getRelationCount(client: ReturnType<typeof createNodeSqliteClient>, relationName: string) {
   const rows = client.all<{count: number}>({
     sql: `select count(*) as count from "${escapeIdentifier(relationName)}"`,
     args: [],
@@ -698,8 +725,8 @@ function getRelationCount(client: ReturnType<typeof createBunClient>, relationNa
 async function getTableRows(dbPath: string, relationName: string, page: number): Promise<TableRowsResponse> {
   const safePage = Math.max(0, page);
   const pageSize = 25;
-  const database = new Database(dbPath);
-  const client = createBunClient(database);
+  const database = new DatabaseSync(dbPath);
+  const client = createNodeSqliteClient(database);
 
   try {
     const relation = getRelationInfo(client, relationName);
@@ -737,8 +764,8 @@ async function saveTableRows(
     rowKeys: TableRowKey[];
   },
 ): Promise<TableRowsResponse> {
-  const database = new Database(dbPath);
-  const client = createBunClient(database);
+  const database = new DatabaseSync(dbPath);
+  const client = createNodeSqliteClient(database);
 
   try {
     const relation = getRelationInfo(client, relationName);
@@ -776,7 +803,7 @@ async function saveTableRows(
         ? buildInsertRowStatement(relationName, row.nextRow, row.changedColumns)
         : buildUpdateRowStatement(relationName, row.rowKey, row.originalRow, row.nextRow, row.changedColumns);
       try {
-        database.run(sql.sql, sql.args as any);
+        executePreparedRun(database.prepare(sql.sql), sql.args);
       } catch (error) {
         throw new Error(`${error instanceof Error ? error.message : String(error)}\nSQL: ${sql.sql}\nArgs: ${JSON.stringify(sql.args)}`);
       }
@@ -797,8 +824,8 @@ async function deleteTableRow(
     rowKey: TableRowKey | undefined;
   },
 ): Promise<TableRowsResponse> {
-  const database = new Database(dbPath);
-  const client = createBunClient(database);
+  const database = new DatabaseSync(dbPath);
+  const client = createNodeSqliteClient(database);
 
   try {
     const relation = getRelationInfo(client, relationName);
@@ -812,7 +839,7 @@ async function deleteTableRow(
     }
 
     const sql = buildDeleteRowStatement(relationName, input.rowKey, originalRow);
-    const result = database.run(sql.sql, sql.args as any) as {changes?: number};
+    const result = executePreparedRun(database.prepare(sql.sql), sql.args) as {changes?: number};
     if (result.changes !== 1) {
       throw new Error(`Delete affected ${result.changes ?? 0} rows`);
     }
@@ -844,34 +871,45 @@ function normalizeSqlRunnerParams(value: unknown): Record<string, unknown> | rea
     return value;
   }
   if (typeof value === 'object') {
-    return expandNamedParameters(value as Record<string, unknown>);
+    return value as Record<string, unknown>;
   }
   throw new Error('SQL runner params must be an object or array');
 }
 
-function expandNamedParameters(input: Record<string, unknown>) {
-  const output: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(input)) {
-    output[key] = value;
-    if (!/^[\:\@\$\?]/.test(key)) {
-      output[`:${key}`] = value;
-      output[`@${key}`] = value;
-      output[`$${key}`] = value;
-    }
-  }
-  return output;
-}
-
 function runSqlStatement(
-  database: Database,
+  database: DatabaseSync,
   sql: string,
   params: Record<string, unknown> | readonly unknown[] | undefined,
 ) {
-  const result = database.run(sql, params as never);
+  const result = executePreparedRun(database.prepare(sql), params);
   return {
-    rowsAffected: result.changes,
+    rowsAffected: result.changes == null ? undefined : Number(result.changes),
     lastInsertRowid: result.lastInsertRowid,
   };
+}
+
+function executePreparedAll<TRow extends Record<string, unknown>>(
+  statement: ReturnType<DatabaseSync['prepare']>,
+  params: Record<string, unknown> | readonly unknown[] | undefined,
+) {
+  if (params == null) {
+    return statement.all() as TRow[];
+  }
+  return Array.isArray(params)
+    ? statement.all(...params) as TRow[]
+    : statement.all(params as never) as TRow[];
+}
+
+function executePreparedRun(
+  statement: ReturnType<DatabaseSync['prepare']>,
+  params: Record<string, unknown> | readonly unknown[] | undefined,
+) {
+  if (params == null) {
+    return statement.run();
+  }
+  return Array.isArray(params)
+    ? statement.run(...params)
+    : statement.run(params as never);
 }
 
 function materializeRow(row: Record<string, unknown>) {
@@ -895,7 +933,7 @@ function escapeIdentifier(value: string) {
   return value.replaceAll('"', '""');
 }
 
-function getRelationInfo(client: ReturnType<typeof createBunClient>, relationName: string) {
+function getRelationInfo(client: ReturnType<typeof createNodeSqliteClient>, relationName: string) {
   const row = client.all<{name: string; type: 'table' | 'view'; sql: string | null}>({
     sql: `select name, type, sql from sqlite_schema where name = ?`,
     args: [relationName],
@@ -1046,38 +1084,6 @@ function coerceEditedValue(value: unknown, originalValue: unknown) {
   return value;
 }
 
-function json(value: unknown) {
-  return new Response(JSON.stringify(value, null, 2), {
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-    },
-  });
-}
-
-function html(value: string) {
-  return new Response(value, {
-    headers: {
-      'content-type': 'text/html; charset=utf-8',
-    },
-  });
-}
-
-function css(value: string) {
-  return new Response(value, {
-    headers: {
-      'content-type': 'text/css; charset=utf-8',
-    },
-  });
-}
-
-function javascript(value: string) {
-  return new Response(value, {
-    headers: {
-      'content-type': 'text/javascript; charset=utf-8',
-    },
-  });
-}
-
 function apiError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return new Response(message, {
@@ -1088,45 +1094,39 @@ function apiError(error: unknown) {
   });
 }
 
-function renderIndexHtml() {
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>sqlfu/ui</title>
-    <link rel="stylesheet" href="/assets/app.css" />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/assets/app.js"></script>
-  </body>
-</html>`;
+function toClientError(error: unknown) {
+  return new ORPCError('BAD_REQUEST', {
+    message: error instanceof Error ? error.message : String(error),
+  });
 }
 
 function readOption(name: string) {
-  const index = Bun.argv.indexOf(name);
+  const index = process.argv.indexOf(name);
   if (index === -1) {
     return undefined;
   }
-  return Bun.argv[index + 1];
+  return process.argv[index + 1];
 }
 
 export async function generateCatalogForProject(projectRoot: string) {
-  await runCommand(['tsx', generateCatalogScriptPath], projectRoot);
+  await runCommand(['pnpm', 'exec', 'tsx', generateCatalogScriptPath], projectRoot);
 }
 
 async function runCommand(command: readonly string[], cwd: string) {
-  const process = Bun.spawn([...command], {
+  const child = spawn(command[0]!, [...command.slice(1)], {
     cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
-    process.exited,
-  ]);
+  const stdoutChunks: Buffer[] = [];
+  const stderrChunks: Buffer[] = [];
+  child.stdout.on('data', (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+  child.stderr.on('data', (chunk) => stderrChunks.push(Buffer.from(chunk)));
+  const exitCode = await new Promise<number>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', (code) => resolve(code ?? 1));
+  });
+  const stdout = Buffer.concat(stdoutChunks).toString('utf8');
+  const stderr = Buffer.concat(stderrChunks).toString('utf8');
 
   if (exitCode !== 0) {
     throw new Error(
@@ -1137,4 +1137,142 @@ async function runCommand(command: readonly string[], cwd: string) {
       ].filter(Boolean).join('\n'),
     );
   }
+}
+
+async function loadProjectConfigFrom(projectRoot: string) {
+  const previousCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    return await loadProjectConfig();
+  } finally {
+    process.chdir(previousCwd);
+  }
+}
+
+async function toWebRequest(req: http.IncomingMessage, url: URL) {
+  const method = req.method ?? 'GET';
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        headers.append(name, item);
+      }
+      continue;
+    }
+    if (value != null) {
+      headers.set(name, value);
+    }
+  }
+
+  const body = method === 'GET' || method === 'HEAD'
+    ? undefined
+    : await readIncomingMessage(req);
+
+  return new Request(url, {
+    method,
+    headers,
+    body,
+  } satisfies RequestInit);
+}
+
+async function sendWebResponse(res: http.ServerResponse, response: Response) {
+  res.statusCode = response.status;
+  response.headers.forEach((value, name) => {
+    res.setHeader(name, value);
+  });
+  const body = response.body ? Buffer.from(await response.arrayBuffer()) : undefined;
+  res.end(body);
+}
+
+async function serveViteRequest(
+  vite: ViteDevServer,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+) {
+  await new Promise<void>((resolve, reject) => {
+    vite.middlewares(req, res, (error: unknown) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+
+  if (res.writableEnded) {
+    return;
+  }
+
+  const template = await fs.readFile(indexHtmlPath, 'utf8');
+  const html = await vite.transformIndexHtml(url.pathname, template);
+  await sendWebResponse(res, new Response(html, {
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+    },
+  }));
+}
+
+async function serveBuiltUi(res: http.ServerResponse, url: URL) {
+  const relativePath = url.pathname === '/' ? 'index.html' : url.pathname.replace(/^\/+/, '');
+  const candidatePath = path.join(distDir, relativePath);
+
+  if (isInsideDist(candidatePath)) {
+    try {
+      const file = await fs.readFile(candidatePath);
+      await sendWebResponse(res, new Response(file, {
+        headers: {
+          'content-type': contentTypeForPath(candidatePath),
+        },
+      }));
+      return;
+    } catch {}
+  }
+
+  const indexHtml = await fs.readFile(path.join(distDir, 'index.html'));
+  await sendWebResponse(res, new Response(indexHtml, {
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+    },
+  }));
+}
+
+function isInsideDist(candidatePath: string) {
+  const relative = path.relative(distDir, candidatePath);
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+function contentTypeForPath(filePath: string) {
+  if (filePath.endsWith('.js')) {
+    return 'text/javascript; charset=utf-8';
+  }
+  if (filePath.endsWith('.css')) {
+    return 'text/css; charset=utf-8';
+  }
+  if (filePath.endsWith('.html')) {
+    return 'text/html; charset=utf-8';
+  }
+  if (filePath.endsWith('.json')) {
+    return 'application/json; charset=utf-8';
+  }
+  if (filePath.endsWith('.svg')) {
+    return 'image/svg+xml';
+  }
+  return 'application/octet-stream';
+}
+
+function getServerPort(server: http.Server) {
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('Expected server to listen on a TCP port');
+  }
+  return address.port;
+}
+
+async function readIncomingMessage(req: http.IncomingMessage) {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
 }

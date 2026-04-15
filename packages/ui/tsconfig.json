@@ -5,8 +5,8 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "lib": ["ESNext", "ESNext.Disposable", "DOM"],
-    "types": ["node", "bun"]
+    "types": ["node", "vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "vite.config.ts"],
   "exclude": ["test/projects/**/*.ts", "test/fixture-project/**/*.ts"]
 }

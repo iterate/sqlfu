@@ -252,8 +252,8 @@ h3 {
 
 /*
   Adapted from @silevis/reactgrid/styles.css (https://github.com/silevis/reactgrid).
-  We vendor the minimal base rules here because Bun's current client bundling path
-  in this package does not reliably emit third-party CSS imports.
+  We vendor the minimal base rules here to keep the UI package's grid styling
+  explicit and local instead of depending on the upstream bundle wholesale.
   Modifications:
   - trimmed to the rules required by sqlfu/ui's current grid usage
   - recolored headers/focus states to match this package's existing palette

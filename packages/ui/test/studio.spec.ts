@@ -184,7 +184,7 @@ test('desired schema can be edited and saved, and sync is disabled while it is d
   await expect.poll(() => readCodeMirrorText(page, 'Desired Schema editor')).toContain('create view published_posts as');
 
   await page.getByRole('button', {name: 'Save Desired Schema'}).click();
-  await expect(fs.readFile(definitionsPath, 'utf8')).resolves.toContain('create view published_posts as');
+  await expect.poll(() => fs.readFile(definitionsPath, 'utf8')).toContain('create view published_posts as');
   await expect(page.getByText('Repo Drift')).toBeVisible();
 });
 

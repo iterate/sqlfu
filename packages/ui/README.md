@@ -16,6 +16,6 @@ Development:
 pnpm --filter sqlfu-ui dev
 ```
 
-That starts a Bun server against `packages/ui/test/projects/dev-project`. If the project does not exist yet, it is seeded from the template project.
+That starts a Node server with Vite HMR against `packages/ui/test/projects/dev-project`. If the project does not exist yet, it is seeded from the template project.
 
 Playwright uses the same entrypoint, but starts a separate seeded `fixture-project`.

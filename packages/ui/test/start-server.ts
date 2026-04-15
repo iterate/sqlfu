@@ -1,14 +1,17 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import {Database} from 'bun:sqlite';
+import {DatabaseSync} from 'node:sqlite';
+import {fileURLToPath} from 'node:url';
 
 import {generateCatalogForProject, startSqlfuUiServer} from '../src/server.ts';
 
-const projectName = Bun.argv[2] ?? 'dev-project';
-const resetDb = Bun.argv.includes('--reset-db');
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const projectName = process.argv[2] ?? 'dev-project';
+const resetDb = process.argv.includes('--reset-db');
+const dev = process.argv.includes('--dev');
 const port = Number(readOption('--port') ?? '3217');
-const templateRoot = path.join(import.meta.dir, 'template-project');
-const projectsRoot = path.join(import.meta.dir, 'projects');
+const templateRoot = path.join(currentDir, 'template-project');
+const projectsRoot = path.join(currentDir, 'projects');
 const projectRoot = path.join(projectsRoot, projectName);
 const dbPath = path.join(projectRoot, 'app.db');
 
@@ -20,6 +23,7 @@ await generateCatalogForProject(projectRoot);
 const server = await startSqlfuUiServer({
   port,
   projectRoot,
+  dev,
 });
 
 console.log(`sqlfu/ui dev server listening on http://localhost:${server.port}`);
@@ -54,7 +58,7 @@ async function ensureDatabase(
     return;
   } catch {}
 
-  const database = new Database(dbPath);
+  const database = new DatabaseSync(dbPath);
   try {
     const definitionsSql = await fs.readFile(path.join(targetRoot, 'definitions.sql'), 'utf8');
     database.exec(definitionsSql);
@@ -69,9 +73,9 @@ async function ensureDatabase(
 }
 
 function readOption(name: string) {
-  const index = Bun.argv.indexOf(name);
+  const index = process.argv.indexOf(name);
   if (index === -1) {
     return undefined;
   }
-  return Bun.argv[index + 1];
+  return process.argv[index + 1];
 }

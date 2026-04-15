@@ -8,7 +8,7 @@ export default defineConfig({
     headless: true,
   },
   webServer: {
-    command: 'bun run test/start-server.ts fixture-project --reset-db --port 3218',
+    command: 'pnpm exec tsx test/start-server.ts fixture-project --reset-db --dev --port 3218',
     port: 3218,
     reuseExistingServer: false,
     stdout: 'pipe',

@@ -689,14 +689,8 @@ function buildSyncDriftRecommendation(input: {
   pendingMigrations: boolean;
   schemaDrift: boolean;
 }) {
-  if (input.repoDrift) {
-    return 'Recommendation: resolve Repo Drift first.';
-  }
   if (input.historyDrift) {
     return 'Recommendation: resolve History Drift first.';
-  }
-  if (input.schemaDrift) {
-    return 'Recommendation: Address Schema Drift.';
   }
   if (input.pendingMigrations) {
     return 'Recommendation: run `sqlfu migrate`.';
