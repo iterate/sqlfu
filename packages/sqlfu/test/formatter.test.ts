@@ -13,6 +13,13 @@ for (const fixturePath of await listFixtureFiles(fixturesDir)) {
 
     for (const fixtureCase of cases) {
       test(fixtureCase.name, () => {
+        if (fixtureCase.error) {
+          expect(normalizeThrownError(() => formatSql(fixtureCase.input, fixtureCase.config))).toBe(
+            normalizeErrorMessage(fixtureCase.error),
+          );
+          return;
+        }
+
         expect(formatSql(fixtureCase.input, fixtureCase.config)).toBe(fixtureCase.output);
       });
     }
@@ -23,7 +30,8 @@ type FormatterFixtureCase = {
   readonly name: string;
   readonly config: Record<string, unknown>;
   readonly input: string;
-  readonly output: string;
+  readonly output?: string;
+  readonly error?: string;
 };
 
 async function listFixtureFiles(fixturesDir: string): Promise<string[]> {
@@ -49,17 +57,26 @@ function parseFormatterFixture(contents: string): FormatterFixtureCase[] {
     const inputMarker = groups.body.match(/^-- ?input:$/m);
     const unchangedOutputMarker = groups.body.match(/^-- ?output:\s*<unchanged>\s*$/m);
     const outputMarker = groups.body.match(/^-- ?output:$/m);
-    if (inputMarker?.index === undefined || (!unchangedOutputMarker && outputMarker?.index === undefined)) {
+    const errorMarker = groups.body.match(/^-- ?error:$/m);
+    if (
+      inputMarker?.index === undefined
+      || (!unchangedOutputMarker && outputMarker?.index === undefined && errorMarker?.index === undefined)
+    ) {
       throw new Error(`Invalid formatter fixture region "${groups.name}"`);
     }
 
     const inputStart = inputMarker.index + inputMarker[0].length + 1;
-    const resolvedOutputMarker = unchangedOutputMarker ?? outputMarker!;
-    const outputStart = resolvedOutputMarker.index!;
-    const input = trimFixtureBlock(groups.body.slice(inputStart, outputStart));
+    const resolvedResultMarker = unchangedOutputMarker ?? outputMarker ?? errorMarker!;
+    const resultStart = resolvedResultMarker.index!;
+    const input = trimFixtureBlock(groups.body.slice(inputStart, resultStart));
     const output = unchangedOutputMarker
       ? input
-      : trimFixtureBlock(groups.body.slice(outputMarker!.index! + outputMarker![0].length + 1));
+      : outputMarker
+        ? trimFixtureBlock(groups.body.slice(outputMarker.index! + outputMarker[0].length + 1))
+        : undefined;
+    const error = errorMarker
+      ? trimFixtureBlock(groups.body.slice(errorMarker.index! + errorMarker[0].length + 1))
+      : undefined;
     cases.push({
       name: groups.name,
       config: {
@@ -68,6 +85,7 @@ function parseFormatterFixture(contents: string): FormatterFixtureCase[] {
       },
       input,
       output,
+      error,
     });
   }
 
@@ -81,4 +99,21 @@ function trimFixtureBlock(value: string): string {
 function parseDefaultConfig(contents: string): Record<string, unknown> {
   const defaultConfigMatch = contents.match(/^-- default config: (?<json>.+)$/m);
   return defaultConfigMatch?.groups?.json ? JSON.parse(defaultConfigMatch.groups.json) as Record<string, unknown> : {};
+}
+
+function normalizeThrownError(fn: () => unknown): string {
+  try {
+    fn();
+    throw new Error('Expected formatter to throw');
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Expected formatter to throw') {
+      throw error;
+    }
+
+    return normalizeErrorMessage(error instanceof Error ? String(error) : String(error));
+  }
+}
+
+function normalizeErrorMessage(value: string): string {
+  return value.replace(/^Error:\s*/, '').trimEnd();
 }

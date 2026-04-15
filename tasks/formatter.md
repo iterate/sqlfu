@@ -37,8 +37,8 @@ progress:
 - [x] add a thin public `formatSql()` wrapper with `dialect` support and `sqlite` default
 - [x] add fixture-driven formatter tests with `#region` blocks and `-- output: <unchanged>`
 - [x] add initial sqlite fixture coverage
-- [~] import a broad set of fixture cases from `sql-formatter`
-- [~] import a broad set of fixture cases from `prettier-plugin-sql-cst`
+- [x] import a broad set of fixture cases from `sql-formatter`
+- [x] import a broad set of fixture cases from `prettier-plugin-sql-cst`
 - [ ] add update/writeback support for fixture outputs
 - [ ] start applying sqlfu-specific printer preferences on top of upstream behavior
 
@@ -51,3 +51,5 @@ notes:
 - imported fixture cases are now split by upstream source so later divergence is easier to reason about
 - imported coverage now includes sqlite-specific statements, option cases, comments, CTEs, and simple select/DDL shapes
 - fixture files now support `-- default config: {...}` to reduce repetition during bulk imports
+- generated baseline corpus now includes 1,452 passing fixture cases across sqlite, postgresql, bigquery, mysql, mariadb, and tsql
+- fixture harness now supports error baselines as well as formatted-output baselines, so unsupported syntax is captured instead of silently skipped
