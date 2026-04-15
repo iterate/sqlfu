@@ -36,6 +36,7 @@ async function listFixtureFiles(fixturesDir: string): Promise<string[]> {
 
 function parseFormatterFixture(contents: string): FormatterFixtureCase[] {
   const cases: FormatterFixtureCase[] = [];
+  const defaultConfig = parseDefaultConfig(contents);
   const regionPattern = /^-- #region: (?<name>.+)\n(?<body>[\s\S]*?)^-- #endregion$/gm;
 
   for (const match of contents.matchAll(regionPattern)) {
@@ -61,7 +62,10 @@ function parseFormatterFixture(contents: string): FormatterFixtureCase[] {
       : trimFixtureBlock(groups.body.slice(outputMarker!.index! + outputMarker![0].length + 1));
     cases.push({
       name: groups.name,
-      config: configMatch?.groups?.json ? JSON.parse(configMatch.groups.json) as Record<string, unknown> : {},
+      config: {
+        ...defaultConfig,
+        ...(configMatch?.groups?.json ? JSON.parse(configMatch.groups.json) as Record<string, unknown> : {}),
+      },
       input,
       output,
     });
@@ -72,4 +76,9 @@ function parseFormatterFixture(contents: string): FormatterFixtureCase[] {
 
 function trimFixtureBlock(value: string): string {
   return value.replace(/\n+$/g, '');
+}
+
+function parseDefaultConfig(contents: string): Record<string, unknown> {
+  const defaultConfigMatch = contents.match(/^-- default config: (?<json>.+)$/m);
+  return defaultConfigMatch?.groups?.json ? JSON.parse(defaultConfigMatch.groups.json) as Record<string, unknown> : {};
 }

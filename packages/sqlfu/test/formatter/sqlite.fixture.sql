@@ -1,5 +1,6 @@
+-- default config: {"dialect":"sqlite","keywordCase":"lower"}
+
 -- #region: simple create table
--- config: {"dialect":"sqlite","keywordCase":"lower"}
 -- input:
 create table foo (       a int);
 -- output:

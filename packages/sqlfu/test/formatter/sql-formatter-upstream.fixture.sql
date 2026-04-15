@@ -1,5 +1,7 @@
+-- default config: {"dialect":"sqlite"}
+
 -- #region: keywordCase preserve keeps original keyword casing
--- config: {"dialect":"sqlite","keywordCase":"preserve"}
+-- config: {"keywordCase":"preserve"}
 -- input:
 select * From tbl WHERE x > 0
 -- output:
@@ -12,7 +14,7 @@ WHERE
 -- #endregion
 
 -- #region: keywordCase lower lowercases reserved words
--- config: {"dialect":"sqlite","keywordCase":"lower"}
+-- config: {"keywordCase":"lower"}
 -- input:
 select * From tbl WHERE x > 0
 -- output:
@@ -25,7 +27,6 @@ where
 -- #endregion
 
 -- #region: linesBetweenQueries defaults to one blank line
--- config: {"dialect":"sqlite"}
 -- input:
 SELECT * FROM foo; SELECT * FROM bar;
 -- output:
@@ -41,7 +42,7 @@ FROM
 -- #endregion
 
 -- #region: linesBetweenQueries can be zero
--- config: {"dialect":"sqlite","linesBetweenQueries":0}
+-- config: {"linesBetweenQueries":0}
 -- input:
 SELECT * FROM foo; SELECT * FROM bar;
 -- output:
@@ -56,7 +57,7 @@ FROM
 -- #endregion
 
 -- #region: linesBetweenQueries can be two
--- config: {"dialect":"sqlite","linesBetweenQueries":2}
+-- config: {"linesBetweenQueries":2}
 -- input:
 SELECT * FROM foo; SELECT * FROM bar;
 -- output:
@@ -73,7 +74,6 @@ FROM
 -- #endregion
 
 -- #region: replace into syntax formats as sqlite dml
--- config: {"dialect":"sqlite"}
 -- input:
 REPLACE INTO tbl VALUES (1,'Leopard'),(2,'Dog');
 -- output:
@@ -85,7 +85,6 @@ VALUES
 -- #endregion
 
 -- #region: on conflict do update syntax formats as sqlite dml
--- config: {"dialect":"sqlite"}
 -- input:
 INSERT INTO tbl VALUES (1,'Leopard') ON CONFLICT DO UPDATE SET foo=1;
 -- output:
@@ -99,14 +98,12 @@ SET
 -- #endregion
 
 -- #region: short create table stays on one line
--- config: {"dialect":"sqlite"}
 -- input:
 CREATE TABLE tbl (a INT PRIMARY KEY, b TEXT);
 -- output: <unchanged>
 -- #endregion
 
 -- #region: long create table breaks across lines
--- config: {"dialect":"sqlite"}
 -- input:
 CREATE TABLE tbl (a INT PRIMARY KEY, b TEXT, c INT NOT NULL, doggie INT NOT NULL);
 -- output:
@@ -119,7 +116,6 @@ CREATE TABLE tbl (
 -- #endregion
 
 -- #region: tricky trailing line comments
--- config: {"dialect":"sqlite"}
 -- input:
 SELECT a--comment, here
 FROM b--comment
@@ -131,7 +127,6 @@ FROM
 -- #endregion
 
 -- #region: first line comments in file stay intact
--- config: {"dialect":"sqlite"}
 -- input:
 -- comment1
 -- comment2
@@ -139,7 +134,6 @@ FROM
 -- #endregion
 
 -- #region: parameterized cte formatting
--- config: {"dialect":"sqlite"}
 -- input:
 WITH cte_1(id, parent_id) AS (
   SELECT id, parent_id

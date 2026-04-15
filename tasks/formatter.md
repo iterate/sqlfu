@@ -50,3 +50,4 @@ notes:
 - current package `typecheck` / `build` are still blocked by an unrelated existing error in `packages/sqlfu/src/vendor/small-utils.ts`
 - imported fixture cases are now split by upstream source so later divergence is easier to reason about
 - imported coverage now includes sqlite-specific statements, option cases, comments, CTEs, and simple select/DDL shapes
+- fixture files now support `-- default config: {...}` to reduce repetition during bulk imports
