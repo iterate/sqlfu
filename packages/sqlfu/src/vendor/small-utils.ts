@@ -117,7 +117,7 @@ export function camelCase(value: string): string {
 
 export async function glob(pattern: string, options?: {cwd?: string}): Promise<string[]> {
   const matches: string[] = [];
-  for await (const match of fsGlob(pattern, options)) {
+  for await (const match of fsGlob(pattern, options?.cwd ? {cwd: options?.cwd} : {})) {
     matches.push(String(match));
   }
 
