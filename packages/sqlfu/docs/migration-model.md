@@ -398,3 +398,9 @@ For example, it does not yet pin down:
 - whether `migrate` should ever allow forcing past history drift
 
 Those should be decided after this conceptual model is stable.
+
+## Related Reading
+
+This document is about migration authorities and command semantics.
+
+For the lower-level SQLite schema diff engine that powers `draft`, `sync`, `goto`, and part of `check`, see [schema-diff-model.md](./schema-diff-model.md).

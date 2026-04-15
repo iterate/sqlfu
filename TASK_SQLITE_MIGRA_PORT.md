@@ -102,10 +102,10 @@ Start with only these object types:
 
 Do not start with:
 
-- [ ] triggers
-- [ ] collations
-- [ ] generated columns unless SQLite makes them unavoidable
-- [ ] virtual tables / FTS
+- [x] triggers - added later once the fixture port proved they are a meaningful SQLite schema object for this engine
+- [x] collations - added later for column-level `collate ...` support; SQLite collation objects are still not modeled separately
+- [x] generated columns unless SQLite makes them unavoidable - added later because the fixture port made them unavoidable
+- [x] virtual tables / FTS - intentionally left unsupported, with an explicit native-engine error instead of fake diff support
 
 For each inspected object, prefer explicit normalized fields over raw SQL string comparison.
 
@@ -173,9 +173,9 @@ Then handle rebuild-required table changes explicitly:
 
 - [x] column `not null` changes
 - [x] unique changes
-- [ ] primary key changes
+- [x] primary key changes - handled via rebuild when values can be preserved; fails explicitly when a rebuild would need invented values for a newly introduced primary key
 - [x] column drops
-- [ ] column type changes where SQLite requires table rebuild
+- [x] column type changes where SQLite requires table rebuild - handled by the same rebuild planner used for other table-core shape changes
 
 Important:
 - do not pretend these are normal `alter table` operations if they are not
@@ -261,14 +261,20 @@ Do not delete the old code before there is replacement coverage.
 
 The likely shape is something like this. Adjust if the code suggests a better split.
 
-- `packages/sqlfu/src/schemainspect/sqlite/*`
+- `packages/sqlfu/src/schemadiff/sqlite-native.ts`
   - SQLite inspector types
-  - introspection queries / pragma readers
+  - pragma / `sqlite_schema` introspection
   - normalization helpers
-- `packages/sqlfu/src/migra/sqlite/*`
+  - semantic equality
   - change detection
   - statement planning
-  - dependency ordering if needed
+- `packages/sqlfu/src/core/sqlite.ts`
+  - shared SQLite SQL splitting/extraction helpers
+  - trigger-aware statement splitting used by both execution and diffing paths
+- `packages/sqlfu/src/schemadiff/index.ts`
+  - stable public `diffSchemaSql(...)` entrypoint
+- `packages/sqlfu/src/api.ts`
+  - `check`, `draft`, `sync`, and `goto` integration points using the native inspector/diff planner
 - `packages/sqlfu/test/sqlite-migra/*`
   - fixture harness
   - fixture directories
@@ -282,9 +288,9 @@ Use test-first development.
 
 Testing layers:
 
-- [ ] unit-ish tests for SQLite inspector object extraction
+- [x] unit-ish tests for SQLite inspector object extraction - covered through semantic `schemadiff` specs and direct inspected-schema equality checks rather than a large separate inspector-only suite
 - [x] fixture-driven diff tests for inspected-schema changes
-- [ ] integration tests proving `check`, `draft`, `sync`, and `goto` use the new engine correctly
+- [x] integration tests proving `check`, `draft`, `sync`, and `goto` use the new engine correctly
 
 Important test rule:
 - when a test exposes a limitation in the current engine, add a failing spec for desired behavior
@@ -315,12 +321,12 @@ It is acceptable to diverge sharply from `pgkit` implementation details if SQLit
 
 This task is done when:
 
-- [ ] the new SQLite inspector exists
-- [ ] there is a fixture-driven SQLite diff suite
-- [ ] the known `sqlite3def` misses are covered by tests and fixed in the new engine
-- [ ] `sqlfu check` does not need special workaround logic for SQLite equality
-- [ ] `sqlfu draft` and `sqlfu sync` no longer rely on `sqlite3def` for supported SQLite features
-- [ ] unsupported SQLite schema mutations are either implemented or fail explicitly and honestly
+- [x] the new SQLite inspector exists
+- [x] there is a fixture-driven SQLite diff suite
+- [x] the known `sqlite3def` misses are covered by tests and fixed in the new engine
+- [x] `sqlfu check` does not need special workaround logic for SQLite equality
+- [x] `sqlfu draft` and `sqlfu sync` no longer rely on `sqlite3def` for supported SQLite features
+- [x] unsupported SQLite schema mutations are either implemented or fail explicitly and honestly
 
 ## Decisions
 
@@ -421,3 +427,5 @@ Append short dated notes here as you work.
 - 2026-04-15: Deleted the remaining `sqlite3def` wrapper and binary-downloader files after confirming nothing still imported them.
 - 2026-04-15: Implemented SQLite trigger support in the SQL splitter, inspector, and diff planner, then ported `triggers`, `triggers2`, and `triggers3` fixture families.
 - 2026-04-15: Implemented SQLite column-collation support in the inspected table model and ported a SQLite-specific `collations` fixture.
+- 2026-04-15: Marked the remaining Phase 1 / Phase 3 / testing / done checklist items with short notes so the task file reflects the final native-engine scope instead of the initial starting constraints.
+- 2026-04-15: Added permanent documentation next to `migration-model.md` describing what `diffSchemaSql` does, where the implementation lives, and which SQLite features are intentionally unsupported today.

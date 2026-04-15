@@ -7,7 +7,7 @@
 - generated TypeScript wrappers next to those queries
 - versioned SQL migrations without building a full ORM around the database
 
-It is built around `@libsql/client`, `typesql-cli`, and `sqlite3def`.
+It is built around `@libsql/client`, `typesql-cli`, and a native inspected-schema SQLite diff engine.
 
 ## Install
 
@@ -56,7 +56,7 @@ Required config fields:
 - `definitionsPath`: schema source of truth
 - `sqlDir`: directory containing checked-in `.sql` queries
 
-`sqlfu` manages its own temporary files under `.sqlfu/` and uses a fixed bundled `sqlite3def` version internally. These are generally safe to delete at any time, they will regenerate as needed.
+`sqlfu` manages its own temporary files under `.sqlfu/`, including scratch databases used for schema diffing. These are generally safe to delete at any time, they will regenerate as needed.
 
 ## Commands
 
@@ -89,7 +89,7 @@ sqlfu check
 `sqlfu` uses:
 
 - versioned SQL migration files applied in filename order
-- `sqlite3def` to produce structural SQL from the difference between replayed migration state and `definitions.sql`
+- a native inspected-schema SQLite diff engine to produce structural SQL from the difference between replayed migration state and `definitions.sql`
 
 That means the production path is replayed versioned migrations, not direct declarative apply.
 
@@ -148,6 +148,7 @@ The commands each reconcile a different part of that model. "Smart" ones use sch
 | `sqlfu check`             | compares the authorities, names the mismatch, and recommends the least-destructive next step when possible | no        |
 
 For the full model and mismatch tables, see [docs/migration-model.md](./docs/migration-model.md).
+For the SQLite schema diff engine itself, see [docs/schema-diff-model.md](./docs/schema-diff-model.md).
 
 ## Opinions imposed
 
@@ -183,5 +184,5 @@ Generated TypeSQL outputs stay next to your `.sql` files.
 - `definitions.sql` remains the schema source of truth
 - `migrations/` is the source of truth for deployment history
 - runtime adapters can be imported from `sqlfu/client`, for example `createExpoSqliteClient`
-- `sqlfu` auto-downloads `sqlite3def` for macOS and Linux into `.sqlfu/`
+- `sqlfu` uses scratch SQLite databases under `.sqlfu/` when it needs to diff one schema program against another
 - SQLite view typing is still imperfect in TypeSQL, and some expressions such as `substr(...)` are not inferred directly, so `sqlfu` applies a small post-pass to improve generated result types without changing the SQL-first workflow
