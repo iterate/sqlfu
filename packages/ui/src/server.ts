@@ -494,10 +494,22 @@ async function analyzeSql(
       diagnostics: [],
     };
   } catch (error) {
+    if (isInternalUnsupportedSqlAnalysisError(error)) {
+      return {};
+    }
+
     return {
       diagnostics: [toSqlEditorDiagnostic(input.sql, error)],
     };
   }
+}
+
+function isInternalUnsupportedSqlAnalysisError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return [
+    'traverse_Sql_stmtContext',
+    'Not supported!',
+  ].includes(message);
 }
 
 function buildSchemaCheckCards(

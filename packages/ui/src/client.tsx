@@ -1200,7 +1200,7 @@ function DataTable(input: {
             isEditableDataCell(input, rowIndex, column),
             joinCellClassNames(
               selectedRowIndex === rowIndex ? 'selected-row' : undefined,
-              isSameValue(row[column], input.originalRows?.[rowIndex]?.[column]) ? undefined : 'dirty-cell',
+              isDirtyDataCell(input.originalRows, rowIndex, column, row[column]) ? 'dirty-cell' : undefined,
             ),
           )),
       ],
@@ -1219,7 +1219,13 @@ function DataTable(input: {
   const selectedDraftValue = selectedCell && typeof selectedCell.rowId === 'number' && typeof selectedCell.columnId === 'string'
     ? formatCellText(input.rows[selectedCell.rowId]?.[selectedCell.columnId])
     : '';
-  const selectedCellDirty = selectedOriginalValue !== selectedDraftValue;
+  const selectedCellDirty = selectedCell != null
+    && isDirtyDataCell(
+      input.originalRows,
+      selectedCell.rowId,
+      selectedCell.columnId,
+      input.rows[selectedCell.rowId]?.[selectedCell.columnId],
+    );
   const showSelectedCellDiffTabs = selectedCellDirty && selectedOriginalValue !== 'null' && selectedOriginalValue !== '';
   const applyUndo = () => {
     const previousRows = rowHistoryRef.current.undo.at(-1);
@@ -1442,6 +1448,19 @@ function DataTable(input: {
 
 function cloneTableRows(rows: readonly Record<string, unknown>[]) {
   return rows.map((row) => ({...row}));
+}
+
+function isDirtyDataCell(
+  originalRows: readonly Record<string, unknown>[] | undefined,
+  rowIndex: number,
+  columnId: string,
+  value: unknown,
+) {
+  if (!originalRows) {
+    return false;
+  }
+
+  return !isSameValue(value, originalRows[rowIndex]?.[columnId]);
 }
 
 function isEditableDataCell(
