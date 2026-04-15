@@ -229,6 +229,9 @@ export async function getSchemaAuthorities(context: SqlfuRouterContext) {
       content: migration.content,
       applied: appliedByName.has(migrationName(migration)),
       appliedAt: appliedByName.get(migrationName(migration))?.appliedAt ?? null,
+      integrity: appliedByName.has(migrationName(migration))
+        ? getMigrationIntegrity(migration.content, appliedByName.get(migrationName(migration))?.content)
+        : null,
     })),
     migrationHistory: applied.map((migration) => ({
       id: migration.name,
@@ -236,6 +239,7 @@ export async function getSchemaAuthorities(context: SqlfuRouterContext) {
       content: migration.content,
       applied: true,
       appliedAt: migration.appliedAt,
+      integrity: getMigrationIntegrity(migrationByName.get(migration.name)?.content, migration.content),
     })),
     liveSchemaSql: liveSchema,
   };
@@ -735,6 +739,14 @@ async function compareSchemas(config: SqlfuProjectConfig, left: string, right: s
     isDifferent,
     isSyncable,
   };
+}
+
+function getMigrationIntegrity(currentContent: string | undefined, appliedContent: string | undefined) {
+  if (!currentContent || !appliedContent) {
+    return 'content does not match' as const;
+  }
+
+  return currentContent === appliedContent ? 'ok' as const : 'content does not match' as const;
 }
 
 function summarizeSqlite3defError(error: unknown) {

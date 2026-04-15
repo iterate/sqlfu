@@ -29,6 +29,7 @@ export type SchemaAuthorityMigration = {
   readonly content: string;
   readonly applied: boolean;
   readonly appliedAt: string | null;
+  readonly integrity: 'ok' | 'content does not match' | null;
 };
 
 export type SchemaAuthoritiesResponse = {

@@ -5,6 +5,7 @@ import * as reactGrid from '@silevis/reactgrid';
 import Form from '@rjsf/core';
 import type {RJSFSchema} from '@rjsf/utils';
 import validator from '@rjsf/validator-ajv8';
+import {duration} from 'itty-time';
 import useLocalStorageState from 'use-local-storage-state';
 import {
   QueryClient,
@@ -333,7 +334,8 @@ function SchemaPanel(input: {
                     <summary role="button" className="migration-summary">
                       <span>{migration.name}</span>
                       <span className="migration-summary-right">
-                        <span className="pill pill-ok">Applied</span>
+                        <span className="muted">{formatAppliedAgo(migration.appliedAt)}</span>
+                        {migration.integrity !== 'ok' ? <span className="pill pill-warn">⚠</span> : null}
                         <span className="accordion-chevron" aria-hidden="true">
                           ▾
                         </span>
@@ -396,6 +398,7 @@ function MigrationDetail(input: {
     `name: ${toYamlScalar(input.migration.name)}`,
     `filename: ${toYamlScalar(input.migration.fileName)}`,
     `applied_at: ${toYamlScalar(input.migration.appliedAt)}`,
+    ...(input.migration.appliedAt ? [`integrity: ${toYamlScalar(input.migration.integrity ?? 'content does not match')}`] : []),
   ].join('\n');
 
   return (
@@ -1293,6 +1296,20 @@ function toYamlScalar(value: string | null) {
   }
 
   return value;
+}
+
+function formatAppliedAgo(appliedAt: string | null) {
+  if (!appliedAt) {
+    return 'unknown';
+  }
+
+  const appliedAtMs = new Date(appliedAt).getTime();
+  if (!Number.isFinite(appliedAtMs)) {
+    return 'unknown';
+  }
+
+  const elapsedMs = Math.max(0, Date.now() - appliedAtMs);
+  return `${duration(elapsedMs).split(',')[0]} ago`;
 }
 
 function isSameValue(left: unknown, right: unknown) {

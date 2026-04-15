@@ -118,6 +118,34 @@ test('migration history rows use the same migration detail view', async ({page})
   expect(metadata).toContain('name: create_table_posts');
   expect(metadata).toContain('applied_at: ');
   expect(metadata).not.toContain('applied_at: null');
+  expect(metadata).toContain('integrity: ok');
+  await expect(historyItem).toContainText(/ago/);
+  await expect(historyItem).not.toContainText('Applied');
+});
+
+test('migration history shows an integrity warning when applied content no longer matches the repo', async ({page}) => {
+  await using _project = await preserveSchemaProjectState(path.join(import.meta.dirname, 'projects', 'fixture-project'));
+  const migrationsDir = path.join(import.meta.dirname, 'projects', 'fixture-project', 'migrations');
+
+  await page.goto('/#schema');
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', {name: 'sqlfu draft'}).click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', {name: /sqlfu baseline /}).first().click();
+
+  const [migrationFileName] = (await fs.readdir(migrationsDir)).filter((name) => name.endsWith('.sql'));
+  await fs.appendFile(path.join(migrationsDir, migrationFileName!), `\n-- drifted after apply\n`);
+
+  await page.reload();
+
+  const historyItem = page.locator('.authority-history .migration-item').first();
+  await expect(historyItem).toContainText('⚠');
+  await historyItem.getByRole('button').first().click();
+
+  const migrationDetail = historyItem.locator('.migration-detail');
+  await migrationDetail.getByRole('tab', {name: 'Metadata'}).click();
+  await expect(await readCodeMirrorText(migrationDetail, 'Migration metadata')).toContain('integrity: content does not match');
 });
 
 test('desired schema can be edited and saved, and sync is disabled while it is dirty', async ({page}) => {

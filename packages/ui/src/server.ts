@@ -260,6 +260,7 @@ async function getSchemaAuthoritiesResponse(config: SqlfuProjectConfig): Promise
       content: migration.content,
       applied: migration.applied,
       appliedAt: migration.appliedAt,
+      integrity: migration.integrity,
     })),
     migrationHistory: authorities.migrationHistory.map((migration) => ({
       ...parseMigrationId(migration.id),
@@ -268,6 +269,7 @@ async function getSchemaAuthoritiesResponse(config: SqlfuProjectConfig): Promise
       content: migration.content,
       applied: migration.applied,
       appliedAt: migration.appliedAt,
+      integrity: migration.integrity,
     })),
     liveSchemaSql: authorities.liveSchemaSql,
   };

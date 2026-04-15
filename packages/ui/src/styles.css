@@ -196,6 +196,12 @@ h3 {
   border: 1px solid rgba(178, 76, 43, 0.15);
 }
 
+.pill.pill-warn {
+  background: rgba(178, 76, 43, 0.12);
+  border-color: rgba(178, 76, 43, 0.24);
+  color: var(--accent-strong);
+}
+
 .column-list {
   display: grid;
   gap: 0.6rem;
