@@ -547,8 +547,9 @@ function buildSchemaCheckCards(
 function buildSchemaCheckRecommendations(analysis: CheckAnalysis): readonly SchemaCheckRecommendation[] {
   return analysis.recommendations.map((recommendation) => ({
     kind: recommendation.kind,
-    summary: recommendation.summary,
     command: recommendation.command,
+    label: recommendation.label,
+    rationale: recommendation.rationale,
   }));
 }
 

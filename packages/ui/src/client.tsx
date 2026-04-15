@@ -242,9 +242,9 @@ function SchemaPanel(input: {
             </div>
             <div className="stack">
               {input.check.recommendations.map((recommendation) => (
-                <div key={`${recommendation.kind}/${recommendation.command ?? recommendation.summary}`} className="stack">
+                <div key={`${recommendation.kind}/${recommendation.command ?? recommendation.label}`} className="stack">
                   <p className="schema-recommendation">
-                    {renderSchemaRecommendationSummary(recommendation.summary, recommendation.command, handleSchemaCommand)}
+                    {renderSchemaRecommendationSummary(recommendation, handleSchemaCommand)}
                   </p>
                   {recommendation.command && commandErrors?.[recommendation.command] ? (
                     <div className="schema-command">
@@ -1557,42 +1557,30 @@ function formatAppliedAgo(appliedAt: string | null) {
 }
 
 function renderSchemaRecommendationSummary(
-  summary: string,
-  command: string | undefined,
+  recommendation: SchemaCheckResponse['recommendations'][number],
   handleSchemaCommand: (command: string) => void,
 ): ReactNode {
-  if (!command) {
-    return summary;
-  }
-
-  const commandPattern = new RegExp(String.raw`\`${escapeRegExp(command)}\``, 'g');
-  const segments = summary.split(commandPattern);
-  if (segments.length === 1) {
-    return summary;
-  }
-
-  return segments.flatMap((segment, index) => {
-    const nodes: ReactNode[] = [];
-    if (segment) {
-      nodes.push(<span key={`text-${index}`}>{segment}</span>);
-    }
-    if (index < segments.length - 1) {
-      nodes.push(
+  const nodes: ReactNode[] = [];
+  if (recommendation.command) {
+    nodes.push(
         <button
-          key={`command-${index}`}
+          key="command"
           className="button inline-command-button"
           type="button"
-          aria-label={command}
+          aria-label={recommendation.command}
           onClick={() => {
-            handleSchemaCommand(command);
+            handleSchemaCommand(recommendation.command!);
           }}
         >
-          {command}
+          {recommendation.command}
         </button>,
-      );
-    }
-    return nodes;
-  });
+    );
+  }
+  nodes.push(<span key="label">{recommendation.label.replace(/\.$/u, '')}.</span>);
+  if (recommendation.rationale) {
+    nodes.push(<span key="rationale"> ({recommendation.rationale})</span>);
+  }
+  return nodes;
 }
 
 function getSchemaCardLabel(card: SchemaCheckResponse['cards'][number]) {
@@ -1825,9 +1813,6 @@ function normalizeSqlDraft(value: string) {
   return value.trimEnd();
 }
 
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;

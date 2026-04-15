@@ -18,8 +18,9 @@ export type SchemaCheckCard = {
 
 export type SchemaCheckRecommendation = {
   readonly kind: string;
-  readonly summary: string;
   readonly command?: string;
+  readonly label: string;
+  readonly rationale?: string;
 };
 
 export type SchemaCheckResponse = {

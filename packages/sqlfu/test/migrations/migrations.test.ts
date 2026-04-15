@@ -172,7 +172,7 @@ describe('check recommendations', () => {
       Desired Schema does not match Live Schema.
 
       Recommended next actions
-      - run \`sqlfu goto 2026-04-10T00.00.00.000Z_create_a\`.]
+      - \`sqlfu goto 2026-04-10T00.00.00.000Z_create_a\` Move the database to the selected migration target.]
     `);
   });
 
@@ -189,7 +189,8 @@ describe('check recommendations', () => {
       Desired Schema does not match Live Schema.
 
       Recommended next actions
-      - run \`sqlfu draft\` to create a reviewable migration.]
+      - \`sqlfu draft\` Create a reviewable migration. (Addresses Repo Drift)
+      - \`sqlfu sync\` Update the database from Desired Schema, useful while iterating locally. (Addresses Sync Drift)]
     `);
   });
 
@@ -209,7 +210,7 @@ describe('check recommendations', () => {
       Desired Schema does not match Live Schema.
 
       Recommended next actions
-      - run \`sqlfu migrate\`.]
+      - \`sqlfu migrate\` Apply pending migrations to the database.]
     `);
   });
 
@@ -231,7 +232,7 @@ describe('check recommendations', () => {
       Live Schema exists, but Migration History is empty.
 
       Recommended next actions
-      - run \`sqlfu baseline 2026-04-10T00.00.00.000Z_create_person\`.]
+      - \`sqlfu baseline 2026-04-10T00.00.00.000Z_create_person\` Record the current schema as already applied.]
     `);
   });
 
@@ -265,7 +266,7 @@ describe('check recommendations', () => {
       Desired Schema does not match Live Schema.
 
       Recommended next actions
-      - run \`sqlfu baseline 2026-04-10T01.00.00.000Z_create_pet\`.]
+      - \`sqlfu baseline 2026-04-10T01.00.00.000Z_create_pet\` Record the current schema as already applied.]
     `);
   });
 
@@ -306,8 +307,9 @@ describe('check recommendations', () => {
       Desired Schema does not match Live Schema.
 
       Recommended next actions
-      - run \`sqlfu draft\` to create a reviewable migration (fixes the repo by recording the desired schema change as a migration).
-      - run \`sqlfu baseline 2026-04-10T00.00.00.000Z_create_abc\` (fixes this database by recording that it already matches that migration prefix).]
+      - \`sqlfu draft\` Create a reviewable migration. (Addresses Repo Drift)
+      - \`sqlfu baseline 2026-04-10T00.00.00.000Z_create_abc\` Record the current schema as already applied. (Addresses Schema Drift)
+      - \`sqlfu sync\` Update the database from Desired Schema, useful while iterating locally. (Addresses Sync Drift)]
     `);
   });
 
@@ -337,7 +339,7 @@ describe('check recommendations', () => {
       Desired Schema does not match Live Schema.
 
       Recommended next actions
-      - run \`sqlfu goto 2026-04-10T01.00.00.000Z_create_pet\`.]
+      - \`sqlfu goto 2026-04-10T01.00.00.000Z_create_pet\` Move the database to the selected migration target.]
     `);
   });
 
@@ -364,7 +366,7 @@ describe('check recommendations', () => {
       Desired Schema does not match Live Schema.
 
       Recommended next actions
-      - run \`sqlfu migrate\`.]
+      - \`sqlfu migrate\` Apply pending migrations to the database.]
     `);
   });
 });

@@ -607,32 +607,32 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
     if (historyMismatch.kind === 'deleted') {
       addRecommendation(recommendations, {
         kind: 'restoreMissingMigration',
-        summary: 'restore the missing migration from version control.',
+        label: 'Restore the missing migration from version control.',
       });
     } else if (recommendedBaselineTarget) {
       addRecommendation(recommendations, {
         kind: 'restoreOriginalMigration',
-        summary: 'restore the original migration from version control.',
+        label: 'Restore the original migration from version control.',
       });
       addRecommendation(recommendations, {
         kind: 'baseline',
         command: `sqlfu baseline ${recommendedBaselineTarget}`,
-        summary: `run \`sqlfu baseline ${recommendedBaselineTarget}\` to keep the current live schema.`,
+        label: 'Keep the current live schema.',
       });
     } else if (syncDrift.isDifferent) {
       addRecommendation(recommendations, {
         kind: 'restoreOriginalMigration',
-        summary: 'restore the original migration from version control.',
+        label: 'Restore the original migration from version control.',
       });
       addRecommendation(recommendations, {
         kind: 'goto',
         command: `sqlfu goto ${historyMismatch.name}`,
-        summary: `run \`sqlfu goto ${historyMismatch.name}\` to reconcile this database to the current repo state.`,
+        label: 'Reconcile the database to the current repo state.',
       });
     } else {
       addRecommendation(recommendations, {
         kind: 'restoreOriginalMigration',
-        summary: 'restore the original migration from version control.',
+        label: 'Restore the original migration from version control.',
       });
     }
   }
@@ -647,7 +647,7 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
     addRecommendation(recommendations, {
       kind: 'draft',
       command: 'sqlfu draft',
-      summary: 'run `sqlfu draft` to create a reviewable migration.',
+      label: 'Create a reviewable migration.',
     });
   }
 
@@ -662,7 +662,7 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
       addRecommendation(recommendations, {
         kind: 'migrate',
         command: 'sqlfu migrate',
-        summary: 'run `sqlfu migrate`.',
+        label: 'Apply pending migrations to the database.',
       });
     }
   }
@@ -684,18 +684,18 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
       addRecommendation(recommendations, {
         kind: 'baseline',
         command: `sqlfu baseline ${recommendedBaselineTarget}`,
-        summary: `run \`sqlfu baseline ${recommendedBaselineTarget}\`.`,
+        label: 'Record the current schema as already applied.',
       });
     } else if (!repoDriftWithLiveAlreadySynced && recommendedGotoTarget) {
       addRecommendation(recommendations, {
         kind: 'goto',
         command: `sqlfu goto ${recommendedGotoTarget}`,
-        summary: `run \`sqlfu goto ${recommendedGotoTarget}\`.`,
+        label: 'Move the database to the selected migration target.',
       });
     } else if (!repoDriftWithLiveAlreadySynced && !repoDrift.isDifferent) {
       addRecommendation(recommendations, {
         kind: 'goto',
-        summary: 'run `sqlfu goto <target>`.',
+        label: 'Move the database to the selected migration target.',
       });
     }
   }
@@ -708,11 +708,17 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
       details: [],
     });
 
-    if (!historyMismatch && !repoDrift.isDifferent && !hasPendingMigrations && !schemaDrift.isDifferent) {
+    if (!historyMismatch && repoDrift.isDifferent) {
       addRecommendation(recommendations, {
         kind: 'sync',
         command: 'sqlfu sync',
-        summary: 'run `sqlfu sync`.',
+        label: 'Update the database from Desired Schema, useful while iterating locally.',
+      });
+    } else if (!historyMismatch && !repoDrift.isDifferent && !hasPendingMigrations && !schemaDrift.isDifferent) {
+      addRecommendation(recommendations, {
+        kind: 'sync',
+        command: 'sqlfu sync',
+        label: 'Update the database from Desired Schema.',
       });
     }
   }
@@ -818,8 +824,9 @@ export type CheckRecommendation = {
     | 'restoreMissingMigration'
     | 'restoreOriginalMigration'
     ;
-  readonly summary: string;
   readonly command?: string;
+  readonly label: string;
+  readonly rationale?: string;
 };
 
 export type CheckAnalysis = {
@@ -828,8 +835,8 @@ export type CheckAnalysis = {
 };
 
 function addRecommendation(target: CheckRecommendation[], recommendation: CheckRecommendation) {
-  const key = `${recommendation.kind}|${recommendation.command ?? ''}|${recommendation.summary}`;
-  if (target.some((existing) => `${existing.kind}|${existing.command ?? ''}|${existing.summary}` === key)) {
+  const key = `${recommendation.kind}|${recommendation.command ?? ''}|${recommendation.label}|${recommendation.rationale ?? ''}`;
+  if (target.some((existing) => `${existing.kind}|${existing.command ?? ''}|${existing.label}|${existing.rationale ?? ''}` === key)) {
     return;
   }
   target.push(recommendation);
@@ -845,26 +852,26 @@ function withRecommendationExplainers(recommendations: readonly CheckRecommendat
   // database-level actions without guessing.
   return recommendations.map((recommendation) => ({
     ...recommendation,
-    summary: `${recommendation.summary.replace(/\.$/u, '')} (${getRecommendationExplainer(recommendation)}).`,
+    rationale: getRecommendationExplainer(recommendation),
   }));
 }
 
 function getRecommendationExplainer(recommendation: CheckRecommendation) {
   switch (recommendation.kind) {
     case 'draft':
-      return 'fixes the repo by recording the desired schema change as a migration';
+      return 'Addresses Repo Drift';
     case 'migrate':
-      return 'fixes this database by applying the pending migrations';
+      return 'Addresses Pending Migrations';
     case 'baseline':
-      return 'fixes this database by recording that it already matches that migration prefix';
+      return 'Addresses Schema Drift';
     case 'goto':
-      return 'fixes this database by moving it to that migration target';
+      return 'Addresses Schema Drift';
     case 'sync':
-      return 'fixes this database directly from desired schema for local dev';
+      return 'Addresses Sync Drift';
     case 'restoreMissingMigration':
-      return 'fixes the repo by restoring the migration chain that migration history already points at';
+      return 'Addresses History Drift';
     case 'restoreOriginalMigration':
-      return 'fixes the repo by restoring the migration file that migration history already points at';
+      return 'Addresses History Drift';
   }
 }
 
@@ -876,9 +883,18 @@ function formatCheckFailure(analysis: CheckAnalysis) {
   if (analysis.recommendations.length > 0) {
     sections.push([
       'Recommended next actions',
-      ...analysis.recommendations.map((recommendation) => `- ${recommendation.summary}`),
+      ...analysis.recommendations.map((recommendation) => `- ${formatRecommendationText(recommendation)}`),
     ].join('\n'));
   }
 
   return sections.join('\n\n');
+}
+
+function formatRecommendationText(recommendation: CheckRecommendation) {
+  const parts = [
+    recommendation.command ? `\`${recommendation.command}\`` : null,
+    recommendation.label.replace(/\.$/u, ''),
+  ].filter(Boolean);
+  const sentence = parts.join(' ');
+  return recommendation.rationale ? `${sentence}. (${recommendation.rationale})` : `${sentence}.`;
 }
