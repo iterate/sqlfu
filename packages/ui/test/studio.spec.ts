@@ -260,6 +260,66 @@ test('relation rows can be edited and saved from the grid', async ({page}) => {
   await expect(page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="3"]')).toContainText('Hello World Revised');
 });
 
+test('relation rows can discard dirty cell changes', async ({page}) => {
+  await using _project = await preserveSchemaProjectState(path.join(import.meta.dirname, 'projects', 'fixture-project'));
+
+  await page.goto('/#table/posts');
+
+  const titleCell = page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="3"]');
+  await titleCell.click();
+  await page.keyboard.press('Enter');
+  const editor = page.locator('.rg-celleditor input');
+  await expect(editor).toBeVisible();
+  await editor.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+A`);
+  await editor.press('Backspace');
+  await editor.pressSequentially('Hello World Dirty');
+  await editor.press('Enter');
+  await page.locator('.reactgrid [data-cell-rowidx="2"][data-cell-colidx="3"]').click();
+
+  await expect(page.getByRole('button', {name: 'Save changes'})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Discard changes'})).toBeVisible();
+  await expect(page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="3"]')).toHaveClass(/dirty/);
+
+  await page.getByRole('button', {name: 'Discard changes'}).click();
+
+  await expect(page.getByRole('button', {name: 'Save changes'})).toHaveCount(0);
+  await expect(page.getByRole('button', {name: 'Discard changes'})).toHaveCount(0);
+  await expect(page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="3"]')).toContainText('Hello World');
+  await expect(page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="3"]')).not.toHaveClass(/dirty/);
+});
+
+test('dirty relation cells show original, draft, and diff modes in the cell panel', async ({page}) => {
+  await using _project = await preserveSchemaProjectState(path.join(import.meta.dirname, 'projects', 'fixture-project'));
+
+  await page.goto('/#table/posts');
+
+  const titleCell = page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="3"]');
+  await titleCell.click();
+  await page.keyboard.press('Enter');
+  const editor = page.locator('.rg-celleditor input');
+  await expect(editor).toBeVisible();
+  await editor.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+A`);
+  await editor.press('Backspace');
+  await editor.pressSequentially('Hello World Dirty');
+  await editor.press('Enter');
+  await titleCell.click();
+
+  const selectedCellPanel = page.locator('.selected-cell-panel');
+  await expect(selectedCellPanel.getByRole('tab', {name: 'Diff'})).toHaveAttribute('aria-selected', 'true');
+  await expect(selectedCellPanel.getByRole('tab', {name: 'Original'})).toBeVisible();
+  await expect(selectedCellPanel.getByRole('tab', {name: 'Draft'})).toBeVisible();
+  await expect(selectedCellPanel).toContainText('Hello World');
+  await expect(selectedCellPanel).toContainText('Hello World Dirty');
+
+  await selectedCellPanel.getByRole('tab', {name: 'Original'}).click();
+  await expect(selectedCellPanel.getByRole('tab', {name: 'Original'})).toHaveAttribute('aria-selected', 'true');
+  await expect(selectedCellPanel).toContainText('Hello World');
+
+  await selectedCellPanel.getByRole('tab', {name: 'Draft'}).click();
+  await expect(selectedCellPanel.getByRole('tab', {name: 'Draft'})).toHaveAttribute('aria-selected', 'true');
+  await expect(selectedCellPanel).toContainText('Hello World Dirty');
+});
+
 test('switching between saved queries does not leak form state between schemas', async ({page}) => {
   await page.goto('/#query/find-post-by-slug');
 

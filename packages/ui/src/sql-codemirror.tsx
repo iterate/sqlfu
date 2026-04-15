@@ -5,8 +5,12 @@ import {lintGutter, linter} from '@codemirror/lint';
 import {EditorView, keymap} from '@codemirror/view';
 import {acceptCompletion, autocompletion} from '@codemirror/autocomplete';
 import CodeMirror from '@uiw/react-codemirror';
+import CodeMirrorMerge from 'react-codemirror-merge';
 
 import type {SqlEditorDiagnostic, StudioRelation} from './shared.js';
+
+const Original = CodeMirrorMerge.Original;
+const Modified = CodeMirrorMerge.Modified;
 
 export function SqlCodeMirror(input: {
   value: string;
@@ -74,6 +78,56 @@ export function SqlCodeMirror(input: {
   );
 }
 
+export function TextCodeMirror(input: {
+  value: string;
+  ariaLabel: string;
+  readOnly?: boolean;
+  height?: string;
+}) {
+  return (
+    <CodeMirror
+      value={input.value}
+      height={input.height ?? '16rem'}
+      aria-label={input.ariaLabel}
+      theme="dark"
+      extensions={buildTextExtensions(Boolean(input.readOnly))}
+      basicSetup={{
+        foldGutter: false,
+      }}
+      onChange={() => {}}
+    />
+  );
+}
+
+export function TextDiffCodeMirror(input: {
+  original: string;
+  draft: string;
+  ariaLabel: string;
+}) {
+  return (
+    <div aria-label={input.ariaLabel}>
+      <CodeMirrorMerge
+        orientation="a-b"
+        theme="dark"
+        className="text-diff-editor"
+        collapseUnchanged={{
+          margin: 1,
+          minSize: 4,
+        }}
+      >
+        <Original
+          value={input.original}
+          extensions={buildTextExtensions(true)}
+        />
+        <Modified
+          value={input.draft}
+          extensions={buildTextExtensions(true)}
+        />
+      </CodeMirrorMerge>
+    </div>
+  );
+}
+
 function buildSqlSchema(relations: readonly StudioRelation[]): SQLNamespace {
   return Object.fromEntries(
     relations.map((relation) => [
@@ -85,4 +139,12 @@ function buildSqlSchema(relations: readonly StudioRelation[]): SQLNamespace {
       })),
     ]),
   );
+}
+
+function buildTextExtensions(readOnly: boolean): Extension[] {
+  return [
+    EditorView.lineWrapping,
+    EditorState.readOnly.of(readOnly),
+    EditorView.editable.of(!readOnly),
+  ];
 }

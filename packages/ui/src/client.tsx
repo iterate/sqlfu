@@ -30,7 +30,7 @@ import type {
   TableRowsResponse,
 } from './shared.js';
 import {columnWidthAlgorithm} from './column-width.js';
-import {SqlCodeMirror} from './sql-codemirror.js';
+import {SqlCodeMirror, TextCodeMirror, TextDiffCodeMirror} from './sql-codemirror.js';
 
 const queryClient = new QueryClient();
 
@@ -373,19 +373,32 @@ function TablePanel(input: {
       defaultValue: rowsQuery.data.rows,
     },
   );
+  const saveRowsMutation = useMutation({
+    mutationFn: (body: {
+      originalRows: readonly Record<string, unknown>[];
+      rows: readonly Record<string, unknown>[];
+      rowKeys: TableRowsResponse['rowKeys'];
+    }) =>
+      fetchJson<TableRowsResponse>(`/api/table/${encodeURIComponent(input.relation.name)}?page=${input.page}`, {
+        method: 'PUT',
+        body,
+      }),
+    onSuccess: (response) => {
+      setDraftRows(response.rows);
+      queryClient.setQueryData(['table', input.relation.name, input.page], response);
+    },
+  });
   const displayedRows = draftRows ?? rowsQuery.data.rows;
   const rowsDirty = JSON.stringify(displayedRows) !== JSON.stringify(rowsQuery.data.rows);
-  const handleSaveRows = async () => {
-    const response = await fetchJson<TableRowsResponse>(`/api/table/${encodeURIComponent(input.relation.name)}?page=${input.page}`, {
-      method: 'PUT',
-      body: {
-        originalRows: rowsQuery.data.rows,
-        rows: displayedRows,
-        rowKeys: rowsQuery.data.rowKeys,
-      },
+  const handleDiscardRows = () => {
+    setDraftRows(rowsQuery.data.rows);
+  };
+  const handleSaveRows = () => {
+    saveRowsMutation.mutate({
+      originalRows: rowsQuery.data.rows,
+      rows: displayedRows,
+      rowKeys: rowsQuery.data.rowKeys,
     });
-    setDraftRows(response.rows);
-    queryClient.setQueryData(['table', input.relation.name, input.page], response);
   };
 
   return (
@@ -407,23 +420,33 @@ function TablePanel(input: {
           <div className="pill-row">
             <span className="pill">Page {input.page + 1}</span>
             {rowsQuery.data.editable && rowsDirty ? (
-              <button
-                className="button primary"
-                type="button"
-                aria-label="Save changes"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  void handleSaveRows();
-                }}
-              >
-                Save changes
-              </button>
+              <>
+                <button
+                  className="button primary"
+                  type="button"
+                  aria-label="Save changes"
+                  disabled={saveRowsMutation.isPending}
+                  onClick={handleSaveRows}
+                >
+                  {saveRowsMutation.isPending ? 'Saving…' : 'Save changes'}
+                </button>
+                <button
+                  className="button"
+                  type="button"
+                  aria-label="Discard changes"
+                  disabled={saveRowsMutation.isPending}
+                  onClick={handleDiscardRows}
+                >
+                  Discard changes
+                </button>
+              </>
             ) : null}
           </div>
         </div>
         <DataTable
           storageKey={`relation/${input.relation.name}`}
           columns={rowsQuery.data.columns}
+          originalRows={rowsQuery.data.rows}
           rows={displayedRows}
           editable={rowsQuery.data.editable}
           editableColumns={Object.fromEntries(input.relation.columns.map((column) => [column.name, !column.primaryKey]))}
@@ -854,6 +877,7 @@ function ExecutionResult(input: {
 function DataTable(input: {
   storageKey: string;
   columns: readonly string[];
+  originalRows?: readonly Record<string, unknown>[];
   rows: readonly Record<string, unknown>[];
   editable?: boolean;
   editableColumns?: Readonly<Record<string, boolean>>;
@@ -875,6 +899,12 @@ function DataTable(input: {
     `sqlfu-ui/selected-cell/${input.storageKey}`,
     {
       defaultValue: null,
+    },
+  );
+  const [selectedCellMode, setSelectedCellMode] = useLocalStorageState<'diff' | 'original' | 'draft'>(
+    `sqlfu-ui/selected-cell-mode/${input.storageKey}`,
+    {
+      defaultValue: 'diff',
     },
   );
   const computedColumnWidths = columnWidthAlgorithm({
@@ -909,10 +939,22 @@ function DataTable(input: {
       rowId: rowIndex,
       cells: [
         {type: 'header' as const, text: String(rowIndex + 1)},
-        ...input.columns.map((column) => toGridCell(row[column], Boolean(input.editable) && input.editableColumns?.[column] !== false)),
+        ...input.columns.map((column) =>
+          toGridCell(
+            row[column],
+            Boolean(input.editable) && input.editableColumns?.[column] !== false,
+            isSameValue(row[column], input.originalRows?.[rowIndex]?.[column]) ? undefined : 'dirty-cell',
+          )),
       ],
     })),
   ];
+  const selectedOriginalValue = selectedCell && typeof selectedCell.rowId === 'number' && typeof selectedCell.columnId === 'string'
+    ? formatCellText(input.originalRows?.[selectedCell.rowId]?.[selectedCell.columnId])
+    : '';
+  const selectedDraftValue = selectedCell && typeof selectedCell.rowId === 'number' && typeof selectedCell.columnId === 'string'
+    ? formatCellText(input.rows[selectedCell.rowId]?.[selectedCell.columnId])
+    : '';
+  const selectedCellDirty = selectedOriginalValue !== selectedDraftValue;
 
   return (
     <div className="stack">
@@ -943,6 +985,7 @@ function DataTable(input: {
               rowId: location.rowId,
               columnId: location.columnId,
             });
+            setSelectedCellMode('diff');
           }}
           onCellsChanged={input.editable ? (changes) => {
             const nextRows = input.rows.map((row) => ({...row}));
@@ -973,7 +1016,70 @@ function DataTable(input: {
               <span className="pill">{selectedCell.columnId}</span>
             </div>
           </div>
-          <pre className="selected-cell-value">{formatCellText(input.rows[selectedCell.rowId]?.[selectedCell.columnId])}</pre>
+          {selectedCellDirty ? (
+            <div className="stack">
+              <div className="cell-panel-tabs" role="tablist" aria-label="Cell versions">
+                <button
+                  className={selectedCellMode === 'diff' ? 'cell-panel-tab active' : 'cell-panel-tab'}
+                  type="button"
+                  role="tab"
+                  aria-selected={selectedCellMode === 'diff'}
+                  onClick={() => setSelectedCellMode('diff')}
+                >
+                  Diff
+                </button>
+                <button
+                  className={selectedCellMode === 'original' ? 'cell-panel-tab active' : 'cell-panel-tab'}
+                  type="button"
+                  role="tab"
+                  aria-selected={selectedCellMode === 'original'}
+                  onClick={() => setSelectedCellMode('original')}
+                >
+                  Original
+                </button>
+                <button
+                  className={selectedCellMode === 'draft' ? 'cell-panel-tab active' : 'cell-panel-tab'}
+                  type="button"
+                  role="tab"
+                  aria-selected={selectedCellMode === 'draft'}
+                  onClick={() => setSelectedCellMode('draft')}
+                >
+                  Draft
+                </button>
+              </div>
+
+              {selectedCellMode === 'original' ? (
+                <TextCodeMirror
+                  value={selectedOriginalValue}
+                  ariaLabel="Original cell value"
+                  readOnly
+                  height="12rem"
+                />
+              ) : null}
+              {selectedCellMode === 'draft' ? (
+                <TextCodeMirror
+                  value={selectedDraftValue}
+                  ariaLabel="Draft cell value"
+                  readOnly
+                  height="12rem"
+                />
+              ) : null}
+              {selectedCellMode === 'diff' ? (
+                <TextDiffCodeMirror
+                  original={selectedOriginalValue}
+                  draft={selectedDraftValue}
+                  ariaLabel="Diff cell value"
+                />
+              ) : null}
+            </div>
+          ) : (
+            <TextCodeMirror
+              value={selectedDraftValue}
+              ariaLabel="Cell value"
+              readOnly
+              height="12rem"
+            />
+          )}
         </section>
       ) : null}
     </div>
@@ -1028,24 +1134,24 @@ function renderCell(value: unknown) {
   return String(value);
 }
 
-function toGridCell(value: unknown, editable: boolean): reactGrid.DefaultCellTypes {
+function toGridCell(value: unknown, editable: boolean, className?: string): reactGrid.DefaultCellTypes {
   if (typeof value === 'number') {
-    return {type: 'number', value, nonEditable: !editable};
+    return {type: 'number', value, nonEditable: !editable, className};
   }
 
   if (typeof value === 'boolean') {
-    return {type: 'checkbox', checked: value, nonEditable: !editable};
+    return {type: 'checkbox', checked: value, nonEditable: !editable, className};
   }
 
   if (value == null) {
-    return {type: 'text', text: '', nonEditable: !editable};
+    return {type: 'text', text: '', nonEditable: !editable, className};
   }
 
   if (typeof value === 'object') {
-    return {type: 'text', text: JSON.stringify(value), nonEditable: true};
+    return {type: 'text', text: JSON.stringify(value), nonEditable: true, className};
   }
 
-  return {type: 'text', text: String(value), nonEditable: !editable};
+  return {type: 'text', text: String(value), nonEditable: !editable, className};
 }
 
 function readGridCellValue(cell: reactGrid.Cell) {
@@ -1069,6 +1175,10 @@ function formatCellText(value: unknown) {
     return JSON.stringify(value, null, 2);
   }
   return String(value);
+}
+
+function isSameValue(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function useElementWidth<TElement extends HTMLElement>() {
