@@ -198,6 +198,68 @@ test('table browser, sql runner, and generated query form work against a live fi
   await expect(page.getByText('Hello World')).toBeVisible();
 });
 
+test('relation page is data-first with foldable secondary panels', async ({page}) => {
+  await page.goto('/#table/posts');
+
+  await expect(page.getByRole('heading', {name: 'posts'})).toBeVisible();
+  await expect(page.getByText('hello-world')).toBeVisible();
+  await expect(page.getByText('Columns', {exact: true})).toHaveCount(0);
+  await expect(page.getByText('Sample rows', {exact: true})).toHaveCount(0);
+  await expect(page.getByRole('button', {name: 'Definition'})).toBeVisible();
+  await expect(page.getByLabel('Relation definition editor')).toBeHidden();
+
+  await page.getByRole('button', {name: 'Definition'}).click();
+  await expect(page.getByLabel('Relation definition editor')).toBeVisible();
+});
+
+test('relation rows render in a sheet-style grid', async ({page}) => {
+  await page.goto('/#table/posts');
+
+  await expect(page.locator('.reactgrid')).toBeVisible();
+  await expect(page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="2"]')).toContainText('hello-world');
+});
+
+test('clicking a relation cell shows the full cell content below the table', async ({page}) => {
+  await page.goto('/#table/posts');
+
+  await page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="4"]').click();
+  const selectedCellPanel = page.locator('.selected-cell-panel');
+  await expect(selectedCellPanel.getByText('Cell', {exact: true})).toBeVisible();
+  await expect(selectedCellPanel).toContainText('body');
+  await expect(selectedCellPanel).toContainText('First post body');
+});
+
+test('relation rows can be edited and saved from the grid', async ({page}) => {
+  await using _project = await preserveSchemaProjectState(path.join(import.meta.dirname, 'projects', 'fixture-project'));
+
+  await page.goto('/#table/posts');
+
+  const titleCell = page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="3"]');
+  await titleCell.click();
+  await page.keyboard.press('Enter');
+  const editor = page.locator('.rg-celleditor input');
+  await expect(editor).toBeVisible();
+  await editor.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+A`);
+  await editor.press('Backspace');
+  await editor.pressSequentially('Hello World Revised');
+  await editor.press('Enter');
+  await page.locator('.reactgrid [data-cell-rowidx="2"][data-cell-colidx="3"]').click();
+
+  await expect(page.getByRole('button', {name: 'Save changes'})).toBeVisible();
+  const [saveResponse] = await Promise.all([
+    page.waitForResponse((response) =>
+      response.request().method() === 'PUT'
+      && response.url().includes('/api/table/posts?page=0'),
+    ),
+    page.getByRole('button', {name: 'Save changes'}).click(),
+  ]);
+  const saveResponseText = await saveResponse.text();
+  expect(saveResponse.ok(), saveResponseText).toBe(true);
+
+  await page.reload();
+  await expect(page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="3"]')).toContainText('Hello World Revised');
+});
+
 test('switching between saved queries does not leak form state between schemas', async ({page}) => {
   await page.goto('/#query/find-post-by-slug');
 

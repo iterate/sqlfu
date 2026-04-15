@@ -56,9 +56,21 @@ export type TableRowsResponse = {
   readonly relation: string;
   readonly page: number;
   readonly pageSize: number;
+  readonly editable: boolean;
+  readonly rowKeys: readonly TableRowKey[];
   readonly rows: readonly Record<string, unknown>[];
   readonly columns: readonly string[];
 };
+
+export type TableRowKey =
+  | {
+      readonly kind: 'primaryKey';
+      readonly values: Readonly<Record<string, unknown>>;
+    }
+  | {
+      readonly kind: 'rowid';
+      readonly value: number;
+    };
 
 export type QueryExecutionResponse = {
   readonly mode: 'rows' | 'metadata';

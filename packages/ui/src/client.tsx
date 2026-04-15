@@ -1,6 +1,7 @@
-import {Suspense, useSyncExternalStore} from 'react';
+import {Suspense, useRef, useSyncExternalStore} from 'react';
 import type {ReactNode} from 'react';
 import {createRoot} from 'react-dom/client';
+import * as reactGrid from '@silevis/reactgrid';
 import Form from '@rjsf/core';
 import type {RJSFSchema} from '@rjsf/utils';
 import validator from '@rjsf/validator-ajv8';
@@ -28,6 +29,7 @@ import type {
   StudioSchemaResponse,
   TableRowsResponse,
 } from './shared.js';
+import {columnWidthAlgorithm} from './column-width.js';
 import {SqlCodeMirror} from './sql-codemirror.js';
 
 const queryClient = new QueryClient();
@@ -365,6 +367,26 @@ function TablePanel(input: {
     queryKey: ['table', input.relation.name, input.page],
     queryFn: () => fetchJson<TableRowsResponse>(`/api/table/${encodeURIComponent(input.relation.name)}?page=${input.page}`),
   });
+  const [draftRows, setDraftRows] = useLocalStorageState<readonly Record<string, unknown>[]>(
+    `sqlfu-ui/table-draft/${input.relation.name}/${input.page}`,
+    {
+      defaultValue: rowsQuery.data.rows,
+    },
+  );
+  const displayedRows = draftRows ?? rowsQuery.data.rows;
+  const rowsDirty = JSON.stringify(displayedRows) !== JSON.stringify(rowsQuery.data.rows);
+  const handleSaveRows = async () => {
+    const response = await fetchJson<TableRowsResponse>(`/api/table/${encodeURIComponent(input.relation.name)}?page=${input.page}`, {
+      method: 'PUT',
+      body: {
+        originalRows: rowsQuery.data.rows,
+        rows: displayedRows,
+        rowKeys: rowsQuery.data.rowKeys,
+      },
+    });
+    setDraftRows(response.rows);
+    queryClient.setQueryData(['table', input.relation.name, input.page], response);
+  };
 
   return (
     <section className="panel">
@@ -379,40 +401,63 @@ function TablePanel(input: {
         </div>
       </header>
 
-      <div className="split-grid">
-        <section className="card">
-          <div className="card-title">Columns</div>
-          <div className="column-list">
-            {input.relation.columns.map((column) => (
-              <div key={column.name} className="column-item">
-                <strong>{column.name}</strong>
-                <span>{column.type || 'untyped'}</span>
-                <small>{column.primaryKey ? 'pk' : column.notNull ? 'not null' : 'nullable'}</small>
-              </div>
-            ))}
+      <section className="card">
+        <div className="card-title-row">
+          <div className="card-title">Data</div>
+          <div className="pill-row">
+            <span className="pill">Page {input.page + 1}</span>
+            {rowsQuery.data.editable && rowsDirty ? (
+              <button
+                className="button primary"
+                type="button"
+                aria-label="Save changes"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  void handleSaveRows();
+                }}
+              >
+                Save changes
+              </button>
+            ) : null}
           </div>
-        </section>
-
-        <section className="card">
-          <div className="card-title">Sample rows</div>
-          <DataTable columns={rowsQuery.data.columns} rows={rowsQuery.data.rows} />
-          <div className="pager">
-            <a className={input.page === 0 ? 'button disabled' : 'button'} href={`#table/${encodeURIComponent(input.relation.name)}/${Math.max(0, input.page - 1)}`}>
-              Previous
-            </a>
-            <span>Page {input.page + 1}</span>
-            <a className="button" href={`#table/${encodeURIComponent(input.relation.name)}/${input.page + 1}`}>
-              Next
-            </a>
-          </div>
-        </section>
-      </div>
+        </div>
+        <DataTable
+          storageKey={`relation/${input.relation.name}`}
+          columns={rowsQuery.data.columns}
+          rows={displayedRows}
+          editable={rowsQuery.data.editable}
+          editableColumns={Object.fromEntries(input.relation.columns.map((column) => [column.name, !column.primaryKey]))}
+          onRowsChange={setDraftRows}
+          showSelectedCellDetail
+        />
+        <div className="pager">
+          <a className={input.page === 0 ? 'button disabled' : 'button'} href={`#table/${encodeURIComponent(input.relation.name)}/${Math.max(0, input.page - 1)}`}>
+            Previous
+          </a>
+          <a className="button" href={`#table/${encodeURIComponent(input.relation.name)}/${input.page + 1}`}>
+            Next
+          </a>
+        </div>
+      </section>
 
       {input.relation.sql ? (
-        <section className="card">
-          <div className="card-title">Definition</div>
-          <pre className="code-block">{input.relation.sql}</pre>
-        </section>
+        <details className="card relation-details">
+          <summary className="authority-card-summary" role="button">
+            <span className="card-title relation-details-title">Definition</span>
+            <span className="accordion-chevron" aria-hidden="true">
+              ▾
+            </span>
+          </summary>
+          <div className="authority-card-body">
+            <SqlCodeMirror
+              value={input.relation.sql}
+              ariaLabel="Relation definition editor"
+              relations={[input.relation]}
+              onChange={() => {}}
+              readOnly
+            />
+          </div>
+        </details>
       ) : null}
     </section>
   );
@@ -803,37 +848,134 @@ function ExecutionResult(input: {
 
   const rows = input.result.rows ?? [];
   const columns = rows.length > 0 ? Object.keys(rows[0]!) : [];
-  return <DataTable columns={columns} rows={rows} />;
+  return <DataTable storageKey="execution-result" columns={columns} rows={rows} />;
 }
 
 function DataTable(input: {
+  storageKey: string;
   columns: readonly string[];
   rows: readonly Record<string, unknown>[];
+  editable?: boolean;
+  editableColumns?: Readonly<Record<string, boolean>>;
+  onRowsChange?: (rows: readonly Record<string, unknown>[]) => void;
+  showSelectedCellDetail?: boolean;
 }) {
   if (input.rows.length === 0) {
     return <p className="muted">No rows.</p>;
   }
 
+  const {ref: containerRef, width: containerWidth} = useElementWidth<HTMLDivElement>();
+  const [columnWidthOverrides, setColumnWidthOverrides] = useLocalStorageState<Record<string, number>>(
+    `sqlfu-ui/column-widths/${input.storageKey}`,
+    {
+      defaultValue: {},
+    },
+  );
+  const [selectedCell, setSelectedCell] = useLocalStorageState<{rowId: number; columnId: string} | null>(
+    `sqlfu-ui/selected-cell/${input.storageKey}`,
+    {
+      defaultValue: null,
+    },
+  );
+  const computedColumnWidths = columnWidthAlgorithm({
+    availableWidth: Math.max(0, containerWidth - 64),
+    columns: input.columns.map((column) => ({
+      key: column,
+      header: column,
+      cells: input.rows.map((row) => formatCellText(row[column])),
+    })),
+  });
+  const gridColumns: reactGrid.Column[] = [
+    {columnId: '__row__', width: 64, reorderable: false, resizable: false},
+    ...computedColumnWidths.map((column) => ({
+      columnId: column.key,
+      width: columnWidthOverrides?.[column.key] ?? column.width,
+      reorderable: false,
+      resizable: true,
+    })),
+  ];
+  const gridRows: reactGrid.Row<reactGrid.DefaultCellTypes>[] = [
+    {
+      rowId: 'header',
+      cells: [
+        {type: 'header', text: '#'},
+        ...input.columns.map((column) => ({
+          type: 'header' as const,
+          text: column,
+        })),
+      ],
+    },
+    ...input.rows.map((row, rowIndex) => ({
+      rowId: rowIndex,
+      cells: [
+        {type: 'header' as const, text: String(rowIndex + 1)},
+        ...input.columns.map((column) => toGridCell(row[column], Boolean(input.editable) && input.editableColumns?.[column] !== false)),
+      ],
+    })),
+  ];
+
   return (
-    <div className="table-scroll">
-      <table className="data-table">
-        <thead>
-          <tr>
-            {input.columns.map((column) => (
-              <th key={column}>{column}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {input.rows.map((row, rowIndex) => (
-            <tr key={rowIndex}>
-              {input.columns.map((column) => (
-                <td key={column}>{renderCell(row[column])}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="stack">
+      <div className="table-scroll" ref={containerRef}>
+        <reactGrid.ReactGrid
+          key={JSON.stringify(input.rows)}
+          columns={gridColumns}
+          rows={gridRows}
+          stickyTopRows={1}
+          stickyLeftColumns={1}
+          enableRangeSelection
+          enableColumnSelection
+          enableRowSelection
+          onColumnResized={(columnId, width) => {
+            if (typeof columnId !== 'string') {
+              return;
+            }
+            setColumnWidthOverrides((current) => ({
+              ...(current ?? {}),
+              [columnId]: width,
+            }));
+          }}
+          onFocusLocationChanged={(location) => {
+            if (typeof location.rowId !== 'number' || typeof location.columnId !== 'string') {
+              return;
+            }
+            setSelectedCell({
+              rowId: location.rowId,
+              columnId: location.columnId,
+            });
+          }}
+          onCellsChanged={input.editable ? (changes) => {
+            const nextRows = input.rows.map((row) => ({...row}));
+            for (const change of changes) {
+              if (typeof change.rowId !== 'number' || typeof change.columnId !== 'string') {
+                continue;
+              }
+              const nextRow = nextRows[change.rowId];
+              if (!nextRow) {
+                continue;
+              }
+              if (input.editableColumns?.[change.columnId] === false) {
+                continue;
+              }
+              nextRow[change.columnId] = readGridCellValue(change.newCell);
+            }
+            input.onRowsChange?.(nextRows);
+          } : undefined}
+        />
+      </div>
+
+      {input.showSelectedCellDetail && selectedCell && typeof selectedCell.rowId === 'number' && typeof selectedCell.columnId === 'string' ? (
+        <section className="selected-cell-panel">
+          <div className="card-title-row">
+            <div className="card-title">Cell</div>
+            <div className="pill-row">
+              <span className="pill">Row {selectedCell.rowId + 1}</span>
+              <span className="pill">{selectedCell.columnId}</span>
+            </div>
+          </div>
+          <pre className="selected-cell-value">{formatCellText(input.rows[selectedCell.rowId]?.[selectedCell.columnId])}</pre>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -884,6 +1026,106 @@ function renderCell(value: unknown) {
     return JSON.stringify(value);
   }
   return String(value);
+}
+
+function toGridCell(value: unknown, editable: boolean): reactGrid.DefaultCellTypes {
+  if (typeof value === 'number') {
+    return {type: 'number', value, nonEditable: !editable};
+  }
+
+  if (typeof value === 'boolean') {
+    return {type: 'checkbox', checked: value, nonEditable: !editable};
+  }
+
+  if (value == null) {
+    return {type: 'text', text: '', nonEditable: !editable};
+  }
+
+  if (typeof value === 'object') {
+    return {type: 'text', text: JSON.stringify(value), nonEditable: true};
+  }
+
+  return {type: 'text', text: String(value), nonEditable: !editable};
+}
+
+function readGridCellValue(cell: reactGrid.Cell) {
+  if (cell.type === 'number') {
+    return (cell as reactGrid.NumberCell).value;
+  }
+  if (cell.type === 'checkbox') {
+    return (cell as reactGrid.CheckboxCell).checked;
+  }
+  if (cell.type === 'text') {
+    return (cell as reactGrid.TextCell).text;
+  }
+  return undefined;
+}
+
+function formatCellText(value: unknown) {
+  if (value == null) {
+    return 'null';
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value, null, 2);
+  }
+  return String(value);
+}
+
+function useElementWidth<TElement extends HTMLElement>() {
+  const storeRef = useRef<{
+    element: TElement | null;
+    width: number;
+    observer: ResizeObserver | null;
+    listeners: Set<() => void>;
+  }>({
+    element: null,
+    width: 0,
+    observer: null,
+    listeners: new Set(),
+  });
+
+  const subscribe = (listener: () => void) => {
+    storeRef.current.listeners.add(listener);
+    return () => {
+      storeRef.current.listeners.delete(listener);
+    };
+  };
+  const getSnapshot = () => storeRef.current.width;
+  const width = useSyncExternalStore(subscribe, getSnapshot, () => 0);
+
+  return {
+    width,
+    ref: (element: TElement | null) => {
+      const store = storeRef.current;
+      if (store.element === element) {
+        return;
+      }
+
+      store.observer?.disconnect();
+      store.element = element;
+      store.width = element?.clientWidth ?? 0;
+      for (const listener of store.listeners) {
+        listener();
+      }
+
+      if (!element || typeof ResizeObserver === 'undefined') {
+        store.observer = null;
+        return;
+      }
+
+      store.observer = new ResizeObserver((entries) => {
+        const nextWidth = Math.floor(entries[0]?.contentRect.width ?? element.clientWidth);
+        if (nextWidth === store.width) {
+          return;
+        }
+        store.width = nextWidth;
+        for (const listener of store.listeners) {
+          listener();
+        }
+      });
+      store.observer.observe(element);
+    },
+  };
 }
 
 function useHashRoute(): Route {

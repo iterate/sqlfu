@@ -4,7 +4,7 @@ import {Database} from 'bun:sqlite';
 
 import type {QueryCatalog, QueryCatalogEntry, QueryArg, SqlfuProjectConfig, SqlfuRouterContext} from 'sqlfu/experimental';
 import {analyzeAdHocSqlForConfig, createBunClient, getCheckMismatches, getSchemaAuthorities, loadProjectConfig, runSqlfuCommand, splitSqlStatements, writeDefinitionsSql} from 'sqlfu/experimental';
-import type {QueryFileMutationResponse, SaveSqlResponse, SchemaAuthoritiesResponse, SchemaCheckCard, SchemaCheckResponse, SqlAnalysisResponse, SqlEditorDiagnostic, StudioColumn, StudioRelation, StudioSchemaResponse, TableRowsResponse} from './shared.js';
+import type {QueryFileMutationResponse, SaveSqlResponse, SchemaAuthoritiesResponse, SchemaCheckCard, SchemaCheckResponse, SqlAnalysisResponse, SqlEditorDiagnostic, StudioColumn, StudioRelation, StudioSchemaResponse, TableRowKey, TableRowsResponse} from './shared.js';
 
 const clientEntryPath = path.join(import.meta.dir, 'client.tsx');
 const stylesPath = path.join(import.meta.dir, 'styles.css');
@@ -43,6 +43,19 @@ export async function startSqlfuUiServer(input: {
         if (url.pathname.startsWith('/api/table/')) {
           const relationName = decodeURIComponent(url.pathname.replace('/api/table/', ''));
           const page = Number(url.searchParams.get('page') ?? '0');
+          if (request.method === 'PUT') {
+            const body = await request.json() as {
+              originalRows?: unknown;
+              rows?: unknown;
+              rowKeys?: unknown;
+            };
+            return json(await saveTableRows(config.db, relationName, {
+              page: Number.isFinite(page) ? page : 0,
+              originalRows: Array.isArray(body.originalRows) ? body.originalRows : [],
+              rows: Array.isArray(body.rows) ? body.rows : [],
+              rowKeys: Array.isArray(body.rowKeys) ? body.rowKeys as TableRowKey[] : [],
+            }));
+          }
           return json(await getTableRows(config.db, relationName, Number.isFinite(page) ? page : 0));
         }
 
@@ -647,19 +660,89 @@ async function getTableRows(dbPath: string, relationName: string, page: number):
   const client = createBunClient(database);
 
   try {
-    const columns = getRelationColumns(client, relationName).map((column) => column.name);
+    const relation = getRelationInfo(client, relationName);
+    const relationColumns = getRelationColumns(client, relationName);
+    const columns = relationColumns.map((column) => column.name);
+    const primaryKeyColumns = relationColumns.filter((column) => column.primaryKey).map((column) => column.name);
+    const includeRowid = relation.type === 'table' && primaryKeyColumns.length === 0;
     const rows = client.all<Record<string, unknown>>({
-      sql: `select * from "${escapeIdentifier(relationName)}" limit ? offset ?`,
+      sql: `select ${includeRowid ? 'rowid as "__sqlfu_rowid__", ' : ''}* from "${escapeIdentifier(relationName)}" limit ? offset ?`,
       args: [pageSize, safePage * pageSize],
     });
+    const materializedRows = rows.map(materializeRow);
 
     return {
       relation: relationName,
       page: safePage,
       pageSize,
+      editable: relation.type === 'table',
+      rowKeys: materializedRows.map((row) => buildTableRowKey(row, primaryKeyColumns)),
       columns,
-      rows: rows.map(materializeRow),
+      rows: materializedRows.map(stripInternalRowValues),
     };
+  } finally {
+    database.close();
+  }
+}
+
+async function saveTableRows(
+  dbPath: string,
+  relationName: string,
+  input: {
+    page: number;
+    originalRows: unknown[];
+    rows: unknown[];
+    rowKeys: TableRowKey[];
+  },
+): Promise<TableRowsResponse> {
+  const database = new Database(dbPath);
+  const client = createBunClient(database);
+
+  try {
+    const relation = getRelationInfo(client, relationName);
+    if (relation.type !== 'table') {
+      throw new Error(`Relation "${relationName}" is not editable`);
+    }
+
+    if (input.originalRows.length !== input.rows.length || input.rows.length !== input.rowKeys.length) {
+      throw new Error('Edited rows payload is malformed');
+    }
+
+    const changedRows = input.rows.flatMap((row, index) => {
+      const nextRow = asRecord(row);
+      const originalRow = asRecord(input.originalRows[index]);
+      if (!nextRow || !originalRow) {
+        return [];
+      }
+      const normalizedNextRow = normalizeEditedRow(nextRow, originalRow);
+
+      const changedColumns = Object.keys(normalizedNextRow).filter((column) => !isSameValue(normalizedNextRow[column], originalRow[column]));
+      if (changedColumns.length === 0) {
+        return [];
+      }
+
+      return [{
+        rowKey: input.rowKeys[index]!,
+        originalRow,
+        nextRow: normalizedNextRow,
+        changedColumns,
+      }];
+    });
+
+    for (const row of changedRows) {
+      const setSql = row.changedColumns.map((column) => `"${escapeIdentifier(column)}" = ?`).join(', ');
+      const setArgs = row.changedColumns.map((column) => normalizeDbValue(row.nextRow[column]));
+      const whereClause = buildRowWhereClause(row.rowKey, row.originalRow);
+      const sql = `update "${escapeIdentifier(relationName)}" set ${setSql} where ${whereClause.sql}`;
+      const args = [...setArgs, ...whereClause.args];
+      try {
+        database.run(sql, args as any);
+      } catch (error) {
+        throw new Error(`${error instanceof Error ? error.message : String(error)}\nSQL: ${sql}\nArgs: ${JSON.stringify(args)}`);
+      }
+    }
+
+    return await getTableRows(dbPath, relationName, input.page);
   } finally {
     database.close();
   }
@@ -793,6 +876,87 @@ function materializeRow(row: Record<string, unknown>) {
 
 function escapeIdentifier(value: string) {
   return value.replaceAll('"', '""');
+}
+
+function getRelationInfo(client: ReturnType<typeof createBunClient>, relationName: string) {
+  const row = client.all<{name: string; type: 'table' | 'view'; sql: string | null}>({
+    sql: `select name, type, sql from sqlite_schema where name = ?`,
+    args: [relationName],
+  })[0];
+  if (!row || (row.type !== 'table' && row.type !== 'view')) {
+    throw new Error(`Unknown relation "${relationName}"`);
+  }
+  return row;
+}
+
+function buildTableRowKey(row: Record<string, unknown>, primaryKeyColumns: readonly string[]): TableRowKey {
+  if (primaryKeyColumns.length > 0) {
+    return {
+      kind: 'primaryKey',
+      values: Object.fromEntries(primaryKeyColumns.map((column) => [column, row[column]])),
+    };
+  }
+
+  const rowid = row.__sqlfu_rowid__;
+  if (typeof rowid !== 'number') {
+    throw new Error('Editable table row is missing rowid');
+  }
+
+  return {
+    kind: 'rowid',
+    value: rowid,
+  };
+}
+
+function stripInternalRowValues(row: Record<string, unknown>) {
+  const nextRow = {...row};
+  delete nextRow.__sqlfu_rowid__;
+  return nextRow;
+}
+
+function buildRowWhereClause(rowKey: TableRowKey, originalRow: Record<string, unknown>) {
+  if (rowKey.kind === 'rowid') {
+    return {
+      sql: 'rowid = ?',
+      args: [rowKey.value],
+    };
+  }
+
+  const entries = Object.entries(rowKey.values);
+  return {
+    sql: entries.map(([column, value]) => (value == null ? `"${escapeIdentifier(column)}" is null` : `"${escapeIdentifier(column)}" = ?`)).join(' and '),
+    args: entries.flatMap(([, value]) => (value == null ? [] : [normalizeDbValue(value)])),
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function isSameValue(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function normalizeDbValue(value: unknown) {
+  if (typeof value === 'boolean') {
+    return Number(value);
+  }
+  return value;
+}
+
+function normalizeEditedRow(nextRow: Record<string, unknown>, originalRow: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(nextRow).map(([column, value]) => [column, coerceEditedValue(value, originalRow[column])]),
+  );
+}
+
+function coerceEditedValue(value: unknown, originalValue: unknown) {
+  if (typeof originalValue === 'number' && typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? value : parsed;
+  }
+
+  return value;
 }
 
 function json(value: unknown) {
