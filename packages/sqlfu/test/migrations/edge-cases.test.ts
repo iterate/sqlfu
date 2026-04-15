@@ -127,7 +127,7 @@ describe('check recommendation edge cases', () => {
 
       Pending Migrations
       Migration History is behind Migrations.
-      Recommendation: run \`sqlfu migrate\`.
+      Recommendation: Address Schema Drift.
 
       Schema Drift
       Live Schema does not match Migration History.
@@ -135,7 +135,7 @@ describe('check recommendation edge cases', () => {
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: run \`sqlfu sync\`.]
+      Recommendation: resolve Repo Drift first.]
     `);
   });
 
@@ -208,7 +208,7 @@ describe('check recommendation edge cases', () => {
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: run \`sqlfu sync\`.]
+      Recommendation: resolve Repo Drift first.]
     `);
   });
 
@@ -234,7 +234,7 @@ describe('check recommendation edge cases', () => {
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: run \`sqlfu sync\`.]
+      Recommendation: Address Schema Drift.]
     `);
   });
 
@@ -267,7 +267,7 @@ describe('check recommendation edge cases', () => {
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: run \`sqlfu sync\`.]
+      Recommendation: resolve Repo Drift first.]
     `);
   });
 
@@ -305,7 +305,7 @@ describe('history drift recommendations', () => {
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: run \`sqlfu sync\`.]
+      Recommendation: resolve History Drift first.]
     `);
   });
 

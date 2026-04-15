@@ -565,7 +565,7 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
       lines: [
         'Pending Migrations',
         'Migration History is behind Migrations.',
-        ...(recommendedTarget ? [
+        ...(schemaDrift.isDifferent ? [
           'Recommendation: Address Schema Drift.',
         ] : ['Recommendation: run `sqlfu migrate`.']),
       ],
@@ -599,12 +599,38 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
       lines: [
         'Sync Drift',
         'Desired Schema does not match Live Schema.',
-        'Recommendation: run `sqlfu sync`.',
+        buildSyncDriftRecommendation({
+          repoDrift: repoDrift.isDifferent,
+          historyDrift: Boolean(historyMismatch),
+          pendingMigrations: hasPendingMigrations,
+          schemaDrift: schemaDrift.isDifferent,
+        }),
       ],
     });
   }
 
   return {mismatches};
+}
+
+function buildSyncDriftRecommendation(input: {
+  repoDrift: boolean;
+  historyDrift: boolean;
+  pendingMigrations: boolean;
+  schemaDrift: boolean;
+}) {
+  if (input.repoDrift) {
+    return 'Recommendation: resolve Repo Drift first.';
+  }
+  if (input.historyDrift) {
+    return 'Recommendation: resolve History Drift first.';
+  }
+  if (input.schemaDrift) {
+    return 'Recommendation: Address Schema Drift.';
+  }
+  if (input.pendingMigrations) {
+    return 'Recommendation: run `sqlfu migrate`.';
+  }
+  return 'Recommendation: run `sqlfu sync`.';
 }
 
 function findHistoryMismatch(

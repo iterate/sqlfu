@@ -295,10 +295,12 @@ Recommendations should be based on named mismatch types, not generic failure tex
 
 - Pending Migrations plus Schema Not Current
   Recommend `sqlfu migrate`.
+  If `Sync Drift` is also reported, its recommendation should defer to that same step rather than suggesting `sqlfu sync`.
 
 - Repo Drift plus Schema Not Current
   Recommend `sqlfu draft`.
   The repo needs a migration before the database can become migration-current honestly.
+  If `Sync Drift` is also reported, its recommendation should point back to Repo Drift.
 
 - Repo Drift plus Schema Drift
   Recommend:
@@ -327,6 +329,7 @@ Recommendations should be based on named mismatch types, not generic failure tex
   4. Schema Drift
   5. Schema Not Current
   This keeps `sqlfu check` from recommending database reconciliation before the repo itself is coherent.
+  Downstream cards may still be shown, but their recommendation text should defer to the highest-priority unresolved mismatch.
 
 ## Healthy States
 

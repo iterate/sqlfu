@@ -171,7 +171,7 @@ describe('check recommendations', () => {
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: run \`sqlfu sync\`.]
+      Recommendation: Address Schema Drift.]
     `);
   });
 
@@ -187,7 +187,7 @@ describe('check recommendations', () => {
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: run \`sqlfu sync\`.]
+      Recommendation: resolve Repo Drift first.]
     `);
   });
 
@@ -206,7 +206,7 @@ describe('check recommendations', () => {
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: run \`sqlfu sync\`.]
+      Recommendation: run \`sqlfu migrate\`.]
     `);
   });
 
@@ -263,7 +263,33 @@ describe('check recommendations', () => {
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: run \`sqlfu sync\`.]
+      Recommendation: Address Schema Drift.]
+    `);
+  });
+
+  test('recommends migrate when migrations are pending but live schema still matches migration history', async () => {
+    await using fixture = await createMigrationsFixture('check-pending-migrations-without-schema-drift', {
+      desiredSchema: dedent`
+        create table person(name text);
+        create table pet(name text);
+      `,
+      migrations: {
+        create_person: `create table person(name text)`,
+        create_pet: `create table pet(name text)`,
+      },
+    });
+
+    await fixture.db.raw(`create table person(name text)`);
+    await fixture.api.baseline({target: '2026-04-10T00.00.00.000Z_create_person'});
+
+    await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
+      [Error: Pending Migrations
+      Migration History is behind Migrations.
+      Recommendation: run \`sqlfu migrate\`.
+
+      Sync Drift
+      Desired Schema does not match Live Schema.
+      Recommendation: run \`sqlfu migrate\`.]
     `);
   });
 });
