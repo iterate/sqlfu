@@ -115,9 +115,9 @@ async function createNodeSqliteDatabase(dbPath: string): Promise<DisposableClien
 async function readMigrationHistory(dbPath: string) {
   await using database = await createNodeSqliteDatabase(dbPath);
   try {
-    return await database.client.all<{name: string; content: string}>({
+    return await database.client.all<{name: string; checksum: string}>({
       sql: `
-        select name, content
+        select name, checksum
         from sqlfu_migrations
         order by name
       `,

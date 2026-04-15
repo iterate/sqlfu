@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 
 import type {Client} from '../core/types.js';
 
@@ -9,7 +10,7 @@ export type Migration = {
 
 export type AppliedMigration = {
   name: string;
-  content: string;
+  checksum: string;
   appliedAt: string;
 };
 
@@ -18,12 +19,24 @@ export async function ensureMigrationTable(client: Client) {
     sql: `
       create table if not exists sqlfu_migrations(
         name text primary key check(name not like '%.sql'),
-        content text not null,
+        checksum text not null,
         applied_at text not null
       );
     `,
     args: [],
   });
+
+  const columns = await client.all<{name: string}>({
+    sql: `select name from pragma_table_info('sqlfu_migrations') order by cid`,
+    args: [],
+  });
+  const columnNames = new Set(columns.map((column) => column.name));
+  if (columnNames.has('content') && !columnNames.has('checksum')) {
+    await client.run({
+      sql: `alter table sqlfu_migrations rename column content to checksum`,
+      args: [],
+    });
+  }
 }
 
 export function migrationName(migration: {path: string}) {
@@ -34,7 +47,7 @@ export async function readMigrationHistory(client: Client): Promise<AppliedMigra
   await ensureMigrationTable(client);
   return client.all<AppliedMigration>({
     sql: `
-      select name, content, applied_at as appliedAt
+      select name, checksum, applied_at as appliedAt
       from sqlfu_migrations
       order by name
     `,
@@ -63,10 +76,10 @@ export async function replaceMigrationHistory(client: Client, migrations: readon
   for (const migration of migrations) {
     await client.run({
       sql: `
-        insert into sqlfu_migrations(name, content, applied_at)
+        insert into sqlfu_migrations(name, checksum, applied_at)
         values (?, ?, ?)
       `,
-      args: [migrationName(migration), migration.content, new Date().toISOString()],
+      args: [migrationName(migration), migrationChecksum(migration.content), new Date().toISOString()],
     });
   }
 }
@@ -83,8 +96,8 @@ export async function applyMigrations(client: Client, params: {
     if (!current) {
       throw new Error(`deleted applied migration: ${historical.name}`);
     }
-    if (current.content !== historical.content) {
-      throw new Error(`edited applied migration: ${historical.name}`);
+    if (migrationChecksum(current.content) !== historical.checksum) {
+      throw new Error(`applied migration checksum mismatch: ${historical.name}`);
     }
   }
 
@@ -106,11 +119,15 @@ export async function applyMigrations(client: Client, params: {
       await tx.raw(migration.content);
       await tx.run({
         sql: `
-          insert into sqlfu_migrations(name, content, applied_at)
+          insert into sqlfu_migrations(name, checksum, applied_at)
           values (?, ?, ?)
         `,
-        args: [name, migration.content, new Date().toISOString()],
+        args: [name, migrationChecksum(migration.content), new Date().toISOString()],
       });
     });
   }
+}
+
+export function migrationChecksum(content: string) {
+  return createHash('sha256').update(content).digest('hex');
 }

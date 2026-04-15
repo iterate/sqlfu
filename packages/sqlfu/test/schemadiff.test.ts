@@ -41,7 +41,7 @@ test('diffSchemaSql still includes drops when the target schema also contains sq
       create table person(name text not null);
       create table sqlfu_migrations(
         name text primary key check(name not like '%.sql'),
-        content text not null,
+        checksum text not null,
         applied_at text not null
       );
     `,
@@ -52,11 +52,11 @@ test('diffSchemaSql still includes drops when the target schema also contains sq
     [
       "create table sqlfu_migrations(",
       "name text primary key check(name not like '%.sql'),",
-      "content text not null,",
+      "checksum text not null,",
       "applied_at text not null",
       ");",
-      "drop table \"pet\";",
-      "drop table \"toy\";",
+      "drop table "pet";",
+      "drop table "toy";",
     ]
   `);
 });

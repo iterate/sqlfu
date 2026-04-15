@@ -398,7 +398,7 @@ function MigrationDetail(input: {
     `name: ${toYamlScalar(input.migration.name)}`,
     `filename: ${toYamlScalar(input.migration.fileName)}`,
     `applied_at: ${toYamlScalar(input.migration.appliedAt)}`,
-    ...(input.migration.appliedAt ? [`integrity: ${toYamlScalar(input.migration.integrity ?? 'content does not match')}`] : []),
+    ...(input.migration.appliedAt ? [`integrity: ${toYamlScalar(input.migration.integrity ?? 'checksum mismatch')}`] : []),
   ].join('\n');
 
   return (
@@ -1309,7 +1309,7 @@ function formatAppliedAgo(appliedAt: string | null) {
   }
 
   const elapsedMs = Math.max(0, Date.now() - appliedAtMs);
-  return `${duration(elapsedMs).split(',')[0]} ago`;
+  return `${String(duration(elapsedMs)).split(',')[0]} ago`;
 }
 
 function isSameValue(left: unknown, right: unknown) {

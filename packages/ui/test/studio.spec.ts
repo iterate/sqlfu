@@ -145,7 +145,7 @@ test('migration history shows an integrity warning when applied content no longe
 
   const migrationDetail = historyItem.locator('.migration-detail');
   await migrationDetail.getByRole('tab', {name: 'Metadata'}).click();
-  await expect(await readCodeMirrorText(migrationDetail, 'Migration metadata')).toContain('integrity: content does not match');
+  await expect(await readCodeMirrorText(migrationDetail, 'Migration metadata')).toContain('integrity: checksum mismatch');
 });
 
 test('desired schema can be edited and saved, and sync is disabled while it is dirty', async ({page}) => {

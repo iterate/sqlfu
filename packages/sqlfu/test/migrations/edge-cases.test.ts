@@ -52,7 +52,7 @@ describe('migrate edge cases', () => {
     await fixture.writeFile(await fixture.globOne('migrations/*create_person.sql'), `create table person(first_name text, last_name text)`);
 
     await expect(fixture.api.migrate()).rejects.toMatchInlineSnapshot(`
-      [Error: edited applied migration: 2026-04-10T00.00.00.000Z_create_person]
+      [Error: applied migration checksum mismatch: 2026-04-10T00.00.00.000Z_create_person]
     `);
   });
 
@@ -257,7 +257,7 @@ describe('check recommendation edge cases', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: History Drift
       Migration History does not match Migrations.
-      Edited applied migration: 2026-04-10T00.00.00.000Z_create_person
+      Applied migration checksum mismatch: 2026-04-10T00.00.00.000Z_create_person
       Recommended Goto Target: 2026-04-10T00.00.00.000Z_create_person
       Recommendation: restore the original migration from git, or run \`sqlfu goto 2026-04-10T00.00.00.000Z_create_person\` if you want to reconcile this database to the current repo state.
 
@@ -299,7 +299,7 @@ describe('history drift recommendations', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: History Drift
       Migration History does not match Migrations.
-      Edited applied migration: 2026-04-10T00.00.00.000Z_create_person
+      Applied migration checksum mismatch: 2026-04-10T00.00.00.000Z_create_person
       Recommended Goto Target: 2026-04-10T00.00.00.000Z_create_person
       Recommendation: restore the original migration from git, or run \`sqlfu goto 2026-04-10T00.00.00.000Z_create_person\` if you want to reconcile this database to the current repo state.
 
@@ -320,13 +320,13 @@ describe('history drift recommendations', () => {
     await fixture.api.migrate();
     await fixture.db.raw(dedent`
       update sqlfu_migrations
-      set content = 'oops this is wrong'
+      set checksum = 'oops this is wrong'
     `);
 
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: History Drift
       Migration History does not match Migrations.
-      Edited applied migration: 2026-04-10T00.00.00.000Z_create_person
+      Applied migration checksum mismatch: 2026-04-10T00.00.00.000Z_create_person
       Recommended Baseline Target: 2026-04-10T00.00.00.000Z_create_person
       Recommendation: restore the original migration from git, or run \`sqlfu baseline 2026-04-10T00.00.00.000Z_create_person\` if you want to keep the current live schema.]
     `);
@@ -401,11 +401,11 @@ describe('baseline edge cases', () => {
     await fixture.db.raw(`
       create table sqlfu_migrations(
         name text primary key check(name = '2026-04-10T00.00.00.000Z_create_person'),
-        content text not null,
+        checksum text not null,
         applied_at text not null
       );
-      insert into sqlfu_migrations(name, content, applied_at)
-      values ('2026-04-10T00.00.00.000Z_create_person', 'original content', '2026-04-10T00:00:00.000Z');
+      insert into sqlfu_migrations(name, checksum, applied_at)
+      values ('2026-04-10T00.00.00.000Z_create_person', 'original checksum', '2026-04-10T00:00:00.000Z');
     `);
 
     await expect(fixture.api.baseline({target: '2026-04-10T01.00.00.000Z_create_pet'})).rejects.toMatchInlineSnapshot(`
@@ -414,7 +414,7 @@ describe('baseline edge cases', () => {
     await expect(fixture.readMigrationHistory()).resolves.toMatchObject([
       {
         name: '2026-04-10T00.00.00.000Z_create_person',
-        content: 'original content',
+        checksum: 'original checksum',
       },
     ]);
   });

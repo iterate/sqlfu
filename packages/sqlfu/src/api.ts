@@ -11,6 +11,7 @@ import {extractSchema} from './core/sqlite.js';
 import {
   applyMigrations,
   baselineMigrationHistory,
+  migrationChecksum,
   migrationName,
   readMigrationHistory,
   replaceMigrationHistory,
@@ -230,16 +231,16 @@ export async function getSchemaAuthorities(context: SqlfuRouterContext) {
       applied: appliedByName.has(migrationName(migration)),
       appliedAt: appliedByName.get(migrationName(migration))?.appliedAt ?? null,
       integrity: appliedByName.has(migrationName(migration))
-        ? getMigrationIntegrity(migration.content, appliedByName.get(migrationName(migration))?.content)
+        ? getMigrationIntegrity(migration.content, appliedByName.get(migrationName(migration))?.checksum)
         : null,
     })),
     migrationHistory: applied.map((migration) => ({
       id: migration.name,
       fileName: migrationByName.get(migration.name) ? path.basename(migrationByName.get(migration.name)!.path) : null,
-      content: migration.content,
+      content: migrationByName.get(migration.name)?.content ?? '-- migration file missing from repo',
       applied: true,
       appliedAt: migration.appliedAt,
-      integrity: getMigrationIntegrity(migrationByName.get(migration.name)?.content, migration.content),
+      integrity: getMigrationIntegrity(migrationByName.get(migration.name)?.content, migration.checksum),
     })),
     liveSchemaSql: liveSchema,
   };
@@ -269,12 +270,14 @@ export async function getMigrationResultantSchema(
   if (targetIndex === -1) {
     throw new Error(`migration history entry ${input.id} not found`);
   }
+  const migrations = await runtime.readMigrations();
+  const targetMigrationIndex = migrations.findIndex((migration) => migrationName(migration) === input.id);
+  if (targetMigrationIndex === -1) {
+    throw new Error(`migration ${input.id} not found in repo`);
+  }
   const schemaSql = await materializeMigrationsSchema(
     runtime.config,
-    applied.slice(0, targetIndex + 1).map((migration) => ({
-      path: `${migration.name}.sql`,
-      content: migration.content,
-    })),
+    migrations.slice(0, targetMigrationIndex + 1),
   );
   return `-- schema produced by sqlfu goto ${input.id}\n${schemaSql}`;
 }
@@ -544,7 +547,7 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
   ]);
 
   let liveSchema: string;
-  let applied: readonly {name: string; content: string}[];
+  let applied: readonly {name: string; checksum: string}[];
   await using database = await openMainDevDatabase(runtime.config.db);
   liveSchema = await extractSchema(database.client);
   applied = await readMigrationHistory(database.client);
@@ -570,7 +573,7 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
   if (historyMismatch) {
     const problemLine = historyMismatch.kind === 'deleted'
       ? `Deleted applied migration: ${historyMismatch.name}`
-      : `Edited applied migration: ${historyMismatch.name}`;
+      : `Applied migration checksum mismatch: ${historyMismatch.name}`;
     const recommendation = historyMismatch.kind === 'deleted'
       ? ['Recommendation: restore the missing migration from git.']
       : recommendedBaselineTarget
@@ -687,7 +690,7 @@ function buildSyncDriftRecommendation(input: {
 }
 
 function findHistoryMismatch(
-  applied: readonly {name: string; content: string}[],
+  applied: readonly {name: string; checksum: string}[],
   migrationByName: ReadonlyMap<string, Migration>,
 ) {
   for (const historical of applied) {
@@ -695,8 +698,8 @@ function findHistoryMismatch(
     if (!current) {
       return {kind: 'deleted' as const, name: historical.name};
     }
-    if (current.content !== historical.content) {
-      return {kind: 'edited' as const, name: historical.name};
+    if (migrationChecksum(current.content) !== historical.checksum) {
+      return {kind: 'checksumMismatch' as const, name: historical.name};
     }
   }
   return null;
@@ -741,12 +744,12 @@ async function compareSchemas(config: SqlfuProjectConfig, left: string, right: s
   };
 }
 
-function getMigrationIntegrity(currentContent: string | undefined, appliedContent: string | undefined) {
-  if (!currentContent || !appliedContent) {
-    return 'content does not match' as const;
+function getMigrationIntegrity(currentContent: string | undefined, appliedChecksum: string | undefined) {
+  if (!currentContent || !appliedChecksum) {
+    return 'checksum mismatch' as const;
   }
 
-  return currentContent === appliedContent ? 'ok' as const : 'content does not match' as const;
+  return migrationChecksum(currentContent) === appliedChecksum ? 'ok' as const : 'checksum mismatch' as const;
 }
 
 function summarizeSqlite3defError(error: unknown) {
