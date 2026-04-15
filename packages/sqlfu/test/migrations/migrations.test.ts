@@ -267,6 +267,48 @@ describe('check recommendations', () => {
     `);
   });
 
+  test('reports all mismatches but only the non-conflicting next actions for repo drift over a live schema prefix', async () => {
+    await using fixture = await createMigrationsFixture('check-dev-project-follow-up-shape', {
+      desiredSchema: dedent`
+        create table a(aa text);
+        create table b(bb text);
+        create table c(cc text);
+        create table d(dd text);
+      `,
+      migrations: {
+        create_abc: dedent`
+          create table a(aa text);
+          create table b(bb text);
+          create table c(cc text);
+        `,
+      },
+    });
+
+    await fixture.db.raw(`
+      create table a(aa text);
+      create table b(bb text);
+      create table c(cc text);
+    `);
+
+    await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
+      [Error: Repo Drift
+      Desired Schema does not match Migrations.
+
+      Pending Migrations
+      Migration History is behind Migrations.
+
+      Schema Drift
+      Live Schema does not match Migration History.
+
+      Sync Drift
+      Desired Schema does not match Live Schema.
+
+      Recommended next actions
+      - run \`sqlfu draft\` (reviewable migration).
+      - run \`sqlfu baseline 2026-04-10T00.00.00.000Z_create_abc\`.]
+    `);
+  });
+
   test('recommends goto repo head when repo and history agree but live schema matches no migration prefix', async () => {
     await using fixture = await createMigrationsFixture('check-schema-drift-goto-repo-head', {
       desiredSchema: dedent`
