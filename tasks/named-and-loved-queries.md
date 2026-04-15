@@ -1,1 +1,3 @@
+needs grilling!
+
 read charity majors' 'show your queries you love them by naming them'. we've already done much of the work by first-class support for sql/_.sql files. those have names. we should make sure it integrates well into opentelemetry solutions, sentry, posthog, evlog etc.
