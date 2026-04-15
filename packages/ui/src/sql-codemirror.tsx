@@ -1,5 +1,6 @@
 import {SQLite, sql} from '@codemirror/lang-sql';
 import type {SQLNamespace} from '@codemirror/lang-sql';
+import {yaml} from '@codemirror/lang-yaml';
 import {EditorState, type Extension, Prec} from '@codemirror/state';
 import {lintGutter, linter} from '@codemirror/lint';
 import {EditorView, keymap} from '@codemirror/view';
@@ -83,6 +84,7 @@ export function TextCodeMirror(input: {
   ariaLabel: string;
   readOnly?: boolean;
   height?: string;
+  language?: 'plain' | 'yaml';
 }) {
   return (
     <CodeMirror
@@ -90,7 +92,7 @@ export function TextCodeMirror(input: {
       height={input.height ?? '16rem'}
       aria-label={input.ariaLabel}
       theme="dark"
-      extensions={buildTextExtensions(Boolean(input.readOnly))}
+      extensions={buildTextExtensions(Boolean(input.readOnly), input.language ?? 'plain')}
       basicSetup={{
         foldGutter: false,
       }}
@@ -117,11 +119,11 @@ export function TextDiffCodeMirror(input: {
       >
         <Original
           value={input.original}
-          extensions={buildTextExtensions(true)}
+          extensions={buildTextExtensions(true, 'plain')}
         />
         <Modified
           value={input.draft}
-          extensions={buildTextExtensions(true)}
+          extensions={buildTextExtensions(true, 'plain')}
         />
       </CodeMirrorMerge>
     </div>
@@ -141,8 +143,9 @@ function buildSqlSchema(relations: readonly StudioRelation[]): SQLNamespace {
   );
 }
 
-function buildTextExtensions(readOnly: boolean): Extension[] {
+function buildTextExtensions(readOnly: boolean, language: 'plain' | 'yaml'): Extension[] {
   return [
+    ...(language === 'yaml' ? [yaml()] : []),
     EditorView.lineWrapping,
     EditorState.readOnly.of(readOnly),
     EditorView.editable.of(!readOnly),

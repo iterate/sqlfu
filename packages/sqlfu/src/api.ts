@@ -255,7 +255,8 @@ export async function getMigrationResultantSchema(
     if (targetIndex === -1) {
       throw new Error(`migration ${input.id} not found`);
     }
-    return materializeMigrationsSchema(runtime.config, migrations.slice(0, targetIndex + 1));
+    const schemaSql = await materializeMigrationsSchema(runtime.config, migrations.slice(0, targetIndex + 1));
+    return `-- schema that would be produced by \`sqlfu goto ${input.id}\`\n${schemaSql}`;
   }
 
   await using database = await openMainDevDatabase(context.config.db);
@@ -264,13 +265,14 @@ export async function getMigrationResultantSchema(
   if (targetIndex === -1) {
     throw new Error(`migration history entry ${input.id} not found`);
   }
-  return materializeMigrationsSchema(
+  const schemaSql = await materializeMigrationsSchema(
     runtime.config,
     applied.slice(0, targetIndex + 1).map((migration) => ({
       path: `${migration.name}.sql`,
       content: migration.content,
     })),
   );
+  return `-- schema produced by sqlfu goto ${input.id}\n${schemaSql}`;
 }
 
 export async function runSqlfuCommand(context: SqlfuRouterContext, command: string): Promise<void> {

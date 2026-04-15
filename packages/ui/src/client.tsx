@@ -393,9 +393,9 @@ function MigrationDetail(input: {
     enabled: activeTab === 'schema',
   });
   const metadata = [
-    `name: ${input.migration.name}`,
-    `filename: ${input.migration.fileName ?? 'null'}`,
-    `applied_at: ${input.migration.appliedAt ?? 'null'}`,
+    `name: ${toYamlScalar(input.migration.name)}`,
+    `filename: ${toYamlScalar(input.migration.fileName)}`,
+    `applied_at: ${toYamlScalar(input.migration.appliedAt)}`,
   ].join('\n');
 
   return (
@@ -445,6 +445,7 @@ function MigrationDetail(input: {
           ariaLabel="Migration metadata"
           readOnly
           height="10rem"
+          language="yaml"
         />
       ) : null}
       {activeTab === 'schema' ? (
@@ -1289,6 +1290,14 @@ function formatCellText(value: unknown) {
     return JSON.stringify(value, null, 2);
   }
   return String(value);
+}
+
+function toYamlScalar(value: string | null) {
+  if (value == null) {
+    return 'null';
+  }
+
+  return value;
 }
 
 function isSameValue(left: unknown, right: unknown) {
