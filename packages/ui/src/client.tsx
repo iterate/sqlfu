@@ -585,6 +585,7 @@ function TablePanel(input: {
         <DataTable
           storageKey={`relation/${input.relation.name}`}
           columns={rowsQuery.data.columns}
+          rowKeys={displayedRowKeys}
           originalRows={displayedOriginalRows}
           rows={displayedRows}
           editable={rowsQuery.data.editable}
@@ -1019,6 +1020,7 @@ function ExecutionResult(input: {
 function DataTable(input: {
   storageKey: string;
   columns: readonly string[];
+  rowKeys?: TableRowsResponse['rowKeys'];
   originalRows?: readonly Record<string, unknown>[];
   rows: readonly Record<string, unknown>[];
   editable?: boolean;
@@ -1050,6 +1052,7 @@ function DataTable(input: {
       defaultValue: 'diff',
     },
   );
+  const pendingFocusRef = useRef<{rowId: number; columnId: string} | null>(null);
   const rowHistoryRef = useRef<{
     baseline: string;
     undo: readonly (readonly Record<string, unknown>[])[],
@@ -1102,7 +1105,7 @@ function DataTable(input: {
         ...input.columns.map((column) =>
           toGridCell(
             row[column],
-            Boolean(input.editable) && input.editableColumns?.[column] !== false,
+            isEditableDataCell(input, rowIndex, column),
             isSameValue(row[column], input.originalRows?.[rowIndex]?.[column]) ? undefined : 'dirty-cell',
           )),
       ],
@@ -1196,9 +1199,9 @@ function DataTable(input: {
       ) : null}
       <div className="table-scroll" ref={containerRef}>
         <reactGrid.ReactGrid
-          key={JSON.stringify(input.rows)}
           columns={gridColumns}
           rows={gridRows}
+          focusLocation={pendingFocusRef.current ?? undefined}
           stickyTopRows={1}
           stickyLeftColumns={1}
           enableRangeSelection
@@ -1215,11 +1218,24 @@ function DataTable(input: {
           }}
           onFocusLocationChanged={(location) => {
             if (location.rowId === '__append__' && input.onAppendRow) {
+              if (typeof location.columnId === 'string' && location.columnId !== '__row__') {
+                pendingFocusRef.current = {
+                  rowId: input.rows.length,
+                  columnId: location.columnId,
+                };
+              }
               input.onAppendRow();
               return;
             }
             if (typeof location.rowId !== 'number' || typeof location.columnId !== 'string') {
               return;
+            }
+            if (
+              pendingFocusRef.current
+              && pendingFocusRef.current.rowId === location.rowId
+              && pendingFocusRef.current.columnId === location.columnId
+            ) {
+              pendingFocusRef.current = null;
             }
             setSelectedCell({
               rowId: location.rowId,
@@ -1237,7 +1253,7 @@ function DataTable(input: {
               if (!nextRow) {
                 continue;
               }
-              if (input.editableColumns?.[change.columnId] === false) {
+              if (!isEditableDataCell(input, change.rowId, change.columnId)) {
                 continue;
               }
               nextRow[change.columnId] = readGridCellValue(change.newCell);
@@ -1329,6 +1345,24 @@ function DataTable(input: {
 
 function cloneTableRows(rows: readonly Record<string, unknown>[]) {
   return rows.map((row) => ({...row}));
+}
+
+function isEditableDataCell(
+  input: {
+    editable?: boolean;
+    editableColumns?: Readonly<Record<string, boolean>>;
+    rowKeys?: TableRowsResponse['rowKeys'];
+  },
+  rowIndex: number,
+  columnId: string,
+) {
+  if (!input.editable) {
+    return false;
+  }
+  if (input.rowKeys?.[rowIndex]?.kind === 'new') {
+    return true;
+  }
+  return input.editableColumns?.[columnId] !== false;
 }
 
 function EmptyState() {

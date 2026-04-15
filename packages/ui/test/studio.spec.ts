@@ -386,13 +386,33 @@ test('relation rows can be appended from the grid', async ({page}) => {
 
   await page.goto('/#table/posts');
 
-  await page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="0"]').click();
+  await page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="2"]').click();
+  await expect(page.locator('.selected-cell-panel')).toContainText('Cell: slug, row 3');
   await expect(page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="2"]')).toBeVisible();
 
-  await fillGridTextCell(page, 3, 2, 'brand-new-post');
-  await fillGridTextCell(page, 3, 3, 'Brand New Post');
-  await fillGridTextCell(page, 3, 4, 'Inserted from the relations grid');
-  await fillGridTextCell(page, 3, 5, '0');
+  const editor = page.locator('.rg-celleditor input');
+  await page.keyboard.press('Enter');
+  await expect(editor).toBeVisible();
+  await editor.pressSequentially('brand-new-post');
+  await page.keyboard.press('Tab');
+
+  await expect(page.locator('.selected-cell-panel')).toContainText('Cell: title, row 3');
+  await page.keyboard.press('Enter');
+  await expect(editor).toBeVisible();
+  await editor.pressSequentially('Brand New Post');
+  await page.keyboard.press('Tab');
+
+  await expect(page.locator('.selected-cell-panel')).toContainText('Cell: body, row 3');
+  await page.keyboard.press('Enter');
+  await expect(editor).toBeVisible();
+  await editor.pressSequentially('Inserted from the relations grid');
+  await page.keyboard.press('Tab');
+
+  await expect(page.locator('.selected-cell-panel')).toContainText('Cell: published, row 3');
+  await page.keyboard.press('Enter');
+  await expect(editor).toBeVisible();
+  await editor.pressSequentially('0');
+  await page.keyboard.press('Enter');
 
   await expect(page.getByRole('button', {name: 'Save changes'})).toBeVisible();
   const [saveResponse] = await Promise.all([
@@ -407,6 +427,24 @@ test('relation rows can be appended from the grid', async ({page}) => {
   await page.reload();
   await expect(page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="2"]')).toContainText('brand-new-post');
   await expect(page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="3"]')).toContainText('Brand New Post');
+});
+
+test('appended rows focus the clicked cell and allow editing primary key columns', async ({page}) => {
+  await using _project = await preserveSchemaProjectState(path.join(import.meta.dirname, 'projects', 'fixture-project'));
+
+  await page.goto('/#schema');
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', {name: 'sqlfu draft'}).click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', {name: /sqlfu baseline /}).first().click();
+
+  await page.goto('/#table/sqlfu_migrations');
+  await page.locator('.reactgrid [data-cell-rowidx="2"][data-cell-colidx="1"]').click();
+  await expect(page.locator('.selected-cell-panel')).toContainText('Cell: name, row 2');
+
+  await fillGridTextCell(page, 2, 1, 'manual_migration');
+
+  await expect(page.locator('.reactgrid [data-cell-rowidx="2"][data-cell-colidx="1"]')).toContainText('manual_migration');
 });
 
 test('relation rows can discard dirty cell changes', async ({page}) => {
@@ -897,13 +935,19 @@ async function readCodeMirrorText(page: any, ariaLabel: string) {
 
 async function fillGridTextCell(page: any, rowIndex: number, columnIndex: number, value: string) {
   const cell = page.locator(`.reactgrid [data-cell-rowidx="${rowIndex}"][data-cell-colidx="${columnIndex}"]`);
-  await cell.dblclick();
+  const columnName = (await page.locator(`.reactgrid [data-cell-rowidx="0"][data-cell-colidx="${columnIndex}"]`).textContent())?.trim();
+  await cell.click({position: {x: 8, y: 8}});
+  if (columnName) {
+    await expect(page.locator('.selected-cell-panel')).toContainText(`Cell: ${columnName}, row ${rowIndex}`);
+  }
+  await cell.dblclick({position: {x: 8, y: 8}});
   const editor = page.locator('.rg-celleditor input');
   if (await editor.isVisible()) {
     await editor.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+A`);
     await editor.press('Backspace');
     await editor.pressSequentially(value);
     await editor.press('Enter');
+    await page.locator(`.reactgrid [data-cell-rowidx="${rowIndex}"][data-cell-colidx="0"]`).click();
     return;
   }
 
