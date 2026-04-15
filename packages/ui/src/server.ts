@@ -1,10 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {Database} from 'bun:sqlite';
+import {RPCHandler} from '@orpc/server/fetch';
 
 import type {QueryCatalog, QueryCatalogEntry, QueryArg, SqlfuProjectConfig, SqlfuRouterContext} from 'sqlfu/experimental';
 import {analyzeAdHocSqlForConfig, createBunClient, getCheckMismatches, getMigrationResultantSchema, getSchemaAuthorities, loadProjectConfig, runSqlfuCommand, splitSqlStatements, writeDefinitionsSql} from 'sqlfu/experimental';
 import type {MigrationResultantSchemaResponse, QueryFileMutationResponse, SaveSqlResponse, SchemaAuthoritiesResponse, SchemaCheckCard, SchemaCheckResponse, SqlAnalysisResponse, SqlEditorDiagnostic, StudioColumn, StudioRelation, StudioSchemaResponse, TableRowKey, TableRowsResponse} from './shared.js';
+import {createUiRouter} from './orpc.js';
 
 const clientEntryPath = path.join(import.meta.dir, 'client.tsx');
 const stylesPath = path.join(import.meta.dir, 'styles.css');
@@ -17,6 +19,25 @@ export async function startSqlfuUiServer(input: {
   const projectRoot = path.resolve(input.projectRoot ?? process.cwd());
   process.chdir(projectRoot);
   const config = await loadProjectConfig();
+  const rpcHandler = new RPCHandler(createUiRouter({
+    getSchema: getSchemaResponse,
+    loadCatalog,
+    getSchemaCheck: getSchemaCheckResponse,
+    getSchemaAuthorities: getSchemaAuthoritiesResponse,
+    getMigrationResultantSchema: getMigrationResultantSchemaResponse,
+    listTableRows: getTableRows,
+    saveTableRows,
+    deleteTableRow,
+    runSql: (uiConfig, rpcInput) => executeSql(uiConfig.db, rpcInput),
+    analyzeSql,
+    saveSqlQuery,
+    runSchemaCommand,
+    saveDefinitionsSql,
+    executeCatalogQuery,
+    updateQueryFile,
+    renameQueryFile,
+    deleteQueryFile,
+  }));
 
   const server = Bun.serve({
     port: input.port ?? 3017,
@@ -24,121 +45,12 @@ export async function startSqlfuUiServer(input: {
       try {
         const url = new URL(request.url);
 
-        if (url.pathname === '/api/schema') {
-          return json(await getSchemaResponse(config.db));
-        }
-
-        if (url.pathname === '/api/catalog') {
-          return json(await loadCatalog(config));
-        }
-
-        if (url.pathname === '/api/schema/check') {
-          return json(await getSchemaCheckResponse(config));
-        }
-
-        if (url.pathname === '/api/schema/authorities') {
-          return json(await getSchemaAuthoritiesResponse(config));
-        }
-
-        if (url.pathname === '/api/schema/authorities/resultant-schema') {
-          return json(await getMigrationResultantSchemaResponse(config, {
-            source: url.searchParams.get('source') === 'history' ? 'history' : 'migrations',
-            id: url.searchParams.get('id') ?? '',
-          }));
-        }
-
-        if (url.pathname.startsWith('/api/table/')) {
-          const relationName = decodeURIComponent(url.pathname.replace('/api/table/', ''));
-          const page = Number(url.searchParams.get('page') ?? '0');
-          if (request.method === 'PUT') {
-            const body = await request.json() as {
-              originalRows?: unknown;
-              rows?: unknown;
-              rowKeys?: unknown;
-            };
-            return json(await saveTableRows(config.db, relationName, {
-              page: Number.isFinite(page) ? page : 0,
-              originalRows: Array.isArray(body.originalRows) ? body.originalRows : [],
-              rows: Array.isArray(body.rows) ? body.rows : [],
-              rowKeys: Array.isArray(body.rowKeys) ? body.rowKeys as TableRowKey[] : [],
-            }));
-          }
-          if (request.method === 'DELETE') {
-            const body = await request.json() as {
-              originalRow?: unknown;
-              rowKey?: unknown;
-            };
-            return json(await deleteTableRow(config.db, relationName, {
-              page: Number.isFinite(page) ? page : 0,
-              originalRow: body.originalRow,
-              rowKey: isTableRowKey(body.rowKey) ? body.rowKey : undefined,
-            }));
-          }
-          return json(await getTableRows(config.db, relationName, Number.isFinite(page) ? page : 0));
-        }
-
-        if (url.pathname === '/api/sql' && request.method === 'POST') {
-          const body = await request.json() as {sql?: unknown; params?: unknown};
-          return json(await executeSql(config.db, {
-            sql: typeof body.sql === 'string' ? body.sql : '',
-            params: body.params,
-          }));
-        }
-
-        if (url.pathname === '/api/sql/analyze' && request.method === 'POST') {
-          const body = await request.json() as {sql?: unknown};
-          return json(await analyzeSql(config, {
-            sql: typeof body.sql === 'string' ? body.sql : '',
-          }));
-        }
-
-        if (url.pathname === '/api/sql/save' && request.method === 'POST') {
-          const body = await request.json() as {sql?: unknown; name?: unknown};
-          return json(await saveSqlQuery(config, {
-            sql: typeof body.sql === 'string' ? body.sql : '',
-            name: typeof body.name === 'string' ? body.name : '',
-          }));
-        }
-
-        if (url.pathname === '/api/schema/command' && request.method === 'POST') {
-          const body = await request.json() as {command?: unknown};
-          return json(await runSchemaCommand(config, {
-            command: typeof body.command === 'string' ? body.command : '',
-          }));
-        }
-
-        if (url.pathname === '/api/schema/definitions' && request.method === 'PUT') {
-          const body = await request.json() as {sql?: unknown};
-          return json(await saveDefinitionsSql(config, {
-            sql: typeof body.sql === 'string' ? body.sql : '',
-          }));
-        }
-
-        if (url.pathname.startsWith('/api/query/') && request.method === 'POST') {
-          const queryId = decodeURIComponent(url.pathname.replace('/api/query/', ''));
-          const body = await request.json() as {data?: Record<string, unknown>; params?: Record<string, unknown>};
-          return json(await executeCatalogQuery(config, queryId, body));
-        }
-
-        if (url.pathname.startsWith('/api/query/') && request.method === 'PUT') {
-          const queryId = decodeURIComponent(url.pathname.replace('/api/query/', ''));
-          const body = await request.json() as {sql?: unknown};
-          return json(await updateQueryFile(config, queryId, {
-            sql: typeof body.sql === 'string' ? body.sql : '',
-          }));
-        }
-
-        if (url.pathname.startsWith('/api/query/') && request.method === 'PATCH') {
-          const queryId = decodeURIComponent(url.pathname.replace('/api/query/', ''));
-          const body = await request.json() as {name?: unknown};
-          return json(await renameQueryFile(config, queryId, {
-            name: typeof body.name === 'string' ? body.name : '',
-          }));
-        }
-
-        if (url.pathname.startsWith('/api/query/') && request.method === 'DELETE') {
-          const queryId = decodeURIComponent(url.pathname.replace('/api/query/', ''));
-          return json(await deleteQueryFile(config, queryId));
+        if (url.pathname.startsWith('/api/rpc')) {
+          const {matched, response} = await rpcHandler.handle(request, {
+            prefix: '/api/rpc',
+            context: {config},
+          });
+          return matched ? response : new Response('Not found', {status: 404});
         }
 
         if (url.pathname === '/assets/app.js') {

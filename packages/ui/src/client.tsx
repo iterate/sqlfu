@@ -1,6 +1,10 @@
 import {Suspense, useRef, useSyncExternalStore} from 'react';
 import type {ReactNode} from 'react';
 import {createRoot} from 'react-dom/client';
+import {createORPCClient} from '@orpc/client';
+import {RPCLink} from '@orpc/client/fetch';
+import type {RouterClient} from '@orpc/server';
+import {createTanstackQueryUtils} from '@orpc/tanstack-query';
 import * as reactGrid from '@silevis/reactgrid';
 import Form from '@rjsf/core';
 import type {RJSFSchema} from '@rjsf/utils';
@@ -16,26 +20,26 @@ import {
 } from '@tanstack/react-query';
 
 import {queryNickname} from 'sqlfu/naming';
-import type {QueryCatalog, QueryCatalogEntry} from 'sqlfu/experimental';
+import type {QueryCatalogEntry} from 'sqlfu/experimental';
 import type {
-  MigrationResultantSchemaResponse,
-  QueryFileMutationResponse,
   QueryExecutionResponse,
-  SaveSqlResponse,
   SchemaAuthorityMigration,
   SchemaAuthoritiesResponse,
   SchemaCheckResponse,
-  SqlAnalysisResponse,
   SqlEditorDiagnostic,
   SqlRunnerResponse,
   StudioRelation,
-  StudioSchemaResponse,
   TableRowsResponse,
 } from './shared.js';
 import {columnWidthAlgorithm} from './column-width.js';
+import type {UiRouter} from './orpc.js';
 import {SqlCodeMirror, TextCodeMirror, TextDiffCodeMirror} from './sql-codemirror.js';
 
 const queryClient = new QueryClient();
+const orpcClient: RouterClient<UiRouter> = createORPCClient(new RPCLink({
+  url: `${window.location.origin}/api/rpc`,
+}));
+const orpc = createTanstackQueryUtils(orpcClient);
 
 function App() {
   return (
@@ -48,31 +52,15 @@ function App() {
 }
 
 async function invalidateSchemaContent() {
-  await Promise.all([
-    queryClient.invalidateQueries({queryKey: ['schema']}),
-    queryClient.invalidateQueries({queryKey: ['schema-check']}),
-    queryClient.invalidateQueries({queryKey: ['schema-authorities']}),
-  ]);
+  await queryClient.invalidateQueries({queryKey: orpc.schema.key()});
 }
 
 function Studio() {
   const route = useHashRoute();
-  const schemaQuery = useSuspenseQuery({
-    queryKey: ['schema'],
-    queryFn: () => fetchJson<StudioSchemaResponse>('/api/schema'),
-  });
-  const catalogQuery = useSuspenseQuery({
-    queryKey: ['catalog'],
-    queryFn: () => fetchJson<QueryCatalog>('/api/catalog'),
-  });
-  const schemaCheckQuery = useSuspenseQuery({
-    queryKey: ['schema-check'],
-    queryFn: () => fetchJson<SchemaCheckResponse>('/api/schema/check'),
-  });
-  const schemaAuthoritiesQuery = useSuspenseQuery({
-    queryKey: ['schema-authorities'],
-    queryFn: () => fetchJson<SchemaAuthoritiesResponse>('/api/schema/authorities'),
-  });
+  const schemaQuery = useSuspenseQuery(orpc.schema.get.queryOptions());
+  const catalogQuery = useSuspenseQuery(orpc.catalog.queryOptions());
+  const schemaCheckQuery = useSuspenseQuery(orpc.schema.check.queryOptions());
+  const schemaAuthoritiesQuery = useSuspenseQuery(orpc.schema.authorities.get.queryOptions());
 
   const selectedTable = selectTable(route, schemaQuery.data.relations);
   const selectedQuery = selectQuery(route, catalogQuery.data.queries);
@@ -167,8 +155,7 @@ function SchemaPanel(input: {
     },
   );
   const runCommandMutation = useMutation({
-    mutationFn: (body: {command: string}) =>
-      postJson<{ok: true}>('/api/schema/command', body),
+    ...orpc.schema.command.mutationOptions(),
     onMutate: (variables) => {
       setCommandErrors((current) => {
         const next = {...(current ?? {})};
@@ -178,11 +165,7 @@ function SchemaPanel(input: {
     },
     onSuccess: async () => {
       setCommandErrors({});
-      await Promise.all([
-        queryClient.refetchQueries({queryKey: ['schema']}),
-        queryClient.refetchQueries({queryKey: ['schema-check']}),
-        queryClient.refetchQueries({queryKey: ['schema-authorities']}),
-      ]);
+      await queryClient.refetchQueries({queryKey: orpc.schema.key()});
     },
     onError: (error, variables) => {
       setCommandErrors((current) => ({
@@ -192,17 +175,10 @@ function SchemaPanel(input: {
     },
   });
   const saveDesiredSchemaMutation = useMutation({
-    mutationFn: (body: {sql: string}) =>
-      fetchJson<{ok: true}>('/api/schema/definitions', {
-        method: 'PUT',
-        body,
-      }),
+    ...orpc.schema.definitions.mutationOptions(),
     onSuccess: async (_, variables) => {
       setDesiredSchemaDraft(normalizeSqlDraft(variables.sql));
-      await Promise.all([
-        queryClient.refetchQueries({queryKey: ['schema-check']}),
-        queryClient.refetchQueries({queryKey: ['schema-authorities']}),
-      ]);
+      await queryClient.refetchQueries({queryKey: orpc.schema.key()});
     },
   });
   const desiredSchemaSql = desiredSchemaDraft ?? input.authorities.desiredSchemaSql;
@@ -395,11 +371,12 @@ function MigrationDetail(input: {
     },
   );
   const resultantSchemaQuery = useQuery({
-    queryKey: ['migration-resultant-schema', input.source, input.migration.id],
-    queryFn: () =>
-      fetchJson<MigrationResultantSchemaResponse>(
-        `/api/schema/authorities/resultant-schema?source=${encodeURIComponent(input.source)}&id=${encodeURIComponent(input.migration.id)}`,
-      ),
+    ...orpc.schema.authorities.resultantSchema.queryOptions({
+      input: {
+        source: input.source,
+        id: input.migration.id,
+      },
+    }),
     enabled: activeTab === 'schema',
   });
   const metadata = [
@@ -485,10 +462,13 @@ function TablePanel(input: {
   relation: StudioRelation;
   page: number;
 }) {
-  const rowsQuery = useSuspenseQuery({
-    queryKey: ['table', input.relation.name, input.page],
-    queryFn: () => fetchJson<TableRowsResponse>(`/api/table/${encodeURIComponent(input.relation.name)}?page=${input.page}`),
+  const tableListOptions = orpc.table.list.queryOptions({
+    input: {
+      relationName: input.relation.name,
+      page: input.page,
+    },
   });
+  const rowsQuery = useSuspenseQuery(tableListOptions);
   const [draftRows, setDraftRows] = useLocalStorageState<readonly Record<string, unknown>[]>(
     `sqlfu-ui/table-draft/${input.relation.name}/${input.page}`,
     {
@@ -496,37 +476,18 @@ function TablePanel(input: {
     },
   );
   const saveRowsMutation = useMutation({
-    mutationFn: (body: {
-      originalRows: readonly Record<string, unknown>[];
-      rows: readonly Record<string, unknown>[];
-      rowKeys: TableRowsResponse['rowKeys'];
-    }) =>
-      fetchJson<TableRowsResponse>(`/api/table/${encodeURIComponent(input.relation.name)}?page=${input.page}`, {
-        method: 'PUT',
-        body,
-      }),
+    ...orpc.table.save.mutationOptions(),
     onSuccess: async (response) => {
       setDraftRows(response.rows);
-      queryClient.setQueryData(['table', input.relation.name, input.page], response);
+      queryClient.setQueryData(tableListOptions.queryKey, response);
       await invalidateSchemaContent();
     },
   });
   const deleteRowMutation = useMutation({
-    mutationFn: (body: {
-      rowIndex: number;
-      originalRow: Record<string, unknown>;
-      rowKey: TableRowsResponse['rowKeys'][number];
-    }) =>
-      fetchJson<TableRowsResponse>(`/api/table/${encodeURIComponent(input.relation.name)}?page=${input.page}`, {
-        method: 'DELETE',
-        body: {
-          originalRow: body.originalRow,
-          rowKey: body.rowKey,
-        },
-      }),
+    ...orpc.table.delete.mutationOptions(),
     onSuccess: async (response) => {
       setDraftRows(response.rows);
-      queryClient.setQueryData(['table', input.relation.name, input.page], response);
+      queryClient.setQueryData(tableListOptions.queryKey, response);
       await invalidateSchemaContent();
     },
   });
@@ -554,8 +515,10 @@ function TablePanel(input: {
   };
   const handleSaveRows = () => {
     saveRowsMutation.mutate({
-      originalRows: displayedOriginalRows,
-      rows: displayedRows,
+      relationName: input.relation.name,
+      page: input.page,
+      originalRows: displayedOriginalRows.map((row) => ({...row})),
+      rows: displayedRows.map((row) => ({...row})),
       rowKeys: displayedRowKeys,
     });
   };
@@ -570,7 +533,8 @@ function TablePanel(input: {
       return;
     }
     deleteRowMutation.mutate({
-      rowIndex,
+      relationName: input.relation.name,
+      page: input.page,
       rowKey,
       originalRow,
     });
@@ -630,7 +594,6 @@ function TablePanel(input: {
           onRowsChange={setDraftRows}
           onAppendRow={() => setDraftRows([...displayedRows, {...emptyRowTemplate}])}
           onDeleteRow={handleDeleteRow}
-          deletingRowIndex={deleteRowMutation.isPending ? deleteRowMutation.variables?.rowIndex ?? null : null}
           showSelectedCellDetail
         />
         <div className="pager">
@@ -676,23 +639,22 @@ function SqlRunnerPanel(input: {
     },
   });
   const analysisQuery = useQuery({
-    queryKey: ['sql-analysis', draft.sql],
-    queryFn: () => postJson<SqlAnalysisResponse>('/api/sql/analyze', {sql: draft.sql}),
+    ...orpc.sql.analyze.queryOptions({
+      input: {sql: draft.sql},
+    }),
     placeholderData: (previousData) => previousData,
     enabled: draft.sql.trim().length > 0,
   });
   const detectedParamsSchema = (analysisQuery.data?.paramsSchema as RJSFSchema | undefined) ?? buildSqlRunnerParamsSchema(draft.sql);
   const sanitizedParams = sanitizeFormData(draft.params, detectedParamsSchema);
   const runMutation = useMutation({
-    mutationFn: (body: {sql: string; params?: unknown}) =>
-      postJson<SqlRunnerResponse>('/api/sql', body),
+    ...orpc.sql.run.mutationOptions(),
     onSuccess: async () => {
       await invalidateSchemaContent();
     },
   });
   const saveMutation = useMutation({
-    mutationFn: (body: {name: string; sql: string}) =>
-      postJson<SaveSqlResponse>('/api/sql/save', body),
+    ...orpc.sql.save.mutationOptions(),
   });
   const handleSave = async () => {
     const suggestedName = slugifyPromptName(queryNickname(draft.sql));
@@ -707,10 +669,7 @@ function SqlRunnerPanel(input: {
     }
 
     const result = await saveMutation.mutateAsync({name, sql: draft.sql});
-    await queryClient.fetchQuery({
-      queryKey: ['catalog'],
-      queryFn: () => fetchJson<QueryCatalog>('/api/catalog'),
-    });
+    await queryClient.fetchQuery(orpc.catalog.queryOptions());
     const queryId = result.savedPath.split('/').pop()?.replace(/\.sql$/, '');
     if (!queryId) {
       throw new Error(`Could not derive query id from saved path: ${result.savedPath}`);
@@ -752,8 +711,7 @@ function QueryPanel(input: {
   const entry = input.entry;
 
   const mutation = useMutation({
-    mutationFn: (body: {data?: unknown; params?: unknown}) =>
-      postJson<QueryExecutionResponse>(`/api/query/${encodeURIComponent(entry.id)}`, body),
+    ...orpc.query.execute.mutationOptions(),
     onSuccess: async () => {
       await invalidateSchemaContent();
     },
@@ -771,58 +729,39 @@ function QueryPanel(input: {
     defaultValue: false,
   });
   const renameMutation = useMutation({
-    mutationFn: (body: {name: string}) =>
-      fetchJson<QueryFileMutationResponse>(`/api/query/${encodeURIComponent(entry.id)}`, {
-        method: 'PATCH',
-        body,
-      }),
+    ...orpc.query.rename.mutationOptions(),
   });
   const updateMutation = useMutation({
-    mutationFn: (body: {sql: string}) =>
-      fetchJson<QueryFileMutationResponse>(`/api/query/${encodeURIComponent(entry.id)}`, {
-        method: 'PUT',
-        body,
-      }),
+    ...orpc.query.update.mutationOptions(),
   });
   const deleteMutation = useMutation({
-    mutationFn: () =>
-      fetchJson<QueryFileMutationResponse>(`/api/query/${encodeURIComponent(entry.id)}`, {
-        method: 'DELETE',
-      }),
+    ...orpc.query.delete.mutationOptions(),
   });
   const analysisQuery = useQuery({
-    queryKey: ['query-sql-analysis', entry.id, sqlDraft],
-    queryFn: () => postJson<SqlAnalysisResponse>('/api/sql/analyze', {sql: sqlDraft}),
+    ...orpc.sql.analyze.queryOptions({
+      input: {sql: sqlDraft},
+    }),
     placeholderData: (previousData) => previousData,
     enabled: sqlEditMode && sqlDraft.trim().length > 0,
   });
   const handleRename = async () => {
-    const result = await renameMutation.mutateAsync({name: renameDraft});
+    const result = await renameMutation.mutateAsync({queryId: entry.id, name: renameDraft});
     setRenameMode(false);
-    await queryClient.fetchQuery({
-      queryKey: ['catalog'],
-      queryFn: () => fetchJson<QueryCatalog>('/api/catalog'),
-    });
+    await queryClient.fetchQuery(orpc.catalog.queryOptions());
     window.location.hash = `#query/${encodeURIComponent(result.id)}`;
   };
   const handleSqlSave = async () => {
-    const result = await updateMutation.mutateAsync({sql: sqlDraft});
+    const result = await updateMutation.mutateAsync({queryId: entry.id, sql: sqlDraft});
     setSqlEditMode(false);
-    await queryClient.fetchQuery({
-      queryKey: ['catalog'],
-      queryFn: () => fetchJson<QueryCatalog>('/api/catalog'),
-    });
+    await queryClient.fetchQuery(orpc.catalog.queryOptions());
     window.location.hash = `#query/${encodeURIComponent(result.id)}`;
   };
   const handleDelete = async () => {
     if (!window.confirm(`Delete query "${entry.id}"?`)) {
       return;
     }
-    await deleteMutation.mutateAsync();
-    const catalog = await queryClient.fetchQuery({
-      queryKey: ['catalog'],
-      queryFn: () => fetchJson<QueryCatalog>('/api/catalog'),
-    });
+    await deleteMutation.mutateAsync({queryId: entry.id});
+    const catalog = await queryClient.fetchQuery(orpc.catalog.queryOptions());
     const nextQuery = catalog.queries.find((entry) => entry.kind === 'query');
     window.location.hash = nextQuery ? `#query/${encodeURIComponent(nextQuery.id)}` : '#sql';
   };
@@ -901,6 +840,7 @@ function QueryPanel(input: {
       }
       onRun={(formData) =>
         mutation.mutate({
+          queryId: entry.id,
           data: isRecord(formData) && isRecord(formData.data) ? formData.data : undefined,
           params: isRecord(formData) && isRecord(formData.params) ? formData.params : undefined,
         })}
@@ -1107,7 +1047,6 @@ function DataTable(input: {
   onRowsChange?: (rows: readonly Record<string, unknown>[]) => void;
   onAppendRow?: () => void;
   onDeleteRow?: (rowIndex: number) => void;
-  deletingRowIndex?: number | null;
   showSelectedCellDetail?: boolean;
 }) {
   if (input.rows.length === 0) {
@@ -1812,40 +1751,6 @@ function normalizeSqlDraft(value: string) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
-}
-
-async function fetchJson<TValue>(
-  url: string,
-  input?: {
-    method: string;
-    body?: unknown;
-  },
-): Promise<TValue> {
-  const response = await fetch(url, {
-    method: input?.method,
-    headers: input?.body === undefined ? undefined : {
-      'content-type': 'application/json',
-    },
-    body: input?.body === undefined ? undefined : JSON.stringify(input.body),
-  });
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-  return response.json() as Promise<TValue>;
-}
-
-async function postJson<TValue>(url: string, body: unknown): Promise<TValue> {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-  return response.json() as Promise<TValue>;
 }
 
 type Route =

@@ -89,12 +89,10 @@ test('migration details lazily load the resultant schema tab', async ({page}) =>
   await page.locator('.authority-migrations .migration-item').first().getByRole('button').first().click();
 
   const [resultantSchemaResponse] = await Promise.all([
-    page.waitForResponse((response) => response.url().includes('/api/schema/authorities/resultant-schema') && response.ok()),
+    page.waitForResponse((response) => response.url().includes('/api/rpc/schema/authorities/resultantSchema') && response.ok()),
     migrationDetail.getByRole('tab', {name: 'Resultant Schema'}).click(),
   ]);
-  expect(await resultantSchemaResponse.json()).toMatchObject({
-    sql: expect.stringContaining('create table posts'),
-  });
+  expect(resultantSchemaResponse.ok()).toBe(true);
   await expect(await readCodeMirrorText(migrationDetail, 'Migration resultant schema')).toContain('create table posts');
 });
 
@@ -369,8 +367,8 @@ test('relation rows can be edited and saved from the grid', async ({page}) => {
   await expect(page.getByRole('button', {name: 'Save changes'})).toBeVisible();
   const [saveResponse] = await Promise.all([
     page.waitForResponse((response) =>
-      response.request().method() === 'PUT'
-      && response.url().includes('/api/table/posts?page=0'),
+      response.request().method() === 'POST'
+      && response.url().includes('/api/rpc/table/save'),
     ),
     page.getByRole('button', {name: 'Save changes'}).click(),
   ]);
@@ -417,8 +415,8 @@ test('relation rows can be appended from the grid', async ({page}) => {
   await expect(page.getByRole('button', {name: 'Save changes'})).toBeVisible();
   const [saveResponse] = await Promise.all([
     page.waitForResponse((response) =>
-      response.request().method() === 'PUT'
-      && response.url().includes('/api/table/posts?page=0'),
+      response.request().method() === 'POST'
+      && response.url().includes('/api/rpc/table/save'),
     ),
     page.getByRole('button', {name: 'Save changes'}).click(),
   ]);
@@ -447,8 +445,8 @@ test('relation rows can be selected and deleted from the grid', async ({page}) =
   });
   const [deleteResponse] = await Promise.all([
     page.waitForResponse((response) =>
-      response.request().method() === 'DELETE'
-      && response.url().includes('/api/table/posts?page=0'),
+      response.request().method() === 'POST'
+      && response.url().includes('/api/rpc/table/delete'),
     ),
     firstRowHeader.getByRole('button', {name: 'Delete row 1'}).click(),
   ]);
@@ -744,13 +742,13 @@ test('schema queries are invalidated after sql runs, saved query runs, and relat
     limit 1;
   `);
   await Promise.all([
-    page.waitForResponse((response) => response.url().includes('/api/schema') && response.ok()),
+    page.waitForResponse((response) => response.url().includes('/api/rpc/schema/') && response.ok()),
     page.getByRole('button', {name: 'Run SQL'}).click(),
   ]);
 
   await page.goto('/#query/list-post-cards');
   await Promise.all([
-    page.waitForResponse((response) => response.url().includes('/api/schema') && response.ok()),
+    page.waitForResponse((response) => response.url().includes('/api/rpc/schema/') && response.ok()),
     page.getByRole('button', {name: 'Run generated query'}).click(),
   ]);
 
@@ -767,7 +765,7 @@ test('schema queries are invalidated after sql runs, saved query runs, and relat
   await page.locator('.reactgrid [data-cell-rowidx="2"][data-cell-colidx="3"]').click();
   await expect(page.getByRole('button', {name: 'Save changes'})).toBeVisible();
   await Promise.all([
-    page.waitForResponse((response) => response.url().includes('/api/schema') && response.ok()),
+    page.waitForResponse((response) => response.url().includes('/api/rpc/schema/') && response.ok()),
     page.getByRole('button', {name: 'Save changes'}).click(),
   ]);
 });

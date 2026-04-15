@@ -86,6 +86,15 @@ importers:
       '@codemirror/view':
         specifier: ^6.41.0
         version: 6.41.0
+      '@orpc/client':
+        specifier: 1.13.13
+        version: 1.13.13
+      '@orpc/server':
+        specifier: 1.13.13
+        version: 1.13.13(ws@8.20.0)
+      '@orpc/tanstack-query':
+        specifier: 1.13.13
+        version: 1.13.13(@orpc/client@1.13.13)(@tanstack/query-core@5.99.0)
       '@rjsf/core':
         specifier: ^6.0.1
         version: 6.4.2(@rjsf/utils@6.4.2(react@19.2.5))(react@19.2.5)
@@ -122,6 +131,9 @@ importers:
       use-local-storage-state:
         specifier: ^19.5.0
         version: 19.5.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
     devDependencies:
       '@playwright/test':
         specifier: ^1.59.1
@@ -680,6 +692,12 @@ packages:
 
   '@orpc/standard-server@1.13.13':
     resolution: {integrity: sha512-9pgS8XvauuRQElkyuD8F3om+nN0KBEnTkhblDHCBzkZERjWkmfirJmshQrWHoFaDTk+nnXHIaY6d7TBTxXdPRw==}
+
+  '@orpc/tanstack-query@1.13.13':
+    resolution: {integrity: sha512-6+Cheaiu+RDPdszdeRKoBINrF8MQp64zSeZB+L3gqgF43zlYDhLOgELZMzYa6U3U6bLk4rmIeubpk+i1kACfRg==}
+    peerDependencies:
+      '@orpc/client': 1.13.13
+      '@tanstack/query-core': '>=5.80.2'
 
   '@oxc-project/types@0.122.0':
     resolution: {integrity: sha512-oLAl5kBpV4w69UtFZ9xqcmTi+GENWOcPF7FCrczTiBbmC0ibXxCwyvZGbO39rCVEuLGAZM84DH0pUIyyv/YJzA==}
@@ -2398,6 +2416,14 @@ snapshots:
   '@orpc/standard-server@1.13.13':
     dependencies:
       '@orpc/shared': 1.13.13
+    transitivePeerDependencies:
+      - '@opentelemetry/api'
+
+  '@orpc/tanstack-query@1.13.13(@orpc/client@1.13.13)(@tanstack/query-core@5.99.0)':
+    dependencies:
+      '@orpc/client': 1.13.13
+      '@orpc/shared': 1.13.13
+      '@tanstack/query-core': 5.99.0
     transitivePeerDependencies:
       - '@opentelemetry/api'
 

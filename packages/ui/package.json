@@ -17,6 +17,9 @@
     "@codemirror/merge": "^6.12.1",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.0",
+    "@orpc/client": "1.13.13",
+    "@orpc/server": "1.13.13",
+    "@orpc/tanstack-query": "1.13.13",
     "@rjsf/core": "^6.0.1",
     "@rjsf/utils": "^6.4.2",
     "@rjsf/validator-ajv8": "^6.0.1",
@@ -28,7 +31,8 @@
     "react-codemirror-merge": "^4.25.9",
     "react-dom": "^19.2.0",
     "sqlfu": "workspace:*",
-    "use-local-storage-state": "^19.5.0"
+    "use-local-storage-state": "^19.5.0",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
