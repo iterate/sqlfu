@@ -28,3 +28,23 @@ primary focus is sqlite, but no reason to go out of our way to *not* support oth
 ---
 
 we have some precedent for how to vendor in library already, so follow existing patterns where helpful. diverge where it's *not* helpful, but not arbitrarily.
+
+---
+
+progress:
+
+- [x] vendor `sql-formatter` source into `packages/sqlfu/src/vendor/sql-formatter`
+- [x] add a thin public `formatSql()` wrapper with `dialect` support and `sqlite` default
+- [x] add fixture-driven formatter tests with `#region` blocks and `-- output: <unchanged>`
+- [x] add initial sqlite fixture coverage
+- [ ] import a broad set of fixture cases from `sql-formatter`
+- [ ] import a broad set of fixture cases from `prettier-plugin-sql-cst`
+- [ ] add update/writeback support for fixture outputs
+- [ ] start applying sqlfu-specific printer preferences on top of upstream behavior
+
+notes:
+
+- keeping the first slice close to upstream `sql-formatter` behavior on purpose; house-style changes can come later once the fixture corpus is in place
+- vendoring is still the right shape because we expect local printer changes, especially around over-eager newline insertion
+- current `pnpm --filter sqlfu test --run test/formatter.test.ts` passes
+- current package `typecheck` / `build` are still blocked by an unrelated existing error in `packages/sqlfu/src/vendor/small-utils.ts`
