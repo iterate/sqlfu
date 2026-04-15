@@ -511,6 +511,25 @@ function TablePanel(input: {
       await invalidateSchemaContent();
     },
   });
+  const deleteRowMutation = useMutation({
+    mutationFn: (body: {
+      rowIndex: number;
+      originalRow: Record<string, unknown>;
+      rowKey: TableRowsResponse['rowKeys'][number];
+    }) =>
+      fetchJson<TableRowsResponse>(`/api/table/${encodeURIComponent(input.relation.name)}?page=${input.page}`, {
+        method: 'DELETE',
+        body: {
+          originalRow: body.originalRow,
+          rowKey: body.rowKey,
+        },
+      }),
+    onSuccess: async (response) => {
+      setDraftRows(response.rows);
+      queryClient.setQueryData(['table', input.relation.name, input.page], response);
+      await invalidateSchemaContent();
+    },
+  });
   const emptyRowTemplate = Object.fromEntries(input.relation.columns.map((column) => [column.name, null]));
   const displayedRows = normalizeStoredTableDraft(
     draftRows,
@@ -529,6 +548,7 @@ function TablePanel(input: {
     })),
   ];
   const rowsDirty = JSON.stringify(displayedRows) !== JSON.stringify(displayedOriginalRows);
+  const tableMutationError = saveRowsMutation.error ?? deleteRowMutation.error;
   const handleDiscardRows = () => {
     setDraftRows(rowsQuery.data.rows);
   };
@@ -537,6 +557,22 @@ function TablePanel(input: {
       originalRows: displayedOriginalRows,
       rows: displayedRows,
       rowKeys: displayedRowKeys,
+    });
+  };
+  const handleDeleteRow = (rowIndex: number) => {
+    const rowKey = displayedRowKeys[rowIndex];
+    const originalRow = displayedOriginalRows[rowIndex];
+    if (!rowKey || !originalRow) {
+      return;
+    }
+    if (rowKey.kind === 'new') {
+      setDraftRows(displayedRows.filter((_, index) => index !== rowIndex));
+      return;
+    }
+    deleteRowMutation.mutate({
+      rowIndex,
+      rowKey,
+      originalRow,
     });
   };
 
@@ -582,6 +618,7 @@ function TablePanel(input: {
             ) : null}
           </div>
         </div>
+        {tableMutationError ? <ErrorView error={tableMutationError} /> : null}
         <DataTable
           storageKey={`relation/${input.relation.name}`}
           columns={rowsQuery.data.columns}
@@ -592,6 +629,8 @@ function TablePanel(input: {
           editableColumns={Object.fromEntries(input.relation.columns.map((column) => [column.name, !column.primaryKey]))}
           onRowsChange={setDraftRows}
           onAppendRow={() => setDraftRows([...displayedRows, {...emptyRowTemplate}])}
+          onDeleteRow={handleDeleteRow}
+          deletingRowIndex={deleteRowMutation.isPending ? deleteRowMutation.variables?.rowIndex ?? null : null}
           showSelectedCellDetail
         />
         <div className="pager">
@@ -1017,6 +1056,46 @@ function ExecutionResult(input: {
   return <DataTable storageKey={`execution-result/${input.storageKey}`} columns={columns} rows={rows} showSelectedCellDetail />;
 }
 
+type RowActionCell = reactGrid.Cell & {
+  type: 'rowAction';
+  text: string;
+  ariaLabel: string;
+  onClick: () => void;
+};
+
+const rowActionCellTemplate: reactGrid.CellTemplate<RowActionCell> = {
+  getCompatibleCell(uncertainCell) {
+    const text = typeof uncertainCell.text === 'string' ? uncertainCell.text : '';
+    return {
+      ...uncertainCell,
+      type: 'rowAction',
+      text,
+      value: Number.NaN,
+      ariaLabel: typeof uncertainCell.ariaLabel === 'string' ? uncertainCell.ariaLabel : text,
+      onClick: typeof uncertainCell.onClick === 'function' ? uncertainCell.onClick : () => {},
+    };
+  },
+  isFocusable() {
+    return false;
+  },
+  render(cell) {
+    return (
+      <button
+        className="row-action-button"
+        type="button"
+        aria-label={cell.ariaLabel}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          cell.onClick();
+        }}
+      >
+        {cell.text}
+      </button>
+    );
+  },
+};
+
 function DataTable(input: {
   storageKey: string;
   columns: readonly string[];
@@ -1027,6 +1106,8 @@ function DataTable(input: {
   editableColumns?: Readonly<Record<string, boolean>>;
   onRowsChange?: (rows: readonly Record<string, unknown>[]) => void;
   onAppendRow?: () => void;
+  onDeleteRow?: (rowIndex: number) => void;
+  deletingRowIndex?: number | null;
   showSelectedCellDetail?: boolean;
 }) {
   if (input.rows.length === 0) {
@@ -1050,6 +1131,12 @@ function DataTable(input: {
     `sqlfu-ui/selected-cell-mode/${input.storageKey}`,
     {
       defaultValue: 'diff',
+    },
+  );
+  const [selectedRowIndex, setSelectedRowIndex] = useLocalStorageState<number | null>(
+    `sqlfu-ui/selected-row/${input.storageKey}`,
+    {
+      defaultValue: null,
     },
   );
   const pendingFocusRef = useRef<{rowId: number; columnId: string} | null>(null);
@@ -1087,7 +1174,7 @@ function DataTable(input: {
       resizable: true,
     })),
   ];
-  const gridRows: reactGrid.Row<reactGrid.DefaultCellTypes>[] = [
+  const gridRows: reactGrid.Row<reactGrid.DefaultCellTypes | RowActionCell>[] = [
     {
       rowId: 'header',
       cells: [
@@ -1101,12 +1188,32 @@ function DataTable(input: {
     ...input.rows.map((row, rowIndex) => ({
       rowId: rowIndex,
       cells: [
-        {type: 'header' as const, text: String(rowIndex + 1)},
+        {
+          type: 'rowAction' as const,
+          text: selectedRowIndex === rowIndex ? '🗑' : String(rowIndex + 1),
+          className: joinCellClassNames('row-action-cell', selectedRowIndex === rowIndex ? 'selected-row' : undefined),
+          ariaLabel: selectedRowIndex === rowIndex ? `Delete row ${rowIndex + 1}` : `Select row ${rowIndex + 1}`,
+          onClick: () => {
+            if (selectedRowIndex === rowIndex) {
+              if (!window.confirm('are you sure you want to delete')) {
+                return;
+              }
+              setSelectedRowIndex(null);
+              input.onDeleteRow?.(rowIndex);
+              return;
+            }
+            setSelectedRowIndex(rowIndex);
+            setSelectedCell(null);
+          },
+        },
         ...input.columns.map((column) =>
           toGridCell(
             row[column],
             isEditableDataCell(input, rowIndex, column),
-            isSameValue(row[column], input.originalRows?.[rowIndex]?.[column]) ? undefined : 'dirty-cell',
+            joinCellClassNames(
+              selectedRowIndex === rowIndex ? 'selected-row' : undefined,
+              isSameValue(row[column], input.originalRows?.[rowIndex]?.[column]) ? undefined : 'dirty-cell',
+            ),
           )),
       ],
     })),
@@ -1199,6 +1306,7 @@ function DataTable(input: {
       ) : null}
       <div className="table-scroll" ref={containerRef}>
         <reactGrid.ReactGrid
+          customCellTemplates={{rowAction: rowActionCellTemplate}}
           columns={gridColumns}
           rows={gridRows}
           focusLocation={pendingFocusRef.current ?? undefined}
@@ -1230,6 +1338,7 @@ function DataTable(input: {
             if (typeof location.rowId !== 'number' || typeof location.columnId !== 'string') {
               return;
             }
+            setSelectedRowIndex(null);
             if (
               pendingFocusRef.current
               && pendingFocusRef.current.rowId === location.rowId
@@ -1431,6 +1540,11 @@ function toGridCell(value: unknown, editable: boolean, className?: string): reac
   }
 
   return {type: 'text', text: String(value), nonEditable: !editable, className};
+}
+
+function joinCellClassNames(...classNames: Array<string | undefined>) {
+  const value = classNames.filter(Boolean).join(' ');
+  return value || undefined;
 }
 
 function readGridCellValue(cell: reactGrid.Cell) {

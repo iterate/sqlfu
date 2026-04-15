@@ -429,6 +429,35 @@ test('relation rows can be appended from the grid', async ({page}) => {
   await expect(page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="3"]')).toContainText('Brand New Post');
 });
 
+test('relation rows can be selected and deleted from the grid', async ({page}) => {
+  await using _project = await preserveSchemaProjectState(path.join(import.meta.dirname, 'projects', 'fixture-project'));
+
+  await page.goto('/#table/posts');
+
+  const firstRowHeader = page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="0"]');
+  await expect(firstRowHeader).toContainText('1');
+
+  await firstRowHeader.getByRole('button', {name: 'Select row 1'}).click();
+  await expect(firstRowHeader).toContainText('🗑');
+  await expect(page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="2"]')).toHaveClass(/selected-row/);
+
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toBe('are you sure you want to delete');
+    dialog.accept();
+  });
+  const [deleteResponse] = await Promise.all([
+    page.waitForResponse((response) =>
+      response.request().method() === 'DELETE'
+      && response.url().includes('/api/table/posts?page=0'),
+    ),
+    firstRowHeader.getByRole('button', {name: 'Delete row 1'}).click(),
+  ]);
+  expect(deleteResponse.ok(), await deleteResponse.text()).toBe(true);
+
+  await expect(page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="2"]')).toContainText('draft-notes');
+  await expect(page.getByText('hello-world')).toHaveCount(0);
+});
+
 test('appended rows focus the clicked cell and allow editing primary key columns', async ({page}) => {
   await using _project = await preserveSchemaProjectState(path.join(import.meta.dirname, 'projects', 'fixture-project'));
 

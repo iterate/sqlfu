@@ -63,6 +63,17 @@ export async function startSqlfuUiServer(input: {
               rowKeys: Array.isArray(body.rowKeys) ? body.rowKeys as TableRowKey[] : [],
             }));
           }
+          if (request.method === 'DELETE') {
+            const body = await request.json() as {
+              originalRow?: unknown;
+              rowKey?: unknown;
+            };
+            return json(await deleteTableRow(config.db, relationName, {
+              page: Number.isFinite(page) ? page : 0,
+              originalRow: body.originalRow,
+              rowKey: isTableRowKey(body.rowKey) ? body.rowKey : undefined,
+            }));
+          }
           return json(await getTableRows(config.db, relationName, Number.isFinite(page) ? page : 0));
         }
 
@@ -779,6 +790,46 @@ async function saveTableRows(
   }
 }
 
+async function deleteTableRow(
+  dbPath: string,
+  relationName: string,
+  input: {
+    page: number;
+    originalRow: unknown;
+    rowKey: TableRowKey | undefined;
+  },
+): Promise<TableRowsResponse> {
+  const database = new Database(dbPath);
+  const client = createBunClient(database);
+
+  try {
+    const relation = getRelationInfo(client, relationName);
+    if (relation.type !== 'table') {
+      throw new Error(`Relation "${relationName}" is not editable`);
+    }
+
+    const originalRow = asRecord(input.originalRow);
+    if (!originalRow || !input.rowKey || input.rowKey.kind === 'new') {
+      throw new Error('Delete row payload is malformed');
+    }
+
+    const sql = buildDeleteRowStatement(relationName, input.rowKey, originalRow);
+    const result = database.run(sql.sql, sql.args as any) as {changes?: number};
+    if (result.changes !== 1) {
+      throw new Error(`Delete affected ${result.changes ?? 0} rows`);
+    }
+
+    return await getTableRows(dbPath, relationName, input.page);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('\nSQL: ')) {
+      throw error;
+    }
+    throw new Error(`${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    database.close();
+  }
+}
+
 async function executeSql(
   dbPath: string,
   input: {
@@ -963,6 +1014,14 @@ function buildRowWhereClause(rowKey: TableRowKey, originalRow: Record<string, un
   };
 }
 
+function buildExactRowMatchClause(row: Record<string, unknown>) {
+  const entries = Object.entries(row);
+  return {
+    sql: entries.map(([column, value]) => (value == null ? `"${escapeIdentifier(column)}" is null` : `"${escapeIdentifier(column)}" = ?`)).join(' and '),
+    args: entries.flatMap(([, value]) => (value == null ? [] : [normalizeDbValue(value)])),
+  };
+}
+
 function buildInsertRowStatement(
   relationName: string,
   nextRow: Record<string, unknown>,
@@ -992,8 +1051,38 @@ function buildUpdateRowStatement(
   };
 }
 
+function buildDeleteRowStatement(
+  relationName: string,
+  rowKey: Exclude<TableRowKey, {kind: 'new'}>,
+  originalRow: Record<string, unknown>,
+) {
+  const rowKeyWhereClause = buildRowWhereClause(rowKey, originalRow);
+  const originalRowWhereClause = buildExactRowMatchClause(originalRow);
+  return {
+    sql: `delete from "${escapeIdentifier(relationName)}" where (${rowKeyWhereClause.sql}) and (${originalRowWhereClause.sql})`,
+    args: [...rowKeyWhereClause.args, ...originalRowWhereClause.args],
+  };
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function isTableRowKey(value: unknown): value is TableRowKey {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const rowKey = value as Record<string, unknown>;
+  if (rowKey.kind === 'new') {
+    return typeof rowKey.value === 'string';
+  }
+  if (rowKey.kind === 'rowid') {
+    return typeof rowKey.value === 'number';
+  }
+  if (rowKey.kind === 'primaryKey') {
+    return !!rowKey.values && typeof rowKey.values === 'object' && !Array.isArray(rowKey.values);
+  }
+  return false;
 }
 
 function isSameValue(left: unknown, right: unknown) {
