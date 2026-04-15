@@ -9,6 +9,19 @@
 
 It keeps schema design in `definitions.sql`, queries in checked-in `.sql` files, and migrations as explicit SQL files, with tooling to generate typed wrappers and check drift between repo state and a live dev database.
 
+## Table of contents
+
+- [Install](#install)
+- [Project Layout](#project-layout)
+- [Config](#config)
+- [Commands](#commands)
+- [Migration Model](#migration-model)
+- [Migration Mental Model](#migration-mental-model)
+- [Opinions imposed](#opinions-imposed)
+- [What `generate` Does](#what-generate-does)
+- [SQL Formatter](#sql-formatter)
+- [Notes](#notes)
+
 ## Install
 
 ```sh
