@@ -513,7 +513,10 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
   const historicalSchema = await materializeMigrationsSchema(runtime.config, historicalMigrations);
   const schemaDrift = await compareSchemas(runtime.config, historicalSchema, liveSchema);
   const syncDrift = await compareSchemas(runtime.config, desiredSchema, liveSchema);
-  const recommendedTarget = await findRecommendedTarget(runtime.config, migrations, liveSchema);
+  const recommendedBaselineTarget = await findRecommendedTarget(runtime.config, migrations, liveSchema);
+  const recommendedGotoTarget = !repoDrift.isDifferent && !historyMismatch && !hasPendingMigrations && migrations.length > 0
+    ? migrationName(migrations.at(-1)!)
+    : null;
   const mismatches: CheckMismatch[] = [];
 
   if (historyMismatch) {
@@ -522,10 +525,10 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
       : `Edited applied migration: ${historyMismatch.name}`;
     const recommendation = historyMismatch.kind === 'deleted'
       ? ['Recommendation: restore the missing migration from git.']
-      : recommendedTarget
+      : recommendedBaselineTarget
         ? [
-          `Recommended Baseline Target: ${recommendedTarget}`,
-          `Recommendation: restore the original migration from git, or run \`sqlfu baseline ${recommendedTarget}\` if you want to keep the current live schema.`,
+          `Recommended Baseline Target: ${recommendedBaselineTarget}`,
+          `Recommendation: restore the original migration from git, or run \`sqlfu baseline ${recommendedBaselineTarget}\` if you want to keep the current live schema.`,
         ]
         : syncDrift.isDifferent
           ? [
@@ -585,9 +588,11 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
           ? [
             'Recommendation: resolve Repo Drift first. Then run `sqlfu baseline <new-migration>` for this database.',
           ]
-          : recommendedTarget ? [
-            `Recommended Baseline Target: ${recommendedTarget}`,
-            `Recommendation: run \`sqlfu baseline ${recommendedTarget}\`.`,
+          : recommendedBaselineTarget ? [
+            `Recommended Baseline Target: ${recommendedBaselineTarget}`,
+            `Recommendation: run \`sqlfu baseline ${recommendedBaselineTarget}\`.`,
+          ] : recommendedGotoTarget ? [
+            `Recommendation: run \`sqlfu goto ${recommendedGotoTarget}\`.`,
           ] : ['Recommendation: run `sqlfu goto <target>`.']),
       ],
     });

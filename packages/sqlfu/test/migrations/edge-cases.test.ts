@@ -230,7 +230,7 @@ describe('check recommendation edge cases', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Schema Drift
       Live Schema does not match Migration History.
-      Recommendation: run \`sqlfu goto <target>\`.
+      Recommendation: run \`sqlfu goto 2026-04-10T01.00.00.000Z_create_foo\`.
 
       Sync Drift
       Desired Schema does not match Live Schema.

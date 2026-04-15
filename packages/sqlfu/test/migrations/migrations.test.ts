@@ -167,7 +167,7 @@ describe('check recommendations', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Schema Drift
       Live Schema does not match Migration History.
-      Recommendation: run \`sqlfu goto <target>\`.
+      Recommendation: run \`sqlfu goto 2026-04-10T00.00.00.000Z_create_a\`.
 
       Sync Drift
       Desired Schema does not match Live Schema.
@@ -260,6 +260,35 @@ describe('check recommendations', () => {
       Live Schema does not match Migration History.
       Recommended Baseline Target: 2026-04-10T01.00.00.000Z_create_pet
       Recommendation: run \`sqlfu baseline 2026-04-10T01.00.00.000Z_create_pet\`.
+
+      Sync Drift
+      Desired Schema does not match Live Schema.
+      Recommendation: Address Schema Drift.]
+    `);
+  });
+
+  test('recommends goto repo head when repo and history agree but live schema matches no migration prefix', async () => {
+    await using fixture = await createMigrationsFixture('check-schema-drift-goto-repo-head', {
+      desiredSchema: dedent`
+        create table person(name text);
+        create table pet(name text);
+      `,
+      migrations: {
+        create_person: `create table person(name text)`,
+        create_pet: `create table pet(name text)`,
+      },
+    });
+
+    await fixture.api.migrate();
+    await fixture.db.raw(`
+      drop table person;
+      drop table pet;
+    `);
+
+    await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
+      [Error: Schema Drift
+      Live Schema does not match Migration History.
+      Recommendation: run \`sqlfu goto 2026-04-10T01.00.00.000Z_create_pet\`.
 
       Sync Drift
       Desired Schema does not match Live Schema.
