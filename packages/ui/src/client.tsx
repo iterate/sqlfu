@@ -1123,11 +1123,7 @@ function DataTable(input: {
       {input.showSelectedCellDetail && selectedCell && typeof selectedCell.rowId === 'number' && typeof selectedCell.columnId === 'string' ? (
         <section className="selected-cell-panel">
           <div className="card-title-row">
-            <div className="card-title">Cell</div>
-            <div className="pill-row">
-              <span className="pill">Row {selectedCell.rowId + 1}</span>
-              <span className="pill">{selectedCell.columnId}</span>
-            </div>
+            <div className="card-title">{`Cell: ${selectedCell.columnId}, row ${selectedCell.rowId + 1}`}</div>
           </div>
           {selectedCellDirty ? (
             <div className="stack">
