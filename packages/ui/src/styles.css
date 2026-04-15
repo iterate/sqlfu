@@ -382,6 +382,11 @@ h3 {
   flex-wrap: wrap;
   justify-content: flex-start;
   gap: 0.5rem;
+  margin-bottom: 0.9rem;
+}
+
+.schema-card-title-row .card-title {
+  margin-bottom: 0;
 }
 
 .schema-card-explainer {
@@ -391,6 +396,10 @@ h3 {
 .schema-card.compact {
   padding-top: 0.8rem;
   padding-bottom: 0.8rem;
+}
+
+.schema-card.compact .schema-card-title-row {
+  margin-bottom: 0;
 }
 
 .schema-card.compact .card-title {
