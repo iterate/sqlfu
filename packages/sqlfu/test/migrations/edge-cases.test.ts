@@ -123,19 +123,18 @@ describe('check recommendation edge cases', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Repo Drift
       Desired Schema does not match Migrations.
-      Recommendation: run \`sqlfu draft\` (reviewable migration).
 
       Pending Migrations
       Migration History is behind Migrations.
-      Recommendation: Address Schema Drift.
 
       Schema Drift
       Live Schema does not match Migration History.
-      Recommendation: run \`sqlfu goto <target>\`.
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: resolve Repo Drift first.]
+
+      Recommended next actions
+      - run \`sqlfu draft\` (reviewable migration).]
     `);
   });
 
@@ -156,11 +155,12 @@ describe('check recommendation edge cases', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Repo Drift
       Desired Schema does not match Migrations.
-      Recommendation: run \`sqlfu draft\` (reviewable migration). Then maybe \`sqlfu baseline <new-migration>\` for a synced dev db.
 
       Schema Drift
       Live Schema matches Desired Schema, but not Migration History.
-      Recommendation: resolve Repo Drift first. Then run \`sqlfu baseline <new-migration>\` for this database.]
+
+      Recommended next actions
+      - run \`sqlfu draft\` (reviewable migration).]
     `);
   });
 
@@ -200,15 +200,15 @@ describe('check recommendation edge cases', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Repo Drift
       Desired Schema does not match Migrations.
-      Recommendation: run \`sqlfu draft\` (reviewable migration).
 
       Schema Drift
       Live Schema does not match Migration History.
-      Recommendation: run \`sqlfu goto <target>\`.
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: resolve Repo Drift first.]
+
+      Recommended next actions
+      - run \`sqlfu draft\` (reviewable migration).]
     `);
   });
 
@@ -230,11 +230,12 @@ describe('check recommendation edge cases', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Schema Drift
       Live Schema does not match Migration History.
-      Recommendation: run \`sqlfu goto 2026-04-10T01.00.00.000Z_create_foo\`.
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: Address Schema Drift.]
+
+      Recommended next actions
+      - run \`sqlfu goto 2026-04-10T01.00.00.000Z_create_foo\`.]
     `);
   });
 
@@ -258,16 +259,16 @@ describe('check recommendation edge cases', () => {
       [Error: History Drift
       Migration History does not match Migrations.
       Applied migration checksum mismatch: 2026-04-10T00.00.00.000Z_create_person
-      Recommended Goto Target: 2026-04-10T00.00.00.000Z_create_person
-      Recommendation: restore the original migration from git, or run \`sqlfu goto 2026-04-10T00.00.00.000Z_create_person\` if you want to reconcile this database to the current repo state.
 
       Repo Drift
       Desired Schema does not match Migrations.
-      Recommendation: run \`sqlfu draft\` (reviewable migration).
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: resolve Repo Drift first.]
+
+      Recommended next actions
+      - restore the original migration from git, or run \`sqlfu goto 2026-04-10T00.00.00.000Z_create_person\` if you want to reconcile this database to the current repo state.
+      - run \`sqlfu draft\` (reviewable migration).]
     `);
   });
 
@@ -300,12 +301,12 @@ describe('history drift recommendations', () => {
       [Error: History Drift
       Migration History does not match Migrations.
       Applied migration checksum mismatch: 2026-04-10T00.00.00.000Z_create_person
-      Recommended Goto Target: 2026-04-10T00.00.00.000Z_create_person
-      Recommendation: restore the original migration from git, or run \`sqlfu goto 2026-04-10T00.00.00.000Z_create_person\` if you want to reconcile this database to the current repo state.
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: resolve History Drift first.]
+
+      Recommended next actions
+      - restore the original migration from git, or run \`sqlfu goto 2026-04-10T00.00.00.000Z_create_person\` if you want to reconcile this database to the current repo state.]
     `);
   });
 
@@ -327,8 +328,9 @@ describe('history drift recommendations', () => {
       [Error: History Drift
       Migration History does not match Migrations.
       Applied migration checksum mismatch: 2026-04-10T00.00.00.000Z_create_person
-      Recommended Baseline Target: 2026-04-10T00.00.00.000Z_create_person
-      Recommendation: restore the original migration from git, or run \`sqlfu baseline 2026-04-10T00.00.00.000Z_create_person\` if you want to keep the current live schema.]
+
+      Recommended next actions
+      - restore the original migration from git, or run \`sqlfu baseline 2026-04-10T00.00.00.000Z_create_person\` if you want to keep the current live schema.]
     `);
   });
 
@@ -347,11 +349,13 @@ describe('history drift recommendations', () => {
       [Error: History Drift
       Migration History does not match Migrations.
       Deleted applied migration: 2026-04-10T00.00.00.000Z_create_person
-      Recommendation: restore the missing migration from git.
 
       Repo Drift
       Desired Schema does not match Migrations.
-      Recommendation: run \`sqlfu draft\` (reviewable migration). Then maybe \`sqlfu baseline <new-migration>\` for a synced dev db.]
+
+      Recommended next actions
+      - restore the missing migration from git.
+      - run \`sqlfu draft\` (reviewable migration).]
     `);
   });
 });

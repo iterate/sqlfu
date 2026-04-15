@@ -3,8 +3,9 @@ export {defineConfig, loadProjectConfig} from './core/config.js';
 export {migrationNickname} from './core/naming.js';
 export {splitSqlStatements} from './core/sqlite.js';
 export type {QueryArg, SqlfuProjectConfig} from './core/types.js';
-export {getCheckMismatches, getMigrationResultantSchema, getSchemaAuthorities, runSqlfuCommand, writeDefinitionsSql} from './api.js';
+export {getCheckAnalysis, getCheckMismatches, getMigrationResultantSchema, getSchemaAuthorities, runSqlfuCommand, writeDefinitionsSql} from './api.js';
 export type {SqlfuRouterContext} from './api.js';
+export type {CheckAnalysis, CheckMismatch, CheckRecommendation} from './api.js';
 export {
   analyzeAdHocSqlForConfig,
   generateQueryTypes,

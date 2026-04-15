@@ -520,6 +520,13 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.schema-recommendation {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
 .button {
   display: inline-flex;
   align-items: center;
@@ -530,6 +537,12 @@ h3 {
   background: rgba(255, 255, 255, 0.72);
   color: var(--text);
   cursor: pointer;
+}
+
+.inline-command-button {
+  padding: 0.28rem 0.65rem;
+  font-size: 0.92rem;
+  vertical-align: baseline;
 }
 
 .icon-button {

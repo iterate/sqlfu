@@ -187,9 +187,9 @@ export const router = {
         description: `Run all checks and recommend the next action.`,
       })
       .handler(async ({context}) => {
-        const result = await analyzeDatabase(createRuntime(context));
-        if (result.mismatches.length > 0) {
-          throw new Error(result.mismatches.map((mismatch) => mismatch.lines.join('\n')).join('\n\n'));
+        const analysis = await analyzeDatabase(createRuntime(context));
+        if (analysis.mismatches.length > 0) {
+          throw new Error(formatCheckFailure(analysis));
         }
       }),
     migrationsMatchDefinitions: base.handler(async ({context}) => {
@@ -206,8 +206,12 @@ export const router = {
 };
 
 export async function getCheckMismatches(context: SqlfuRouterContext): Promise<readonly CheckMismatch[]> {
-  const result = await analyzeDatabase(createRuntime(context));
-  return result.mismatches;
+  const analysis = await analyzeDatabase(createRuntime(context));
+  return analysis.mismatches;
+}
+
+export async function getCheckAnalysis(context: SqlfuRouterContext): Promise<CheckAnalysis> {
+  return analyzeDatabase(createRuntime(context));
 }
 
 export async function writeDefinitionsSql(context: SqlfuRouterContext, sql: string): Promise<void> {
@@ -320,9 +324,9 @@ export async function runSqlfuCommand(context: SqlfuRouterContext, command: stri
   }
 
   if (normalized === 'sqlfu check') {
-    const result = await analyzeDatabase(createRuntime(context));
-    if (result.mismatches.length > 0) {
-      throw new Error(result.mismatches.map((mismatch) => mismatch.lines.join('\n')).join('\n\n'));
+    const analysis = await analyzeDatabase(createRuntime(context));
+    if (analysis.mismatches.length > 0) {
+      throw new Error(formatCheckFailure(analysis));
     }
     return;
   }
@@ -584,118 +588,125 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
     ? migrationName(migrations.at(-1)!)
     : null;
   const mismatches: CheckMismatch[] = [];
+  const recommendations: CheckRecommendation[] = [];
 
   if (historyMismatch) {
     const problemLine = historyMismatch.kind === 'deleted'
       ? `Deleted applied migration: ${historyMismatch.name}`
       : `Applied migration checksum mismatch: ${historyMismatch.name}`;
-    const recommendation = historyMismatch.kind === 'deleted'
-      ? ['Recommendation: restore the missing migration from git.']
-      : recommendedBaselineTarget
-        ? [
-          `Recommended Baseline Target: ${recommendedBaselineTarget}`,
-          `Recommendation: restore the original migration from git, or run \`sqlfu baseline ${recommendedBaselineTarget}\` if you want to keep the current live schema.`,
-        ]
-        : syncDrift.isDifferent
-          ? [
-            `Recommended Goto Target: ${historyMismatch.name}`,
-            `Recommendation: restore the original migration from git, or run \`sqlfu goto ${historyMismatch.name}\` if you want to reconcile this database to the current repo state.`,
-          ]
-          : [
-            'Recommendation: restore the original migration from git.',
-          ];
     mismatches.push({
-      name: 'History Drift',
-      lines: [
-        'History Drift',
-        'Migration History does not match Migrations.',
+      kind: 'historyDrift',
+      title: 'History Drift',
+      summary: 'Migration History does not match Migrations.',
+      details: [
         problemLine,
-        ...recommendation,
       ],
     });
+
+    if (historyMismatch.kind === 'deleted') {
+      addRecommendation(recommendations, {
+        kind: 'restoreMissingMigration',
+        summary: 'restore the missing migration from git.',
+      });
+    } else if (recommendedBaselineTarget) {
+      addRecommendation(recommendations, {
+        kind: 'restoreOriginalMigrationOrBaseline',
+        command: `sqlfu baseline ${recommendedBaselineTarget}`,
+        summary: `restore the original migration from git, or run \`sqlfu baseline ${recommendedBaselineTarget}\` if you want to keep the current live schema.`,
+      });
+    } else if (syncDrift.isDifferent) {
+      addRecommendation(recommendations, {
+        kind: 'restoreOriginalMigrationOrGoto',
+        command: `sqlfu goto ${historyMismatch.name}`,
+        summary: `restore the original migration from git, or run \`sqlfu goto ${historyMismatch.name}\` if you want to reconcile this database to the current repo state.`,
+      });
+    } else {
+      addRecommendation(recommendations, {
+        kind: 'restoreOriginalMigration',
+        summary: 'restore the original migration from git.',
+      });
+    }
   }
 
   if (repoDrift.isDifferent) {
     mismatches.push({
-      name: 'Repo Drift',
-      lines: [
-        'Repo Drift',
-        'Desired Schema does not match Migrations.',
-        syncDrift.isDifferent
-          ? 'Recommendation: run `sqlfu draft` (reviewable migration).'
-          : 'Recommendation: run `sqlfu draft` (reviewable migration). Then maybe `sqlfu baseline <new-migration>` for a synced dev db.',
-      ],
+      kind: 'repoDrift',
+      title: 'Repo Drift',
+      summary: 'Desired Schema does not match Migrations.',
+      details: [],
+    });
+    addRecommendation(recommendations, {
+      kind: 'draft',
+      command: 'sqlfu draft',
+      summary: 'run `sqlfu draft` (reviewable migration).',
     });
   }
 
   if (!historyMismatch && hasPendingMigrations) {
     mismatches.push({
-      name: 'Pending Migrations',
-      lines: [
-        'Pending Migrations',
-        'Migration History is behind Migrations.',
-        ...(schemaDrift.isDifferent ? [
-          'Recommendation: Address Schema Drift.',
-        ] : ['Recommendation: run `sqlfu migrate`.']),
-      ],
+      kind: 'pendingMigrations',
+      title: 'Pending Migrations',
+      summary: 'Migration History is behind Migrations.',
+      details: [],
     });
+    if (!schemaDrift.isDifferent) {
+      addRecommendation(recommendations, {
+        kind: 'migrate',
+        command: 'sqlfu migrate',
+        summary: 'run `sqlfu migrate`.',
+      });
+    }
   }
 
   if (!historyMismatch && schemaDrift.isDifferent) {
     const repoDriftWithLiveAlreadySynced = repoDrift.isDifferent && !syncDrift.isDifferent;
     mismatches.push({
-      name: 'Schema Drift',
-      lines: [
-        'Schema Drift',
-        repoDriftWithLiveAlreadySynced
-          ? 'Live Schema matches Desired Schema, but not Migration History.'
-          : 'Live Schema does not match Migration History.',
-        ...(repoDriftWithLiveAlreadySynced
-          ? [
-            'Recommendation: resolve Repo Drift first. Then run `sqlfu baseline <new-migration>` for this database.',
-          ]
-          : recommendedBaselineTarget ? [
-            `Recommended Baseline Target: ${recommendedBaselineTarget}`,
-            `Recommendation: run \`sqlfu baseline ${recommendedBaselineTarget}\`.`,
-          ] : recommendedGotoTarget ? [
-            `Recommendation: run \`sqlfu goto ${recommendedGotoTarget}\`.`,
-          ] : ['Recommendation: run `sqlfu goto <target>`.']),
-      ],
+      kind: 'schemaDrift',
+      title: 'Schema Drift',
+      summary: repoDriftWithLiveAlreadySynced
+        ? 'Live Schema matches Desired Schema, but not Migration History.'
+        : 'Live Schema does not match Migration History.',
+      details: [],
     });
+
+    if (!repoDriftWithLiveAlreadySynced && recommendedBaselineTarget) {
+      addRecommendation(recommendations, {
+        kind: 'baseline',
+        command: `sqlfu baseline ${recommendedBaselineTarget}`,
+        summary: `run \`sqlfu baseline ${recommendedBaselineTarget}\`.`,
+      });
+    } else if (!repoDriftWithLiveAlreadySynced && recommendedGotoTarget) {
+      addRecommendation(recommendations, {
+        kind: 'goto',
+        command: `sqlfu goto ${recommendedGotoTarget}`,
+        summary: `run \`sqlfu goto ${recommendedGotoTarget}\`.`,
+      });
+    } else if (!repoDriftWithLiveAlreadySynced && !repoDrift.isDifferent) {
+      addRecommendation(recommendations, {
+        kind: 'goto',
+        summary: 'run `sqlfu goto <target>`.',
+      });
+    }
   }
 
   if (syncDrift.isDifferent && syncDrift.isSyncable) {
     mismatches.push({
-      name: 'Sync Drift',
-      lines: [
-        'Sync Drift',
-        'Desired Schema does not match Live Schema.',
-        buildSyncDriftRecommendation({
-          repoDrift: repoDrift.isDifferent,
-          historyDrift: Boolean(historyMismatch),
-          pendingMigrations: hasPendingMigrations,
-          schemaDrift: schemaDrift.isDifferent,
-        }),
-      ],
+      kind: 'syncDrift',
+      title: 'Sync Drift',
+      summary: 'Desired Schema does not match Live Schema.',
+      details: [],
     });
+
+    if (!historyMismatch && !repoDrift.isDifferent && !hasPendingMigrations && !schemaDrift.isDifferent) {
+      addRecommendation(recommendations, {
+        kind: 'sync',
+        command: 'sqlfu sync',
+        summary: 'run `sqlfu sync`.',
+      });
+    }
   }
 
-  return {mismatches};
-}
-
-function buildSyncDriftRecommendation(input: {
-  repoDrift: boolean;
-  historyDrift: boolean;
-  pendingMigrations: boolean;
-  schemaDrift: boolean;
-}) {
-  if (input.historyDrift) {
-    return 'Recommendation: resolve History Drift first.';
-  }
-  if (input.pendingMigrations) {
-    return 'Recommendation: run `sqlfu migrate`.';
-  }
-  return 'Recommendation: run `sqlfu sync`.';
+  return {mismatches, recommendations};
 }
 
 function findHistoryMismatch(
@@ -777,6 +788,51 @@ export interface SqlfuRouterContext {
 }
 
 export type CheckMismatch = {
-  readonly name: 'Repo Drift' | 'Pending Migrations' | 'History Drift' | 'Schema Drift' | 'Sync Drift';
-  readonly lines: readonly string[];
+  readonly kind: 'repoDrift' | 'pendingMigrations' | 'historyDrift' | 'schemaDrift' | 'syncDrift';
+  readonly title: 'Repo Drift' | 'Pending Migrations' | 'History Drift' | 'Schema Drift' | 'Sync Drift';
+  readonly summary: string;
+  readonly details: readonly string[];
 };
+
+export type CheckRecommendation = {
+  readonly kind:
+    | 'draft'
+    | 'migrate'
+    | 'baseline'
+    | 'goto'
+    | 'sync'
+    | 'restoreMissingMigration'
+    | 'restoreOriginalMigration'
+    | 'restoreOriginalMigrationOrGoto'
+    | 'restoreOriginalMigrationOrBaseline';
+  readonly summary: string;
+  readonly command?: string;
+};
+
+export type CheckAnalysis = {
+  readonly mismatches: readonly CheckMismatch[];
+  readonly recommendations: readonly CheckRecommendation[];
+};
+
+function addRecommendation(target: CheckRecommendation[], recommendation: CheckRecommendation) {
+  const key = `${recommendation.kind}|${recommendation.command ?? ''}|${recommendation.summary}`;
+  if (target.some((existing) => `${existing.kind}|${existing.command ?? ''}|${existing.summary}` === key)) {
+    return;
+  }
+  target.push(recommendation);
+}
+
+function formatCheckFailure(analysis: CheckAnalysis) {
+  const sections = analysis.mismatches.map((mismatch) =>
+    [mismatch.title, mismatch.summary, ...mismatch.details].join('\n'),
+  );
+
+  if (analysis.recommendations.length > 0) {
+    sections.push([
+      'Recommended next actions',
+      ...analysis.recommendations.map((recommendation) => `- ${recommendation.summary}`),
+    ].join('\n'));
+  }
+
+  return sections.join('\n\n');
+}

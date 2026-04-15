@@ -167,11 +167,12 @@ describe('check recommendations', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Schema Drift
       Live Schema does not match Migration History.
-      Recommendation: run \`sqlfu goto 2026-04-10T00.00.00.000Z_create_a\`.
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: Address Schema Drift.]
+
+      Recommended next actions
+      - run \`sqlfu goto 2026-04-10T00.00.00.000Z_create_a\`.]
     `);
   });
 
@@ -183,11 +184,12 @@ describe('check recommendations', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Repo Drift
       Desired Schema does not match Migrations.
-      Recommendation: run \`sqlfu draft\` (reviewable migration).
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: resolve Repo Drift first.]
+
+      Recommended next actions
+      - run \`sqlfu draft\` (reviewable migration).]
     `);
   });
 
@@ -202,11 +204,12 @@ describe('check recommendations', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Pending Migrations
       Migration History is behind Migrations.
-      Recommendation: run \`sqlfu migrate\`.
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: run \`sqlfu migrate\`.]
+
+      Recommended next actions
+      - run \`sqlfu migrate\`.]
     `);
   });
 
@@ -223,12 +226,12 @@ describe('check recommendations', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Pending Migrations
       Migration History is behind Migrations.
-      Recommendation: Address Schema Drift.
 
       Schema Drift
       Live Schema does not match Migration History.
-      Recommended Baseline Target: 2026-04-10T00.00.00.000Z_create_person
-      Recommendation: run \`sqlfu baseline 2026-04-10T00.00.00.000Z_create_person\`.]
+
+      Recommended next actions
+      - run \`sqlfu baseline 2026-04-10T00.00.00.000Z_create_person\`.]
     `);
   });
 
@@ -254,16 +257,15 @@ describe('check recommendations', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Pending Migrations
       Migration History is behind Migrations.
-      Recommendation: Address Schema Drift.
 
       Schema Drift
       Live Schema does not match Migration History.
-      Recommended Baseline Target: 2026-04-10T01.00.00.000Z_create_pet
-      Recommendation: run \`sqlfu baseline 2026-04-10T01.00.00.000Z_create_pet\`.
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: Address Schema Drift.]
+
+      Recommended next actions
+      - run \`sqlfu baseline 2026-04-10T01.00.00.000Z_create_pet\`.]
     `);
   });
 
@@ -330,11 +332,12 @@ describe('check recommendations', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Schema Drift
       Live Schema does not match Migration History.
-      Recommendation: run \`sqlfu goto 2026-04-10T01.00.00.000Z_create_pet\`.
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: Address Schema Drift.]
+
+      Recommended next actions
+      - run \`sqlfu goto 2026-04-10T01.00.00.000Z_create_pet\`.]
     `);
   });
 
@@ -356,11 +359,12 @@ describe('check recommendations', () => {
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: Pending Migrations
       Migration History is behind Migrations.
-      Recommendation: run \`sqlfu migrate\`.
 
       Sync Drift
       Desired Schema does not match Live Schema.
-      Recommendation: run \`sqlfu migrate\`.]
+
+      Recommended next actions
+      - run \`sqlfu migrate\`.]
     `);
   });
 });

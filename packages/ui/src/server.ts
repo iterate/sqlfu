@@ -11,10 +11,10 @@ import {createServer as createViteServer} from 'vite';
 import {z} from 'zod';
 import {resolveProjectConfig} from '../../sqlfu/src/core/config.ts';
 
-import type {QueryCatalog, QueryCatalogEntry, QueryArg, SqlfuProjectConfig} from 'sqlfu/experimental';
-import {analyzeAdHocSqlForConfig, getCheckMismatches, getMigrationResultantSchema, getSchemaAuthorities, runSqlfuCommand, splitSqlStatements, writeDefinitionsSql} from 'sqlfu/experimental';
+import type {CheckAnalysis, QueryCatalog, QueryCatalogEntry, QueryArg, SqlfuProjectConfig} from 'sqlfu/experimental';
+import {analyzeAdHocSqlForConfig, getCheckAnalysis, getMigrationResultantSchema, getSchemaAuthorities, runSqlfuCommand, splitSqlStatements, writeDefinitionsSql} from 'sqlfu/experimental';
 import {createNodeSqliteClient} from 'sqlfu/client';
-import type {QueryExecutionResponse, SchemaCheckCard, SqlAnalysisResponse, SqlEditorDiagnostic, StudioColumn, TableRowKey, TableRowsResponse} from './shared.js';
+import type {QueryExecutionResponse, SchemaCheckCard, SchemaCheckRecommendation, SqlAnalysisResponse, SqlEditorDiagnostic, StudioColumn, TableRowKey, TableRowsResponse} from './shared.js';
 
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(sourceDir, '..');
@@ -84,13 +84,15 @@ const uiRouter = {
     }),
     check: uiBase.handler(async ({context}) => {
       try {
-        const mismatches = await getCheckMismatches({config: context.config});
+        const analysis = await getCheckAnalysis({config: context.config});
         return {
-          cards: buildSchemaCheckCards(mismatches),
+          cards: buildSchemaCheckCards(analysis),
+          recommendations: buildSchemaCheckRecommendations(analysis),
         };
       } catch (error) {
         return {
           cards: [],
+          recommendations: [],
           error: error instanceof Error ? error.message : String(error),
         };
       }
@@ -499,26 +501,9 @@ async function analyzeSql(
 }
 
 function buildSchemaCheckCards(
-  mismatches: readonly {
-    readonly name: string;
-    readonly lines: readonly string[];
-  }[],
+  analysis: CheckAnalysis,
 ): readonly SchemaCheckCard[] {
-  const mismatchByTitle = new Map<string, {
-    readonly summary: string;
-    readonly recommendation?: string;
-    readonly commands: readonly string[];
-  }>();
-
-  for (const mismatch of mismatches) {
-    const [title, summary, ...rest] = mismatch.lines;
-    const recommendation = rest.find((line) => line.startsWith('Recommendation:'));
-    mismatchByTitle.set(title ?? '', {
-      summary: summary ?? '',
-      recommendation,
-      commands: extractCommands(rest),
-    });
-  }
+  const mismatchByKind = new Map(analysis.mismatches.map((mismatch) => [mismatch.kind, mismatch]));
 
   return [
     toSchemaCheckCard(
@@ -526,37 +511,45 @@ function buildSchemaCheckCards(
       'Repo Drift',
       '✅ No Repo Drift',
       'Desired Schema matches Migrations.',
-      mismatchByTitle.get('Repo Drift'),
+      mismatchByKind.get('repoDrift'),
     ),
     toSchemaCheckCard(
       'pendingMigrations',
       'Pending Migrations',
       '✅ No Pending Migrations',
       'Migration History matches Migrations.',
-      mismatchByTitle.get('Pending Migrations'),
+      mismatchByKind.get('pendingMigrations'),
     ),
     toSchemaCheckCard(
       'historyDrift',
       'History Drift',
       '✅ No History Drift',
       'Applied migrations still match the repo versions.',
-      mismatchByTitle.get('History Drift'),
+      mismatchByKind.get('historyDrift'),
     ),
     toSchemaCheckCard(
       'schemaDrift',
       'Schema Drift',
       '✅ No Schema Drift',
       'Live Schema matches Migration History.',
-      mismatchByTitle.get('Schema Drift'),
+      mismatchByKind.get('schemaDrift'),
     ),
     toSchemaCheckCard(
       'syncDrift',
       'Sync Drift',
       '✅ No Sync Drift',
       'Desired Schema matches Live Schema.',
-      mismatchByTitle.get('Sync Drift'),
+      mismatchByKind.get('syncDrift'),
     ),
   ];
+}
+
+function buildSchemaCheckRecommendations(analysis: CheckAnalysis): readonly SchemaCheckRecommendation[] {
+  return analysis.recommendations.map((recommendation) => ({
+    kind: recommendation.kind,
+    summary: recommendation.summary,
+    command: recommendation.command,
+  }));
 }
 
 function toSchemaCheckCard(
@@ -566,8 +559,7 @@ function toSchemaCheckCard(
   explainer: string,
   mismatch: {
     readonly summary: string;
-    readonly recommendation?: string;
-    readonly commands: readonly string[];
+    readonly details: readonly string[];
   } | undefined,
 ): SchemaCheckCard {
   return {
@@ -577,14 +569,8 @@ function toSchemaCheckCard(
     explainer,
     ok: !mismatch,
     summary: mismatch?.summary ?? '',
-    recommendation: mismatch?.recommendation,
-    commands: mismatch?.commands ?? [],
+    details: mismatch?.details ?? [],
   };
-}
-
-function extractCommands(lines: readonly string[]) {
-  return [...new Set(lines.flatMap((line) => [...line.matchAll(/`(sqlfu [^`]+)`/g)].map((match) => match[1]!)))]
-    .filter((command) => !/[<>]/.test(command));
 }
 
 function parseMigrationId(id: string) {

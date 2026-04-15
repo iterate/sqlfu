@@ -13,12 +13,18 @@ export type SchemaCheckCard = {
   readonly explainer: string;
   readonly ok: boolean;
   readonly summary: string;
-  readonly recommendation?: string;
-  readonly commands?: readonly string[];
+  readonly details: readonly string[];
+};
+
+export type SchemaCheckRecommendation = {
+  readonly kind: string;
+  readonly summary: string;
+  readonly command?: string;
 };
 
 export type SchemaCheckResponse = {
   readonly cards: readonly SchemaCheckCard[];
+  readonly recommendations: readonly SchemaCheckRecommendation[];
   readonly error?: string;
 };
 

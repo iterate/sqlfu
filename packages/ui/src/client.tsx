@@ -216,30 +216,36 @@ function SchemaPanel(input: {
               {card.ok ? <span className="muted schema-card-explainer">{card.explainer}</span> : null}
             </div>
             {!card.ok ? <p>{card.summary}</p> : null}
-            {!card.ok && card.recommendation ? <p className="muted">{card.recommendation}</p> : null}
-            {!card.ok && card.commands && card.commands.length > 0 ? (
-              <div className="actions">
-                {card.commands.map((command) => (
-                  <div key={command} className="schema-command">
-                    <button
-                      className="button"
-                      type="button"
-                      aria-label={command}
-                      onClick={() => {
-                        handleSchemaCommand(command);
-                      }}
-                    >
-                      {command}
-                    </button>
-                    {commandErrors?.[command] ? (
-                      <span className="schema-command-error">{commandErrors[command]}</span>
-                    ) : null}
-                  </div>
+            {!card.ok && card.details.length > 0 ? (
+              <div className="stack">
+                {card.details.map((detail) => (
+                  <p key={detail} className="muted">{detail}</p>
                 ))}
               </div>
             ) : null}
           </section>
         ))}
+        {input.check.recommendations.length > 0 ? (
+          <section className="card schema-card warn">
+            <div className="card-title-row schema-card-title-row">
+              <h3 className="card-title">Recommended next actions</h3>
+            </div>
+            <div className="stack">
+              {input.check.recommendations.map((recommendation) => (
+                <div key={`${recommendation.kind}/${recommendation.command ?? recommendation.summary}`} className="stack">
+                  <p className="schema-recommendation">
+                    {renderSchemaRecommendationSummary(recommendation.summary, recommendation.command, handleSchemaCommand)}
+                  </p>
+                  {recommendation.command && commandErrors?.[recommendation.command] ? (
+                    <div className="schema-command">
+                      <span className="schema-command-error">{commandErrors[recommendation.command]}</span>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
 
       <div className="authorities-grid">
@@ -1540,6 +1546,45 @@ function formatAppliedAgo(appliedAt: string | null) {
   return `${String(duration(elapsedMs)).split(',')[0]} ago`;
 }
 
+function renderSchemaRecommendationSummary(
+  summary: string,
+  command: string | undefined,
+  handleSchemaCommand: (command: string) => void,
+): ReactNode {
+  if (!command) {
+    return summary;
+  }
+
+  const commandPattern = new RegExp(String.raw`\`${escapeRegExp(command)}\``, 'g');
+  const segments = summary.split(commandPattern);
+  if (segments.length === 1) {
+    return summary;
+  }
+
+  return segments.flatMap((segment, index) => {
+    const nodes: ReactNode[] = [];
+    if (segment) {
+      nodes.push(<span key={`text-${index}`}>{segment}</span>);
+    }
+    if (index < segments.length - 1) {
+      nodes.push(
+        <button
+          key={`command-${index}`}
+          className="button inline-command-button"
+          type="button"
+          aria-label={command}
+          onClick={() => {
+            handleSchemaCommand(command);
+          }}
+        >
+          {command}
+        </button>,
+      );
+    }
+    return nodes;
+  });
+}
+
 function isSameValue(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -1764,6 +1809,10 @@ function suggestSqlRunnerName(sql: string) {
 
 function normalizeSqlDraft(value: string) {
   return value.trimEnd();
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

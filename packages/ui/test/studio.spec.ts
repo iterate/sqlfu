@@ -240,6 +240,9 @@ from posts;
 test('schema command failures stay visible next to the failing command button', async ({page}) => {
   await page.goto('/#schema');
 
+  await confirmAndRunSchemaCommand(page, page.getByRole('button', {name: 'sqlfu draft'}));
+  await confirmAndRunSchemaCommand(page, page.getByRole('button', {name: /sqlfu baseline /}).first());
+
   await replaceCodeMirrorText(page, 'Desired Schema editor', `
     create table posts (
       id integer primary key,
@@ -257,9 +260,11 @@ test('schema command failures stay visible next to the failing command button', 
   await expect.poll(() => readCodeMirrorText(page, 'Desired Schema editor')).toContain('birthdate text not null');
   await page.getByRole('button', {name: 'Save Desired Schema'}).click();
 
-  const syncButton = page.getByRole('button', {name: 'sqlfu sync'});
-  await expect(syncButton).toBeVisible();
-  await confirmAndRunSchemaCommand(page, syncButton);
+  await confirmAndRunSchemaCommand(page, page.getByRole('button', {name: 'sqlfu draft'}));
+
+  const migrateButton = page.getByRole('button', {name: 'sqlfu migrate'});
+  await expect(migrateButton).toBeVisible();
+  await confirmAndRunSchemaCommand(page, migrateButton);
 
   await expect(page.getByText(/cannot add a not null column with default value null/i)).toBeVisible();
   await expect(page.locator('.schema-command-error').filter({hasText: 'Cannot add a NOT NULL column with default value NULL'})).toBeVisible();
