@@ -1,3 +1,12 @@
+/*
+ * Inspired by @pgkit/schemainspect and @pgkit/migra:
+ * - https://github.com/mmkal/pgkit/tree/pgkit/packages/schemainspect
+ * - https://github.com/mmkal/pgkit/tree/pgkit/packages/migra
+ *
+ * This is not a direct port. The PostgreSQL implementation has a richer object-diff model and can emit
+ * column-level alters directly. This SQLite adaptation inspects sqlite_schema, uses SQLite-native rebuild
+ * strategies, and currently takes a deliberately conservative approach to direct drop-column planning.
+ */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -310,7 +319,13 @@ function planSchemaDiff(input: {
   for (const tableName of commonTableNames) {
     const baselineTable = input.baseline.tables[tableName]!;
     const desiredTable = input.desired.tables[tableName]!;
-    const classification = classifyTableChange(baselineTable, desiredTable);
+    const classification = classifyTableChange({
+      tableName,
+      baseline: input.baseline,
+      desired: input.desired,
+      baselineTable,
+      desiredTable,
+    });
 
     if (classification.kind !== 'none') {
       changedTables.add(tableName);
@@ -319,6 +334,16 @@ function planSchemaDiff(input: {
     if (classification.kind === 'add-columns') {
       for (const column of classification.columns) {
         statements.push(`alter table ${quoteIdentifier(tableName)} add column ${columnDefinition(column)};`);
+      }
+      continue;
+    }
+
+    if (classification.kind === 'drop-columns') {
+      if (!input.allowDestructive) {
+        throw new Error(`destructive schema change required for table ${tableName}`);
+      }
+      for (const columnName of classification.columnNames) {
+        statements.push(`alter table ${quoteIdentifier(tableName)} drop column ${quoteIdentifier(columnName)};`);
       }
       continue;
     }
@@ -412,31 +437,132 @@ function planSchemaDiff(input: {
 }
 
 function classifyTableChange(
-  baseline: SqliteInspectedTable,
-  desired: SqliteInspectedTable,
+  input: {
+    tableName: string;
+    baseline: SqliteInspectedDatabase;
+    desired: SqliteInspectedDatabase;
+    baselineTable: SqliteInspectedTable;
+    desiredTable: SqliteInspectedTable;
+  },
 ):
   | {kind: 'none'}
   | {kind: 'add-columns'; columns: readonly SqliteInspectedColumn[]}
+  | {kind: 'drop-columns'; columnNames: readonly string[]}
   | {kind: 'rebuild'} {
-  if (tableCoreEquals(baseline, desired)) {
+  const {tableName, baseline, desired, baselineTable, desiredTable} = input;
+
+  if (tableCoreEquals(baselineTable, desiredTable)) {
     return {kind: 'none'};
   }
 
   if (
-    arraysEqual(baseline.primaryKey, desired.primaryKey) &&
-    stableStringify(baseline.uniqueConstraints) === stableStringify(desired.uniqueConstraints) &&
-    stableStringify(baseline.foreignKeys) === stableStringify(desired.foreignKeys) &&
-    baseline.columns.length <= desired.columns.length &&
-    baseline.columns.every((column, index) => columnEquals(column, desired.columns[index]!))
+    arraysEqual(baselineTable.primaryKey, desiredTable.primaryKey) &&
+    stableStringify(baselineTable.uniqueConstraints) === stableStringify(desiredTable.uniqueConstraints) &&
+    stableStringify(baselineTable.foreignKeys) === stableStringify(desiredTable.foreignKeys) &&
+    baselineTable.columns.length <= desiredTable.columns.length &&
+    baselineTable.columns.every((column, index) => columnEquals(column, desiredTable.columns[index]!))
   ) {
-    const addedColumns = desired.columns.slice(baseline.columns.length);
+    const addedColumns = desiredTable.columns.slice(baselineTable.columns.length);
     const canAddColumns = addedColumns.every((column) => !column.generated && column.hidden === 0);
     if (canAddColumns) {
       return {kind: 'add-columns', columns: addedColumns};
     }
   }
 
+  const desiredColumnNames = new Set(desiredTable.columns.map((column) => column.name));
+  const removedColumns = baselineTable.columns.filter((column) => !desiredColumnNames.has(column.name));
+  const keptBaselineColumns = baselineTable.columns.filter((column) => desiredColumnNames.has(column.name));
+  const pureColumnRemoval =
+    removedColumns.length > 0 &&
+    keptBaselineColumns.length === desiredTable.columns.length &&
+    keptBaselineColumns.every((column, index) => columnEquals(column, desiredTable.columns[index]!)) &&
+    arraysEqual(baselineTable.primaryKey, desiredTable.primaryKey) &&
+    stableStringify(baselineTable.uniqueConstraints) === stableStringify(desiredTable.uniqueConstraints) &&
+    stableStringify(baselineTable.foreignKeys) === stableStringify(desiredTable.foreignKeys);
+
+  if (
+    pureColumnRemoval &&
+    canUseDirectDropColumn({
+      tableName,
+      baseline,
+      desired,
+      baselineTable,
+      desiredTable,
+      removedColumns,
+    })
+  ) {
+    return {kind: 'drop-columns', columnNames: removedColumns.map((column) => column.name)};
+  }
+
   return {kind: 'rebuild'};
+}
+
+function canUseDirectDropColumn(input: {
+  tableName: string;
+  baseline: SqliteInspectedDatabase;
+  desired: SqliteInspectedDatabase;
+  baselineTable: SqliteInspectedTable;
+  desiredTable: SqliteInspectedTable;
+  removedColumns: readonly SqliteInspectedColumn[];
+}): boolean {
+  const {tableName, baseline, desired, baselineTable, desiredTable, removedColumns} = input;
+
+  if (removedColumns.length === 0) {
+    return false;
+  }
+
+  const removedColumnNames = new Set(removedColumns.map((column) => column.name));
+
+  // Good follow-up: inspect sqlite_schema deeply enough to prove exactly which references block direct
+  // drop-column. For now we stay conservative and only take the fast path when there are no obvious
+  // SQLite blockers from the inspected table metadata or surrounding schema objects.
+  if (baselineTable.createSql.includes('check') || desiredTable.createSql.includes('check')) {
+    return false;
+  }
+
+  if (
+    baselineTable.columns.some((column) => column.generated || column.hidden !== 0)
+    || desiredTable.columns.some((column) => column.generated || column.hidden !== 0)
+  ) {
+    return false;
+  }
+
+  if (baselineTable.primaryKey.some((columnName) => removedColumnNames.has(columnName))) {
+    return false;
+  }
+
+  if (baselineTable.uniqueConstraints.some((constraint) => constraint.columns.some((columnName) => removedColumnNames.has(columnName)))) {
+    return false;
+  }
+
+  if (baselineTable.foreignKeys.some((foreignKey) => foreignKey.columns.some((columnName) => removedColumnNames.has(columnName)))) {
+    return false;
+  }
+
+  if (
+    Object.values(baselineTable.indexes).some(
+      (index) =>
+        index.columns.some((columnName) => removedColumnNames.has(columnName))
+        || removedColumns.some((column) => index.where?.includes(column.name)),
+    )
+  ) {
+    return false;
+  }
+
+  if (schemaHasObjectsTouchingTable(tableName, baseline) || schemaHasObjectsTouchingTable(tableName, desired)) {
+    return false;
+  }
+
+  return true;
+}
+
+function schemaHasObjectsTouchingTable(tableName: string, schema: SqliteInspectedDatabase): boolean {
+  return (
+    Object.values(schema.views).some((view) => sqlMentionsIdentifier(view.createSql, tableName))
+    || Object.values(schema.triggers).some(
+      (trigger) => trigger.onName === tableName || sqlMentionsIdentifier(trigger.createSql, tableName),
+    )
+  );
 }
 
 function planTableRebuild(baseline: SqliteInspectedTable, desired: SqliteInspectedTable): string[] {
@@ -693,12 +819,24 @@ function extractWhereClause(sql: string): string | null {
   return match?.[1]?.trim().replace(/\s+/gu, ' ') ?? null;
 }
 
+function sqlMentionsIdentifier(sql: string, identifier: string): boolean {
+  const normalizedIdentifier = identifier.toLowerCase();
+  return (
+    sql.includes(quoteIdentifier(normalizedIdentifier))
+    || new RegExp(`\\b${escapeRegex(normalizedIdentifier)}\\b`, 'u').test(sql)
+  );
+}
+
 function quoteIdentifier(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
 function quoteSqlString(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 function arraysEqual(left: readonly string[], right: readonly string[]): boolean {
