@@ -418,14 +418,14 @@ function planSchemaDiff(input: {
   const prefixes: string[] = [];
 
   for (const triggerName of new Set([...removedTriggerNames, ...modifiedTriggerNames, ...recreatedTriggerNames].sort((left, right) => left.localeCompare(right)))) {
-    if (handledRemovedTriggerNames.has(triggerName) && !addedTriggerNames.includes(triggerName) && !modifiedTriggerNames.includes(triggerName)) {
+    if (handledRemovedTriggerNames.has(triggerName)) {
       continue;
     }
     prefixes.push(`drop trigger ${maybeQuoteIdentifier(triggerName)};`);
   }
 
   for (const viewName of [...removedViewNames, ...modifiedViewNames].sort((left, right) => left.localeCompare(right))) {
-    if (handledRemovedViewNames.has(viewName) && !addedViewNames.includes(viewName) && !modifiedViewNames.includes(viewName)) {
+    if (handledRemovedViewNames.has(viewName)) {
       continue;
     }
     prefixes.push(`drop view ${maybeQuoteIdentifier(viewName)};`);
@@ -561,10 +561,10 @@ function canUseDirectDropColumn(input: {
 
   const removedColumnNames = new Set(removedColumns.map((column) => column.name));
 
-  // Good follow-up: inspect sqlite_schema deeply enough to prove exactly which references block direct
-  // drop-column. For now we stay conservative and only take the fast path when there are no obvious
-  // SQLite blockers from the inspected table metadata or surrounding schema objects.
-  if (baselineTable.createSql.includes('check') || desiredTable.createSql.includes('check')) {
+  if (
+    tableHasCheckConstraintReferencingColumns(baselineTable.createSql, removedColumnNames)
+    || tableHasCheckConstraintReferencingColumns(desiredTable.createSql, removedColumnNames)
+  ) {
     return false;
   }
 
@@ -620,6 +620,16 @@ function planDirectDropColumnOperations(input: {
   const handledRemovedTriggerNames: string[] = [];
   const handledCreatedViewNames: string[] = [];
   const handledCreatedTriggerNames: string[] = [];
+  const baselineAffectedViews = affectedViewsForSelectable(tableName, baseline);
+  const desiredAffectedViews = affectedViewsForSelectable(tableName, desired);
+  const baselineAffectedViewNames = new Set(baselineAffectedViews.map((view) => view.name));
+  const desiredAffectedViewNames = new Set(desiredAffectedViews.map((view) => view.name));
+  const baselineDropViewIds = new Map(
+    baselineAffectedViews.map((view) => [view.name, `drop-view:${view.name}`]),
+  );
+  const desiredCreateViewIds = new Map(
+    desiredAffectedViews.map((view) => [view.name, `create-view:${view.name}`]),
+  );
 
   for (const index of Object.values(baselineTable.indexes).sort((left, right) => left.name.localeCompare(right.name))) {
     if (!index.columns.some((columnName) => removedColumnNames.has(columnName))) {
@@ -636,19 +646,12 @@ function planDirectDropColumnOperations(input: {
     });
   }
 
-  for (const view of viewsTouchingTable(tableName, baseline).sort((left, right) => left.name.localeCompare(right.name))) {
-    const id = `drop-view:${view.name}`;
-    blockerDropIds.push(id);
-    handledRemovedViewNames.push(view.name);
-    operations.push({
-      id,
-      kind: 'drop-view',
-      sql: `drop view ${maybeQuoteIdentifier(view.name)};`,
-      dependencies: [],
-    });
-  }
+  const baselineTriggers = triggersTouchingSelectableNames(
+    new Set([tableName, ...baselineAffectedViews.map((view) => view.name)]),
+    baseline,
+  ).sort((left, right) => left.name.localeCompare(right.name));
 
-  for (const trigger of triggersTouchingTable(tableName, baseline).sort((left, right) => left.name.localeCompare(right.name))) {
+  for (const trigger of baselineTriggers) {
     const id = `drop-trigger:${trigger.name}`;
     blockerDropIds.push(id);
     handledRemovedTriggerNames.push(trigger.name);
@@ -657,6 +660,40 @@ function planDirectDropColumnOperations(input: {
       kind: 'drop-trigger',
       sql: `drop trigger ${maybeQuoteIdentifier(trigger.name)};`,
       dependencies: [],
+    });
+  }
+
+  const dropTriggerIdsBySelectable = new Map<string, string[]>();
+  for (const trigger of baselineTriggers) {
+    const names = triggerSelectableNames(trigger, baselineAffectedViewNames);
+    for (const name of names) {
+      const existing = dropTriggerIdsBySelectable.get(name) || [];
+      existing.push(`drop-trigger:${trigger.name}`);
+      dropTriggerIdsBySelectable.set(name, existing);
+    }
+  }
+
+  for (const view of orderViewsForDrop(baselineAffectedViews, baseline)) {
+    const id = `drop-view:${view.name}`;
+    const dependencies = [...(dropTriggerIdsBySelectable.get(view.name) || [])];
+    for (const dependentView of baselineAffectedViews) {
+      if (!directViewDependencies(dependentView, baseline).includes(view.name)) {
+        continue;
+      }
+
+      const dependentDropId = baselineDropViewIds.get(dependentView.name);
+      if (dependentDropId && dependentDropId !== id) {
+        dependencies.push(dependentDropId);
+      }
+    }
+
+    blockerDropIds.push(id);
+    handledRemovedViewNames.push(view.name);
+    operations.push({
+      id,
+      kind: 'drop-view',
+      sql: `drop view ${maybeQuoteIdentifier(view.name)};`,
+      dependencies: [...new Set(dependencies)].sort((left, right) => left.localeCompare(right)),
     });
   }
 
@@ -684,25 +721,31 @@ function planDirectDropColumnOperations(input: {
     });
   }
 
-  for (const view of viewsTouchingTable(tableName, desired).sort((left, right) => left.name.localeCompare(right.name))) {
+  for (const view of orderViewsForCreate(desiredAffectedViews, desired)) {
     handledCreatedViewNames.push(view.name);
+    const dependencies = [dropColumnId];
+    for (const dependencyName of directViewDependencies(view, desired)) {
+      const viewDependency = desiredCreateViewIds.get(dependencyName);
+      if (viewDependency) {
+        dependencies.push(viewDependency);
+      }
+    }
+
     operations.push({
-      id: `create-view:${view.name}`,
+      id: desiredCreateViewIds.get(view.name)!,
       kind: 'create-view',
       sql: withSemicolon(view.createSql),
-      dependencies: [dropColumnId],
+      dependencies: [...new Set(dependencies)].sort((left, right) => left.localeCompare(right)),
     });
   }
 
-  const desiredViewIds = new Map(
-    viewsTouchingTable(tableName, desired).map((view) => [view.name, `create-view:${view.name}`]),
-  );
-
-  for (const trigger of triggersTouchingTable(tableName, desired).sort((left, right) => left.name.localeCompare(right.name))) {
+  for (const trigger of triggersTouchingSelectableNames(new Set([tableName, ...desiredAffectedViews.map((view) => view.name)]), desired).sort((left, right) => left.name.localeCompare(right.name))) {
     const dependencies = [dropColumnId];
-    const viewDependency = desiredViewIds.get(trigger.onName);
-    if (viewDependency) {
-      dependencies.push(viewDependency);
+    for (const selectableName of triggerSelectableNames(trigger, desiredAffectedViewNames)) {
+      const viewDependency = desiredCreateViewIds.get(selectableName);
+      if (viewDependency) {
+        dependencies.push(viewDependency);
+      }
     }
 
     handledCreatedTriggerNames.push(trigger.name);
@@ -750,6 +793,92 @@ function triggersTouchingTable(tableName: string, schema: SqliteInspectedDatabas
   return Object.values(schema.triggers).filter(
     (trigger) => trigger.onName === tableName || sqlMentionsIdentifier(trigger.createSql, tableName),
   );
+}
+
+function affectedViewsForSelectable(selectableName: string, schema: SqliteInspectedDatabase): SqliteInspectedView[] {
+  const reverseDependencies = new Map<string, string[]>();
+
+  for (const view of Object.values(schema.views)) {
+    const directDependencies = directViewDependencies(view, schema);
+    for (const dependencyName of directDependencies) {
+      const dependents = reverseDependencies.get(dependencyName) || [];
+      dependents.push(view.name);
+      reverseDependencies.set(dependencyName, dependents);
+    }
+  }
+
+  const visited = new Set<string>();
+  const queue = [selectableName];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const dependentViewName of (reverseDependencies.get(current) || []).sort((left, right) => left.localeCompare(right))) {
+      if (visited.has(dependentViewName)) {
+        continue;
+      }
+      visited.add(dependentViewName);
+      queue.push(dependentViewName);
+    }
+  }
+
+  return [...visited].map((viewName) => schema.views[viewName]!).filter(Boolean);
+}
+
+function directViewDependencies(view: SqliteInspectedView, schema: SqliteInspectedDatabase): string[] {
+  const candidateNames = [
+    ...Object.keys(schema.tables),
+    ...Object.keys(schema.views).filter((name) => name !== view.name),
+  ];
+
+  return candidateNames
+    .filter((name) => sqlMentionsIdentifier(view.createSql, name))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function orderViewsForCreate(views: readonly SqliteInspectedView[], schema: SqliteInspectedDatabase): SqliteInspectedView[] {
+  const viewNames = new Set(views.map((view) => view.name));
+  const graph = new Map<string, string[]>();
+
+  for (const view of views) {
+    graph.set(
+      view.name,
+      directViewDependencies(view, schema).filter((name) => viewNames.has(name)),
+    );
+  }
+
+  const result = graphSequencer(graph);
+  if (!result.safe) {
+    const cycles = result.cycles.map((cycle) => cycle.join(' -> ')).join('; ');
+    throw new Error(`cannot resolve schemadiff view creation dependencies: ${cycles}`);
+  }
+
+  return result.chunks
+    .flatMap((chunk) => [...chunk].sort((left, right) => left.localeCompare(right)))
+    .map((viewName) => schema.views[viewName]!)
+    .filter(Boolean);
+}
+
+function orderViewsForDrop(views: readonly SqliteInspectedView[], schema: SqliteInspectedDatabase): SqliteInspectedView[] {
+  return [...orderViewsForCreate(views, schema)].reverse();
+}
+
+function triggersTouchingSelectableNames(names: ReadonlySet<string>, schema: SqliteInspectedDatabase): SqliteInspectedTrigger[] {
+  return Object.values(schema.triggers).filter((trigger) => triggerSelectableNames(trigger, names).length > 0);
+}
+
+function triggerSelectableNames(trigger: SqliteInspectedTrigger, candidateViewNames: ReadonlySet<string>): string[] {
+  const names = new Set<string>();
+  if (candidateViewNames.has(trigger.onName)) {
+    names.add(trigger.onName);
+  }
+
+  for (const candidateViewName of candidateViewNames) {
+    if (candidateViewName !== trigger.onName && sqlMentionsIdentifier(trigger.createSql, candidateViewName)) {
+      names.add(candidateViewName);
+    }
+  }
+
+  return [...names].sort((left, right) => left.localeCompare(right));
 }
 
 function planTableRebuild(baseline: SqliteInspectedTable, desired: SqliteInspectedTable): string[] {
@@ -1031,7 +1160,7 @@ function escapeRegex(value: string): string {
 }
 
 function isSimpleIdentifier(value: string): boolean {
-  return /^[a-z_]+$/u.test(value);
+  return /^[a-z_][a-z0-9_]*$/u.test(value);
 }
 
 function arraysEqual(left: readonly string[], right: readonly string[]): boolean {
@@ -1198,6 +1327,28 @@ function pushStatements(target: string[], source: readonly string[]) {
 
 function renderTableName(value: string): string {
   return maybeQuoteIdentifier(value);
+}
+
+function tableHasCheckConstraintReferencingColumns(createSql: string, columnNames: ReadonlySet<string>): boolean {
+  const match = createSql.match(/\(([\s\S]*)\)$/u);
+  if (!match) {
+    return false;
+  }
+
+  for (const definition of splitTopLevelCommaList(match[1]!)) {
+    const normalizedDefinition = definition.trim();
+    if (!/\bcheck\s*\(/iu.test(normalizedDefinition)) {
+      continue;
+    }
+
+    for (const columnName of columnNames) {
+      if (sqlMentionsIdentifier(normalizedDefinition, columnName)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 function extractTableColumnCollations(createSql: string): Map<string, string> {

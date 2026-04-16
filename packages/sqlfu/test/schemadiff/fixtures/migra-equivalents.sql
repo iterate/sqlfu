@@ -143,13 +143,40 @@ create table t(
   a text,
   b integer
 );
-drop table "t2";
+drop table t2;
 create view mv as
 select id from v;
 create view v as
 select id, a, max(b) as max_b
 from t
 group by id;
+-- #endregion
+
+-- #region: nested view dependencies are recreated in dependency order
+-- baseline:
+create table t(x int, y int);
+
+create view v1 as
+select x, y from t;
+
+create view v2 as
+select x from v1;
+-- desired:
+create table t(x int);
+
+create view v1 as
+select x from t;
+
+create view v2 as
+select x from v1;
+-- output:
+drop view v2;
+drop view v1;
+alter table t drop column y;
+create view v1 as
+select x from t;
+create view v2 as
+select x from v1;
 -- #endregion
 
 -- #region: sqlite-migra generated
@@ -305,8 +332,8 @@ create trigger trigger_name_1 after insert on table1 begin
   insert into audit_log(message) values ('t1');
 end;
 -- output:
-drop trigger "trigger_name_2";
-alter table "table2" drop column t;
+drop trigger trigger_name_2;
+alter table table2 drop column t;
 create trigger trigger_name_2 after insert on table2 begin
 insert into audit_log(message) values ('t2');
 end;
