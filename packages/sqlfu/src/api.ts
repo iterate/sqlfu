@@ -436,20 +436,20 @@ async function applyMigrateSql(
   const applied = await readMigrationHistory(database.client);
   const appliedNames = new Set(applied.map((migration) => migration.name));
   const pendingMigrations = migrations.filter((migration) => !appliedNames.has(migrationName(migration)));
-  if (pendingMigrations.length === 0) {
-    return;
+  if (pendingMigrations.length > 0) {
+    const ok = await confirm({
+      title: 'Apply pending migrations?',
+      body: pendingMigrations.map((migration) => [
+        `-- ${migrationName(migration)}`,
+        migration.content.trim(),
+      ].join('\n')).join('\n\n'),
+      bodyType: 'sql',
+    });
+    if (!ok) {
+      return;
+    }
   }
-  const ok = await confirm({
-    title: 'Apply pending migrations?',
-    body: pendingMigrations.map((migration) => [
-      `-- ${migrationName(migration)}`,
-      migration.content.trim(),
-    ].join('\n')).join('\n\n'),
-    bodyType: 'sql',
-  });
-  if (!ok) {
-    return;
-  }
+  // apply migrations even if there are zero pending, because this will validate migration history
   await applyMigrationsToDatabase(context.config.db, migrations);
 }
 
