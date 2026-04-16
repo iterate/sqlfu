@@ -134,8 +134,12 @@ That is why some plans intentionally drop and recreate dependent views or trigge
 
 The implementation is mostly concentrated in:
 
-- [src/schemadiff/sqlite-native.ts](../src/schemadiff/sqlite-native.ts)
-  inspector types, normalization, semantic equality, diff planning, scratch-database materialization
+- [src/schemadiff/sqlite/index.ts](../src/schemadiff/sqlite/index.ts)
+  SQLite schemadiff entrypoint, scratch-database materialization, and public SQLite-facing exports
+- [src/schemadiff/sqlite/inspect.ts](../src/schemadiff/sqlite/inspect.ts)
+  SQLite schema inspection and normalization into inspected objects
+- [src/schemadiff/sqlite/plan.ts](../src/schemadiff/sqlite/plan.ts)
+  SQLite diff planning, dependency ordering, and statement rendering
 
 Supporting pieces live in:
 
@@ -146,7 +150,7 @@ Supporting pieces live in:
 - [src/api.ts](../src/api.ts)
   command integration for `check`, `draft`, `sync`, and `goto`
 
-So the short answer is "mostly yes, but not entirely". `sqlite-native.ts` is the core engine, but it relies on shared SQLite parsing/execution helpers and API-level integration points elsewhere.
+So the short answer is "mostly yes, but not entirely". The `src/schemadiff/sqlite/` folder is now the core engine, but it still relies on shared SQLite parsing/execution helpers and API-level integration points elsewhere.
 
 ## Supported And Unsupported Scope
 

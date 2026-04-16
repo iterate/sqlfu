@@ -1,4 +1,4 @@
-status: ready
+status: in-progress
 size: medium
 
 # Schemadiff Dependency Model And Operation Ordering
@@ -21,12 +21,42 @@ The goal is not to port PostgreSQL migra/schemainspect wholesale. The goal is to
   Suggested initial set: `drop-index`, `drop-trigger`, `drop-view`, `drop-column`, `create-index`, `create-trigger`, `create-view`, `rebuild-table`.
 - [x] Refactor the current direct-drop-column fast path so it returns structured blockers/dependencies instead of a boolean gate. Comment: the direct-drop path now returns planned operations plus handled removed trigger/view names; intrinsic blockers still live in `canUseDirectDropColumn(...)` and need a fuller typed blocker model.
   The planner should be able to say “column drop is blocked by these external objects” versus “column drop is blocked by intrinsic table-definition features”.
-- [ ] Separate inspection-ish analysis from statement planning a bit more clearly.
-  This does not need a full `schemainspect`/`migra` split, but it should move us toward:
-  1. inspect/analyze schema objects and blockers
-  2. build an operation graph
-  3. topologically order operations
-  4. render SQL statements
+- [ ] Add a small analysis layer that derives structured dependency facts from inspected SQLite objects.
+  This should answer questions like:
+  1. which columns an index or `check(...)` clause actually depends on
+  2. which tables/views a view depends on
+  3. which tables/views a trigger depends on
+  4. whether a blocker is an external dependent object or an intrinsic table-definition constraint
+- [ ] Introduce first-class blocker/dependency records instead of relying on booleans and ad hoc local checks.
+  The planner should work with explicit records keyed by string ids, for example:
+  1. blocker kind: `external-dependent` vs `table-definition`
+  2. owner id: `table:t`, `view:v1`, `index:t_x_partial`
+  3. referenced column names
+  4. dependency ids
+  5. whether the blocker can be removed and recreated around a direct column drop
+- [ ] Separate inspection-ish analysis from statement planning and SQL rendering more clearly.
+  It does not need a full `schemainspect`/`migra` split, but it should move us toward this file structure:
+  1. `src/schemadiff/sqlite/inspect.ts`
+     Keep raw schema inspection here or move the inspection-only helpers here if they are currently trapped in `sqlite-native.ts`.
+  2. `src/schemadiff/sqlite/analysis.ts`
+     Turn inspected schema objects into structured dependency/blocker facts.
+  3. `src/schemadiff/sqlite/plan.ts`
+     Build `SchemadiffOperation` nodes and dependency edges from the analyzed facts.
+  4. `src/schemadiff/sqlite/render.ts`
+     Render ordered operations into final SQL strings, including identifier quoting and output formatting.
+  5. `src/schemadiff/sqlite/index.ts`
+     Keep this as the SQLite orchestrator/entrypoint that wires inspect -> analyze -> plan -> order -> render.
+  6. `src/schemadiff/sqlite-native.ts`
+     Reduce this to a thin compatibility shim that forwards to `src/schemadiff/sqlite/index.ts`, or delete it if that entrypoint no longer earns its keep.
+  Small shared helpers can live in focused files under `src/schemadiff/sqlite/` like `identifiers.ts` or `sqltext.ts` or `types.ts` if that keeps the main files short. No need to get explicit permission to create this kind of file, but only do it if there's an actual benefit - making things *excessively* modular just makes it hard to read!
+  Add a short header comment at the top of each file noting which logic is SQLite-specific and, where relevant, whether the file is intended as a future seam for other dialect implementations.
+- [ ] Build the operation graph from analyzed dependency data, not scattered `sqlMentionsIdentifier(...)` checks.
+  The operation planner should consume analyzed dependency facts and produce:
+  1. operation nodes
+  2. explicit dependency edges
+  3. stable ids for error messages and tests
+- [ ] Keep SQL rendering as the last step after planning and ordering.
+  The render step should only be responsible for formatting and SQL text generation, not for discovering dependencies or deciding ordering.
 - [x] Implement the first dependency-aware planner slice for external blockers only. Comment: direct drop now handles baseline index/view/trigger blockers and recreates desired indexes/views/triggers after the drop when needed.
   If a removed column is blocked only by indexes, triggers, or views, plan:
   1. drop dependent external objects
@@ -36,6 +66,14 @@ The goal is not to port PostgreSQL migra/schemainspect wholesale. The goal is to
   This includes at least: PK, FK, UNIQUE table constraints, CHECK constraints, generated-column dependencies, and any case we cannot yet prove safe.
 - [ ] Remove or shrink current SQL text heuristics as structured inspection becomes available.
   `createSql.includes(...)` / regex checks should be treated as temporary scaffolding, not the design.
+- [x] Replace text-matching heuristics for partial-index predicates with structured dependency analysis. Comment: `src/schemadiff/sqlite/sqltext.ts` now tokenizes SQL while skipping strings/comments, and `sqlite-native.ts` uses that when checking partial-index `where` blockers.
+  Add support for cases where a predicate contains a string literal like `'y'` but does not actually depend on column `y`.
+- [x] Replace text-matching heuristics for `check(...)` clauses with structured dependency analysis. Comment: `src/schemadiff/sqlite/analysis.ts` now checks `check(...)` definitions via identifier tokens instead of raw substring matching.
+  Add support for cases where a `check(...)` clause contains a string literal like `'y'` but does not actually depend on column `y`.
+- [x] Replace text-matching heuristics for view dependencies with structured dependency analysis. Comment: view dependency checks now flow through token-aware `sqlMentionsIdentifier(...)`, which ignores string literals and comments.
+  Add support for cases where a view SQL string mentions a table name only inside a string literal, comment, or otherwise non-semantic text.
+- [ ] Replace text-matching heuristics for trigger dependencies with structured dependency analysis.
+  Trigger planning should be based on analyzed references to tables/views, not broad string matching over the trigger body.
 - [x] Add fixture coverage in `packages/sqlfu/test/schemadiff/*.fixture.sql` for the new dependency-aware cases. Comment: `packages/sqlfu/test/schemadiff/drop-column.fixture.sql` now covers direct-drop for simple/indexed/trigger/view cases plus rebuild fallback for FK/CHECK blockers.
   Start with:
   - indexed column drops without rebuild
@@ -43,6 +81,11 @@ The goal is not to port PostgreSQL migra/schemainspect wholesale. The goal is to
   - explicit rebuild fallback cases for FK/CHECK/UNIQUE/PK/generated blockers
 - [x] Keep statement ordering deterministic and explain cycle failures clearly. Comment: operation chunks are topo-sorted then alphabetized for stable output, and cycle errors report the offending operation chain.
   If the topo sorter cannot order operations, the error should include enough context to debug the cycle.
+- [x] Add fixture coverage for the current heuristic gaps before fixing them. Comment: added failing-then-green cases in `packages/sqlfu/test/schemadiff/fixtures/drop-column.sql` and `packages/sqlfu/test/schemadiff/fixtures/migra-equivalents.sql`.
+  Start with:
+  - partial-index predicate string literals that mention a dropped column name
+  - `check(...)` string literals that mention a dropped column name
+  - views/triggers whose SQL text mentions a table name only inside a string literal
 
 ## Notes
 
@@ -76,3 +119,15 @@ The goal is not to port PostgreSQL migra/schemainspect wholesale. The goal is to
 
 - Current operation graph support lives directly inside `sqlite-native.ts`. That is enough to prove out the approach, but there is still room to split analysis/graph-building/rendering into clearer phases.
 - The current direct-drop gate still uses some temporary SQL-text heuristics, especially around CHECK constraints and view reference detection. Those should be replaced with richer inspected structure before we broaden the direct-drop path further.
+- New failing fixtures added to expose the remaining heuristic gaps:
+  - `packages/sqlfu/test/schemadiff/fixtures/drop-column.sql`
+    - `partial index string literal mentioning dropped column should not block unrelated drop`
+    - `check string literal mentioning dropped column should not force rebuild`
+  - `packages/sqlfu/test/schemadiff/fixtures/migra-equivalents.sql`
+    - `unrelated view string literal mentioning table name should not be treated as a dependency`
+- Initial SQLite subfolder seams now exist under `packages/sqlfu/src/schemadiff/sqlite/`:
+  - `index.ts`
+  - `identifiers.ts`
+  - `sqltext.ts`
+  - `analysis.ts`
+  The main planner still lives in `sqlite-native.ts`, but the first dialect-specific helpers have been moved behind the new boundary.

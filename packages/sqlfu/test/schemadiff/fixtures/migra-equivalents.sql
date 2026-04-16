@@ -179,6 +179,175 @@ create view v2 as
 select x from v1;
 -- #endregion
 
+-- #region: trigger on dependent view is dropped before the view chain and recreated after it
+-- baseline:
+create table t(x int, y int);
+
+create view v1 as
+select x, y from t;
+
+create view v2 as
+select x from v1;
+
+create trigger trg instead of insert on v2 begin
+  select new.x;
+end;
+-- desired:
+create table t(x int);
+
+create view v1 as
+select x from t;
+
+create view v2 as
+select x from v1;
+
+create trigger trg instead of insert on v2 begin
+  select new.x;
+end;
+-- output:
+drop trigger trg;
+drop view v2;
+drop view v1;
+alter table t drop column y;
+create view v1 as
+select x from t;
+create view v2 as
+select x from v1;
+create trigger trg instead of insert on v2 begin
+select new.x;
+end;
+-- #endregion
+
+-- #region: trigger on one dependent view can also reference another dependent view
+-- baseline:
+create table t(x int, y int);
+
+create view v1 as
+select x, y from t;
+
+create view v2 as
+select x from v1;
+
+create trigger trg instead of insert on v2 begin
+  select count(*) from v1;
+  select new.x;
+end;
+-- desired:
+create table t(x int);
+
+create view v1 as
+select x from t;
+
+create view v2 as
+select x from v1;
+
+create trigger trg instead of insert on v2 begin
+  select count(*) from v1;
+  select new.x;
+end;
+-- output:
+drop trigger trg;
+drop view v2;
+drop view v1;
+alter table t drop column y;
+create view v1 as
+select x from t;
+create view v2 as
+select x from v1;
+create trigger trg instead of insert on v2 begin
+select count(*) from v1;
+select new.x;
+end;
+-- #endregion
+
+-- #region: table change with index view and trigger uses one dependency-ordered plan
+-- baseline:
+create table person(name text, nickname text, age int);
+create index person_age_idx on person(age);
+create view person_view as
+select name, nickname from person;
+create trigger person_view_insert instead of insert on person_view begin
+  select new.name;
+end;
+-- desired:
+create table person(name text, age int);
+create index person_age_idx on person(age);
+create view person_view as
+select name from person;
+create trigger person_view_insert instead of insert on person_view begin
+  select new.name;
+end;
+-- output:
+drop trigger person_view_insert;
+drop view person_view;
+alter table person drop column nickname;
+create view person_view as
+select name from person;
+create trigger person_view_insert instead of insert on person_view begin
+select new.name;
+end;
+-- #endregion
+
+-- #region: unrelated view string literal mentioning table name should not be treated as a dependency
+-- baseline:
+create table person(name text, nickname text);
+
+create view labels as
+select 'person' as label;
+-- desired:
+create table person(name text);
+
+create view labels as
+select 'person' as label;
+-- output:
+alter table person drop column nickname;
+-- #endregion
+
+-- #region: surviving shared view should not be dropped around independent table drops
+-- baseline:
+create table t1(x int, y int);
+create table t2(a int, b int);
+
+create view joined as
+select t1.x, t2.a
+from t1
+join t2;
+-- desired:
+create table t1(x int);
+create table t2(a int);
+
+create view joined as
+select t1.x, t2.a
+from t1
+join t2;
+-- output:
+alter table t1 drop column y;
+alter table t2 drop column b;
+-- #endregion
+
+-- #region: trigger depending on a surviving view should not be dropped around unrelated table drops
+-- baseline:
+create table person(name text, nickname text);
+
+create view person_names as
+select name from person;
+
+create trigger person_names_log instead of insert on person_names begin
+  select new.name;
+end;
+-- desired:
+create table person(name text);
+
+create view person_names as
+select name from person;
+
+create trigger person_names_log instead of insert on person_names begin
+  select new.name;
+end;
+-- output:
+alter table person drop column nickname;
+-- #endregion
+
 -- #region: sqlite-migra generated
 -- baseline:
 create table demo(
@@ -332,11 +501,7 @@ create trigger trigger_name_1 after insert on table1 begin
   insert into audit_log(message) values ('t1');
 end;
 -- output:
-drop trigger trigger_name_2;
 alter table table2 drop column t;
-create trigger trigger_name_2 after insert on table2 begin
-insert into audit_log(message) values ('t2');
-end;
 -- #endregion
 
 -- #region: sqlite-migra triggers3

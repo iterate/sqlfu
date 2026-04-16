@@ -18,7 +18,7 @@ import {
   type Migration,
 } from './migrations/index.js';
 import {diffSchemaSql} from './schemadiff/index.js';
-import {inspectSqliteSchemaSql, schemasEqual} from './schemadiff/sqlite-native.js';
+import {inspectSqliteSchemaSql, schemasEqual} from './schemadiff/sqlite/index.js';
 import {generateQueryTypes} from './typegen/index.js';
 
 const base = os.$context<SqlfuCommandRouterContext>();

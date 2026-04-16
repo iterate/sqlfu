@@ -1,4 +1,4 @@
-import {diffBaselineSqlToDesiredSqlNative} from './sqlite-native.js';
+import {diffBaselineSqlToDesiredSqlNative} from './sqlite/index.js';
 
 export async function diffSchemaSql(input: {
   projectRoot: string;
