@@ -1,11 +1,6 @@
 /*
- * Inspired by @pgkit/schemainspect and @pgkit/migra:
- * - https://github.com/mmkal/pgkit/tree/pgkit/packages/schemainspect
- * - https://github.com/mmkal/pgkit/tree/pgkit/packages/migra
- *
- * This is not a direct port. The PostgreSQL implementation has a richer object-diff model and can emit
- * column-level alters directly. This SQLite adaptation inspects sqlite_schema, uses SQLite-native rebuild
- * strategies, and currently takes a deliberately conservative approach to direct drop-column planning.
+ * SQLite-native schema diffing inspired by pgkit's migra/schemainspect lineage.
+ * See AGENTS.md in this folder for the fuller attribution and planner guidelines.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
