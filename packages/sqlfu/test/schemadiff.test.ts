@@ -150,6 +150,24 @@ test('diffSchemaSql rebuilds a table when sqlite needs semantic constraint chang
   }
 });
 
+test('diffSchemaSql rebuilds a table when a column is removed', async () => {
+  const diff = await diffSchemaSql({
+    projectRoot: process.cwd(),
+    baselineSql: `create table a(x int, y int);`,
+    desiredSql: `create table a(x int);`,
+    allowDestructive: true,
+  });
+
+  expect(diff).toMatchInlineSnapshot(`
+    [
+      "alter table a rename to __sqlfu_old_a;",
+      "create table a(x int);",
+      "insert into a("x") select "x" from __sqlfu_old_a;",
+      "drop table __sqlfu_old_a;",
+    ]
+  `);
+});
+
 test('diffSchemaSql creates a sqlite trigger when it is added', async () => {
   const diff = await diffSchemaSql({
     projectRoot: process.cwd(),
