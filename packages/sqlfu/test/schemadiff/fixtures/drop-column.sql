@@ -46,6 +46,22 @@ insert into a(x) select x from __sqlfu_old_a;
 drop table __sqlfu_old_a;
 -- #endregion
 
+-- #region: check on surviving column should not force rebuilding unrelated dropped column
+-- baseline:
+create table a(
+  x int,
+  y int,
+  check(x > 0)
+);
+-- desired:
+create table a(
+  x int,
+  check(x > 0)
+);
+-- output:
+alter table a drop column y;
+-- #endregion
+
 -- #region: trigger reference drops blockers around direct column drop
 -- baseline:
 create table person(name text, nickname text);
