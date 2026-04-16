@@ -253,6 +253,7 @@ export async function getMigrationResultantSchema(
 export type SqlfuCommandConfirmParams = {
   readonly title: string;
   readonly body: string;
+  readonly bodyType?: 'markdown' | 'sql';
   readonly editable?: boolean;
 };
 
@@ -371,6 +372,7 @@ async function applyDraftSql(
   const body = await confirm({
     title: 'Create migration file?',
     body: diffLines.join('\n').trim(),
+    bodyType: 'sql',
     editable: true,
   });
   if (!body?.trim()) {
@@ -405,6 +407,7 @@ async function applySyncSql(
     const confirmedSql = await confirm({
       title: 'Apply sync SQL?',
       body: diffLines.join('\n').trim(),
+      bodyType: 'sql',
       editable: true,
     });
     if (!confirmedSql?.trim()) {
@@ -444,6 +447,7 @@ async function applyMigrateSql(
       `-- ${migrationName(migration)}`,
       migration.content.trim(),
     ].join('\n')).join('\n\n'),
+    bodyType: 'sql',
   });
   if (!ok) {
     return;
@@ -497,6 +501,7 @@ async function applyGotoSql(
   const confirmedSql = await confirm({
     title: `Move database to ${input.target}?`,
     body: diffLines.join('\n').trim(),
+    bodyType: 'sql',
     editable: true,
   });
   if (confirmedSql == null) {

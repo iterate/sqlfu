@@ -65,6 +65,7 @@ const orpc = createTanstackQueryUtils(orpcClient);
 type ConfirmationRequest = {
   title: string;
   body: string;
+  bodyType?: 'markdown' | 'sql';
   editable?: boolean;
 };
 
@@ -181,17 +182,32 @@ function ConfirmationDialogHost() {
                 Review the server-provided body before continuing.
               </DialogDescription>
             </DialogHeader>
-            <TextCodeMirror
-              value={snapshot.draftBody}
-              ariaLabel="Confirmation body editor"
-              readOnly={params.editable !== true}
-              height="18rem"
-              onChange={(value) => {
-                if (params.editable === true) {
-                  confirmationDialogStore.setDraftBody(value);
-                }
-              }}
-            />
+            {params.bodyType === 'sql' ? (
+              <SqlCodeMirror
+                value={snapshot.draftBody}
+                ariaLabel="Confirmation body editor"
+                relations={[]}
+                readOnly={params.editable !== true}
+                onChange={(value) => {
+                  if (params.editable === true) {
+                    confirmationDialogStore.setDraftBody(value);
+                  }
+                }}
+              />
+            ) : (
+              <TextCodeMirror
+                value={snapshot.draftBody}
+                ariaLabel="Confirmation body editor"
+                readOnly={params.editable !== true}
+                height="18rem"
+                language="markdown"
+                onChange={(value) => {
+                  if (params.editable === true) {
+                    confirmationDialogStore.setDraftBody(value);
+                  }
+                }}
+              />
+            )}
             <DialogFooter>
               <button
                 className="button"
@@ -1718,6 +1734,7 @@ function parseConfirmationRequest(error: unknown) {
     return {
       title: parsed.title,
       body: parsed.body,
+      bodyType: parsed.bodyType === 'sql' ? ('sql' as const) : ('markdown' as const),
       editable: parsed.editable === true ? true : undefined,
     };
   } catch {
