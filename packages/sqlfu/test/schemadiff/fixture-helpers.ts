@@ -1,35 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {describe, expect, test} from 'vitest';
 
-import {diffSchemaSql} from '../src/schemadiff/index.js';
+import {diffSchemaSql} from '../../src/schemadiff/index.js';
 
-const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'schemadiff');
-const shouldUpdateFixtures = process.env.SQLFU_SCHEMADIFF_UPDATE === '1';
-
-if (shouldUpdateFixtures) {
-  await rewriteSchemadiffFixtures(fixturesDir);
-}
-
-for (const fixturePath of await listFixtureFiles(fixturesDir)) {
-  describe(path.basename(fixturePath), async () => {
-    const cases = parseSchemadiffFixture(await fs.readFile(fixturePath, 'utf8'));
-
-    for (const fixtureCase of cases) {
-      test(fixtureCase.name, async () => {
-        if (fixtureCase.error) {
-          await expect(runFixtureCase(fixtureCase)).rejects.toThrow(fixtureCase.error);
-          return;
-        }
-
-        await expect(runFixtureCase(fixtureCase)).resolves.toBe(fixtureCase.output);
-      });
-    }
-  });
-}
-
-type SchemadiffFixtureCase = {
+export type SchemadiffFixtureCase = {
   readonly name: string;
   readonly config: Record<string, unknown>;
   readonly baselineSql: string;
@@ -38,7 +12,7 @@ type SchemadiffFixtureCase = {
   readonly error?: string;
 };
 
-async function runFixtureCase(fixtureCase: SchemadiffFixtureCase): Promise<string> {
+export async function runFixtureCase(fixtureCase: SchemadiffFixtureCase): Promise<string> {
   const diff = await diffSchemaSql({
     projectRoot: process.cwd(),
     baselineSql: fixtureCase.baselineSql,
@@ -50,15 +24,15 @@ async function runFixtureCase(fixtureCase: SchemadiffFixtureCase): Promise<strin
   return diff.join('\n');
 }
 
-async function listFixtureFiles(root: string): Promise<string[]> {
+export async function listFixtureFiles(root: string): Promise<string[]> {
   const entries = await fs.readdir(root, {withFileTypes: true});
   return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.fixture.sql'))
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.sql'))
     .map((entry) => path.join(root, entry.name))
     .sort();
 }
 
-function parseSchemadiffFixture(contents: string): SchemadiffFixtureCase[] {
+export function parseSchemadiffFixture(contents: string): SchemadiffFixtureCase[] {
   const cases: SchemadiffFixtureCase[] = [];
   const defaultConfig = parseDefaultConfig(contents);
   const regionPattern = /^-- #region: (?<name>.+)\n(?<body>[\s\S]*?)^-- #endregion$/gm;
@@ -112,16 +86,7 @@ function parseSchemadiffFixture(contents: string): SchemadiffFixtureCase[] {
   return cases;
 }
 
-function parseDefaultConfig(contents: string): Record<string, unknown> {
-  const defaultConfigMatch = contents.match(/^-- default config: (?<json>.+)$/m);
-  return defaultConfigMatch?.groups?.json ? JSON.parse(defaultConfigMatch.groups.json) as Record<string, unknown> : {};
-}
-
-function trimFixtureBlock(value: string): string {
-  return value.replace(/\n+$/g, '');
-}
-
-async function rewriteSchemadiffFixtures(root: string): Promise<void> {
+export async function rewriteSchemadiffFixtures(root: string): Promise<void> {
   for (const fixturePath of await listFixtureFiles(root)) {
     const original = await fs.readFile(fixturePath, 'utf8');
     const rewritten = await rewriteFixtureContents(original);
@@ -129,6 +94,15 @@ async function rewriteSchemadiffFixtures(root: string): Promise<void> {
       await fs.writeFile(fixturePath, rewritten);
     }
   }
+}
+
+function parseDefaultConfig(contents: string): Record<string, unknown> {
+  const defaultConfigMatch = contents.match(/^-- default config: (?<json>.+)$/m);
+  return defaultConfigMatch?.groups?.json ? JSON.parse(defaultConfigMatch.groups.json) as Record<string, unknown> : {};
+}
+
+function trimFixtureBlock(value: string): string {
+  return value.replace(/\n+$/g, '');
 }
 
 async function rewriteFixtureContents(contents: string): Promise<string> {

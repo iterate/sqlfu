@@ -329,6 +329,8 @@ function planSchemaDiff(input: {
   const explicitIndexCreates: string[] = [];
   const handledRemovedViewNames = new Set<string>();
   const handledRemovedTriggerNames = new Set<string>();
+  const handledCreatedViewNames = new Set<string>();
+  const handledCreatedTriggerNames = new Set<string>();
 
   for (const tableName of commonTableNames) {
     const baselineTable = input.baseline.tables[tableName]!;
@@ -358,6 +360,8 @@ function planSchemaDiff(input: {
       }
       classification.handledRemovedViewNames.forEach((name) => handledRemovedViewNames.add(name));
       classification.handledRemovedTriggerNames.forEach((name) => handledRemovedTriggerNames.add(name));
+      classification.handledCreatedViewNames.forEach((name) => handledCreatedViewNames.add(name));
+      classification.handledCreatedTriggerNames.forEach((name) => handledCreatedTriggerNames.add(name));
       pushStatements(statements, orderOperations(classification.operations));
       continue;
     }
@@ -446,10 +450,16 @@ function planSchemaDiff(input: {
   }
 
   for (const viewName of [...addedViewNames, ...modifiedViewNames].sort((left, right) => left.localeCompare(right))) {
+    if (handledCreatedViewNames.has(viewName)) {
+      continue;
+    }
     statements.push(withSemicolon(input.desired.views[viewName]!.createSql));
   }
 
   for (const triggerName of new Set([...addedTriggerNames, ...modifiedTriggerNames, ...recreatedTriggerNames].sort((left, right) => left.localeCompare(right)))) {
+    if (handledCreatedTriggerNames.has(triggerName)) {
+      continue;
+    }
     statements.push(withSemicolon(input.desired.triggers[triggerName]!.createSql));
   }
 
@@ -472,6 +482,8 @@ function classifyTableChange(
       operations: readonly SchemadiffOperation[];
       handledRemovedViewNames: readonly string[];
       handledRemovedTriggerNames: readonly string[];
+      handledCreatedViewNames: readonly string[];
+      handledCreatedTriggerNames: readonly string[];
     }
   | {kind: 'rebuild'} {
   const {tableName, baseline, desired, baselineTable, desiredTable} = input;
@@ -596,6 +608,8 @@ function planDirectDropColumnOperations(input: {
   readonly operations: readonly SchemadiffOperation[];
   readonly handledRemovedViewNames: readonly string[];
   readonly handledRemovedTriggerNames: readonly string[];
+  readonly handledCreatedViewNames: readonly string[];
+  readonly handledCreatedTriggerNames: readonly string[];
 } {
   const {tableName, baseline, desired, baselineTable, desiredTable, removedColumns} = input;
   const removedColumnNames = new Set(removedColumns.map((column) => column.name));
@@ -603,6 +617,8 @@ function planDirectDropColumnOperations(input: {
   const blockerDropIds: string[] = [];
   const handledRemovedViewNames: string[] = [];
   const handledRemovedTriggerNames: string[] = [];
+  const handledCreatedViewNames: string[] = [];
+  const handledCreatedTriggerNames: string[] = [];
 
   for (const index of Object.values(baselineTable.indexes).sort((left, right) => left.name.localeCompare(right.name))) {
     if (!index.columns.some((columnName) => removedColumnNames.has(columnName))) {
@@ -668,6 +684,7 @@ function planDirectDropColumnOperations(input: {
   }
 
   for (const view of viewsTouchingTable(tableName, desired).sort((left, right) => left.name.localeCompare(right.name))) {
+    handledCreatedViewNames.push(view.name);
     operations.push({
       id: `create-view:${view.name}`,
       kind: 'create-view',
@@ -687,6 +704,7 @@ function planDirectDropColumnOperations(input: {
       dependencies.push(viewDependency);
     }
 
+    handledCreatedTriggerNames.push(trigger.name);
     operations.push({
       id: `create-trigger:${trigger.name}`,
       kind: 'create-trigger',
@@ -695,7 +713,13 @@ function planDirectDropColumnOperations(input: {
     });
   }
 
-  return {operations, handledRemovedViewNames, handledRemovedTriggerNames};
+  return {
+    operations,
+    handledRemovedViewNames,
+    handledRemovedTriggerNames,
+    handledCreatedViewNames,
+    handledCreatedTriggerNames,
+  };
 }
 
 function orderOperations(operations: readonly SchemadiffOperation[]): string[] {
