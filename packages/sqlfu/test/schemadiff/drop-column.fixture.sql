@@ -9,17 +9,15 @@ create table a(x int);
 alter table "a" drop column "y";
 -- #endregion
 
--- #region: indexed column removal falls back to rebuild
+-- #region: indexed column removal drops and recreates index blockers
 -- baseline:
 create table a(x int, y int);
 create index a_y_idx on a(y);
 -- desired:
 create table a(x int);
 -- output:
-alter table a rename to __sqlfu_old_a;
-create table a(x int);
-insert into a("x") select "x" from __sqlfu_old_a;
-drop table __sqlfu_old_a;
+drop index "a_y_idx";
+alter table "a" drop column "y";
 -- #endregion
 
 -- #region: foreign key column removal falls back to rebuild
@@ -48,7 +46,7 @@ insert into a("x") select "x" from __sqlfu_old_a;
 drop table __sqlfu_old_a;
 -- #endregion
 
--- #region: trigger reference falls back to rebuild
+-- #region: trigger reference drops blockers around direct column drop
 -- baseline:
 create table person(name text, nickname text);
 create trigger person_log after update on person begin
@@ -58,13 +56,10 @@ end;
 create table person(name text);
 -- output:
 drop trigger "person_log";
-alter table person rename to __sqlfu_old_person;
-create table person(name text);
-insert into person("name") select "name" from __sqlfu_old_person;
-drop table __sqlfu_old_person;
+alter table "person" drop column "nickname";
 -- #endregion
 
--- #region: view reference falls back to rebuild
+-- #region: view reference drops blockers around direct column drop
 -- baseline:
 create table person(name text, nickname text);
 create view person_names as select name, nickname from person;
@@ -72,8 +67,5 @@ create view person_names as select name, nickname from person;
 create table person(name text);
 -- output:
 drop view "person_names";
-alter table person rename to __sqlfu_old_person;
-create table person(name text);
-insert into person("name") select "name" from __sqlfu_old_person;
-drop table __sqlfu_old_person;
+alter table "person" drop column "nickname";
 -- #endregion

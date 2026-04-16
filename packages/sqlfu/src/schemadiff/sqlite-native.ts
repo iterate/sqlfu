@@ -9,6 +9,7 @@ import {randomUUID} from 'node:crypto';
 import {createBunClient, createNodeSqliteClient} from '../client.js';
 import {splitSqlStatements} from '../core/sqlite.js';
 import type {Client} from '../core/types.js';
+import {graphSequencer} from './graph-sequencer.js';
 
 export type SqliteInspectedDatabase = {
   readonly tables: Record<string, SqliteInspectedTable>;
@@ -75,6 +76,22 @@ type SqliteInspectedTrigger = {
 type DisposableClient = {
   readonly client: Client;
   [Symbol.asyncDispose](): Promise<void>;
+};
+
+type SchemadiffOperationKind =
+  | 'drop-index'
+  | 'drop-column'
+  | 'create-index'
+  | 'drop-view'
+  | 'create-view'
+  | 'drop-trigger'
+  | 'create-trigger';
+
+type SchemadiffOperation = {
+  readonly id: string;
+  readonly kind: SchemadiffOperationKind;
+  readonly sql: string;
+  readonly dependencies: readonly string[];
 };
 
 export async function diffBaselineSqlToDesiredSqlNative(
@@ -310,6 +327,8 @@ function planSchemaDiff(input: {
   const changedTables = new Set<string>();
   const explicitIndexDrops: string[] = [];
   const explicitIndexCreates: string[] = [];
+  const handledRemovedViewNames = new Set<string>();
+  const handledRemovedTriggerNames = new Set<string>();
 
   for (const tableName of commonTableNames) {
     const baselineTable = input.baseline.tables[tableName]!;
@@ -337,9 +356,9 @@ function planSchemaDiff(input: {
       if (!input.allowDestructive) {
         throw new Error(`destructive schema change required for table ${tableName}`);
       }
-      for (const columnName of classification.columnNames) {
-        statements.push(`alter table ${quoteIdentifier(tableName)} drop column ${quoteIdentifier(columnName)};`);
-      }
+      classification.handledRemovedViewNames.forEach((name) => handledRemovedViewNames.add(name));
+      classification.handledRemovedTriggerNames.forEach((name) => handledRemovedTriggerNames.add(name));
+      pushStatements(statements, orderOperations(classification.operations));
       continue;
     }
 
@@ -394,10 +413,16 @@ function planSchemaDiff(input: {
   const prefixes: string[] = [];
 
   for (const triggerName of new Set([...removedTriggerNames, ...modifiedTriggerNames, ...recreatedTriggerNames].sort((left, right) => left.localeCompare(right)))) {
+    if (handledRemovedTriggerNames.has(triggerName) && !addedTriggerNames.includes(triggerName) && !modifiedTriggerNames.includes(triggerName)) {
+      continue;
+    }
     prefixes.push(`drop trigger ${quoteIdentifier(triggerName)};`);
   }
 
   for (const viewName of [...removedViewNames, ...modifiedViewNames].sort((left, right) => left.localeCompare(right))) {
+    if (handledRemovedViewNames.has(viewName) && !addedViewNames.includes(viewName) && !modifiedViewNames.includes(viewName)) {
+      continue;
+    }
     prefixes.push(`drop view ${quoteIdentifier(viewName)};`);
   }
 
@@ -442,7 +467,12 @@ function classifyTableChange(
 ):
   | {kind: 'none'}
   | {kind: 'add-columns'; columns: readonly SqliteInspectedColumn[]}
-  | {kind: 'drop-columns'; columnNames: readonly string[]}
+  | {
+      kind: 'drop-columns';
+      operations: readonly SchemadiffOperation[];
+      handledRemovedViewNames: readonly string[];
+      handledRemovedTriggerNames: readonly string[];
+    }
   | {kind: 'rebuild'} {
   const {tableName, baseline, desired, baselineTable, desiredTable} = input;
 
@@ -486,7 +516,17 @@ function classifyTableChange(
       removedColumns,
     })
   ) {
-    return {kind: 'drop-columns', columnNames: removedColumns.map((column) => column.name)};
+    return {
+      kind: 'drop-columns',
+      ...planDirectDropColumnOperations({
+        tableName,
+        baseline,
+        desired,
+        baselineTable,
+        desiredTable,
+        removedColumns,
+      }),
+    };
   }
 
   return {kind: 'rebuild'};
@@ -500,7 +540,7 @@ function canUseDirectDropColumn(input: {
   desiredTable: SqliteInspectedTable;
   removedColumns: readonly SqliteInspectedColumn[];
 }): boolean {
-  const {tableName, baseline, desired, baselineTable, desiredTable, removedColumns} = input;
+  const {baselineTable, desiredTable, removedColumns} = input;
 
   if (removedColumns.length === 0) {
     return false;
@@ -536,27 +576,154 @@ function canUseDirectDropColumn(input: {
 
   if (
     Object.values(baselineTable.indexes).some(
-      (index) =>
-        index.columns.some((columnName) => removedColumnNames.has(columnName))
-        || removedColumns.some((column) => index.where?.includes(column.name)),
+      (index) => removedColumns.some((column) => index.where?.includes(column.name)),
     )
   ) {
-    return false;
-  }
-
-  if (schemaHasObjectsTouchingTable(tableName, baseline) || schemaHasObjectsTouchingTable(tableName, desired)) {
     return false;
   }
 
   return true;
 }
 
-function schemaHasObjectsTouchingTable(tableName: string, schema: SqliteInspectedDatabase): boolean {
-  return (
-    Object.values(schema.views).some((view) => sqlMentionsIdentifier(view.createSql, tableName))
-    || Object.values(schema.triggers).some(
-      (trigger) => trigger.onName === tableName || sqlMentionsIdentifier(trigger.createSql, tableName),
-    )
+function planDirectDropColumnOperations(input: {
+  tableName: string;
+  baseline: SqliteInspectedDatabase;
+  desired: SqliteInspectedDatabase;
+  baselineTable: SqliteInspectedTable;
+  desiredTable: SqliteInspectedTable;
+  removedColumns: readonly SqliteInspectedColumn[];
+}): {
+  readonly operations: readonly SchemadiffOperation[];
+  readonly handledRemovedViewNames: readonly string[];
+  readonly handledRemovedTriggerNames: readonly string[];
+} {
+  const {tableName, baseline, desired, baselineTable, desiredTable, removedColumns} = input;
+  const removedColumnNames = new Set(removedColumns.map((column) => column.name));
+  const operations: SchemadiffOperation[] = [];
+  const blockerDropIds: string[] = [];
+  const handledRemovedViewNames: string[] = [];
+  const handledRemovedTriggerNames: string[] = [];
+
+  for (const index of Object.values(baselineTable.indexes).sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!index.columns.some((columnName) => removedColumnNames.has(columnName))) {
+      continue;
+    }
+
+    const id = `drop-index:${tableName}:${index.name}`;
+    blockerDropIds.push(id);
+    operations.push({
+      id,
+      kind: 'drop-index',
+      sql: `drop index ${quoteIdentifier(index.name)};`,
+      dependencies: [],
+    });
+  }
+
+  for (const view of viewsTouchingTable(tableName, baseline).sort((left, right) => left.name.localeCompare(right.name))) {
+    const id = `drop-view:${view.name}`;
+    blockerDropIds.push(id);
+    handledRemovedViewNames.push(view.name);
+    operations.push({
+      id,
+      kind: 'drop-view',
+      sql: `drop view ${quoteIdentifier(view.name)};`,
+      dependencies: [],
+    });
+  }
+
+  for (const trigger of triggersTouchingTable(tableName, baseline).sort((left, right) => left.name.localeCompare(right.name))) {
+    const id = `drop-trigger:${trigger.name}`;
+    blockerDropIds.push(id);
+    handledRemovedTriggerNames.push(trigger.name);
+    operations.push({
+      id,
+      kind: 'drop-trigger',
+      sql: `drop trigger ${quoteIdentifier(trigger.name)};`,
+      dependencies: [],
+    });
+  }
+
+  const dropColumnId = `drop-column:${tableName}:${[...removedColumnNames].sort().join(',')}`;
+  operations.push({
+    id: dropColumnId,
+    kind: 'drop-column',
+    sql: removedColumns
+      .map((column) => `alter table ${quoteIdentifier(tableName)} drop column ${quoteIdentifier(column.name)};`)
+      .join('\n'),
+    dependencies: blockerDropIds,
+  });
+
+  for (const index of Object.values(desiredTable.indexes).sort((left, right) => left.name.localeCompare(right.name))) {
+    const baselineIndex = baselineTable.indexes[index.name];
+    if (baselineIndex && indexEquals(baselineIndex, index)) {
+      continue;
+    }
+
+    operations.push({
+      id: `create-index:${tableName}:${index.name}`,
+      kind: 'create-index',
+      sql: withSemicolon(index.createSql),
+      dependencies: [dropColumnId],
+    });
+  }
+
+  for (const view of viewsTouchingTable(tableName, desired).sort((left, right) => left.name.localeCompare(right.name))) {
+    operations.push({
+      id: `create-view:${view.name}`,
+      kind: 'create-view',
+      sql: withSemicolon(view.createSql),
+      dependencies: [dropColumnId],
+    });
+  }
+
+  const desiredViewIds = new Map(
+    viewsTouchingTable(tableName, desired).map((view) => [view.name, `create-view:${view.name}`]),
+  );
+
+  for (const trigger of triggersTouchingTable(tableName, desired).sort((left, right) => left.name.localeCompare(right.name))) {
+    const dependencies = [dropColumnId];
+    const viewDependency = desiredViewIds.get(trigger.onName);
+    if (viewDependency) {
+      dependencies.push(viewDependency);
+    }
+
+    operations.push({
+      id: `create-trigger:${trigger.name}`,
+      kind: 'create-trigger',
+      sql: withSemicolon(trigger.createSql),
+      dependencies,
+    });
+  }
+
+  return {operations, handledRemovedViewNames, handledRemovedTriggerNames};
+}
+
+function orderOperations(operations: readonly SchemadiffOperation[]): string[] {
+  const graph = new Map<string, string[]>();
+  const operationsById = new Map<string, SchemadiffOperation>();
+
+  for (const operation of operations) {
+    graph.set(operation.id, [...operation.dependencies]);
+    operationsById.set(operation.id, operation);
+  }
+
+  const result = graphSequencer(graph);
+  if (!result.safe) {
+    const cycles = result.cycles.map((cycle) => cycle.join(' -> ')).join('; ');
+    throw new Error(`cannot resolve schemadiff operation dependencies: ${cycles}`);
+  }
+
+  const orderedIds = result.chunks.flatMap((chunk) => [...chunk].sort((left, right) => left.localeCompare(right)));
+  return orderedIds.flatMap((id) => splitStatementForOutput(operationsById.get(id)!.sql));
+}
+
+function viewsTouchingTable(tableName: string, schema: SqliteInspectedDatabase): SqliteInspectedView[] {
+  return Object.values(schema.views).filter((view) => sqlMentionsIdentifier(view.createSql, tableName));
+}
+
+function triggersTouchingTable(tableName: string, schema: SqliteInspectedDatabase): SqliteInspectedTrigger[] {
+  return Object.values(schema.triggers).filter(
+    (trigger) => trigger.onName === tableName || sqlMentionsIdentifier(trigger.createSql, tableName),
   );
 }
 

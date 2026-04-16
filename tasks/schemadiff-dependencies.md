@@ -15,11 +15,11 @@ The goal is not to port PostgreSQL migra/schemainspect wholesale. The goal is to
 
 ## Checklist
 
-- [ ] Add a small topological sorter module under `packages/sqlfu/src/schemadiff/` by copying the code from `@pnpm/deps.graph-sequencer`. Comment at the top with explicit attribution, what was copied, and any modifications made for `sqlfu`.
-- [ ] Introduce a planner-facing dependency model for schemadiff operations. Start with node identifiers as strings, and keep richer metadata in separate objects/maps rather than using large object literals as graph nodes.
-- [ ] Define operation/node kinds for the first useful slice.
+- [x] Add a small topological sorter module under `packages/sqlfu/src/schemadiff/` by copying the code from `@pnpm/deps.graph-sequencer`. Comment at the top with explicit attribution, what was copied, and any modifications made for `sqlfu`. Comment: vendored in `packages/sqlfu/src/schemadiff/graph-sequencer.ts` from the published npm tarball for `@pnpm/deps.graph-sequencer@1100.0.0`.
+- [x] Introduce a planner-facing dependency model for schemadiff operations. Start with node identifiers as strings, and keep richer metadata in separate objects/maps rather than using large object literals as graph nodes. Comment: `sqlite-native.ts` now plans `SchemadiffOperation` records with string ids and `dependencies: string[]`, then orders them through `orderOperations(...)`.
+- [x] Define operation/node kinds for the first useful slice. Comment: first slice includes `drop-index`, `drop-view`, `drop-trigger`, `drop-column`, `create-index`, `create-view`, and `create-trigger`.
   Suggested initial set: `drop-index`, `drop-trigger`, `drop-view`, `drop-column`, `create-index`, `create-trigger`, `create-view`, `rebuild-table`.
-- [ ] Refactor the current direct-drop-column fast path so it returns structured blockers/dependencies instead of a boolean gate.
+- [x] Refactor the current direct-drop-column fast path so it returns structured blockers/dependencies instead of a boolean gate. Comment: the direct-drop path now returns planned operations plus handled removed trigger/view names; intrinsic blockers still live in `canUseDirectDropColumn(...)` and need a fuller typed blocker model.
   The planner should be able to say “column drop is blocked by these external objects” versus “column drop is blocked by intrinsic table-definition features”.
 - [ ] Separate inspection-ish analysis from statement planning a bit more clearly.
   This does not need a full `schemainspect`/`migra` split, but it should move us toward:
@@ -27,21 +27,21 @@ The goal is not to port PostgreSQL migra/schemainspect wholesale. The goal is to
   2. build an operation graph
   3. topologically order operations
   4. render SQL statements
-- [ ] Implement the first dependency-aware planner slice for external blockers only.
+- [x] Implement the first dependency-aware planner slice for external blockers only. Comment: direct drop now handles baseline index/view/trigger blockers and recreates desired indexes/views/triggers after the drop when needed.
   If a removed column is blocked only by indexes, triggers, or views, plan:
   1. drop dependent external objects
   2. `alter table ... drop column ...`
   3. recreate surviving desired external objects
-- [ ] Keep rebuild fallback for intrinsic table-definition blockers.
+- [x] Keep rebuild fallback for intrinsic table-definition blockers. Comment: PK/FK/UNIQUE/CHECK/generated blockers still bail out of the direct path and fall back to rebuild.
   This includes at least: PK, FK, UNIQUE table constraints, CHECK constraints, generated-column dependencies, and any case we cannot yet prove safe.
 - [ ] Remove or shrink current SQL text heuristics as structured inspection becomes available.
   `createSql.includes(...)` / regex checks should be treated as temporary scaffolding, not the design.
-- [ ] Add fixture coverage in `packages/sqlfu/test/schemadiff/*.fixture.sql` for the new dependency-aware cases.
+- [x] Add fixture coverage in `packages/sqlfu/test/schemadiff/*.fixture.sql` for the new dependency-aware cases. Comment: `packages/sqlfu/test/schemadiff/drop-column.fixture.sql` now covers direct-drop for simple/indexed/trigger/view cases plus rebuild fallback for FK/CHECK blockers.
   Start with:
   - indexed column drops without rebuild
   - trigger/view drop-and-recreate around direct column drop
   - explicit rebuild fallback cases for FK/CHECK/UNIQUE/PK/generated blockers
-- [ ] Keep statement ordering deterministic and explain cycle failures clearly.
+- [x] Keep statement ordering deterministic and explain cycle failures clearly. Comment: operation chunks are topo-sorted then alphabetized for stable output, and cycle errors report the offending operation chain.
   If the topo sorter cannot order operations, the error should include enough context to debug the cycle.
 
 ## Notes
@@ -71,3 +71,8 @@ The goal is not to port PostgreSQL migra/schemainspect wholesale. The goal is to
   Keep the full metadata in side tables keyed by those ids.
 - Bias toward small explicit planner data structures rather than clever inferred ordering.
 - Bias toward conservative failure or rebuild if we cannot yet model a SQLite rule cleanly.
+
+## Implementation Notes
+
+- Current operation graph support lives directly inside `sqlite-native.ts`. That is enough to prove out the approach, but there is still room to split analysis/graph-building/rendering into clearer phases.
+- The current direct-drop gate still uses some temporary SQL-text heuristics, especially around CHECK constraints and view reference detection. Those should be replaced with richer inspected structure before we broaden the direct-drop path further.
