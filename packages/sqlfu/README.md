@@ -4,8 +4,6 @@
 
 It is built around a simple idea: SQL should be the source language for schema, migrations, queries, formatting, and diffing. TypeScript comes second. You should still get good generated types and wrappers, but without having to push the whole project through an ORM-shaped API.
 
-## Table of contents
-
 - [What Is sqlfu?](#what-is-sqlfu)
 - [Philosophy](#philosophy)
   - [SQL First](#sql-first)
@@ -50,7 +48,7 @@ The intended shape is simple:
 
 ### SQL First
 
-Humans have been writing SQL for decades. Agents are good at generating and editing it. `sqlfu` tries to keep that advantage instead of hiding it behind another abstraction layer.
+Humans have been writing SQL for decades. Agents are excellent at generating and editing it. SQL is *deep* "in the weights". `sqlfu` tries to keep that advantage instead of hiding it behind another abstraction layer.
 
 That is why the project leans so heavily on SQL artifacts:
 

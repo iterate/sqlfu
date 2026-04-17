@@ -1,11 +1,15 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import MarkdownIt from 'markdown-it';
 
 const websiteRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(websiteRoot, '..');
 const distRoot = path.join(websiteRoot, 'dist');
 const stylesSourcePath = path.join(websiteRoot, 'src', 'styles.css');
+const gitSha = readGit(['rev-parse', 'HEAD']);
+const repositoryBaseUrl = normalizeRepositoryUrl(readGit(['remote', 'get-url', 'origin']));
 
 const docs = [
   {
@@ -34,14 +38,21 @@ const docs = [
   },
 ];
 
+const docBySourcePath = new Map(docs.map((doc) => [normalizePath(doc.sourcePath), doc]));
+const docBySlug = new Map(docs.map((doc) => [doc.slug, doc]));
+
 await fs.rm(distRoot, {recursive: true, force: true});
 await fs.mkdir(path.join(distRoot, 'docs'), {recursive: true});
 await fs.copyFile(stylesSourcePath, path.join(distRoot, 'styles.css'));
 
 const renderedDocs = await Promise.all(docs.map(renderDoc));
+const mainDoc = renderedDocs.find((doc) => doc.slug === 'sqlfu');
+if (!mainDoc) {
+  throw new Error('Missing main sqlfu README doc');
+}
 
 await fs.writeFile(path.join(distRoot, 'index.html'), renderLandingPage(renderedDocs));
-await fs.writeFile(path.join(distRoot, 'docs', 'index.html'), renderDocsIndexPage(renderedDocs));
+await fs.writeFile(path.join(distRoot, 'docs', 'index.html'), renderDocPage(mainDoc, renderedDocs));
 
 for (const doc of renderedDocs) {
   const docDir = path.join(distRoot, 'docs', doc.slug);
@@ -51,11 +62,65 @@ for (const doc of renderedDocs) {
 
 async function renderDoc(doc) {
   const markdown = await fs.readFile(doc.sourcePath, 'utf8');
+  const renderer = createMarkdownRenderer(doc);
+  const env = {
+    headings: [],
+  };
+  let html = renderer.render(markdown, env);
+  if (doc.slug === 'sqlfu') {
+    html = html.replace('<ul>', '<ul class="inline-toc mobile-only">');
+  }
+
   return {
     ...doc,
     markdown,
-    html: renderMarkdown(markdown),
+    html,
+    headings: buildNestedHeadings(env.headings),
+    sourceUrl: githubPermalink(doc.sourcePath),
   };
+}
+
+function createMarkdownRenderer(currentDoc) {
+  const md = new MarkdownIt({
+    html: false,
+    linkify: true,
+    typographer: false,
+  });
+
+  const defaultHeadingOpen = md.renderer.rules.heading_open
+    ?? ((tokens, index, options, env, self) => self.renderToken(tokens, index, options));
+  md.renderer.rules.heading_open = (tokens, index, options, env, self) => {
+    const headingToken = tokens[index];
+    const inlineToken = tokens[index + 1];
+    const title = inlineToken?.type === 'inline' ? inlineToken.content.trim() : '';
+    const id = slugify(title);
+    headingToken.attrSet('id', id);
+    env.headings ??= [];
+    env.headings.push({
+      level: Number(headingToken.tag.replace(/^h/, '')),
+      title,
+      id,
+    });
+    return defaultHeadingOpen(tokens, index, options, env, self);
+  };
+
+  const defaultLinkOpen = md.renderer.rules.link_open
+    ?? ((tokens, index, options, env, self) => self.renderToken(tokens, index, options));
+  md.renderer.rules.link_open = (tokens, index, options, env, self) => {
+    const token = tokens[index];
+    const href = token.attrGet('href');
+    if (href) {
+      const rewritten = rewriteHref(href, currentDoc.sourcePath);
+      token.attrSet('href', rewritten.href);
+      if (rewritten.external) {
+        token.attrSet('target', '_blank');
+        token.attrSet('rel', 'noreferrer');
+      }
+    }
+    return defaultLinkOpen(tokens, index, options, env, self);
+  };
+
+  return md;
 }
 
 function renderLandingPage(renderedDocs) {
@@ -70,7 +135,7 @@ function renderLandingPage(renderedDocs) {
             sqlfu keeps schema, migrations, checked-in queries, type generation, diffing, and the browser studio aligned around real SQL files instead of another abstraction layer.
           </p>
           <div class="cta-row">
-            <a class="button primary" href="/docs/sqlfu/">Read the docs</a>
+            <a class="button primary" href="/docs/">Read the docs</a>
             <a class="button" href="#local-studio">Use the local studio</a>
           </div>
         </article>
@@ -114,38 +179,7 @@ http://local.sqlfu.dev</code></pre>
         </article>
         <article class="panel">
           <div class="eyebrow">docs set</div>
-          <p>${renderedDocs.map((doc) => `<a href="/docs/${doc.slug}/">${escapeHtml(doc.title)}</a>`).join('<br />')}</p>
-        </article>
-      </section>
-    `,
-  });
-}
-
-function renderDocsIndexPage(renderedDocs) {
-  return renderPage({
-    title: 'sqlfu docs',
-    body: `
-      <section class="docs-shell">
-        <nav class="docs-nav">
-          <h2>Docs</h2>
-          ${renderedDocs.map((doc) => `<a href="/docs/${doc.slug}/">${escapeHtml(doc.title)}</a>`).join('\n')}
-        </nav>
-        <article class="doc-panel">
-          <div class="doc-meta">Documentation index</div>
-          <div class="doc-content">
-            <h1>Repo markdown, web-shaped.</h1>
-            <p>The first website cut keeps the existing markdown as the source of truth. These pages are rendered from the repo files rather than rewritten into a separate docs system.</p>
-            <div class="section-grid">
-              ${renderedDocs.map((doc) => `
-                <section class="panel">
-                  <div class="eyebrow">doc</div>
-                  <h2>${escapeHtml(doc.title)}</h2>
-                  <p>${escapeHtml(doc.description)}</p>
-                  <p><a href="/docs/${doc.slug}/">Open page</a></p>
-                </section>
-              `).join('\n')}
-            </div>
-          </div>
+          <p>${renderedDocs.map((doc) => `<a href="${docRoute(doc.slug)}">${escapeHtml(doc.title)}</a>`).join('<br />')}</p>
         </article>
       </section>
     `,
@@ -157,12 +191,26 @@ function renderDocPage(currentDoc, renderedDocs) {
     title: `${currentDoc.title} | sqlfu`,
     body: `
       <section class="docs-shell">
-        <nav class="docs-nav">
-          <h2>Docs</h2>
-          ${renderedDocs.map((doc) => `<a class="${doc.slug === currentDoc.slug ? 'active' : ''}" href="/docs/${doc.slug}/">${escapeHtml(doc.title)}</a>`).join('\n')}
-        </nav>
+        <details class="docs-nav-shell">
+          <summary class="docs-nav-toggle">
+            <span class="docs-nav-toggle-icon" aria-hidden="true"></span>
+            <span>Docs Menu</span>
+          </summary>
+          <nav class="docs-nav">
+            <h2>Docs</h2>
+            <div class="docs-group">
+              ${renderedDocs.map((doc) => `<a class="doc-link ${doc.slug === currentDoc.slug ? 'active' : ''}" href="${doc.slug === 'sqlfu' ? '/docs/' : docRoute(doc.slug)}">${escapeHtml(doc.title)}</a>`).join('\n')}
+            </div>
+            ${currentDoc.headings.length > 0 ? `
+              <h2>On This Page</h2>
+              <div class="docs-group toc-list">
+                ${renderTocItems(currentDoc.headings)}
+              </div>
+            ` : ''}
+          </nav>
+        </details>
         <article class="doc-panel">
-          <div class="doc-meta">Source: ${escapeHtml(path.relative(repoRoot, currentDoc.sourcePath))}</div>
+          <div class="doc-meta"><a href="${currentDoc.sourceUrl}" target="_blank" rel="noreferrer">Source: ${escapeHtml(path.relative(repoRoot, currentDoc.sourcePath))}</a></div>
           <div class="doc-content">
             ${currentDoc.html}
           </div>
@@ -170,6 +218,13 @@ function renderDocPage(currentDoc, renderedDocs) {
       </section>
     `,
   });
+}
+
+function renderTocItems(items) {
+  return items.map((item) => `
+    <a class="toc-link toc-depth-${item.level}" href="#${item.id}">${escapeHtml(item.title)}</a>
+    ${item.children.length > 0 ? renderTocItems(item.children) : ''}
+  `).join('\n');
 }
 
 function renderPage({title, body}) {
@@ -187,8 +242,8 @@ function renderPage({title, body}) {
     '    <header class="topbar">',
     '      <a class="brand" href="/">sqlfu</a>',
     '      <nav class="nav">',
-    '        <a href="/docs/index.html">Docs</a>',
-    '        <a href="/docs/sqlfu/">Quick Start</a>',
+    '        <a href="/docs/">Docs</a>',
+    '        <a href="/docs/">Quick Start</a>',
     '        <a href="/">Local Studio</a>',
     '      </nav>',
     '    </header>',
@@ -202,150 +257,110 @@ function renderPage({title, body}) {
   ].join('\n');
 }
 
-function renderMarkdown(markdown) {
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
-  const html = [];
-  let index = 0;
-  let inCodeBlock = false;
-  let codeFence = '';
-  let codeLines = [];
-  let paragraphLines = [];
-  let listType = null;
-  let listItems = [];
-  let quoteLines = [];
+function buildNestedHeadings(headings) {
+  const root = [];
+  const stack = [];
 
-  const flushParagraph = () => {
-    if (paragraphLines.length === 0) {
-      return;
-    }
-    html.push(`<p>${renderInline(paragraphLines.join(' '))}</p>`);
-    paragraphLines = [];
-  };
+  for (const heading of headings.filter((item) => item.level >= 1 && item.level <= 4)) {
+    const node = {
+      ...heading,
+      children: [],
+    };
 
-  const flushList = () => {
-    if (!listType || listItems.length === 0) {
-      return;
-    }
-    html.push(`<${listType}>${listItems.map((item) => `<li>${renderInline(item)}</li>`).join('')}</${listType}>`);
-    listType = null;
-    listItems = [];
-  };
-
-  const flushQuote = () => {
-    if (quoteLines.length === 0) {
-      return;
-    }
-    html.push(`<blockquote>${renderInline(quoteLines.join(' '))}</blockquote>`);
-    quoteLines = [];
-  };
-
-  while (index < lines.length) {
-    const line = lines[index];
-
-    if (inCodeBlock) {
-      if (line.startsWith(codeFence)) {
-        html.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
-        inCodeBlock = false;
-        codeFence = '';
-        codeLines = [];
-      } else {
-        codeLines.push(line);
-      }
-      index += 1;
-      continue;
+    while (stack.length > 0 && stack.at(-1).level >= node.level) {
+      stack.pop();
     }
 
-    const fenceMatch = line.match(/^(```+|~~~+)/);
-    if (fenceMatch) {
-      flushParagraph();
-      flushList();
-      flushQuote();
-      inCodeBlock = true;
-      codeFence = fenceMatch[1];
-      codeLines = [];
-      index += 1;
-      continue;
+    if (stack.length === 0) {
+      root.push(node);
+    } else {
+      stack.at(-1).children.push(node);
     }
 
-    const headingMatch = line.match(/^(#{1,3})\s+(.*)$/);
-    if (headingMatch) {
-      flushParagraph();
-      flushList();
-      flushQuote();
-      const level = headingMatch[1].length;
-      const text = headingMatch[2].trim();
-      const id = slugify(text);
-      html.push(`<h${level} id="${id}">${renderInline(text)}</h${level}>`);
-      index += 1;
-      continue;
-    }
-
-    const listMatch = line.match(/^(\s*)([-*]|\d+\.)\s+(.*)$/);
-    if (listMatch) {
-      flushParagraph();
-      flushQuote();
-      const nextListType = /\d+\./.test(listMatch[2]) ? 'ol' : 'ul';
-      if (listType && listType !== nextListType) {
-        flushList();
-      }
-      listType = nextListType;
-      listItems.push(listMatch[3]);
-      index += 1;
-      continue;
-    }
-
-    if (line.startsWith('> ')) {
-      flushParagraph();
-      flushList();
-      quoteLines.push(line.slice(2));
-      index += 1;
-      continue;
-    }
-
-    if (!line.trim()) {
-      flushParagraph();
-      flushList();
-      flushQuote();
-      index += 1;
-      continue;
-    }
-
-    paragraphLines.push(line.trim());
-    index += 1;
+    stack.push(node);
   }
 
-  flushParagraph();
-  flushList();
-  flushQuote();
-
-  return html.join('\n');
+  return root;
 }
 
-function renderInline(text) {
-  return escapeHtml(text)
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) => `<a href="${rewriteLink(href)}">${label}</a>`);
+function rewriteHref(href, currentSourcePath) {
+  if (href.startsWith('#')) {
+    return {href, external: false};
+  }
+
+  if (/^https?:\/\//.test(href)) {
+    return {href, external: true};
+  }
+
+  const absoluteTarget = resolveRepoTarget(href, currentSourcePath);
+  if (!absoluteTarget) {
+    return {href, external: false};
+  }
+
+  const [absolutePath, hash] = String(absoluteTarget).split('#');
+  const normalizedTarget = normalizePath(absolutePath);
+  const linkedDoc = docBySourcePath.get(normalizedTarget);
+  if (linkedDoc) {
+    return {
+      href: `${linkedDoc.slug === 'sqlfu' ? '/docs/' : docRoute(linkedDoc.slug)}${hash ? `#${hash}` : ''}`,
+      external: false,
+    };
+  }
+
+  return {
+    href: githubPermalink(absoluteTarget),
+    external: true,
+  };
 }
 
-function rewriteLink(href) {
-  if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('#')) {
-    return href;
+function resolveRepoTarget(href, currentSourcePath) {
+  const [rawPath, rawHash] = href.split('#');
+  const cleanPath = rawPath.trim();
+  if (!cleanPath) {
+    return null;
   }
-  if (href.endsWith('.md')) {
-    const normalized = href
-      .replace(/^\.\//, '')
-      .replace(/^packages\/sqlfu\//, '')
-      .replace(/^docs\//, '')
-      .replace(/README\.md$/, 'sqlfu')
-      .replace(/\.md$/, '')
-      .replace(/^ui$/, 'ui');
-    return `/docs/${normalized}/`;
+
+  const absolutePath = path.resolve(path.dirname(currentSourcePath), cleanPath);
+  if (!normalizePath(absolutePath).startsWith(normalizePath(repoRoot) + '/')) {
+    return null;
   }
-  return href;
+
+  if (rawHash) {
+    return `${absolutePath}#${rawHash}`;
+  }
+
+  return absolutePath;
+}
+
+function githubPermalink(repoPathWithHash) {
+  const [repoPath, hash] = String(repoPathWithHash).split('#');
+  const relativePath = path.relative(repoRoot, repoPath).split(path.sep).join('/');
+  const suffix = hash ? `#${hash}` : '';
+  return `${repositoryBaseUrl}/blob/${gitSha}/${relativePath}${suffix}`;
+}
+
+function normalizeRepositoryUrl(value) {
+  return value.replace(/\.git$/u, '').replace(/^git@github\.com:/u, 'https://github.com/');
+}
+
+function readGit(args) {
+  return execFileSync('git', args, {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  }).trim();
+}
+
+function docRoute(slug) {
+  return `/docs/${slug}/`;
+}
+
+function normalizePath(value) {
+  return path.resolve(value).split(path.sep).join('/');
 }
 
 function slugify(value) {
   return value
+    .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');

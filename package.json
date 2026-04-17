@@ -7,7 +7,7 @@
     "local.sqlfu.dev": "pnpm --filter sqlfu-ui local.sqlfu.dev",
     "sqlfu": "cd packages/sqlfu && pnpm",
     "ui": "cd packages/ui && pnpm",
-    "website": "cd website && node build.mjs",
+    "website": "cd website && node build.mjs && pnpx serve dist",
     "build": "pnpm --filter sqlfu build && pnpm --filter sqlfu-ui build && cd website && node build.mjs",
     "build:website": "cd website && node build.mjs",
     "test": "pnpm --filter sqlfu test && pnpm --filter sqlfu-ui test",
