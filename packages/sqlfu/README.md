@@ -242,6 +242,8 @@ That starts the UI backend on `localhost:56081`. The intended browser origin is 
 
 If you ever need to avoid a local port conflict, `sqlfu serve --port <port>` overrides the default. Most users should never need this.
 
+If the default port is already occupied, `sqlfu kill` stops the existing listener on `56081`.
+
 While developing the UI itself inside this repo, the client bundle still lives in `packages/ui`:
 
 ```sh
@@ -266,6 +268,12 @@ Apply migrations:
 
 ```sh
 sqlfu migrate
+```
+
+Stop the local backend process on the default port:
+
+```sh
+sqlfu kill
 ```
 
 Move the database and migration history to an exact target:

@@ -1,15 +1,18 @@
 import fs from 'node:fs/promises';
 import http from 'node:http';
+import net from 'node:net';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 
 import {createORPCClient} from '@orpc/client';
 import {RPCLink} from '@orpc/client/fetch';
 import type {RouterClient} from '@orpc/server';
+import {execa, execaNode} from 'execa';
 import {expect, test} from 'vitest';
 
 import type {UiRouter} from '../src/ui/server.js';
 import {startSqlfuServer} from '../src/ui/server.js';
+import {ensureBuilt, packageRoot} from './adapters/ensure-built.js';
 import {createTempFixtureRoot, writeFixtureFiles} from './fs-fixture.js';
 
 test('sqlfu server serves a local backend page and the ui rpc contract from packages/sqlfu', async () => {
@@ -114,6 +117,33 @@ test('sqlfu server accepts secure cross-origin preflight for rpc requests', asyn
   expect(response.headers.get('access-control-allow-headers')).toContain('content-type');
 });
 
+test('sqlfu server reports a useful error when the requested port is already in use', async () => {
+  await using fixture = await createUiServerFixture();
+  const port = await getAvailablePort();
+  await using blocker = await createInProcessPortBlocker(port);
+
+  await expect(startSqlfuServer({
+    port,
+    projectRoot: fixture.root,
+  })).rejects.toThrow(
+    `Port ${port} is already in use.`,
+  );
+});
+
+test('sqlfu kill stops the process listening on the requested port', async () => {
+  await ensureBuilt();
+  await using fixture = await createUiServerFixture();
+  const port = await getAvailablePort();
+  await using blocker = await createChildPortBlocker(port);
+
+  const cli = await execa('node', [path.join(packageRoot, 'dist', 'cli.js'), 'kill', '--port', String(port)], {
+    cwd: fixture.root,
+  });
+
+  expect(cli.stdout).toContain(`Stopped process on port ${port}`);
+  await expect(waitForExit(blocker.process, 5_000)).resolves.toBeUndefined();
+});
+
 async function createUiServerFixture(input: {
   dev?: boolean;
   uiRoot?: string;
@@ -175,6 +205,7 @@ async function createUiServerFixture(input: {
 
   return {
     root,
+    port: server.port,
     baseUrl,
     client,
     async [Symbol.asyncDispose]() {
@@ -215,4 +246,106 @@ function requestWithHost(input: {
     request.once('error', reject);
     request.end();
   });
+}
+
+async function createChildPortBlocker(port: number) {
+  const process = execaNode(path.join(import.meta.dirname, 'helpers', 'listen-forever.js'), [String(port)], {
+    cwd: packageRoot,
+  });
+  void process.catch(() => undefined);
+
+  await waitForPort(port, 5_000);
+
+  return {
+    process,
+    async [Symbol.asyncDispose]() {
+      process.kill('SIGTERM');
+      await waitForExit(process, 5_000).catch(() => undefined);
+    },
+  };
+}
+
+async function createInProcessPortBlocker(port: number) {
+  const server = http.createServer((_, response) => {
+    response.writeHead(200, {'content-type': 'text/plain'});
+    response.end('ok');
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, () => {
+      resolve();
+    });
+  });
+
+  return {
+    async [Symbol.asyncDispose]() {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+    },
+  };
+}
+
+async function getAvailablePort() {
+  const server = net.createServer();
+  const port = await new Promise<number>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        reject(new Error('Failed to determine an available port'));
+        return;
+      }
+      resolve(address.port);
+    });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+
+  return port;
+}
+
+async function waitForPort(port: number, timeoutMs: number) {
+  const timeoutAt = Date.now() + timeoutMs;
+  while (Date.now() < timeoutAt) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}`, {
+        signal: AbortSignal.timeout(500),
+      });
+      await response.arrayBuffer();
+      return;
+    } catch {}
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+  }
+
+  throw new Error(`Timed out waiting for port ${port}`);
+}
+
+async function waitForExit(child: PromiseLike<unknown>, timeoutMs: number) {
+  await Promise.race([
+    Promise.resolve(child).then(() => undefined),
+    new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Timed out waiting for child process to exit after ${timeoutMs}ms`));
+      }, timeoutMs);
+    }),
+  ]);
 }

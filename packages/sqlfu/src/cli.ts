@@ -11,14 +11,15 @@ import * as prompts from '@clack/prompts';
 import type {SqlfuCommandConfirm} from './api.js';
 import {router} from './api.js';
 import {loadProjectConfig} from './core/config.js';
+import packageJson from '../package.json' with { type: 'json' };
 
 export async function createSqlfuCli() {
   const projectConfig = await loadProjectConfig();
   return createCli({
     router,
-    name: 'sqlfu',
-    version: '0.0.0',
-    description: `migrations, schema sync, and type generation for sqlite`,
+    name: packageJson.name,
+    version: packageJson.version,
+    description: packageJson.description,
     context: {config: projectConfig, confirm},
   });
 }
@@ -60,8 +61,17 @@ export const confirm: SqlfuCommandConfirm = async (params) => {
 const cli = await createSqlfuCli();
 await cli.run({
   logger: yamlTableConsoleLogger,
+  formatError: formatCliError,
   prompts,
 });
+
+function formatCliError(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
 
 function availableEditors() {
   return [...new Set([process.env.VISUAL, process.env.EDITOR, 'cursor', 'code', 'vi', 'emacs', 'nano', 'notepad'])]

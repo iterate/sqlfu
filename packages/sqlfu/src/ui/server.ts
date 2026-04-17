@@ -9,6 +9,7 @@ import {RPCHandler} from '@orpc/server/fetch';
 import type {ViteDevServer} from 'vite';
 import {z} from 'zod';
 import {resolveProjectConfig} from '../core/config.js';
+import {PortInUseError, getListeningProcesses} from '../core/port-process.js';
 
 import {
   analyzeAdHocSqlForConfig,
@@ -484,9 +485,12 @@ export async function startSqlfuServer(input: StartSqlfuServerOptions = {}) {
   });
 
   await new Promise<void>((resolve, reject) => {
-    httpServer.once('error', reject);
+    const onError = (error: unknown) => {
+      void normalizeListenError(error, input.port ?? 56081).then(reject, reject);
+    };
+    httpServer.once('error', onError);
     httpServer.listen(input.port ?? 56081, () => {
-      httpServer.off('error', reject);
+      httpServer.off('error', onError);
       resolve();
     });
   });
@@ -539,6 +543,18 @@ async function runCliServer() {
   });
   const protocol = (tlsKeyPath && tlsCertPath) ? 'https' : 'http';
   console.log(`sqlfu local server listening on ${protocol}://localhost:${server.port}`);
+}
+
+async function normalizeListenError(error: unknown, port: number) {
+  if (isErrnoException(error) && error.code === 'EADDRINUSE') {
+    return new PortInUseError(port, await getListeningProcesses(port));
+  }
+
+  return error;
+}
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error;
 }
 
 async function loadCatalog(config: SqlfuProjectConfig): Promise<QueryCatalog> {

@@ -21,6 +21,7 @@ import {diffSchemaSql} from './schemadiff/index.js';
 import {inspectSqliteSchemaSql, schemasEqual} from './schemadiff/sqlite/index.js';
 import {generateQueryTypes} from './typegen/index.js';
 import {startSqlfuServer} from './ui/server.js';
+import {stopProcessesListeningOnPort} from './core/port-process.js';
 
 const base = os.$context<SqlfuCommandRouterContext>();
 const schemaDriftExcludedTables = ['sqlfu_migrations'] as const;
@@ -45,6 +46,24 @@ export const router = {
       console.log('open the UI against http://local.sqlfu.dev or point a client at /api/rpc');
 
       await new Promise(() => {});
+    }),
+
+  kill: base
+    .meta({
+      description: `Stop the process listening on the local sqlfu backend port.`,
+    })
+    .input(z.object({
+      port: z.number().int().positive(),
+    }).partial().optional())
+    .handler(async ({input}) => {
+      const port = input?.port || 56081;
+      const stopped = await stopProcessesListeningOnPort(port);
+
+      if (stopped.length === 0) {
+        return `No process listening on port ${port}.`;
+      }
+
+      return `Stopped process on port ${port}: ${stopped.map((process) => process.command ? `${process.command} (${process.pid})` : String(process.pid)).join(', ')}`;
     }),
 
   generate: base

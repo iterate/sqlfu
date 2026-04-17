@@ -187,6 +187,9 @@ importers:
       vite:
         specifier: ^7.1.12
         version: 7.3.2(@types/node@24.12.0)(lightningcss@1.32.0)(sass@1.99.0)(tsx@4.21.0)(yaml@2.8.3)
+      vitest:
+        specifier: ^4.1.1
+        version: 4.1.1(@types/node@24.12.0)(vite@7.3.2(@types/node@24.12.0)(lightningcss@1.32.0)(sass@1.99.0)(tsx@4.21.0)(yaml@2.8.3))
 
 packages:
 

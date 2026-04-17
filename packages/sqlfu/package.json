@@ -1,7 +1,7 @@
 {
   "name": "sqlfu",
-  "version": "0.0.1",
-  "description": "sql-first client, migrator, diff engine, typescript generator, formatter, and ui",
+  "version": "0.0.2-0",
+  "description": "sql-first client, migrator, diff engine, typescript generator, formatter, and ui.",
   "repository": {
     "type": "git",
     "url": "https://github.com/mmkal/sqlfu.git"

@@ -1,3 +1,5 @@
+const defaultHostedApiOrigin = 'http://localhost:56081';
+
 export function resolveApiRpcUrl() {
   const apiOrigin = readApiOrigin();
   return new URL('/api/rpc', apiOrigin || window.location.origin).toString();
@@ -19,6 +21,10 @@ function readApiOrigin() {
     : '';
   if (globalValue) {
     return globalValue;
+  }
+
+  if (window.location.hostname === 'local.sqlfu.dev') {
+    return defaultHostedApiOrigin;
   }
 
   return import.meta.env.VITE_SQLFU_API_ORIGIN || '';
