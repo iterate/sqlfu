@@ -88,7 +88,7 @@ Not for the first pass.
 Keep it boring.
 
 - extend `SqlQuery` with optional `dbQueryName?: string`
-  or equivalent, if we want the runtime field name to match the emitted attr exactly
+  (runtime field name matches the OTel attribute name exactly, so instrumentation reads `query.dbQueryName` and emits `db.query.name`)
 - generated wrappers should set it from the filename without extension
 - ad hoc SQL should keep working and simply omit it
 - add one official hook point around query execution so instrumentation can read it
@@ -96,6 +96,54 @@ Keep it boring.
 The runtime should not try to infer names from SQL text.
 
 Only generated queries from checked-in files get the name automatically.
+
+### Assumptions (AFK — recorded before coding)
+
+These are the concrete choices made while the user is away. If they're wrong, this commit should be reverted and the task re-specced.
+
+1. **Field name is `dbQueryName`** (not `queryName` or `name`). Matches the wire attribute `db.query.name` directly so instrumentation is a one-liner. Still optional on `SqlQuery`.
+
+2. **Hook surface shape**: a new exported `instrumentClient(client, hook)` in `packages/sqlfu/src/core/instrument.ts` that wraps a `Client` and returns a `Client` of the same shape. The hook is a single "around" function:
+
+   ```ts
+   export interface QueryExecutionContext {
+     readonly query: SqlQuery;
+     readonly operation: 'all' | 'run' | 'iterate';
+   }
+   export type QueryExecutionHook = <TResult>(
+     context: QueryExecutionContext,
+     execute: () => TResult,
+   ) => TResult;
+   ```
+
+   An around-function is the natural shape for OTel's `tracer.startActiveSpan(name, fn)`. It's transparent to sync vs async because `TResult` can be `T | Promise<T>`.
+
+   `run` and `all` are wrapped. `iterate` is wrapped lazily (span starts on first pull). `raw` is not instrumented (intentionally — it has no name anyway). `transaction` is not instrumented in this first pass.
+
+3. **Where the hook module lives**: `packages/sqlfu/src/core/instrument.ts`, re-exported from `src/client.ts` so both `import { instrumentClient } from 'sqlfu'` and `import { instrumentClient } from 'sqlfu/client'` work.
+
+4. **OTel integration module**: not adding a dedicated `sqlfu/otel` subpath in this first pass. The end-to-end test builds the hook inline using the plain OTel JS API (a few lines). If the pattern looks right, we can fold a helper into the library in a follow-up.
+
+5. **End-to-end test location**: `packages/sqlfu/test/otel-tracing.test.ts`. Uses:
+   - `hono` + `@hono/node-server` for the real server
+   - `@opentelemetry/sdk-node`, `@opentelemetry/resources`, `@opentelemetry/semantic-conventions`, `@opentelemetry/sdk-trace-node`, `@opentelemetry/exporter-trace-otlp-http`, `@opentelemetry/instrumentation-http`
+   - A local `http.createServer` that collects `POST /v1/traces` payloads
+   - `node:sqlite` for the real DB
+   - Generates a query wrapper on disk via the existing fixture pattern, then imports it
+   - Installed as devDependencies of `packages/sqlfu`
+
+6. **Snapshot format**: normalized text tree. Minimal, human-skimmable:
+
+   ```
+   GET /profiles
+     sqlfu.list-profiles  (db.query.name=list-profiles)
+   ```
+
+   Stripped: timestamps, trace ids, span ids, durations, sdk metadata. Order of sibling spans is sorted by start time then name for stability.
+
+7. **Ad-hoc SQL test**: asserted in the same file — a second route uses `client.sql\`select 1 as x\`` and the snapshot shows no `db.query.name` attribute on that span.
+
+8. **What is NOT done in this pass**: no camelCase alias, no `db.query.summary` mirror, no `db.operation.name`, no `db.system.name`, no typegen emitting `sqlFile` into the wrapper, no changes to the query catalog. Those can follow once the mechanism is proven.
 
 ## Checklist
 
