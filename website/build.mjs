@@ -148,59 +148,39 @@ function renderLandingPage(renderedDocs) {
   return renderPage({
     title: 'sqlfu',
     body: `
-      <section class="hero">
+      <section class="hero hero-solo">
         <article class="hero-main">
-          <div class="eyebrow">sqlite-first tooling</div>
-          <h1>sql that stays in charge.</h1>
+          <div class="eyebrow lowercase">npm install sqlfu</div>
+          <h1>all you need is sql.</h1>
           <p class="lede">
-            sqlfu keeps schema, migrations, checked-in queries, type generation, diffing, and the browser studio aligned around real SQL files instead of another abstraction layer.
+            sqlfu lets you (or your agent) write schema, migrations, and queries as <code>.sql</code> files. It generates typed TypeScript wrappers alongside them. Not the abstraction of the month.
           </p>
           <div class="cta-row">
             <a class="button primary" href="/docs/">Read the docs</a>
-            <a class="button" href="#local-studio">Use the local studio</a>
           </div>
         </article>
-        <aside class="panel">
-          <div class="eyebrow">local workflow</div>
-          <p><code>npx sqlfu</code> starts the local backend on <code>localhost:56081</code>.</p>
-          <p><code>local.sqlfu.dev</code> should resolve to that local server. The browser UI talks to the backend there; the heavy client bundle stays separate from the published runtime package.</p>
-          <pre><code>npx sqlfu
-
-# then open
-http://local.sqlfu.dev</code></pre>
-        </aside>
       </section>
 
-      <h2 class="section-title">Core Surfaces</h2>
+      <figure class="showreel">
+        <img src="/docs/assets/packages/sqlfu/docs/i-know-sqlfu.webp" alt="I know sqlfu" />
+      </figure>
+
+      <h2 class="section-title">SQL first. TypeScript second.</h2>
       <section class="section-grid">
-        <article class="panel">
-          <div class="eyebrow">docs</div>
-          <p>Static documentation at <code>www.sqlfu.dev</code>, sourced from the repo markdown and rendered for the web without rewriting the content into a second format.</p>
+        <article class="panel value-panel">
+          <div class="eyebrow">source of truth</div>
+          <h3>Schema, migrations, queries. All <code>.sql</code>.</h3>
+          <p>Your schema lives in <code>definitions.sql</code>. Migrations are ordered SQL files. Queries are <code>.sql</code> files checked in next to the code that calls them. No DSL, no runtime builder to fight.</p>
         </article>
-        <article class="panel">
-          <div class="eyebrow">backend</div>
-          <p>The UI-facing API lives in <code>packages/sqlfu</code>. That is the product backend end users run locally, not a sidecar hidden in the UI package.</p>
+        <article class="panel value-panel">
+          <div class="eyebrow">types, generated</div>
+          <h3>TypeScript wrappers <i>from</i> your SQL</h3>
+          <p><code>sqlfu generate</code> reads your <code>.sql</code> files and emits typed wrappers next to them: typed params, typed rows, and a client you can call from application code. Write SQL, call it from TS.</p>
         </article>
-        <article class="panel">
-          <div class="eyebrow">client</div>
-          <p><code>packages/ui</code> is a client-only app. React, CodeMirror, and the heavier browser dependencies stay there instead of inflating the runtime package.</p>
-        </article>
-      </section>
-
-      <h2 class="section-title" id="local-studio">Local Studio</h2>
-      <section class="hero">
-        <article class="panel">
-          <p>The local studio model is intentionally boring:</p>
-          <ol>
-            <li>run <code>npx sqlfu</code> inside your project</li>
-            <li>the server resolves your local <code>sqlfu.config.ts</code></li>
-            <li>open <code>local.sqlfu.dev</code></li>
-            <li>the browser UI talks to your local backend over <code>/api/rpc</code></li>
-          </ol>
-        </article>
-        <article class="panel">
-          <div class="eyebrow">docs set</div>
-          <p>${renderedDocs.map((doc) => `<a href="${docRoute(doc.slug)}">${escapeHtml(doc.title)}</a>`).join('<br />')}</p>
+        <article class="panel value-panel">
+          <div class="eyebrow">diff-driven migrations</div>
+          <h3>Drafts your next migration</h3>
+          <p>The native SQLite diff engine compares replayed migration history against <code>definitions.sql</code> and writes the next migration for you. You review, edit for renames or backfills, and commit.</p>
         </article>
       </section>
     `,
@@ -212,7 +192,7 @@ function renderDocPage(currentDoc, renderedDocs) {
     title: `${currentDoc.title} | sqlfu`,
     body: `
       <section class="docs-shell">
-        <details class="docs-nav-shell">
+        <details class="docs-nav-shell" open>
           <summary class="docs-nav-toggle">
             <span class="docs-nav-toggle-icon" aria-hidden="true"></span>
             <span>Docs Menu</span>
@@ -230,6 +210,15 @@ function renderDocPage(currentDoc, renderedDocs) {
             ` : ''}
           </nav>
         </details>
+        <script>
+          (() => {
+            const shell = document.currentScript.previousElementSibling;
+            const mq = window.matchMedia('(max-width: 900px)');
+            const apply = () => { if (mq.matches) shell.removeAttribute('open'); else shell.setAttribute('open', ''); };
+            apply();
+            mq.addEventListener('change', apply);
+          })();
+        </script>
         <article class="doc-panel">
           <div class="doc-meta"><a href="${currentDoc.sourceUrl}" target="_blank" rel="noreferrer">Source: ${escapeHtml(path.relative(repoRoot, currentDoc.sourcePath))}</a></div>
           <div class="doc-content">
@@ -264,8 +253,7 @@ function renderPage({title, body}) {
     '      <a class="brand" href="/">sqlfu</a>',
     '      <nav class="nav">',
     '        <a href="/docs/">Docs</a>',
-    '        <a href="/docs/">Quick Start</a>',
-    '        <a href="/">Local Studio</a>',
+    `        <a href="${repositoryBaseUrl}" target="_blank" rel="noreferrer">GitHub</a>`,
     '      </nav>',
     '    </header>',
          body,

@@ -98,6 +98,10 @@ a {
   color: var(--accent);
 }
 
+.eyebrow.lowercase {
+  text-transform: lowercase;
+}
+
 .hero h1 {
   font-size: clamp(3.5rem, 12vw, 7.2rem);
   line-height: 0.9;
@@ -190,6 +194,64 @@ a {
   margin-top: 2.4rem;
   margin-bottom: 0.8rem;
   font-size: 1.7rem;
+  letter-spacing: -0.02em;
+}
+
+.value-panel h3 {
+  margin: 0.45rem 0 0.55rem;
+  font-size: 1.18rem;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+.value-panel p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.showreel {
+  margin: 2.4rem auto 0.4rem;
+  max-width: 44rem;
+  padding: 0;
+  text-align: center;
+}
+
+.showreel img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 1.4rem;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.hero-solo {
+  display: block;
+  text-align: center;
+  padding-top: 1.5rem;
+}
+
+.hero-solo .hero-main {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1.75rem 1.5rem 2.25rem;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.hero-solo h1 {
+  font-size: clamp(3.2rem, 10vw, 6rem);
+}
+
+.hero-solo .lede {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero-solo .cta-row {
+  justify-content: center;
 }
 
 .docs-shell {

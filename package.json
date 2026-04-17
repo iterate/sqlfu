@@ -12,7 +12,7 @@
     "ui": "cd packages/ui && pnpm",
     "website": "cd website && node build.mjs && pnpx serve dist",
     "infra": "pnpm exec alchemy run alchemy.run.mts",
-    "deploy": "pnpm exec alchemy deploy alchemy.run.mts",
+    "deploy": "pnpm build && pnpm exec alchemy deploy alchemy.run.mts",
     "destroy": "pnpm exec alchemy destroy alchemy.run.mts",
     "build": "pnpm --filter sqlfu build && pnpm --filter sqlfu-ui build && cd website && node build.mjs",
     "build:website": "cd website && node build.mjs",
