@@ -662,6 +662,13 @@ function buildSchemaCheckCards(
 
   return [
     toSchemaCheckCard(
+      'spuriousDefinitions',
+      'Spurious Definitions',
+      '✅ No Spurious Definitions',
+      'definitions.sql contains only schema-affecting statements.',
+      mismatchByKind.get('spuriousDefinitions'),
+    ),
+    toSchemaCheckCard(
       'repoDrift',
       'Repo Drift',
       '✅ No Repo Drift',
