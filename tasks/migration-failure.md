@@ -135,17 +135,17 @@ Explain the reasoning in more detail:
 
 ## Checklist
 
-- [ ] identify the current mismatch-analysis code path and extract or factor a migrate-specific health check from it
-- [ ] make `sqlfu migrate` fail on unhealthy preflight, even with zero pending migrations
-- [ ] make `sqlfu migrate` rerun the health check after migration execution failure
-- [ ] produce clear operator-facing error text for:
-  - [ ] unhealthy preflight
-  - [ ] failed migration but safe-to-retry
-  - [ ] failed migration and reconciliation-needed
-- [ ] add migration tests covering the four required scenarios above
+- [x] identify the current mismatch-analysis code path and extract or factor a migrate-specific health check from it _added `analyzeMigrateHealth` in `packages/sqlfu/src/api.ts`, a narrower variant that only inspects applied history and live schema (not pending/broken migrations)_
+- [x] make `sqlfu migrate` fail on unhealthy preflight, even with zero pending migrations _`applyMigrateSql` preflights before anything, and still preflights when zero pending migrations exist_
+- [x] make `sqlfu migrate` rerun the health check after migration execution failure _`applyMigrateSql` catches errors from `applyMigrations`, reruns `analyzeMigrateHealth` with the open client, and formats the failure accordingly_
+- [x] produce clear operator-facing error text for:
+  - [x] unhealthy preflight _`formatMigratePreflightFailure`_
+  - [x] failed migration but safe-to-retry _`formatMigrateFailure` with no blockers_
+  - [x] failed migration and reconciliation-needed _`formatMigrateFailure` with blockers + recommendations_
+- [x] add migration tests covering the four required scenarios above _4 new tests at the end of `describe('migrate', ...)` in `packages/sqlfu/test/migrations/migrations.test.ts`_
 - [ ] update `packages/sqlfu/README.md`
 - [ ] update `packages/sqlfu/docs/migration-model.md`
-- [ ] run the relevant test file(s)
+- [x] run the relevant test file(s) _all 55 migration tests pass_
 
 ## Acceptance Criteria
 
