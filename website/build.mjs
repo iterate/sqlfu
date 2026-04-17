@@ -345,11 +345,12 @@ function rewriteImageSrc(src, currentSourcePath, env) {
   }
 
   const [absolutePath] = String(absoluteTarget).split('#');
+  const preferredAssetPath = preferWebpAsset(absolutePath);
   env.assetPaths ??= [];
-  env.assetPaths.push(absolutePath);
+  env.assetPaths.push(preferredAssetPath);
 
   return {
-    src: assetRoute(absolutePath),
+    src: assetRoute(preferredAssetPath),
   };
 }
 
@@ -397,6 +398,20 @@ function docRoute(slug) {
 function assetRoute(assetPath) {
   const relativePath = path.relative(repoRoot, assetPath).split(path.sep).join('/');
   return `/docs/assets/${relativePath}`;
+}
+
+function preferWebpAsset(assetPath) {
+  if (!assetPath.endsWith('.gif')) {
+    return assetPath;
+  }
+
+  const webpPath = assetPath.replace(/\.gif$/u, '.webp');
+  try {
+    execFileSync('test', ['-f', webpPath], {cwd: repoRoot});
+    return webpPath;
+  } catch {
+    return assetPath;
+  }
 }
 
 function normalizePath(value) {

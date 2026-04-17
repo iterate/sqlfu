@@ -34,11 +34,14 @@ const config = {
 
 const inputPath = path.resolve(packageDir, config.input)
 const outputPath = path.resolve(packageDir, config.output)
-const palettePath = outputPath.replace(/\.gif$/i, '') + '.palette.png'
+const webpOutputPath = outputPath.replace(/\.gif$/i, '.webp')
+const scratchDir = path.join(packageDir, '.ignoreme')
+const palettePath = path.join(scratchDir, path.basename(outputPath).replace(/\.gif$/i, '.palette.png'))
 
 assertFileExists(inputPath)
 assertFileExists(config.fontFile)
 fs.mkdirSync(path.dirname(outputPath), {recursive: true})
+fs.mkdirSync(scratchDir, {recursive: true})
 
 const duration = Number(readStdout('ffprobe', [
   '-v',
@@ -60,6 +63,9 @@ const end = config.end == null ? duration : Number(config.end)
 if (!Number.isFinite(end) || end <= config.start) {
   throw new Error(`invalid time window start=${config.start} end=${config.end}`)
 }
+
+const gifLoop = Number(config.loop)
+const webpLoop = gifLoop < 0 ? 1 : gifLoop
 
 const stickerFilter = buildStickerFilter({
   duration,
@@ -96,13 +102,33 @@ run('ffmpeg', [
   '-i',
   palettePath,
   '-loop',
-  String(Number(config.loop)),
+  String(gifLoop),
   '-filter_complex',
   `${stickerFilter}[composite];[composite][1:v]paletteuse`,
   outputPath,
 ])
 
+run('ffmpeg', [
+  '-y',
+  '-i',
+  inputPath,
+  '-filter_complex',
+  stickerFilter,
+  '-loop',
+  String(webpLoop),
+  '-c:v',
+  'libwebp_anim',
+  '-quality',
+  '92',
+  '-lossless',
+  '0',
+  '-compression_level',
+  '6',
+  webpOutputPath,
+])
+
 console.log(`wrote ${path.relative(process.cwd(), outputPath)}`)
+console.log(`wrote ${path.relative(process.cwd(), webpOutputPath)}`)
 
 function buildStickerFilter({
   duration,
