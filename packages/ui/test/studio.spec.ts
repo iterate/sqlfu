@@ -5,6 +5,16 @@ import type {Locator, Page} from '@playwright/test';
 
 import {expect, test} from './fixture.ts';
 
+test('shows a helpful startup error page when the local backend is unreachable', async ({page}) => {
+  await page.goto('http://127.0.0.1:3218?apiOrigin=http://127.0.0.1:9');
+
+  await expect(page.getByRole('heading', {name: 'Welcome to sqlfu Studio'})).toBeVisible();
+  await expect(page.getByText('Connecting to the sqlfu backend on 127.0.0.1:9')).toBeVisible();
+  await expect(page.getByRole('heading', {name: 'Chrome Local Network Access'})).toBeVisible();
+  await expect(page.getByRole('heading', {name: 'npx sqlfu?'})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Retry connection'})).toBeVisible();
+});
+
 test('schema page shows mismatch cards and can run the recommended sqlfu draft command', async ({page, projectDir}) => {
   const migrationsDir = path.join(projectDir, 'migrations');
 

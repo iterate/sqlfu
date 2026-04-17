@@ -50,6 +50,100 @@ table {
   min-height: 100vh;
 }
 
+.startup-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.startup-card {
+  width: min(46rem, 100%);
+  display: grid;
+  gap: 1.25rem;
+  padding: 2rem;
+  border: 1px solid var(--line);
+  border-radius: 1.5rem;
+  background: rgba(255, 250, 242, 0.94);
+  box-shadow: var(--shadow);
+}
+
+.startup-lede {
+  font-size: 1.05rem;
+  color: var(--muted);
+}
+
+.startup-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.startup-section {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.startup-link {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.startup-steps {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.startup-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.startup-error-details {
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.48);
+  padding: 1rem 1.1rem;
+}
+
+.startup-error-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.startup-error-details pre {
+  margin: 0.9rem 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (min-width: 900px) {
+  .startup-card {
+    width: min(64rem, 100%);
+  }
+
+  .startup-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .startup-section-wide {
+    grid-column: 1 / -1;
+  }
+
+  .startup-grid > .startup-section {
+    height: 100%;
+    align-content: start;
+  }
+}
+
 .shad-dialog-overlay {
   position: fixed;
   inset: 0;

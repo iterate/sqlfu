@@ -1,4 +1,4 @@
-import {Suspense, useRef, useSyncExternalStore} from 'react';
+import {Component, Suspense, useRef, useSyncExternalStore} from 'react';
 import type {ReactNode} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createORPCClient} from '@orpc/client';
@@ -45,10 +45,15 @@ import {
   DialogTitle,
 } from './components/ui/dialog.js';
 import {AppToaster} from './components/ui/toaster.js';
-import {resolveApiRpcUrl} from './runtime.js';
+import {resolveApiOrigin, resolveApiRpcUrl} from './runtime.js';
 import './styles.css';
 
 const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+    },
+  },
   mutationCache: new MutationCache({
     onError: (error) => {
       if (parseConfirmationRequest(error)) {
@@ -142,12 +147,36 @@ function createConfirmationDialogStore() {
 
 const confirmationDialogStore = createConfirmationDialogStore();
 
+type StartupErrorBoundaryState = {
+  error: unknown;
+};
+
+class StartupErrorBoundary extends Component<{children: ReactNode}, StartupErrorBoundaryState> {
+  state: StartupErrorBoundaryState = {
+    error: null,
+  };
+
+  static getDerivedStateFromError(error: unknown) {
+    return {error};
+  }
+
+  render() {
+    if (this.state.error) {
+      return <StartupFailureScreen error={this.state.error} />;
+    }
+
+    return this.props.children;
+  }
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Suspense fallback={<Shell loading />}>
-        <Studio />
-      </Suspense>
+      <StartupErrorBoundary>
+        <Suspense fallback={<Shell loading />}>
+          <Studio />
+        </Suspense>
+      </StartupErrorBoundary>
       <ConfirmationDialogHost />
       <AppToaster />
     </QueryClientProvider>
@@ -156,6 +185,93 @@ function App() {
 
 async function invalidateSchemaContent() {
   await queryClient.invalidateQueries({queryKey: orpc.schema.key()});
+}
+
+function StartupFailureScreen(input: {
+  error: unknown;
+}) {
+  const apiOrigin = resolveApiOrigin();
+  const apiHost = new URL(apiOrigin).host;
+  const browserName = detectBrowserName();
+  const errorMessage = input.error instanceof Error ? input.error.message : String(input.error);
+
+  return (
+    <main className="startup-shell">
+      <section className="startup-card">
+        <div className="eyebrow">Hey there</div>
+        <h1>Welcome to sqlfu Studio</h1>
+        <p className="startup-lede">Connecting to the sqlfu backend on {apiHost}</p>
+
+        <div className="startup-grid">
+          <section className="startup-section">
+            <h2><code>npx sqlfu</code>?</h2>
+            <p>Make sure the local sqlfu backend is up and running.</p>
+            <ol className="startup-steps">
+              <li>Run <code>npx sqlfu</code>.</li>
+            </ol>
+            <div className="startup-actions">
+              <button
+                className="button primary"
+                type="button"
+                onClick={() => window.location.reload()}
+              >
+                Retry connection
+              </button>
+            </div>
+            <p>
+              Still stuck? Open an issue on{' '}
+              <a
+                className="startup-link"
+                href="https://github.com/mmkal/sqlfu/issues/new"
+                target="_blank"
+                rel="noreferrer"
+              >
+                GitHub
+              </a>.
+            </p>
+          </section>
+
+          <section className="startup-section">
+            {browserName === 'Safari' || browserName === 'Brave' ? (
+              <>
+                <h2>Using Safari or Brave?</h2>
+                <p>
+                  Safari and Brave block localhost access more aggressively than Chrome.
+                  You may need to install a certificate, then restart the local backend. Instructions
+                </p>
+                <ol className="startup-steps">
+                  <li>Run <code>brew install mkcert</code> or follow <a className="startup-link" href="https://github.com/FiloSottile/mkcert" target="_blank" rel="noreferrer">mkcert installation instructions</a>.</li>
+                  <li>Run <code>mkcert -install</code>.</li>
+                  <li>Restart the local backend and reload the page.</li>
+                </ol>
+                {browserName === 'Brave' ? (
+                  <p>On Brave you can also disable Brave Shields for this site.</p>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <h2>Chrome Local Network Access</h2>
+                <p>
+                  Recent Chrome and Chromium updates may block local network access by default.
+                  Open site information in the URL bar and make sure local network access is enabled for this site.
+                </p>
+                <ol className="startup-steps">
+                  <li>Open site information in the URL bar.</li>
+                  <li>Enable local network access for this site.</li>
+                  <li>Reload the page.</li>
+                </ol>
+              </>
+            )}
+          </section>
+        </div>
+
+        <details className="startup-error-details">
+          <summary>Technical details</summary>
+          <pre>{errorMessage}</pre>
+        </details>
+      </section>
+    </main>
+  );
 }
 
 function ConfirmationDialogHost() {
@@ -2088,6 +2204,25 @@ function normalizeSqlDraft(value: string) {
   return value.trimEnd();
 }
 
+function detectBrowserName() {
+  const userAgent = navigator.userAgent;
+  if (/Brave/u.test(userAgent) || 'brave' in navigator) {
+    return 'Brave';
+  }
+  if (/Safari\//u.test(userAgent) && !/Chrome\//u.test(userAgent) && !/Chromium/u.test(userAgent) && !/Edg\//u.test(userAgent)) {
+    return 'Safari';
+  }
+  if (/Edg\//u.test(userAgent)) {
+    return 'Edge';
+  }
+  if (/Chromium/u.test(userAgent)) {
+    return 'Chromium';
+  }
+  if (/Chrome\//u.test(userAgent)) {
+    return 'Chrome';
+  }
+  return 'browser';
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
