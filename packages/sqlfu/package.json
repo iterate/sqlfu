@@ -1,7 +1,7 @@
 {
   "name": "sqlfu",
-  "version": "0.0.0",
-  "description": "Slim SQLite tooling around native SQLite, D1, typesql, and sqldef",
+  "version": "0.0.1",
+  "description": "sql-first client, migrator, diff engine, typescript generator, formatter, and ui",
   "repository": {
     "type": "git",
     "url": "https://github.com/mmkal/sqlfu.git"
