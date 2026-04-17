@@ -1,5 +1,6 @@
 import {SQLite, sql} from '@codemirror/lang-sql';
 import type {SQLNamespace} from '@codemirror/lang-sql';
+import {javascript} from '@codemirror/lang-javascript';
 import {yaml} from '@codemirror/lang-yaml';
 import {EditorState, type Extension, Prec} from '@codemirror/state';
 import {lintGutter, linter} from '@codemirror/lint';
@@ -147,6 +148,7 @@ function buildSqlSchema(relations: readonly StudioRelation[]): SQLNamespace {
 function buildTextExtensions(readOnly: boolean, language: 'plain' | 'yaml' | 'markdown' | 'typescript'): Extension[] {
   return [
     ...(language === 'yaml' ? [yaml()] : []),
+    ...(language === 'typescript' ? [javascript({typescript: true})] : []),
     EditorView.lineWrapping,
     EditorState.readOnly.of(readOnly),
     EditorView.editable.of(!readOnly),
