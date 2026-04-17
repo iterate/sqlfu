@@ -1,4 +1,11 @@
 // @ts-nocheck
+/*
+ * Vendored from https://github.com/sql-formatter-org/sql-formatter at version 15.7.3 /
+ * commit a66b90020b7373155aa2e95a1bdc7d18055ae601 (MIT).
+ *
+ * See ./AGENTS.md for the upstream pin and the set of local modifications that should be
+ * reapplied when resyncing from upstream.
+ */
 export { supportedDialects, format, formatDialect } from './sqlFormatter.js';
 export { expandPhrases } from './expandPhrases.js';
 export { ConfigError } from './validateConfig.js';

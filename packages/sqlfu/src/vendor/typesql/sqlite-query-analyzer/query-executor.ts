@@ -1,3 +1,13 @@
+/*
+ * Vendored from https://github.com/wsporto/typesql at commit
+ * f0356201d41f3f317824968a3f1c7a90fbafdc99 (MIT).
+ *
+ * Local modifications:
+ * - route runtime database loading through `SQLFU_SQLITE_RUNTIME` so sqlfu can pick
+ *   between bun:sqlite, node:sqlite, and better-sqlite3 at runtime
+ * - import Either/Result helpers from sqlfu's vendored `small-utils` instead of neverthrow
+ * - ESM-compatible relative import suffixes
+ */
 import { type Either, Result, err, left, ok, right } from '../../small-utils.js';
 import type { DatabaseClient, TypeSqlError } from '../types.js';
 import type { ColumnSchema, Table } from '../mysql-query-analyzer/types.js';
