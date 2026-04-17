@@ -1,6 +1,11 @@
 /*
  * SQLite-specific schemadiff planning and statement rendering.
  * This file owns deciding what operations are needed for SQLite schema changes and ordering them deterministically.
+ *
+ * Inspired by @pgkit/migra (https://github.com/mmkal/pgkit/tree/main/packages/migra), a TypeScript port of djrobstep's
+ * Python `migra` (https://github.com/djrobstep/migra). The table-rebuild strategy and the "drop and recreate dependents
+ * even when their text did not change" ordering are specific to SQLite and do not come from upstream. What is borrowed is
+ * the general approach of producing an ordered plan from compared inspected models rather than from raw SQL diffs.
  */
 import {graphSequencer} from '../graph-sequencer.js';
 import {

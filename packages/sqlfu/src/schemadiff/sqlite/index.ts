@@ -1,6 +1,11 @@
 /*
  * SQLite-specific schemadiff entrypoint.
  * This file wires together SQLite inspection, planning, and scratch-database execution, and is the main seam for future dialect entrypoints.
+ *
+ * Inspired by @pgkit/migra (https://github.com/mmkal/pgkit/tree/main/packages/migra), which is itself a TypeScript port of
+ * djrobstep's Python `migra` (https://github.com/djrobstep/migra). See ../AGENTS.md for the full inspiration notes. This file
+ * does not copy code from those projects, but borrows the "materialize both schemas into scratch databases, inspect, diff the
+ * inspected models, emit ordered statements" shape.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';

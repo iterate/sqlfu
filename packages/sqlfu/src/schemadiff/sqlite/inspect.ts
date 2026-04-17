@@ -1,6 +1,11 @@
 /*
  * SQLite-specific schema inspection.
  * This file owns reading SQLite catalogs and PRAGMA output into normalized inspected objects, and is the seam for future non-SQLite inspectors.
+ *
+ * Inspired by @pgkit/schemainspect (https://github.com/mmkal/pgkit/tree/main/packages/schemainspect), which is itself a
+ * TypeScript port of djrobstep's Python `schemainspect` (https://github.com/djrobstep/schemainspect). SQLite's catalog is
+ * very different from Postgres', so the queries and the inspected model shape are sqlfu-specific. What is borrowed is the
+ * idea of representing the database as a typed inspected object tree before diffing, rather than diffing SQL text directly.
  */
 import type {Client} from '../../core/types.js';
 import {quoteSqlString} from './identifiers.js';
