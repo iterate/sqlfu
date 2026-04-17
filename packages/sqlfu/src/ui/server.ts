@@ -50,6 +50,7 @@ export type StartSqlfuServerOptions = {
   port?: number;
   projectRoot?: string;
   defaultProjectName?: string;
+  allowUnknownHosts?: boolean;
   projectsRoot?: string;
   templateRoot?: string;
   dev?: boolean;
@@ -427,6 +428,7 @@ export async function startSqlfuServer(input: StartSqlfuServerOptions = {}) {
         projectsRoot: path.resolve(input.projectsRoot ?? path.join(packageRoot, 'test', 'projects')),
         templateRoot: path.resolve(input.templateRoot ?? path.join(packageRoot, 'test', 'template-project')),
         defaultProjectName: input.defaultProjectName ?? 'dev-project',
+        allowUnknownHosts: input.allowUnknownHosts || false,
       });
   const rpcHandler = new RPCHandler(uiRouter);
   const httpServer = input.tls
@@ -535,7 +537,8 @@ async function runCliServer() {
         }
       : undefined,
   });
-  console.log(`sqlfu local server listening on ${(tlsKeyPath && tlsCertPath) ? 'https' : 'http'}://localhost:${server.port}`);
+  const protocol = (tlsKeyPath && tlsCertPath) ? 'https' : 'http';
+  console.log(`sqlfu local server listening on ${protocol}://localhost:${server.port}`);
 }
 
 async function loadCatalog(config: SqlfuProjectConfig): Promise<QueryCatalog> {
@@ -1291,6 +1294,7 @@ function createSubdomainProjectResolver(input: {
   projectsRoot: string;
   templateRoot: string;
   defaultProjectName: string;
+  allowUnknownHosts: boolean;
 }): ProjectResolver {
   const initPromises = new Map<string, Promise<SqlfuProjectConfig>>();
 
@@ -1299,6 +1303,7 @@ function createSubdomainProjectResolver(input: {
       host,
       projectHeader,
       defaultProjectName: input.defaultProjectName,
+      allowUnknownHosts: input.allowUnknownHosts,
     });
     const existing = initPromises.get(projectName);
     if (existing) {
@@ -1401,6 +1406,7 @@ function projectNameFromRequest(input: {
   host: string;
   projectHeader?: string;
   defaultProjectName: string;
+  allowUnknownHosts: boolean;
 }) {
   const projectName = input.projectHeader?.trim();
   if (projectName) {
@@ -1410,15 +1416,18 @@ function projectNameFromRequest(input: {
     return projectName;
   }
 
-  return projectNameFromHost(input.host, input.defaultProjectName);
+  return projectNameFromHost(input.host, input.defaultProjectName, input.allowUnknownHosts);
 }
 
-function projectNameFromHost(host: string, defaultProjectName: string) {
+function projectNameFromHost(host: string, defaultProjectName: string, allowUnknownHosts: boolean) {
   const hostname = host.split(':')[0] ?? host;
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return defaultProjectName;
   }
   if (!hostname.endsWith('.localhost')) {
+    if (allowUnknownHosts) {
+      return defaultProjectName;
+    }
     throw new Error(`Unsupported host: ${host}`);
   }
 
@@ -1549,6 +1558,11 @@ async function createUiDevServer(root: string, httpServer: http.Server) {
     root,
     appType: 'custom',
     server: {
+      allowedHosts: [
+        'local.sqlfu.dev',
+        '.ngrok.app',
+        '.ngrok.dev',
+      ],
       middlewareMode: true,
       hmr: {
         server: httpServer,

@@ -16,4 +16,4 @@ export type {
   StudioSchemaResponse,
   TableRowKey,
   TableRowsResponse,
-} from 'sqlfu/ui';
+} from 'sqlfu/ui/browser';

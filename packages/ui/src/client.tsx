@@ -21,8 +21,8 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query';
 
-import {queryNickname} from 'sqlfu/naming';
-import type {QueryCatalogEntry} from 'sqlfu';
+import {queryNickname} from 'sqlfu/browser';
+import type {QueryCatalogEntry} from 'sqlfu/browser';
 import type {
   QueryExecutionResponse,
   SchemaAuthorityMigration,
@@ -34,7 +34,7 @@ import type {
   TableRowsResponse,
 } from './shared.js';
 import {columnWidthAlgorithm} from './column-width.js';
-import type {UiRouter} from 'sqlfu/ui';
+import type {UiRouter} from 'sqlfu/ui/browser';
 import {SqlCodeMirror, TextCodeMirror, TextDiffCodeMirror} from './sql-codemirror.js';
 import {
   Dialog,
@@ -199,7 +199,7 @@ function StartupFailureScreen(input: {
     <main className="startup-shell">
       <section className="startup-card">
         <div className="eyebrow">Hey there</div>
-        <h1>Welcome to sqlfu Studio</h1>
+        <h1><code>sqlfu</code></h1>
         <p className="startup-lede">Connecting to the sqlfu backend on {apiHost}</p>
 
         <div className="startup-grid">

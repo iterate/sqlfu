@@ -67,7 +67,7 @@ Current working idea:
   - open the local studio instructions
   - run `npx sqlfu`
   - load the local backend successfully
-- [x] Add a root launcher for the `local.sqlfu.dev` dev simulation. *`pnpm local-sqlfu-dev` now starts a standalone Vite UI server, a standalone sqlfu backend server, and an `ngrok` tunnel that points only at the UI server.*
+- [x] Add a root launcher for the `local.sqlfu.dev` dev simulation. *`pnpm local.sqlfu.dev` now delegates to the UI package launcher, which starts a standalone Vite UI server, a standalone sqlfu backend server, and an `ngrok` tunnel that points only at the UI server.*
 - [x] Document the local-vs-hosted model clearly so users know what runs where. *Covered in the website landing page, `packages/sqlfu/README.md`, and the local backend HTML page.*
 
 ## Recommended First Slice
@@ -104,4 +104,5 @@ That gives us the intended local product model without taking on remote executio
 - 2026-04-16: implemented backend move to `packages/sqlfu/src/ui/server.ts`, added `sqlfu/ui` exports, deleted `packages/ui/src/server.ts`, and switched the UI test harness to import the backend from `sqlfu`.
 - 2026-04-16: `packages/sqlfu/src/cli.ts` now starts the local backend by default when invoked as `npx sqlfu`.
 - 2026-04-16: added `website/` with a zero-dependency static build script that renders existing markdown into a web docs site.
-- 2026-04-16: added a root `pnpm local-sqlfu-dev` launcher that now runs the UI and backend on separate ports, points `ngrok` only at the UI server, and configures the browser client to talk to the standalone backend origin.
+- 2026-04-16: added a root `pnpm local.sqlfu.dev` launcher that now delegates to the UI package script, runs the UI and backend on separate ports, points `ngrok` only at the UI server, and configures the browser client to talk to the standalone backend origin.
+- 2026-04-17: kept the default Playwright `webServer` on `packages/ui/test/start-server.ts`, switched that harness to import the sqlfu UI server from source, and added `packages/ui/test/local-sqlfu-dev.spec.ts` so the ngrok path is tested as an extra layer instead of replacing the normal UI+API test server.

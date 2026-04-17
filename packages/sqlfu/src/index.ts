@@ -1,5 +1,6 @@
 export * from './client.js';
 export * from './core/config.js';
+export * from './core/naming.js';
 export * from './formatter.js';
 export * from './migrations/index.js';
 export * from './schemadiff/index.js';

@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import http from 'node:http';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 
@@ -72,6 +73,24 @@ test('sqlfu server can serve the packages/ui Vite client in dev mode', async () 
   });
 });
 
+test('sqlfu server can serve the packages/ui Vite client in dev mode for ngrok-style hosts when opted in', async () => {
+  await using fixture = await createUiServerFixture({
+    dev: true,
+    uiRoot: path.resolve(process.cwd(), '..', 'ui'),
+    allowUnknownHosts: true,
+  });
+
+  const homeResponse = await requestWithHost({
+    url: fixture.baseUrl,
+    host: 'sqlfu-local.ngrok.app',
+  });
+
+  expect(homeResponse).toMatchObject({
+    status: 200,
+  });
+  expect(homeResponse.body).toMatch(/@vite\/client|\/src\/client\.tsx/u);
+});
+
 test('sqlfu server accepts secure cross-origin preflight for rpc requests', async () => {
   await using fixture = await createUiServerFixture();
 
@@ -98,6 +117,7 @@ test('sqlfu server accepts secure cross-origin preflight for rpc requests', asyn
 async function createUiServerFixture(input: {
   dev?: boolean;
   uiRoot?: string;
+  allowUnknownHosts?: boolean;
 } = {}) {
   const root = await createTempFixtureRoot('ui-server');
   const dbPath = path.join(root, 'app.db');
@@ -140,6 +160,7 @@ async function createUiServerFixture(input: {
   const server = await startSqlfuServer({
     port: 0,
     projectRoot: root,
+    allowUnknownHosts: input.allowUnknownHosts || false,
     dev: input.dev,
     ui: input.uiRoot
       ? {
@@ -161,4 +182,37 @@ async function createUiServerFixture(input: {
       await fs.rm(root, {recursive: true, force: true});
     },
   };
+}
+
+function requestWithHost(input: {
+  url: string;
+  host: string;
+}) {
+  return new Promise<{status: number; body: string}>((resolve, reject) => {
+    const url = new URL(input.url);
+    const request = http.request({
+      hostname: url.hostname,
+      port: Number(url.port),
+      path: url.pathname,
+      method: 'GET',
+      headers: {
+        host: input.host,
+      },
+    }, (response) => {
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => {
+        body += chunk;
+      });
+      response.on('end', () => {
+        resolve({
+          status: response.statusCode || 0,
+          body,
+        });
+      });
+    });
+
+    request.once('error', reject);
+    request.end();
+  });
 }

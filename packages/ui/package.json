@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm exec tsx test/start-server.ts dev-project --dev",
+    "local.sqlfu.dev": "pnpm exec tsx test/local.sqlfu.dev.ts",
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "playwright test"

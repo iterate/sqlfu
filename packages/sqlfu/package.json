@@ -11,15 +11,49 @@
     "sqlfu": "./dist/cli.js"
   },
   "exports": {
-    ".": "./dist/index.js",
-    "./client": "./dist/client.js",
-    "./api": "./dist/api.js",
-    "./cli": "./dist/cli.js",
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts",
+    "./client": "./src/client.ts",
+    "./api": "./src/api.ts",
+    "./cli": "./src/cli.ts",
     "./ui": {
-      "types": "./src/ui/index.ts",
-      "default": "./dist/ui/index.js"
+      "browser": "./src/ui/browser.ts",
+      "default": "./src/ui/index.ts"
     },
-    "./naming": "./src/core/naming.ts"
+    "./ui/browser": "./src/ui/browser.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./browser": {
+        "types": "./dist/browser.d.ts",
+        "default": "./dist/browser.js"
+      },
+      "./client": {
+        "types": "./dist/client.d.ts",
+        "default": "./dist/client.js"
+      },
+      "./api": {
+        "types": "./dist/api.d.ts",
+        "default": "./dist/api.js"
+      },
+      "./cli": {
+        "types": "./dist/cli.d.ts",
+        "default": "./dist/cli.js"
+      },
+      "./ui": {
+        "types": "./dist/ui/index.d.ts",
+        "browser": "./dist/ui/browser.js",
+        "default": "./dist/ui/index.js"
+      },
+      "./ui/browser": {
+        "types": "./dist/ui/browser.d.ts",
+        "default": "./dist/ui/browser.js"
+      }
+    }
   },
   "files": [
     "dist"

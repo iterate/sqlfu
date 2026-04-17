@@ -4,18 +4,19 @@ import https from 'node:https';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-import {ensureLocalhostCertificates} from '../packages/sqlfu/src/ui/certs.ts';
+import {ensureLocalhostCertificates} from 'sqlfu/ui';
+import {ensureNgrokTunnel, stopNgrokTunnel} from './ngrok.ts';
 
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(scriptDir, '..');
-const uiRoot = path.join(repoRoot, 'packages', 'ui');
-const defaultProjectRoot = path.join(uiRoot, 'test', 'projects', 'dev-project');
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const uiRoot = path.join(currentDir, '..');
+const repoRoot = path.resolve(uiRoot, '..', '..');
+const defaultProjectRoot = path.join(currentDir, 'projects', 'dev-project');
 
 const projectRoot = path.resolve(readOption('--project-root') || defaultProjectRoot);
 const apiPort = Number(readOption('--api-port') || '3217');
 const uiPort = Number(readOption('--ui-port') || '3218');
 const ngrokDomain = readOption('--ngrok-domain') || process.env.SQLFU_NGROK_DOMAIN || '';
-const ngrokUrl = readOption('--ngrok-url') || process.env.SQLFU_NGROK_URL || 'https://sqlfu-local.ngrok.app';
+const ngrokUrl = readOption('--ngrok-url') || process.env.SQLFU_NGROK_URL || '';
 const useNgrok = !process.argv.includes('--no-ngrok');
 
 assertPort(apiPort, '--api-port');
@@ -35,14 +36,14 @@ async function main() {
     'pnpm',
     'exec',
     'tsx',
-    'packages/sqlfu/src/ui/server.ts',
+    'src/ui/server.ts',
     '--project-root',
     projectRoot,
     '--port',
     String(apiPort),
     ...(certs ? ['--tls-key', certs.keyPath, '--tls-cert', certs.certPath] : []),
   ], {
-    cwd: repoRoot,
+    cwd: path.join(repoRoot, 'packages', 'sqlfu'),
   });
 
   try {
@@ -69,11 +70,9 @@ async function main() {
     try {
       await waitForHttpServerOrExit(ui, uiOrigin, false);
 
-      console.log(`sqlfu backend origin: ${apiOrigin}`);
-      console.log(`sqlfu ui origin: ${uiOrigin}`);
       console.log(`project root: ${projectRoot}`);
       if (!certs) {
-        console.log('mkcert not found; backend is using plain HTTP, which is less realistic than the intended localhost HTTPS flow');
+        console.log('mkcert not found; backend is using plain HTTP');
       }
 
       const tunnel = useNgrok
@@ -94,7 +93,7 @@ async function main() {
       console.log('press Ctrl+C to stop');
       await waitForShutdown();
     } finally {
-      ngrokProcess?.kill('SIGTERM');
+      await stopNgrokTunnel(ngrokProcess);
       ui.kill('SIGTERM');
       await waitForExit(ui);
     }
@@ -197,197 +196,6 @@ function requestStatus(origin: string, insecureTls: boolean) {
     });
     request.end();
   });
-}
-
-async function ensureNgrokTunnel(input: {
-  port: number;
-  domain: string;
-  url: string;
-}) {
-  if (!hasCommand('ngrok')) {
-    return null;
-  }
-
-  const existing = await findExistingNgrokTunnel(input);
-  if (existing) {
-    return {
-      ...existing,
-      process: undefined,
-      reused: true,
-    };
-  }
-
-  const args = ['http', String(input.port), '--log=stdout', '--log-format=json', '--log-level=debug'];
-  if (input.url) {
-    args.push('--url', input.url);
-  }
-  if (input.domain) {
-    args.push('--domain', input.domain);
-  }
-
-  const process = childProcess.spawn('ngrok', args, {
-    cwd: repoRoot,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-
-  let stderr = '';
-  let stdout = '';
-  process.stdout?.on('data', (chunk) => {
-    stdout += chunk.toString();
-  });
-  process.stderr?.on('data', (chunk) => {
-    stderr += chunk.toString();
-  });
-
-  const tunnel = await waitForNgrokTunnel(input, process);
-  if (!tunnel) {
-    process.kill('SIGTERM');
-    throw new Error(stderr.trim() || stdout.trim() || `ngrok did not expose localhost:${input.port} in time`);
-  }
-
-  return {
-    ...tunnel,
-    process,
-    reused: false,
-  };
-}
-
-async function findExistingNgrokTunnel(input: {
-  port: number;
-  domain: string;
-  url: string;
-}) {
-  const tunnels = await readNgrokTunnels();
-  return tunnels.find((tunnel) => {
-    if (!tunnel.config?.addr?.endsWith(`:${input.port}`)) {
-      return false;
-    }
-    if (input.url && tunnel.public_url !== input.url) {
-      return false;
-    }
-    if (input.domain && !tunnel.public_url.includes(input.domain)) {
-      return false;
-    }
-    return true;
-  }) || null;
-}
-
-async function waitForNgrokTunnel(input: {
-  port: number;
-  domain: string;
-  url: string;
-}, process: childProcess.ChildProcess) {
-  return await new Promise<{public_url: string; config?: {addr?: string}} | null>((resolve, reject) => {
-    let output = '';
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve(null);
-    }, 15_000);
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      process.stdout?.off('data', onStdout);
-      process.off('exit', onExit);
-      process.off('error', onError);
-    };
-
-    const onStdout = (chunk: Buffer | string) => {
-      output += chunk.toString();
-      const lines = output.split('\n');
-      output = lines.pop() || '';
-
-      for (const line of lines) {
-        const tunnel = parseNgrokTunnelLine(line, input);
-        if (tunnel) {
-          cleanup();
-          resolve(tunnel);
-          return;
-        }
-      }
-    };
-
-    const onExit = (code: number | null) => {
-      cleanup();
-      if (code === 0) {
-        resolve(null);
-        return;
-      }
-      reject(new Error(`ngrok exited with code ${code}`));
-    };
-
-    const onError = (error: Error) => {
-      cleanup();
-      reject(error);
-    };
-
-    process.stdout?.on('data', onStdout);
-    process.once('exit', onExit);
-    process.once('error', onError);
-  });
-}
-
-async function readNgrokTunnels() {
-  try {
-    const response = await fetch('http://127.0.0.1:4040/api/tunnels', {
-      signal: AbortSignal.timeout(1_000),
-    });
-    if (!response.ok) {
-      return [];
-    }
-    const body = await response.json() as {
-      tunnels?: Array<{
-        public_url: string;
-        config?: {
-          addr?: string;
-        };
-      }>;
-    };
-    return body.tunnels || [];
-  } catch {
-    return [];
-  }
-}
-
-function parseNgrokTunnelLine(
-  line: string,
-  input: {
-    port: number;
-    domain: string;
-    url: string;
-  },
-) {
-  try {
-    const parsed = JSON.parse(line) as {
-      msg?: string;
-      url?: string;
-      addr?: string;
-    };
-    if (parsed.msg !== 'started tunnel' || typeof parsed.url !== 'string') {
-      return null;
-    }
-    if (input.url && parsed.url !== input.url) {
-      return null;
-    }
-    if (input.domain && !parsed.url.includes(input.domain)) {
-      return null;
-    }
-    return {
-      public_url: parsed.url,
-      config: {
-        addr: typeof parsed.addr === 'string' ? parsed.addr : `http://localhost:${input.port}`,
-      },
-    };
-  } catch {
-    return null;
-  }
-}
-
-function hasCommand(command: string) {
-  const result = childProcess.spawnSync(command, ['version'], {
-    cwd: repoRoot,
-    stdio: 'ignore',
-  });
-  return result.status === 0;
 }
 
 function readOption(name: string) {
