@@ -136,6 +136,9 @@ function createMarkdownRenderer(currentDoc) {
     const src = token.attrGet('src');
     if (src) {
       const rewritten = rewriteImageSrc(src, currentDoc.sourcePath, env);
+      if (rewritten.skipRender) {
+        return '';
+      }
       token.attrSet('src', rewritten.src);
     }
     return defaultImage(tokens, index, options, env, self);
@@ -339,6 +342,7 @@ function rewriteImageSrc(src, currentSourcePath, env) {
 
   return {
     src: assetRoute(preferredAssetPath),
+    skipRender: /i-know-sqlfu\.(gif|webp)$/u.test(preferredAssetPath),
   };
 }
 
