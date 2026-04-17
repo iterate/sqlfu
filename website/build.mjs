@@ -96,8 +96,8 @@ function createMarkdownRenderer(currentDoc) {
     typographer: false,
   });
 
-  const defaultHeadingOpen = md.renderer.rules.heading_open
-    ?? ((tokens, index, options, env, self) => self.renderToken(tokens, index, options));
+  const defaultHeadingOpen =
+    md.renderer.rules.heading_open ?? ((tokens, index, options, env, self) => self.renderToken(tokens, index, options));
   md.renderer.rules.heading_open = (tokens, index, options, env, self) => {
     const headingToken = tokens[index];
     const inlineToken = tokens[index + 1];
@@ -113,8 +113,8 @@ function createMarkdownRenderer(currentDoc) {
     return defaultHeadingOpen(tokens, index, options, env, self);
   };
 
-  const defaultLinkOpen = md.renderer.rules.link_open
-    ?? ((tokens, index, options, env, self) => self.renderToken(tokens, index, options));
+  const defaultLinkOpen =
+    md.renderer.rules.link_open ?? ((tokens, index, options, env, self) => self.renderToken(tokens, index, options));
   md.renderer.rules.link_open = (tokens, index, options, env, self) => {
     const token = tokens[index];
     const href = token.attrGet('href');
@@ -129,8 +129,8 @@ function createMarkdownRenderer(currentDoc) {
     return defaultLinkOpen(tokens, index, options, env, self);
   };
 
-  const defaultImage = md.renderer.rules.image
-    ?? ((tokens, index, options, env, self) => self.renderToken(tokens, index, options));
+  const defaultImage =
+    md.renderer.rules.image ?? ((tokens, index, options, env, self) => self.renderToken(tokens, index, options));
   md.renderer.rules.image = (tokens, index, options, env, self) => {
     const token = tokens[index];
     const src = token.attrGet('src');
@@ -205,12 +205,16 @@ function renderDocPage(currentDoc, renderedDocs) {
             <div class="docs-group">
               ${renderedDocs.map((doc) => `<a class="doc-link ${doc.slug === currentDoc.slug ? 'active' : ''}" href="${doc.slug === 'sqlfu' ? '/docs/' : docRoute(doc.slug)}">${escapeHtml(doc.title)}</a>`).join('\n')}
             </div>
-            ${currentDoc.headings.length > 0 ? `
+            ${
+              currentDoc.headings.length > 0
+                ? `
               <h2>On This Page</h2>
               <div class="docs-group toc-list">
                 ${renderTocItems(currentDoc.headings)}
               </div>
-            ` : ''}
+            `
+                : ''
+            }
           </nav>
         </details>
         <script>
@@ -234,10 +238,14 @@ function renderDocPage(currentDoc, renderedDocs) {
 }
 
 function renderTocItems(items) {
-  return items.map((item) => `
+  return items
+    .map(
+      (item) => `
     <a class="toc-link toc-depth-${item.level}" href="#${item.id}">${escapeHtml(item.title)}</a>
     ${item.children.length > 0 ? renderTocItems(item.children) : ''}
-  `).join('\n');
+  `,
+    )
+    .join('\n');
 }
 
 function renderPage({title, body}) {
@@ -259,7 +267,7 @@ function renderPage({title, body}) {
     `        <a href="${repositoryBaseUrl}" target="_blank" rel="noreferrer">GitHub</a>`,
     '      </nav>',
     '    </header>',
-         body,
+    body,
     '    <footer class="footer">',
     '      Static docs site for sqlfu. Local studio backend lives at <code>local.sqlfu.dev</code> when <code>npx sqlfu</code> is running.',
     '    </footer>',
@@ -419,8 +427,5 @@ function slugify(value) {
 }
 
 function escapeHtml(value) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }

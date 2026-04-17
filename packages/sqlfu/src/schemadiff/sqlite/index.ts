@@ -106,7 +106,9 @@ async function cleanupDbFiles(dbPath: string) {
 function assertNoUnsupportedSqlText(sql: string, source: 'baselineSql' | 'desiredSql'): void {
   const normalizedSql = sql.toLowerCase();
   if (/\bcreate\s+virtual\s+table\b/u.test(normalizedSql)) {
-    throw new Error(`sqlite virtual tables are not supported by the native schema diff engine yet: found virtual table sql in ${source}`);
+    throw new Error(
+      `sqlite virtual tables are not supported by the native schema diff engine yet: found virtual table sql in ${source}`,
+    );
   }
 }
 
@@ -118,9 +120,7 @@ async function applySchemaSql(client: Client, sql: string): Promise<void> {
     ...statements.filter((statement) => isCreateViewStatement(statement)),
     ...statements.filter(
       (statement) =>
-        !isCreateTableStatement(statement) &&
-        !isCreateIndexStatement(statement) &&
-        !isCreateViewStatement(statement),
+        !isCreateTableStatement(statement) && !isCreateIndexStatement(statement) && !isCreateViewStatement(statement),
     ),
   ];
 

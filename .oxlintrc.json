@@ -1,12 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": [
-    "typescript",
-    "unicorn",
-    "oxc",
-    "react",
-    "vitest"
-  ],
+  "plugins": ["typescript", "unicorn", "oxc", "react", "vitest"],
   "categories": {
     "correctness": "error"
   },
@@ -26,12 +20,7 @@
   },
   "overrides": [
     {
-      "files": [
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/test/**",
-        "**/tests/**"
-      ],
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/test/**", "**/tests/**"],
       "rules": {
         "no-unused-expressions": "off"
       }

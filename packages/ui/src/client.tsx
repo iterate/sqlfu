@@ -64,9 +64,11 @@ const queryClient = new QueryClient({
     },
   }),
 });
-const orpcClient: RouterClient<UiRouter> = createORPCClient(new RPCLink({
-  url: resolveApiRpcUrl(),
-}));
+const orpcClient: RouterClient<UiRouter> = createORPCClient(
+  new RPCLink({
+    url: resolveApiRpcUrl(),
+  }),
+);
 const orpc = createTanstackQueryUtils(orpcClient);
 
 type ConfirmationRequest = {
@@ -216,9 +218,7 @@ async function invalidateSchemaContent() {
   await queryClient.invalidateQueries({queryKey: orpc.schema.key()});
 }
 
-function StartupFailureScreen(input: {
-  error: unknown;
-}) {
+function StartupFailureScreen(input: {error: unknown}) {
   const apiOrigin = resolveApiOrigin();
   const apiHost = new URL(apiOrigin).host;
   const browserName = detectBrowserName();
@@ -228,17 +228,23 @@ function StartupFailureScreen(input: {
   return (
     <main className="startup-shell">
       <section className="startup-card">
-        <h1><code>sqlfu</code></h1>
+        <h1>
+          <code>sqlfu</code>
+        </h1>
         <p className="startup-lede">Connecting to the sqlfu backend on {apiHost}</p>
 
         <div className="startup-grid">
           <section className="startup-section">
             {startupError.kind === 'unreachable' ? (
               <>
-                <h2><code>npx sqlfu</code>?</h2>
+                <h2>
+                  <code>npx sqlfu</code>?
+                </h2>
                 <p>Make sure the local sqlfu backend is up and running.</p>
                 <ol className="startup-steps">
-                  <li>Run <code>npx sqlfu</code>.</li>
+                  <li>
+                    Run <code>npx sqlfu</code>.
+                  </li>
                 </ol>
               </>
             ) : null}
@@ -247,7 +253,9 @@ function StartupFailureScreen(input: {
                 <h2>Backend returned {startupError.status}</h2>
                 <p>The sqlfu backend on {apiHost} responded with a client error.</p>
                 <ol className="startup-steps">
-                  <li>Restart the local backend with the latest <code>sqlfu</code> version.</li>
+                  <li>
+                    Restart the local backend with the latest <code>sqlfu</code> version.
+                  </li>
                   <li>Reload this page.</li>
                 </ol>
               </>
@@ -257,17 +265,15 @@ function StartupFailureScreen(input: {
                 <h2>Backend returned {startupError.status}</h2>
                 <p>The sqlfu backend on {apiHost} is reachable, but it crashed while handling the request.</p>
                 <ol className="startup-steps">
-                  <li>Check the terminal where <code>npx sqlfu</code> is running.</li>
+                  <li>
+                    Check the terminal where <code>npx sqlfu</code> is running.
+                  </li>
                   <li>Fix the backend error, then reload this page.</li>
                 </ol>
               </>
             ) : null}
             <div className="startup-actions">
-              <button
-                className="button primary"
-                type="button"
-                onClick={() => window.location.reload()}
-              >
+              <button className="button primary" type="button" onClick={() => window.location.reload()}>
                 Retry connection
               </button>
             </div>
@@ -280,7 +286,8 @@ function StartupFailureScreen(input: {
                 rel="noreferrer"
               >
                 GitHub
-              </a>.
+              </a>
+              .
             </p>
           </section>
 
@@ -289,25 +296,36 @@ function StartupFailureScreen(input: {
               <>
                 <h2>Using Safari or Brave?</h2>
                 <p>
-                  Safari and Brave block localhost access more aggressively than Chrome.
-                  You may need to install a certificate, then restart the local backend. Instructions
+                  Safari and Brave block localhost access more aggressively than Chrome. You may need to install a
+                  certificate, then restart the local backend. Instructions
                 </p>
                 <ol className="startup-steps">
-                  <li>Run <code>brew install mkcert</code> or follow <a className="startup-link" href="https://github.com/FiloSottile/mkcert" target="_blank" rel="noreferrer">mkcert installation instructions</a>.</li>
-                  <li>Run <code>mkcert -install</code>.</li>
+                  <li>
+                    Run <code>brew install mkcert</code> or follow{' '}
+                    <a
+                      className="startup-link"
+                      href="https://github.com/FiloSottile/mkcert"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      mkcert installation instructions
+                    </a>
+                    .
+                  </li>
+                  <li>
+                    Run <code>mkcert -install</code>.
+                  </li>
                   <li>Restart the local backend and reload the page.</li>
                 </ol>
-                {browserName === 'Brave' ? (
-                  <p>On Brave you can also disable Brave Shields for this site.</p>
-                ) : null}
+                {browserName === 'Brave' ? <p>On Brave you can also disable Brave Shields for this site.</p> : null}
               </>
             ) : null}
             {startupError.kind === 'unreachable' && browserName !== 'Safari' && browserName !== 'Brave' ? (
               <>
                 <h2>Chrome Local Network Access</h2>
                 <p>
-                  Recent Chrome and Chromium updates may block local network access by default.
-                  Open site information in the URL bar and make sure local network access is enabled for this site.
+                  Recent Chrome and Chromium updates may block local network access by default. Open site information in
+                  the URL bar and make sure local network access is enabled for this site.
                 </p>
                 <ol className="startup-steps">
                   <li>Open site information in the URL bar.</li>
@@ -320,7 +338,8 @@ function StartupFailureScreen(input: {
               <>
                 <h2>Client request rejected</h2>
                 <p>
-                  The browser reached the local backend, but the backend rejected the request with HTTP {startupError.status}.
+                  The browser reached the local backend, but the backend rejected the request with HTTP{' '}
+                  {startupError.status}.
                 </p>
                 <p>This usually means the local backend is out of date, or the local project is in a bad state.</p>
               </>
@@ -328,10 +347,10 @@ function StartupFailureScreen(input: {
             {startupError.kind === 'server-error' ? (
               <>
                 <h2>Backend error</h2>
+                <p>The browser reached the local backend, but it responded with HTTP {startupError.status}.</p>
                 <p>
-                  The browser reached the local backend, but it responded with HTTP {startupError.status}.
+                  The detailed stack trace should be in the terminal where <code>npx sqlfu</code> is running.
                 </p>
-                <p>The detailed stack trace should be in the terminal where <code>npx sqlfu</code> is running.</p>
               </>
             ) : null}
           </section>
@@ -347,10 +366,7 @@ function StartupFailureScreen(input: {
 }
 
 function ConfirmationDialogHost() {
-  const snapshot = useSyncExternalStore(
-    confirmationDialogStore.subscribe,
-    confirmationDialogStore.getSnapshot,
-  );
+  const snapshot = useSyncExternalStore(confirmationDialogStore.subscribe, confirmationDialogStore.getSnapshot);
   const params = snapshot.params;
 
   return (
@@ -367,9 +383,7 @@ function ConfirmationDialogHost() {
           <>
             <DialogHeader>
               <DialogTitle>{params.title}</DialogTitle>
-              <DialogDescription>
-                Review the server-provided body before continuing.
-              </DialogDescription>
+              <DialogDescription>Review the server-provided body before continuing.</DialogDescription>
             </DialogHeader>
             {params.bodyType === 'sql' ? (
               <SqlCodeMirror
@@ -389,7 +403,13 @@ function ConfirmationDialogHost() {
                 ariaLabel="Confirmation body editor"
                 readOnly={params.editable !== true}
                 height="18rem"
-                language={params.bodyType === 'markdown' ? 'markdown' : params.bodyType === 'typescript' ? 'typescript' : 'plain'}
+                language={
+                  params.bodyType === 'markdown'
+                    ? 'markdown'
+                    : params.bodyType === 'typescript'
+                      ? 'typescript'
+                      : 'plain'
+                }
                 onChange={(value) => {
                   if (params.editable === true) {
                     confirmationDialogStore.setDraftBody(value);
@@ -412,7 +432,8 @@ function ConfirmationDialogHost() {
                   confirmationDialogStore.close({
                     confirmed: true,
                     body: snapshot.draftBody,
-                  })}
+                  })
+                }
               >
                 Confirm
               </button>
@@ -462,7 +483,11 @@ function Studio() {
           {schemaQuery.data.relations.map((relation: StudioRelation) => (
             <a
               key={relation.name}
-              className={selectedTable?.name === relation.name && route.kind !== 'query' && route.kind !== 'sql' ? 'nav-link active' : 'nav-link'}
+              className={
+                selectedTable?.name === relation.name && route.kind !== 'query' && route.kind !== 'sql'
+                  ? 'nav-link active'
+                  : 'nav-link'
+              }
               href={`#table/${encodeURIComponent(relation.name)}`}
             >
               <span>{relation.name}</span>
@@ -511,9 +536,7 @@ function Studio() {
   );
 }
 
-function ProjectInitScreen(input: {
-  projectRoot: string;
-}) {
+function ProjectInitScreen(input: {projectRoot: string}) {
   const initializeMutation = useMutation({
     ...orpc.schema.command.mutationOptions(),
     onSuccess: async () => {
@@ -555,7 +578,9 @@ function ProjectInitScreen(input: {
     <main className="startup-shell">
       <section className="startup-card project-init-card">
         <div className="eyebrow">Fresh directory</div>
-        <h1><code>sqlfu</code></h1>
+        <h1>
+          <code>sqlfu</code>
+        </h1>
         <p className="startup-lede">This directory is ready to initialize.</p>
 
         <section className="startup-section startup-section-wide">
@@ -564,8 +589,7 @@ function ProjectInitScreen(input: {
             Create your <code>sqlfu.config.ts</code> file pointing to your database, migrations and queries.
           </p>
           <p className="startup-path">
-            <span className="startup-path-label">Project root</span>{' '}
-            <code>{displayProjectRoot}</code>
+            <span className="startup-path-label">Project root</span> <code>{displayProjectRoot}</code>
           </p>
           <div className="startup-actions">
             <button
@@ -577,9 +601,7 @@ function ProjectInitScreen(input: {
               {initializeMutation.isPending ? 'Initializing…' : 'Initialize sqlfu project'}
             </button>
           </div>
-          {initializeMutation.error ? (
-            <p className="error-text">{String(initializeMutation.error)}</p>
-          ) : null}
+          {initializeMutation.error ? <p className="error-text">{String(initializeMutation.error)}</p> : null}
         </section>
       </section>
     </main>
@@ -593,11 +615,7 @@ function abbreviateHomeDirectory(path: string) {
     .replace(/^[A-Za-z]:\\Users\\[^\\]+/, '~');
 }
 
-function SchemaPanel(input: {
-  projectName: string;
-  check: SchemaCheckResponse;
-  authorities: SchemaAuthoritiesResponse;
-}) {
+function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; authorities: SchemaAuthoritiesResponse}) {
   const [commandErrors, setCommandErrors] = useLocalStorageState<Record<string, string>>(
     `sqlfu-ui/schema-command-errors/${input.projectName}`,
     {
@@ -641,7 +659,8 @@ function SchemaPanel(input: {
     },
   });
   const desiredSchemaSql = desiredSchemaDraft ?? input.authorities.desiredSchemaSql;
-  const desiredSchemaDirty = normalizeSqlDraft(desiredSchemaSql) !== normalizeSqlDraft(input.authorities.desiredSchemaSql);
+  const desiredSchemaDirty =
+    normalizeSqlDraft(desiredSchemaSql) !== normalizeSqlDraft(input.authorities.desiredSchemaSql);
   const handleSchemaCommand = async (command: readonly [string, ...string[]]) => {
     const commandText = formatSchemaCommand(command);
     try {
@@ -678,7 +697,9 @@ function SchemaPanel(input: {
           <section className="card schema-card warn compact">
             <div className="card-title-row schema-card-title-row">
               <h3 className="card-title">
-                <span className="schema-card-status warn" aria-hidden="true">⚠</span>
+                <span className="schema-card-status warn" aria-hidden="true">
+                  ⚠
+                </span>
                 Schema Check Failed
               </h3>
             </div>
@@ -699,7 +720,9 @@ function SchemaPanel(input: {
             {!card.ok && card.details.length > 0 ? (
               <div className="stack">
                 {card.details.map((detail) => (
-                  <p key={detail} className="muted">{detail}</p>
+                  <p key={detail} className="muted">
+                    {detail}
+                  </p>
                 ))}
               </div>
             ) : null}
@@ -709,7 +732,9 @@ function SchemaPanel(input: {
           <section className="card schema-card recommendations compact">
             <div className="card-title-row schema-card-title-row">
               <h3 className="card-title">
-                <span className="schema-card-status recommendations" aria-hidden="true">🛠</span>
+                <span className="schema-card-status recommendations" aria-hidden="true">
+                  🛠
+                </span>
                 Recommended actions
               </h3>
             </div>
@@ -737,9 +762,7 @@ function SchemaPanel(input: {
                       ) : null}
                     </div>
                     <div className="schema-recommendation-content">
-                      <p className="schema-recommendation">
-                        {renderSchemaRecommendationSummary(recommendation)}
-                      </p>
+                      <p className="schema-recommendation">{renderSchemaRecommendationSummary(recommendation)}</p>
                       {command && commandErrors?.[formatSchemaCommand(command)] ? (
                         <div className="schema-command">
                           <span className="schema-command-error">{commandErrors[formatSchemaCommand(command)]}</span>
@@ -904,7 +927,9 @@ function MigrationDetail(input: {
     `name: ${toYamlScalar(input.migration.name)}`,
     `filename: ${toYamlScalar(input.migration.fileName)}`,
     `applied_at: ${toYamlScalar(input.migration.appliedAt)}`,
-    ...(input.migration.appliedAt ? [`integrity: ${toYamlScalar(input.migration.integrity ?? 'checksum mismatch')}`] : []),
+    ...(input.migration.appliedAt
+      ? [`integrity: ${toYamlScalar(input.migration.integrity ?? 'checksum mismatch')}`]
+      : []),
   ].join('\n');
 
   return (
@@ -949,13 +974,7 @@ function MigrationDetail(input: {
         />
       ) : null}
       {activeTab === 'metadata' ? (
-        <TextCodeMirror
-          value={metadata}
-          ariaLabel="Migration metadata"
-          readOnly
-          height="10rem"
-          language="yaml"
-        />
+        <TextCodeMirror value={metadata} ariaLabel="Migration metadata" readOnly height="10rem" language="yaml" />
       ) : null}
       {activeTab === 'schema' ? (
         resultantSchemaQuery.data ? (
@@ -968,7 +987,9 @@ function MigrationDetail(input: {
           />
         ) : (
           <TextCodeMirror
-            value={resultantSchemaQuery.isLoading ? 'Loading resultant schema…' : String(resultantSchemaQuery.error ?? '')}
+            value={
+              resultantSchemaQuery.isLoading ? 'Loading resultant schema…' : String(resultantSchemaQuery.error ?? '')
+            }
             ariaLabel="Migration resultant schema"
             readOnly
             height="10rem"
@@ -979,10 +1000,7 @@ function MigrationDetail(input: {
   );
 }
 
-function TablePanel(input: {
-  relation: StudioRelation;
-  page: number;
-}) {
+function TablePanel(input: {relation: StudioRelation; page: number}) {
   const tableListOptions = orpc.table.list.queryOptions({
     input: {
       relationName: input.relation.name,
@@ -1013,11 +1031,7 @@ function TablePanel(input: {
     },
   });
   const emptyRowTemplate = Object.fromEntries(input.relation.columns.map((column) => [column.name, null]));
-  const displayedRows = normalizeStoredTableDraft(
-    draftRows,
-    rowsQuery.data.rows,
-    rowsQuery.data.columns,
-  );
+  const displayedRows = normalizeStoredTableDraft(draftRows, rowsQuery.data.rows, rowsQuery.data.columns);
   const displayedOriginalRows = [
     ...rowsQuery.data.rows,
     ...displayedRows.slice(rowsQuery.data.rows.length).map(() => ({...emptyRowTemplate})),
@@ -1070,7 +1084,9 @@ function TablePanel(input: {
         </div>
         <div className="pill-row">
           <span className="pill">{input.relation.columns.length} columns</span>
-          {typeof input.relation.rowCount === 'number' ? <span className="pill">{input.relation.rowCount} rows</span> : null}
+          {typeof input.relation.rowCount === 'number' ? (
+            <span className="pill">{input.relation.rowCount} rows</span>
+          ) : null}
         </div>
       </header>
 
@@ -1111,14 +1127,19 @@ function TablePanel(input: {
           originalRows={displayedOriginalRows}
           rows={displayedRows}
           editable={rowsQuery.data.editable}
-          editableColumns={Object.fromEntries(input.relation.columns.map((column) => [column.name, !column.primaryKey]))}
+          editableColumns={Object.fromEntries(
+            input.relation.columns.map((column) => [column.name, !column.primaryKey]),
+          )}
           onRowsChange={setDraftRows}
           onAppendRow={() => setDraftRows([...displayedRows, {...emptyRowTemplate}])}
           onDeleteRow={handleDeleteRow}
           showSelectedCellDetail
         />
         <div className="pager">
-          <a className={input.page === 0 ? 'button disabled' : 'button'} href={`#table/${encodeURIComponent(input.relation.name)}/${Math.max(0, input.page - 1)}`}>
+          <a
+            className={input.page === 0 ? 'button disabled' : 'button'}
+            href={`#table/${encodeURIComponent(input.relation.name)}/${Math.max(0, input.page - 1)}`}
+          >
             Previous
           </a>
           <a className="button" href={`#table/${encodeURIComponent(input.relation.name)}/${input.page + 1}`}>
@@ -1150,9 +1171,7 @@ function TablePanel(input: {
   );
 }
 
-function SqlRunnerPanel(input: {
-  relations: readonly StudioRelation[];
-}) {
+function SqlRunnerPanel(input: {relations: readonly StudioRelation[]}) {
   const [draft, setDraft] = useLocalStorageState<SqlRunnerDraft>('sqlfu-ui/sql-runner-draft', {
     defaultValue: {
       sql: `select name, type\nfrom sqlite_schema\nwhere name not like 'sqlite_%'\norder by type, name;`,
@@ -1166,7 +1185,8 @@ function SqlRunnerPanel(input: {
     placeholderData: (previousData) => previousData,
     enabled: draft.sql.trim().length > 0,
   });
-  const detectedParamsSchema = (analysisQuery.data?.paramsSchema as RJSFSchema | undefined) ?? buildSqlRunnerParamsSchema(draft.sql);
+  const detectedParamsSchema =
+    (analysisQuery.data?.paramsSchema as RJSFSchema | undefined) ?? buildSqlRunnerParamsSchema(draft.sql);
   const sanitizedParams = sanitizeFormData(draft.params, detectedParamsSchema);
   const runMutation = useMutation({
     ...orpc.sql.run.mutationOptions(),
@@ -1191,7 +1211,10 @@ function SqlRunnerPanel(input: {
 
     const result = await saveMutation.mutateAsync({name, sql: draft.sql});
     await queryClient.fetchQuery(orpc.catalog.queryOptions());
-    const queryId = result.savedPath.split('/').pop()?.replace(/\.sql$/, '');
+    const queryId = result.savedPath
+      .split('/')
+      .pop()
+      ?.replace(/\.sql$/, '');
     if (!queryId) {
       throw new Error(`Could not derive query id from saved path: ${result.savedPath}`);
     }
@@ -1225,10 +1248,7 @@ function SqlRunnerPanel(input: {
   );
 }
 
-function QueryPanel(input: {
-  entry: QueryCatalogEntry;
-  relations: readonly StudioRelation[];
-}) {
+function QueryPanel(input: {entry: QueryCatalogEntry; relations: readonly StudioRelation[]}) {
   const entry = input.entry;
 
   const mutation = useMutation({
@@ -1291,58 +1311,84 @@ function QueryPanel(input: {
     <QueryWorkbench
       workbenchKey={entry.id}
       title={renameMode ? renameDraft : entry.id}
-      titleEditor={renameMode ? (
-        <div className="inline-editor">
-          <input
-            aria-label="Query title"
-            value={renameDraft}
-            onChange={(event) => setRenameDraft(event.currentTarget.value)}
-          />
-          <button className="button primary" type="button" aria-label="Confirm query rename" onClick={handleRename}>
-            Save
-          </button>
-          <button className="button" type="button" onClick={() => {
-            setRenameDraft(entry.id);
-            setRenameMode(false);
-          }}>
-            Cancel
-          </button>
-        </div>
-      ) : undefined}
-      titleActions={!renameMode ? (
-        <>
-          <button className="icon-button" type="button" aria-label="Rename query" onClick={() => setRenameMode(true)}>
-            ✎
-          </button>
-          <button className="icon-button danger" type="button" aria-label="Delete query" onClick={handleDelete}>
-            🗑
-          </button>
-        </>
-      ) : undefined}
+      titleEditor={
+        renameMode ? (
+          <div className="inline-editor">
+            <input
+              aria-label="Query title"
+              value={renameDraft}
+              onChange={(event) => setRenameDraft(event.currentTarget.value)}
+            />
+            <button className="button primary" type="button" aria-label="Confirm query rename" onClick={handleRename}>
+              Save
+            </button>
+            <button
+              className="button"
+              type="button"
+              onClick={() => {
+                setRenameDraft(entry.id);
+                setRenameMode(false);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : undefined
+      }
+      titleActions={
+        !renameMode ? (
+          <>
+            <button className="icon-button" type="button" aria-label="Rename query" onClick={() => setRenameMode(true)}>
+              ✎
+            </button>
+            <button className="icon-button danger" type="button" aria-label="Delete query" onClick={handleDelete}>
+              🗑
+            </button>
+          </>
+        ) : undefined
+      }
       sql={sqlEditMode ? sqlDraft : entry.sql}
       paramsSchema={entry.kind === 'query' ? buildExecutionSchema(entry) : undefined}
       paramsData={undefined}
       sqlEditorRelations={input.relations}
       sqlEditorDiagnostics={sqlEditMode ? analysisQuery.data?.diagnostics : undefined}
-      sqlReadonlyActions={!sqlEditMode ? (
-        <button className="icon-button" type="button" aria-label="Edit query SQL" onClick={() => setSqlEditMode(true)}>
-          ✎
-        </button>
-      ) : undefined}
+      sqlReadonlyActions={
+        !sqlEditMode ? (
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="Edit query SQL"
+            onClick={() => setSqlEditMode(true)}
+          >
+            ✎
+          </button>
+        ) : undefined
+      }
       sqlEditorLabel="Query SQL editor"
-      sqlEditorActions={sqlEditMode ? (
-        <div className="actions">
-          <button className="button primary" type="button" aria-label="Confirm query SQL edit" onClick={handleSqlSave}>
-            Save
-          </button>
-          <button className="button" type="button" onClick={() => {
-            setSqlDraft(entry.sql);
-            setSqlEditMode(false);
-          }}>
-            Cancel
-          </button>
-        </div>
-      ) : undefined}
+      sqlEditorActions={
+        sqlEditMode ? (
+          <div className="actions">
+            <button
+              className="button primary"
+              type="button"
+              aria-label="Confirm query SQL edit"
+              onClick={handleSqlSave}
+            >
+              Save
+            </button>
+            <button
+              className="button"
+              type="button"
+              onClick={() => {
+                setSqlDraft(entry.sql);
+                setSqlEditMode(false);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : undefined
+      }
       editable={sqlEditMode}
       onSqlChange={setSqlDraft}
       readonlyMeta={
@@ -1364,17 +1410,22 @@ function QueryPanel(input: {
           queryId: entry.id,
           data: isRecord(formData) && isRecord(formData.data) ? formData.data : undefined,
           params: isRecord(formData) && isRecord(formData.params) ? formData.params : undefined,
-        })}
+        })
+      }
       running={mutation.isPending || renameMutation.isPending || updateMutation.isPending || deleteMutation.isPending}
       executionError={
-        mutation.error
-        ?? renameMutation.error
-        ?? updateMutation.error
-        ?? deleteMutation.error
-        ?? (entry.kind === 'error' && !sqlEditMode ? new Error(`Query error\n${entry.error.name}\n\n${entry.error.description}`) : undefined)
+        mutation.error ??
+        renameMutation.error ??
+        updateMutation.error ??
+        deleteMutation.error ??
+        (entry.kind === 'error' && !sqlEditMode
+          ? new Error(`Query error\n${entry.error.name}\n\n${entry.error.description}`)
+          : undefined)
       }
       executionResult={mutation.data}
-      emptyMessage={entry.kind === 'query' ? 'Submit form data to execute the query.' : 'Edit the SQL to repair this saved query.'}
+      emptyMessage={
+        entry.kind === 'query' ? 'Submit form data to execute the query.' : 'Edit the SQL to repair this saved query.'
+      }
       runLabel="Run generated query"
       paramsCardTitle="Params"
     />
@@ -1414,9 +1465,7 @@ function QueryWorkbench(input: {
   return (
     <section className="panel">
       <header className="panel-header">
-        <div>
-          {input.titleEditor ?? <h2>{input.title}</h2>}
-        </div>
+        <div>{input.titleEditor ?? <h2>{input.title}</h2>}</div>
         <div className="panel-header-actions">
           {input.readonlyMeta ? <div className="pill-row">{input.readonlyMeta}</div> : null}
           {input.titleActions ? <div className="pill-row">{input.titleActions}</div> : null}
@@ -1467,11 +1516,7 @@ function QueryWorkbench(input: {
                     {input.runLabel}
                   </button>
                   {input.onSave ? (
-                    <button
-                      className="button"
-                      type="button"
-                      onClick={() => input.onSave?.()}
-                    >
+                    <button className="button" type="button" onClick={() => input.onSave?.()}>
                       {input.saveLabel}
                     </button>
                   ) : null}
@@ -1498,23 +1543,31 @@ function QueryWorkbench(input: {
         {input.running ? <p>Running…</p> : null}
         {input.executionError ? <ErrorView error={input.executionError} /> : null}
         {input.successMessage ? <p>{input.successMessage}</p> : null}
-        {input.executionResult ? <ExecutionResult storageKey={input.workbenchKey ?? input.title} result={input.executionResult} /> : <p className="muted">{input.emptyMessage}</p>}
+        {input.executionResult ? (
+          <ExecutionResult storageKey={input.workbenchKey ?? input.title} result={input.executionResult} />
+        ) : (
+          <p className="muted">{input.emptyMessage}</p>
+        )}
       </section>
     </section>
   );
 }
 
-function ExecutionResult(input: {
-  storageKey: string;
-  result: QueryExecutionResponse | SqlRunnerResponse;
-}) {
+function ExecutionResult(input: {storageKey: string; result: QueryExecutionResponse | SqlRunnerResponse}) {
   if (input.result.mode === 'metadata') {
     return <pre className="code-block">{JSON.stringify(input.result.metadata, null, 2)}</pre>;
   }
 
   const rows = input.result.rows ?? [];
   const columns = rows.length > 0 ? Object.keys(rows[0]!) : [];
-  return <DataTable storageKey={`execution-result/${input.storageKey}`} columns={columns} rows={rows} showSelectedCellDetail />;
+  return (
+    <DataTable
+      storageKey={`execution-result/${input.storageKey}`}
+      columns={columns}
+      rows={rows}
+      showSelectedCellDetail
+    />
+  );
 }
 
 type RowActionCell = reactGrid.Cell & {
@@ -1602,8 +1655,8 @@ function DataTable(input: {
   const pendingFocusRef = useRef<{rowId: number; columnId: string} | null>(null);
   const rowHistoryRef = useRef<{
     baseline: string;
-    undo: readonly (readonly Record<string, unknown>[])[],
-    redo: readonly (readonly Record<string, unknown>[])[],
+    undo: readonly (readonly Record<string, unknown>[])[];
+    redo: readonly (readonly Record<string, unknown>[])[];
   }>({
     baseline: '',
     undo: [],
@@ -1674,31 +1727,45 @@ function DataTable(input: {
               selectedRowIndex === rowIndex ? 'selected-row' : undefined,
               isDirtyDataCell(input.originalRows, rowIndex, column, row[column]) ? 'dirty-cell' : undefined,
             ),
-          )),
+          ),
+        ),
       ],
     })),
-    ...(input.editable && input.onAppendRow ? [{
-      rowId: '__append__',
-      cells: [
-        {type: 'header' as const, text: '+'},
-        ...input.columns.map(() => ({type: 'text' as const, text: '', nonEditable: true, className: 'append-row-cell'})),
-      ],
-    }] : []),
+    ...(input.editable && input.onAppendRow
+      ? [
+          {
+            rowId: '__append__',
+            cells: [
+              {type: 'header' as const, text: '+'},
+              ...input.columns.map(() => ({
+                type: 'text' as const,
+                text: '',
+                nonEditable: true,
+                className: 'append-row-cell',
+              })),
+            ],
+          },
+        ]
+      : []),
   ];
-  const selectedOriginalValue = selectedCell && typeof selectedCell.rowId === 'number' && typeof selectedCell.columnId === 'string'
-    ? formatCellText(input.originalRows?.[selectedCell.rowId]?.[selectedCell.columnId])
-    : '';
-  const selectedDraftValue = selectedCell && typeof selectedCell.rowId === 'number' && typeof selectedCell.columnId === 'string'
-    ? formatCellText(input.rows[selectedCell.rowId]?.[selectedCell.columnId])
-    : '';
-  const selectedCellDirty = selectedCell != null
-    && isDirtyDataCell(
+  const selectedOriginalValue =
+    selectedCell && typeof selectedCell.rowId === 'number' && typeof selectedCell.columnId === 'string'
+      ? formatCellText(input.originalRows?.[selectedCell.rowId]?.[selectedCell.columnId])
+      : '';
+  const selectedDraftValue =
+    selectedCell && typeof selectedCell.rowId === 'number' && typeof selectedCell.columnId === 'string'
+      ? formatCellText(input.rows[selectedCell.rowId]?.[selectedCell.columnId])
+      : '';
+  const selectedCellDirty =
+    selectedCell != null &&
+    isDirtyDataCell(
       input.originalRows,
       selectedCell.rowId,
       selectedCell.columnId,
       input.rows[selectedCell.rowId]?.[selectedCell.columnId],
     );
-  const showSelectedCellDiffTabs = selectedCellDirty && selectedOriginalValue !== 'null' && selectedOriginalValue !== '';
+  const showSelectedCellDiffTabs =
+    selectedCellDirty && selectedOriginalValue !== 'null' && selectedOriginalValue !== '';
   const applyUndo = () => {
     const previousRows = rowHistoryRef.current.undo.at(-1);
     if (!previousRows) {
@@ -1806,9 +1873,9 @@ function DataTable(input: {
             }
             setSelectedRowIndex(null);
             if (
-              pendingFocusRef.current
-              && pendingFocusRef.current.rowId === location.rowId
-              && pendingFocusRef.current.columnId === location.columnId
+              pendingFocusRef.current &&
+              pendingFocusRef.current.rowId === location.rowId &&
+              pendingFocusRef.current.columnId === location.columnId
             ) {
               pendingFocusRef.current = null;
             }
@@ -1818,32 +1885,39 @@ function DataTable(input: {
             });
             setSelectedCellMode('diff');
           }}
-          onCellsChanged={input.editable ? (changes) => {
-            const nextRows = input.rows.map((row) => ({...row}));
-            for (const change of changes) {
-              if (typeof change.rowId !== 'number' || typeof change.columnId !== 'string') {
-                continue;
-              }
-              const nextRow = nextRows[change.rowId];
-              if (!nextRow) {
-                continue;
-              }
-              if (!isEditableDataCell(input, change.rowId, change.columnId)) {
-                continue;
-              }
-              nextRow[change.columnId] = readGridCellValue(change.newCell);
-            }
-            rowHistoryRef.current = {
-              ...rowHistoryRef.current,
-              undo: [...rowHistoryRef.current.undo, cloneTableRows(input.rows)],
-              redo: [],
-            };
-            input.onRowsChange?.(nextRows);
-          } : undefined}
+          onCellsChanged={
+            input.editable
+              ? (changes) => {
+                  const nextRows = input.rows.map((row) => ({...row}));
+                  for (const change of changes) {
+                    if (typeof change.rowId !== 'number' || typeof change.columnId !== 'string') {
+                      continue;
+                    }
+                    const nextRow = nextRows[change.rowId];
+                    if (!nextRow) {
+                      continue;
+                    }
+                    if (!isEditableDataCell(input, change.rowId, change.columnId)) {
+                      continue;
+                    }
+                    nextRow[change.columnId] = readGridCellValue(change.newCell);
+                  }
+                  rowHistoryRef.current = {
+                    ...rowHistoryRef.current,
+                    undo: [...rowHistoryRef.current.undo, cloneTableRows(input.rows)],
+                    redo: [],
+                  };
+                  input.onRowsChange?.(nextRows);
+                }
+              : undefined
+          }
         />
       </div>
 
-      {input.showSelectedCellDetail && selectedCell && typeof selectedCell.rowId === 'number' && typeof selectedCell.columnId === 'string' ? (
+      {input.showSelectedCellDetail &&
+      selectedCell &&
+      typeof selectedCell.rowId === 'number' &&
+      typeof selectedCell.columnId === 'string' ? (
         <section className="selected-cell-panel">
           <div className="card-title-row">
             <div className="card-title">{`Cell: ${selectedCell.columnId}, row ${selectedCell.rowId + 1}`}</div>
@@ -1881,20 +1955,10 @@ function DataTable(input: {
               </div>
 
               {selectedCellMode === 'original' ? (
-                <TextCodeMirror
-                  value={selectedOriginalValue}
-                  ariaLabel="Original cell value"
-                  readOnly
-                  height="12rem"
-                />
+                <TextCodeMirror value={selectedOriginalValue} ariaLabel="Original cell value" readOnly height="12rem" />
               ) : null}
               {selectedCellMode === 'draft' ? (
-                <TextCodeMirror
-                  value={selectedDraftValue}
-                  ariaLabel="Draft cell value"
-                  readOnly
-                  height="12rem"
-                />
+                <TextCodeMirror value={selectedDraftValue} ariaLabel="Draft cell value" readOnly height="12rem" />
               ) : null}
               {selectedCellMode === 'diff' ? (
                 <TextDiffCodeMirror
@@ -1905,12 +1969,7 @@ function DataTable(input: {
               ) : null}
             </div>
           ) : (
-            <TextCodeMirror
-              value={selectedDraftValue}
-              ariaLabel="Cell value"
-              readOnly
-              height="12rem"
-            />
+            <TextCodeMirror value={selectedDraftValue} ariaLabel="Cell value" readOnly height="12rem" />
           )}
         </section>
       ) : null}
@@ -1958,22 +2017,23 @@ function EmptyState() {
     <section className="panel">
       <section className="card">
         <div className="card-title">No relations found</div>
-        <p className="muted">Create `definitions.sql`, run migrations or sync, and add `.sql` files to start exploring.</p>
+        <p className="muted">
+          Create `definitions.sql`, run migrations or sync, and add `.sql` files to start exploring.
+        </p>
       </section>
     </section>
   );
 }
 
-function Shell(input: {
-  children?: ReactNode;
-  loading?: boolean;
-}) {
+function Shell(input: {children?: ReactNode; loading?: boolean}) {
   if (input.loading) {
     return (
       <main className="startup-shell">
         <section className="startup-card">
           <div className="eyebrow">Starting up</div>
-          <h1><code>sqlfu</code></h1>
+          <h1>
+            <code>sqlfu</code>
+          </h1>
           <p className="startup-lede">Loading…</p>
         </section>
       </main>
@@ -1983,9 +2043,7 @@ function Shell(input: {
   return <div className="app-shell">{input.children}</div>;
 }
 
-function ErrorView(input: {
-  error: unknown;
-}) {
+function ErrorView(input: {error: unknown}) {
   return <pre className="code-block error">{String(input.error)}</pre>;
 }
 
@@ -2008,11 +2066,12 @@ function parseConfirmationRequest(error: unknown) {
     return {
       title: parsed.title,
       body: parsed.body,
-      bodyType: parsed.bodyType === 'sql'
-        ? ('sql' as const)
-        : parsed.bodyType === 'typescript'
-          ? ('typescript' as const)
-          : ('markdown' as const),
+      bodyType:
+        parsed.bodyType === 'sql'
+          ? ('sql' as const)
+          : parsed.bodyType === 'typescript'
+            ? ('typescript' as const)
+            : ('markdown' as const),
       editable: parsed.editable === true ? true : undefined,
     };
   } catch {
@@ -2100,12 +2159,8 @@ function formatAppliedAgo(appliedAt: string | null) {
   return `${String(duration(elapsedMs)).split(',')[0]} ago`;
 }
 
-function renderSchemaRecommendationSummary(
-  recommendation: SchemaCheckResponse['recommendations'][number],
-): ReactNode {
-  const nodes: ReactNode[] = [
-    <span key="label">{formatSchemaRecommendationLabel(recommendation)}</span>,
-  ];
+function renderSchemaRecommendationSummary(recommendation: SchemaCheckResponse['recommendations'][number]): ReactNode {
+  const nodes: ReactNode[] = [<span key="label">{formatSchemaRecommendationLabel(recommendation)}</span>];
   if (recommendation.rationale) {
     nodes.push(<span key="rationale"> ({recommendation.rationale})</span>);
   }
@@ -2116,9 +2171,7 @@ function formatSchemaCommand(command: readonly [string, ...string[]]) {
   return ['sqlfu', ...command].join(' ');
 }
 
-function formatSchemaRecommendationLabel(
-  recommendation: SchemaCheckResponse['recommendations'][number],
-) {
+function formatSchemaRecommendationLabel(recommendation: SchemaCheckResponse['recommendations'][number]) {
   const label = recommendation.label.replace(/\.$/u, '');
   const target = recommendation.command?.at(1);
   return target ? `${label}. Target: ${target}.` : `${label}.`;
@@ -2326,9 +2379,7 @@ function sanitizeFormData(
     return {};
   }
 
-  return Object.fromEntries(
-    Object.entries(formData).filter(([key]) => key in schema.properties!),
-  );
+  return Object.fromEntries(Object.entries(formData).filter(([key]) => key in schema.properties!));
 }
 
 function detectNamedParameters(sql: string) {
@@ -2370,7 +2421,12 @@ function detectBrowserName() {
   if (/Brave/u.test(userAgent) || 'brave' in navigator) {
     return 'Brave';
   }
-  if (/Safari\//u.test(userAgent) && !/Chrome\//u.test(userAgent) && !/Chromium/u.test(userAgent) && !/Edg\//u.test(userAgent)) {
+  if (
+    /Safari\//u.test(userAgent) &&
+    !/Chrome\//u.test(userAgent) &&
+    !/Chromium/u.test(userAgent) &&
+    !/Edg\//u.test(userAgent)
+  ) {
     return 'Safari';
   }
   if (/Edg\//u.test(userAgent)) {
@@ -2391,22 +2447,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 type Route =
   | {
-    readonly kind: 'home';
-  }
+      readonly kind: 'home';
+    }
   | {
-    readonly kind: 'schema';
-  }
+      readonly kind: 'schema';
+    }
   | {
-    readonly kind: 'sql';
-  }
+      readonly kind: 'sql';
+    }
   | {
-    readonly kind: 'table';
-    readonly name: string;
-    readonly page: number;
-  }
+      readonly kind: 'table';
+      readonly name: string;
+      readonly page: number;
+    }
   | {
-    readonly kind: 'query';
-    readonly id: string;
-  };
+      readonly kind: 'query';
+      readonly id: string;
+    };
 
 createRoot(document.getElementById('root')!).render(<App />);

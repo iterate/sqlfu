@@ -94,7 +94,7 @@ export async function createMigrationsFixture(
     },
     async migrationNames() {
       const history = await this.readMigrationHistory();
-      return history.map(m => m.name.split('Z_').pop());
+      return history.map((m) => m.name.split('Z_').pop());
     },
     async [Symbol.asyncDispose]() {
       await fs.rm(root, {recursive: true, force: true});

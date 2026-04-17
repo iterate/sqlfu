@@ -72,9 +72,7 @@ describe('draft', () => {
 
     await fixture.api.draft({name: 'add people'});
 
-    expect(await fixture.listMigrationFiles()).toEqual([
-      'migrations/2026-04-10T00.00.00.000Z_add_people.sql',
-    ]);
+    expect(await fixture.listMigrationFiles()).toEqual(['migrations/2026-04-10T00.00.00.000Z_add_people.sql']);
   });
 });
 
@@ -114,14 +112,15 @@ describe('migrate', () => {
   test('applies migrations in filename order', async () => {
     await using fixture = await createMigrationsFixture('migrate-filename-order');
 
-    await fixture.writeFile('migrations/2026-04-10T01.00.00.000Z_insert_person.sql', `insert into person(name) values ('alice')`);
+    await fixture.writeFile(
+      'migrations/2026-04-10T01.00.00.000Z_insert_person.sql',
+      `insert into person(name) values ('alice')`,
+    );
     await fixture.writeFile('migrations/2026-04-10T00.00.00.000Z_create_person.sql', `create table person(name text)`);
 
     await fixture.api.migrate();
 
-    expect(await fixture.db.sql`select name from person order by name`).toMatchObject([
-      {name: 'alice'},
-    ]);
+    expect(await fixture.db.sql`select name from person order by name`).toMatchObject([{name: 'alice'}]);
   });
 });
 
@@ -414,9 +413,7 @@ describe('baseline', () => {
     expect(await extractSchema(fixture.db, 'main', {excludedTables: ['sqlfu_migrations']})).toMatchInlineSnapshot(`
       "create table person(name text);"
     `);
-    expect(await fixture.migrationNames()).toEqual([
-      'create_person',
-    ]);
+    expect(await fixture.migrationNames()).toEqual(['create_person']);
   });
 
   test('truncates migration history to the requested earlier target', async () => {
@@ -431,9 +428,7 @@ describe('baseline', () => {
 
     await fixture.api.baseline({target: '2026-04-10T00.00.00.000Z_create_person'});
 
-    expect(await fixture.migrationNames()).toEqual([
-      'create_person',
-    ]);
+    expect(await fixture.migrationNames()).toEqual(['create_person']);
   });
 });
 
@@ -460,12 +455,8 @@ describe('goto', () => {
     expect(await extractSchema(fixture.db, 'main', {excludedTables: ['sqlfu_migrations']})).toMatchInlineSnapshot(`
       "create table person(name text);"
     `);
-    expect(await fixture.migrationNames()).toEqual([
-      'create_person',
-    ]);
-    expect(await fixture.db.sql`select name from person order by name`).toMatchObject([
-      {name: 'alice'},
-    ]);
+    expect(await fixture.migrationNames()).toEqual(['create_person']);
+    expect(await fixture.db.sql`select name from person order by name`).toMatchObject([{name: 'alice'}]);
 
     await fixture.api.goto({target: path.parse(await fixture.globOne('*/*create_pet*')).name});
 
@@ -473,13 +464,8 @@ describe('goto', () => {
       "create table person(name text);
       create table pet(name text);"
     `);
-    expect(await fixture.migrationNames()).toEqual([
-      'create_person',
-      'create_pet',
-    ]);
-    expect(await fixture.db.sql`select name from person order by name`).toMatchObject([
-      {name: 'alice'},
-    ]);
+    expect(await fixture.migrationNames()).toEqual(['create_person', 'create_pet']);
+    expect(await fixture.db.sql`select name from person order by name`).toMatchObject([{name: 'alice'}]);
     expect(await fixture.db.sql`select name from pet order by name`).toMatchObject([]);
   });
 
@@ -504,9 +490,7 @@ describe('goto', () => {
       "create index person_name_idx on person(name);
       create table person(name text);"
     `);
-    expect(await fixture.db.sql`select name from person order by name`).toMatchObject([
-      {name: 'alice'},
-    ]);
+    expect(await fixture.db.sql`select name from person order by name`).toMatchObject([{name: 'alice'}]);
   });
 });
 
@@ -546,9 +530,7 @@ describe('sync', () => {
     expect(await extractSchema(fixture.db)).toMatchInlineSnapshot(`
       "create table person(name text not null unique);"
     `);
-    await expect(fixture.db.sql`select name from person order by name`).resolves.toMatchObject([
-      {name: 'ada'},
-    ]);
+    await expect(fixture.db.sql`select name from person order by name`).resolves.toMatchObject([{name: 'ada'}]);
   });
 
   test('fails for an unsafe semantic change and recommends draft plus migrate', async () => {

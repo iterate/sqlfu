@@ -55,10 +55,13 @@ export async function readMigrationHistory(client: Client): Promise<AppliedMigra
   });
 }
 
-export async function baselineMigrationHistory(client: Client, params: {
-  migrations: readonly Migration[];
-  target: string;
-}) {
+export async function baselineMigrationHistory(
+  client: Client,
+  params: {
+    migrations: readonly Migration[];
+    target: string;
+  },
+) {
   const targetIndex = params.migrations.findIndex((migration) => migrationName(migration) === params.target);
   if (targetIndex === -1) {
     throw new Error(`migration ${params.target} not found`);
@@ -84,9 +87,12 @@ export async function replaceMigrationHistory(client: Client, migrations: readon
   }
 }
 
-export async function applyMigrations(client: Client, params: {
-  migrations: readonly Migration[];
-}): Promise<void> {
+export async function applyMigrations(
+  client: Client,
+  params: {
+    migrations: readonly Migration[];
+  },
+): Promise<void> {
   await ensureMigrationTable(client);
   const applied = await readMigrationHistory(client);
   const byName = new Map(params.migrations.map((migration) => [migrationName(migration), migration]));
@@ -102,9 +108,7 @@ export async function applyMigrations(client: Client, params: {
   }
 
   const appliedNames = applied.map((migration) => migration.name);
-  const expectedAppliedPrefix = params.migrations
-    .slice(0, applied.length)
-    .map((migration) => migrationName(migration));
+  const expectedAppliedPrefix = params.migrations.slice(0, applied.length).map((migration) => migrationName(migration));
   if (appliedNames.some((name, index) => name !== expectedAppliedPrefix[index])) {
     throw new Error('migration history is not a prefix of migrations');
   }

@@ -33,9 +33,14 @@ export const router = {
       default: true,
       description: `Start the local sqlfu backend server used by local.sqlfu.dev.`,
     })
-    .input(z.object({
-      port: z.number().int().positive(),
-    }).partial().optional())
+    .input(
+      z
+        .object({
+          port: z.number().int().positive(),
+        })
+        .partial()
+        .optional(),
+    )
     .handler(async ({context, input}) => {
       await startSqlfuServer({
         port: input?.port,
@@ -76,9 +81,14 @@ export const router = {
     .meta({
       description: `Stop the process listening on the local sqlfu backend port.`,
     })
-    .input(z.object({
-      port: z.number().int().positive(),
-    }).partial().optional())
+    .input(
+      z
+        .object({
+          port: z.number().int().positive(),
+        })
+        .partial()
+        .optional(),
+    )
     .handler(async ({input}) => {
       const port = input?.port || 56081;
       const stopped = await stopProcessesListeningOnPort(port);
@@ -87,7 +97,7 @@ export const router = {
         return `No process listening on port ${port}.`;
       }
 
-      return `Stopped process on port ${port}: ${stopped.map((process) => process.command ? `${process.command} (${process.pid})` : String(process.pid)).join(', ')}`;
+      return `Stopped process on port ${port}: ${stopped.map((process) => (process.command ? `${process.command} (${process.pid})` : String(process.pid))).join(', ')}`;
     }),
 
   generate: base
@@ -105,7 +115,8 @@ export const router = {
 
   sync: base
     .meta({
-      description: `Update the current database to match definitions.sql. Note: this should only be used for local development. For production databases, use 'sqlfu migrate' instead. ` +
+      description:
+        `Update the current database to match definitions.sql. Note: this should only be used for local development. For production databases, use 'sqlfu migrate' instead. ` +
         `This command fails if semantic changes are required. You can run 'sqlfu draft' to create a migration file with the necessary changes.`,
     })
     .handler(async ({context}) => {
@@ -117,9 +128,15 @@ export const router = {
       description: `Create a migration file from the diff between replayed migrations and definitions.sql.`,
     })
     .input(
-      z.object({
-        name: z.string().min(1).describe('The name of the migration to create. If omitted one is derived from the drafted SQL.'),
-      }).partial().optional(),
+      z
+        .object({
+          name: z
+            .string()
+            .min(1)
+            .describe('The name of the migration to create. If omitted one is derived from the drafted SQL.'),
+        })
+        .partial()
+        .optional(),
     )
     .handler(async ({context, input}) => {
       await applyDraftSql(requireContextConfig(context), input, context.confirm);
@@ -143,9 +160,7 @@ export const router = {
       await using database = await openMainDevDatabase(initializedContext.config.db);
       const applied = await readMigrationHistory(database.client);
       const appliedNames = new Set(applied.map((migration) => migration.name));
-      return migrations
-        .map((migration) => migrationName(migration))
-        .filter((name) => !appliedNames.has(name));
+      return migrations.map((migration) => migrationName(migration)).filter((name) => !appliedNames.has(name));
     }),
 
   applied: base
@@ -162,9 +177,11 @@ export const router = {
     .meta({
       description: `Find migrations by substring and show whether each one is applied.`,
     })
-    .input(z.object({
-      text: z.string().min(1),
-    }))
+    .input(
+      z.object({
+        text: z.string().min(1),
+      }),
+    )
     .handler(async ({context, input}) => {
       const initializedContext = requireContextConfig(context);
       const migrations = await createRuntime(initializedContext).readMigrations();
@@ -309,10 +326,7 @@ export async function getMigrationResultantSchema(
   if (targetMigrationIndex === -1) {
     throw new Error(`migration ${input.id} not found in repo`);
   }
-  const schemaSql = await materializeMigrationsSchema(
-    runtime.config,
-    migrations.slice(0, targetMigrationIndex + 1),
-  );
+  const schemaSql = await materializeMigrationsSchema(runtime.config, migrations.slice(0, targetMigrationIndex + 1));
   return `-- schema produced by sqlfu goto ${input.id}\n${schemaSql}`;
 }
 
@@ -323,9 +337,7 @@ export type SqlfuCommandConfirmParams = {
   readonly editable?: boolean;
 };
 
-export type SqlfuCommandConfirm = (
-  params: SqlfuCommandConfirmParams,
-) => Promise<string | null>;
+export type SqlfuCommandConfirm = (params: SqlfuCommandConfirmParams) => Promise<string | null>;
 
 export async function runSqlfuCommand(
   context: SqlfuCommandContext,
@@ -370,16 +382,24 @@ export async function runSqlfuCommand(
   }
 
   if (normalized.startsWith('sqlfu baseline ')) {
-    await applyBaselineSql(initializedContext, {
-      target: normalized.replace(/^sqlfu baseline /u, '').trim(),
-    }, confirm);
+    await applyBaselineSql(
+      initializedContext,
+      {
+        target: normalized.replace(/^sqlfu baseline /u, '').trim(),
+      },
+      confirm,
+    );
     return;
   }
 
   if (normalized.startsWith('sqlfu goto ')) {
-    await applyGotoSql(initializedContext, {
-      target: normalized.replace(/^sqlfu goto /u, '').trim(),
-    }, confirm);
+    await applyGotoSql(
+      initializedContext,
+      {
+        target: normalized.replace(/^sqlfu goto /u, '').trim(),
+      },
+      confirm,
+    );
     return;
   }
 
@@ -433,11 +453,7 @@ async function readDefinitionsSql(definitionsPath: string) {
   }
 }
 
-async function applyDraftSql(
-  context: SqlfuContext,
-  input: {name?: string} | undefined,
-  confirm: SqlfuCommandConfirm,
-) {
+async function applyDraftSql(context: SqlfuContext, input: {name?: string} | undefined, confirm: SqlfuCommandConfirm) {
   const runtime = createRuntime(context);
   const migrations = await runtime.readMigrations();
   const definitionsSql = await runtime.readDefinitionsSql();
@@ -467,10 +483,7 @@ async function applyDraftSql(
   await fs.writeFile(path.join(context.config.migrations, fileName), `${body.trim()}\n`);
 }
 
-async function applySyncSql(
-  context: SqlfuContext,
-  confirm: SqlfuCommandConfirm,
-) {
+async function applySyncSql(context: SqlfuContext, confirm: SqlfuCommandConfirm) {
   const definitionsSql = await readDefinitionsSql(context.config.definitions);
   await using database = await openMainDevDatabase(context.config.db);
   const baselineSql = await extractSchema(database.client, 'main', {
@@ -513,10 +526,7 @@ async function applySyncSql(
   }
 }
 
-async function applyMigrateSql(
-  context: SqlfuContext,
-  confirm: SqlfuCommandConfirm,
-) {
+async function applyMigrateSql(context: SqlfuContext, confirm: SqlfuCommandConfirm) {
   const migrations = await createRuntime(context).readMigrations();
   await using database = await openMainDevDatabase(context.config.db);
   const applied = await readMigrationHistory(database.client);
@@ -525,10 +535,9 @@ async function applyMigrateSql(
   if (pendingMigrations.length > 0) {
     const ok = await confirm({
       title: 'Apply pending migrations?',
-      body: pendingMigrations.map((migration) => [
-        `-- ${migrationName(migration)}`,
-        migration.content.trim(),
-      ].join('\n')).join('\n\n'),
+      body: pendingMigrations
+        .map((migration) => [`-- ${migrationName(migration)}`, migration.content.trim()].join('\n'))
+        .join('\n\n'),
       bodyType: 'sql',
     });
     if (!ok) {
@@ -539,11 +548,7 @@ async function applyMigrateSql(
   await applyMigrationsToDatabase(context.config.db, migrations);
 }
 
-async function applyBaselineSql(
-  context: SqlfuContext,
-  input: {target: string},
-  confirm: SqlfuCommandConfirm,
-) {
+async function applyBaselineSql(context: SqlfuContext, input: {target: string}, confirm: SqlfuCommandConfirm) {
   const migrations = await createRuntime(context).readMigrations();
   const targetMigrations = getMigrationsThroughTarget(migrations, input.target);
   const ok = await confirm({
@@ -562,11 +567,7 @@ async function applyBaselineSql(
   await baselineMigrationHistory(database.client, {migrations, target: input.target});
 }
 
-async function applyGotoSql(
-  context: SqlfuContext,
-  input: {target: string},
-  confirm: SqlfuCommandConfirm,
-) {
+async function applyGotoSql(context: SqlfuContext, input: {target: string}, confirm: SqlfuCommandConfirm) {
   const runtime = createRuntime(context);
   const migrations = await runtime.readMigrations();
   const targetMigrations = getMigrationsThroughTarget(migrations, input.target);
@@ -664,7 +665,6 @@ async function createScratchDatabase(config: SqlfuProjectConfig, slug: string): 
   };
 }
 
-
 async function openMainDevDatabase(dbPath: string): Promise<DisposableClient> {
   await fs.mkdir(path.dirname(dbPath), {recursive: true});
   return openSqliteDatabase(dbPath);
@@ -713,7 +713,8 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
 
   const repoDrift = await compareSchemas(runtime.config, desiredSchema, migrationsSchema);
   const historyMismatch = findHistoryMismatch(applied, migrationByName);
-  const hasPendingMigrations = !historyMismatch && migrations.some((migration) => !appliedNames.has(migrationName(migration)));
+  const hasPendingMigrations =
+    !historyMismatch && migrations.some((migration) => !appliedNames.has(migrationName(migration)));
 
   const historicalMigrations = applied
     .map((historical) => migrationByName.get(historical.name))
@@ -722,23 +723,21 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
   const schemaDrift = await compareSchemas(runtime.config, historicalSchema, liveSchema);
   const syncDrift = await compareSchemas(runtime.config, desiredSchema, liveSchema);
   const recommendedBaselineTarget = await findRecommendedTarget(runtime.config, migrations, liveSchema);
-  const recommendedGotoTarget = !repoDrift.isDifferent && !historyMismatch && migrations.length > 0
-    ? migrationName(migrations.at(-1)!)
-    : null;
+  const recommendedGotoTarget =
+    !repoDrift.isDifferent && !historyMismatch && migrations.length > 0 ? migrationName(migrations.at(-1)!) : null;
   const mismatches: CheckMismatch[] = [];
   const recommendations: CheckRecommendation[] = [];
 
   if (historyMismatch) {
-    const problemLine = historyMismatch.kind === 'deleted'
-      ? `Deleted applied migration: ${historyMismatch.name}`
-      : `Applied migration checksum mismatch: ${historyMismatch.name}`;
+    const problemLine =
+      historyMismatch.kind === 'deleted'
+        ? `Deleted applied migration: ${historyMismatch.name}`
+        : `Applied migration checksum mismatch: ${historyMismatch.name}`;
     mismatches.push({
       kind: 'historyDrift',
       title: 'History Drift',
       summary: 'Migration History does not match Migrations.',
-      details: [
-        problemLine,
-      ],
+      details: [problemLine],
     });
 
     if (historyMismatch.kind === 'deleted') {
@@ -812,8 +811,8 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
       summary: !hasAppliedHistory
         ? 'Live Schema exists, but Migration History is empty.'
         : repoDriftWithLiveAlreadySynced
-        ? 'Live Schema matches Desired Schema, but not Migration History.'
-        : 'Live Schema does not match Migration History.',
+          ? 'Live Schema matches Desired Schema, but not Migration History.'
+          : 'Live Schema does not match Migration History.',
       details: [],
     });
 
@@ -838,8 +837,8 @@ async function analyzeDatabase(runtime: ReturnType<typeof createRuntime>) {
   }
 
   if (syncDrift.isDifferent && syncDrift.isSyncable) {
-    const pendingMigrationsWouldResolveSyncDrift = mismatches.length === 1
-      && mismatches[0]?.kind === 'pendingMigrations';
+    const pendingMigrationsWouldResolveSyncDrift =
+      mismatches.length === 1 && mismatches[0]?.kind === 'pendingMigrations';
     mismatches.push({
       kind: 'syncDrift',
       title: 'Sync Drift',
@@ -930,16 +929,17 @@ function getMigrationIntegrity(currentContent: string | undefined, appliedChecks
     return 'checksum mismatch' as const;
   }
 
-  return migrationChecksum(currentContent) === appliedChecksum ? 'ok' as const : 'checksum mismatch' as const;
+  return migrationChecksum(currentContent) === appliedChecksum ? ('ok' as const) : ('checksum mismatch' as const);
 }
 
 function summarizeSqlite3defError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
-  const line = message
-    .split('\n')
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .at(-1) ?? message.trim();
+  const line =
+    message
+      .split('\n')
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .at(-1) ?? message.trim();
   return line.replace(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2} /u, '');
 }
 
@@ -986,8 +986,7 @@ export type CheckRecommendation = {
     | 'goto'
     | 'sync'
     | 'restoreMissingMigration'
-    | 'restoreOriginalMigration'
-    ;
+    | 'restoreOriginalMigration';
   readonly command?: readonly [string, ...string[]];
   readonly label: string;
   readonly rationale?: string;
@@ -1001,7 +1000,12 @@ export type CheckAnalysis = {
 function addRecommendation(target: CheckRecommendation[], recommendation: CheckRecommendation) {
   const commandKey = recommendation.command?.join('\0') ?? '';
   const key = `${recommendation.kind}|${commandKey}|${recommendation.label}|${recommendation.rationale ?? ''}`;
-  if (target.some((existing) => `${existing.kind}|${existing.command?.join('\0') ?? ''}|${existing.label}|${existing.rationale ?? ''}` === key)) {
+  if (
+    target.some(
+      (existing) =>
+        `${existing.kind}|${existing.command?.join('\0') ?? ''}|${existing.label}|${existing.rationale ?? ''}` === key,
+    )
+  ) {
     return;
   }
   target.push(recommendation);
@@ -1046,10 +1050,12 @@ function formatCheckFailure(analysis: CheckAnalysis) {
   );
 
   if (analysis.recommendations.length > 0) {
-    sections.push([
-      'Recommended next actions',
-      ...analysis.recommendations.map((recommendation) => `- ${formatRecommendationText(recommendation)}`),
-    ].join('\n'));
+    sections.push(
+      [
+        'Recommended next actions',
+        ...analysis.recommendations.map((recommendation) => `- ${formatRecommendationText(recommendation)}`),
+      ].join('\n'),
+    );
   }
 
   return sections.join('\n\n');

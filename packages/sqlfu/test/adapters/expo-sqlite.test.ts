@@ -8,7 +8,7 @@ import {execa} from 'execa';
 import {chromium, type Page} from 'playwright';
 import {expect, test as baseTest} from 'vitest';
 
-const test = baseTest.skipIf(!process.env.EXPO_TEST)
+const test = baseTest.skipIf(!process.env.EXPO_TEST);
 
 import {ensureBuilt, packageRoot} from './ensure-built.js';
 
@@ -16,94 +16,83 @@ declare const createExpoSqliteClient: typeof import('../../src/client.js').creat
 declare const sql: typeof import('../../src/client.js').sql;
 type ExecaProcess = ReturnType<typeof execa>;
 
-test(
-  'createExpoSqliteClient works in a real expo web app',
-  {timeout: 180_000},
-  async () => {
-    await using fixture = await createExpoWebFixture(
-      class ClientDotAllTest {
-        client: ReturnType<typeof createExpoSqliteClient>;
+test('createExpoSqliteClient works in a real expo web app', {timeout: 180_000}, async () => {
+  await using fixture = await createExpoWebFixture(
+    class ClientDotAllTest {
+      client: ReturnType<typeof createExpoSqliteClient>;
 
-        constructor(db: any) {
-          this.client = createExpoSqliteClient(db);
-        }
+      constructor(db: any) {
+        this.client = createExpoSqliteClient(db);
+      }
 
-        async testme() {
-          return this.client.all(sql`select 1 as value`);
-        }
-      },
-    );
+      async testme() {
+        return this.client.all(sql`select 1 as value`);
+      }
+    },
+  );
 
-    expect(await fixture.stub.testme()).toMatchObject([{value: 1}]);
-  },
-);
+  expect(await fixture.stub.testme()).toMatchObject([{value: 1}]);
+});
 
-test(
-  'createExpoSqliteClient can write and read rows in a real expo web app',
-  {timeout: 180_000},
-  async () => {
-    await using fixture = await createExpoWebFixture(
-      class ClientPersonTest {
-        client: ReturnType<typeof createExpoSqliteClient>;
+test('createExpoSqliteClient can write and read rows in a real expo web app', {timeout: 180_000}, async () => {
+  await using fixture = await createExpoWebFixture(
+    class ClientPersonTest {
+      client: ReturnType<typeof createExpoSqliteClient>;
 
-        constructor(db: any) {
-          this.client = createExpoSqliteClient(db);
-        }
+      constructor(db: any) {
+        this.client = createExpoSqliteClient(db);
+      }
 
-        async resetPeople() {
-          await this.client.run(sql`
+      async resetPeople() {
+        await this.client.run(sql`
             drop table if exists person
           `);
-          await this.client.run(sql`
+        await this.client.run(sql`
             create table if not exists person (
               id integer primary key,
               name text not null
             )
           `);
-          await this.client.run(sql`delete from person`);
-        }
+        await this.client.run(sql`delete from person`);
+      }
 
-        async insertPerson(id: number, name: string) {
-          return this.client.run(sql`
+      async insertPerson(id: number, name: string) {
+        return this.client.run(sql`
             insert into person (id, name) values (${id}, ${name})
           `);
-        }
+      }
 
-        async listPeople() {
-          return this.client.all<{id: number; name: string}>(sql`
+      async listPeople() {
+        return this.client.all<{id: number; name: string}>(sql`
             select id, name
             from person
             order by id
           `);
-        }
-      },
-    );
+      }
+    },
+  );
 
-    await fixture.stub.resetPeople();
-    await fixture.stub.insertPerson(1, 'bob');
-    await fixture.stub.insertPerson(2, 'ada');
+  await fixture.stub.resetPeople();
+  await fixture.stub.insertPerson(1, 'bob');
+  await fixture.stub.insertPerson(2, 'ada');
 
-    expect(await fixture.stub.listPeople()).toMatchObject([
-      {id: 1, name: 'bob'},
-      {id: 2, name: 'ada'},
-    ]);
-  },
-);
+  expect(await fixture.stub.listPeople()).toMatchObject([
+    {id: 1, name: 'bob'},
+    {id: 2, name: 'ada'},
+  ]);
+});
 
-test(
-  'createExpoSqliteClient.raw runs multiple statements in a real expo web app',
-  {timeout: 180_000},
-  async () => {
-    await using fixture = await createExpoWebFixture(
-      class ClientMultiStatementTest {
-        client: ReturnType<typeof createExpoSqliteClient>;
+test('createExpoSqliteClient.raw runs multiple statements in a real expo web app', {timeout: 180_000}, async () => {
+  await using fixture = await createExpoWebFixture(
+    class ClientMultiStatementTest {
+      client: ReturnType<typeof createExpoSqliteClient>;
 
-        constructor(db: any) {
-          this.client = createExpoSqliteClient(db);
-        }
+      constructor(db: any) {
+        this.client = createExpoSqliteClient(db);
+      }
 
-        async seedPeople() {
-          return this.client.raw(`
+      async seedPeople() {
+        return this.client.raw(`
             create table person (
               id integer primary key,
               name text not null
@@ -111,26 +100,25 @@ test(
             insert into person (id, name) values (1, 'bob');
             insert into person (id, name) values (2, 'ada');
           `);
-        }
+      }
 
-        async listPeople() {
-          return this.client.all<{id: number; name: string}>(sql`
+      async listPeople() {
+        return this.client.all<{id: number; name: string}>(sql`
             select id, name
             from person
             order by id
           `);
-        }
-      },
-    );
+      }
+    },
+  );
 
-    await fixture.stub.seedPeople();
+  await fixture.stub.seedPeople();
 
-    expect(await fixture.stub.listPeople()).toMatchObject([
-      {id: 1, name: 'bob'},
-      {id: 2, name: 'ada'},
-    ]);
-  },
-);
+  expect(await fixture.stub.listPeople()).toMatchObject([
+    {id: 1, name: 'bob'},
+    {id: 2, name: 'ada'},
+  ]);
+});
 
 async function createExpoWebFixture<TInstance extends object>(classDef: new (...args: any[]) => TInstance) {
   await ensureBuilt();
@@ -285,11 +273,12 @@ async function createExpoWebFixture<TInstance extends object>(classDef: new (...
 
   await runCommand('pnpm', ['install'], root, env);
 
-  const server = execa(
-    'pnpm',
-    ['exec', 'expo', 'start', '--port', String(port)],
-    {cwd: root, env, all: true, reject: false}
-  );
+  const server = execa('pnpm', ['exec', 'expo', 'start', '--port', String(port)], {
+    cwd: root,
+    env,
+    all: true,
+    reject: false,
+  });
   const serverLogs = captureOutput(server);
 
   try {
@@ -335,7 +324,9 @@ function createExpoWebStub<TInstance extends object>(
           await page.waitForFunction(
             ({requestId}) => {
               const browserGlobal = globalThis as typeof globalThis & {document?: any};
-              const renderedRequestId = browserGlobal.document?.querySelector('[data-testid="rpc-request-id"]')?.textContent;
+              const renderedRequestId = browserGlobal.document?.querySelector(
+                '[data-testid="rpc-request-id"]',
+              )?.textContent;
               const renderedStatus = browserGlobal.document?.querySelector('[data-testid="rpc-status"]')?.textContent;
               return renderedRequestId === String(requestId) && renderedStatus !== 'running';
             },
@@ -348,11 +339,11 @@ function createExpoWebStub<TInstance extends object>(
           const errorText = await page.getByTestId('rpc-error').textContent();
 
           if (status === 'error') {
-            const payload = errorText ? JSON.parse(errorText) as {requestId: number; message: string} : undefined;
+            const payload = errorText ? (JSON.parse(errorText) as {requestId: number; message: string}) : undefined;
             throw new Error(payload?.message ?? 'Fixture RPC failed');
           }
 
-          const payload = resultText ? JSON.parse(resultText) as {requestId: number; value: unknown} : undefined;
+          const payload = resultText ? (JSON.parse(resultText) as {requestId: number; value: unknown}) : undefined;
           if (!payload || payload.requestId !== requestId) {
             throw new Error(`Fixture returned an unexpected RPC result for ${propertyKey}`);
           }
@@ -374,11 +365,15 @@ async function waitForFixtureBoot(
   browserLogs: () => readonly string[],
 ): Promise<void> {
   try {
-    await page.waitForFunction(() => {
-      const browserGlobal = globalThis as typeof globalThis & {document?: any};
-      const status = browserGlobal.document?.querySelector('[data-testid="boot-status"]')?.textContent;
-      return status === 'ready' || status === 'error';
-    }, undefined, {timeout: 30_000});
+    await page.waitForFunction(
+      () => {
+        const browserGlobal = globalThis as typeof globalThis & {document?: any};
+        const status = browserGlobal.document?.querySelector('[data-testid="boot-status"]')?.textContent;
+        return status === 'ready' || status === 'error';
+      },
+      undefined,
+      {timeout: 30_000},
+    );
 
     const bootStatus = await page.getByTestId('boot-status').textContent();
     if (bootStatus === 'error') {
@@ -386,7 +381,9 @@ async function waitForFixtureBoot(
       throw new Error(bootError || 'Fixture boot failed');
     }
   } catch (error) {
-    throw new Error(formatFixtureFailure(error instanceof Error ? error.message : String(error), serverLogs(), browserLogs()));
+    throw new Error(
+      formatFixtureFailure(error instanceof Error ? error.message : String(error), serverLogs(), browserLogs()),
+    );
   }
 }
 
@@ -492,7 +489,13 @@ async function stopProcess(child: ExecaProcess): Promise<void> {
   }
 
   child.kill('SIGINT');
-  const exited = await Promise.race([child.then(() => true, () => true), delay(5_000).then(() => false)]);
+  const exited = await Promise.race([
+    child.then(
+      () => true,
+      () => true,
+    ),
+    delay(5_000).then(() => false),
+  ]);
 
   if (!exited && child.exitCode === null && !child.killed) {
     child.kill('SIGKILL');

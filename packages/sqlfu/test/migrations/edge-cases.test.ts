@@ -49,7 +49,10 @@ describe('migrate edge cases', () => {
     });
 
     await fixture.api.migrate();
-    await fixture.writeFile(await fixture.globOne('migrations/*create_person.sql'), `create table person(first_name text, last_name text)`);
+    await fixture.writeFile(
+      await fixture.globOne('migrations/*create_person.sql'),
+      `create table person(first_name text, last_name text)`,
+    );
 
     await expect(fixture.api.migrate()).rejects.toMatchInlineSnapshot(`
       [Error: applied migration checksum mismatch: 2026-04-10T00.00.00.000Z_create_person]
@@ -90,10 +93,13 @@ describe('migrate edge cases', () => {
   test('rolls back a failed multi-statement migration', async () => {
     await using fixture = await createMigrationsFixture('migrate-transaction-per-migration');
 
-    await fixture.writeMigration('create_person_then_fail', dedent`
+    await fixture.writeMigration(
+      'create_person_then_fail',
+      dedent`
       create table person(name text);
       this is not valid sql;
-    `);
+    `,
+    );
 
     await expect(fixture.api.migrate()).rejects.toMatchInlineSnapshot(`
       [Error: near "this": syntax error]
@@ -255,7 +261,10 @@ describe('check recommendation edge cases', () => {
 
     await fixture.api.migrate();
     await fixture.db.raw(`create table toy(name text);`);
-    await fixture.writeFile(await fixture.globOne('migrations/*create_person.sql'), `create table person(first_name text, last_name text)`);
+    await fixture.writeFile(
+      await fixture.globOne('migrations/*create_person.sql'),
+      `create table person(first_name text, last_name text)`,
+    );
 
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: History Drift
@@ -298,7 +307,10 @@ describe('history drift recommendations', () => {
     });
 
     await fixture.api.migrate();
-    await fixture.writeFile(await fixture.globOne('migrations/*create_person.sql'), `create table person(first_name text, last_name text)`);
+    await fixture.writeFile(
+      await fixture.globOne('migrations/*create_person.sql'),
+      `create table person(first_name text, last_name text)`,
+    );
 
     await expect(fixture.api.check.all()).rejects.toMatchInlineSnapshot(`
       [Error: History Drift
@@ -393,10 +405,7 @@ describe('baseline edge cases', () => {
     expect(await extractSchema(fixture.db, 'main', {excludedTables: ['sqlfu_migrations']})).toMatchInlineSnapshot(`
       "create table person(name text);"
     `);
-    expect(await fixture.migrationNames()).toEqual([
-      'create_person',
-      'create_pet',
-    ]);
+    expect(await fixture.migrationNames()).toEqual(['create_person', 'create_pet']);
   });
 
   test('rolls back history changes if baseline fails halfway through', async () => {
@@ -524,9 +533,7 @@ describe('sync edge cases', () => {
     await expect(extractSchema(fixture.db)).resolves.toMatchInlineSnapshot(`
       "create table foo(id int);"
     `);
-    await expect(fixture.db.sql`select id from foo order by id`).resolves.toMatchObject([
-      {id: 1},
-    ]);
+    await expect(fixture.db.sql`select id from foo order by id`).resolves.toMatchObject([{id: 1}]);
   });
 });
 
@@ -541,9 +548,7 @@ describe('viewing migrations', () => {
 
     await fixture.api.baseline({target: '2026-04-10T00.00.00.000Z_create_person'});
 
-    await expect(fixture.api.pending()).resolves.toMatchObject([
-      '2026-04-10T01.00.00.000Z_create_pet',
-    ]);
+    await expect(fixture.api.pending()).resolves.toMatchObject(['2026-04-10T01.00.00.000Z_create_pet']);
   });
 
   test('lists applied migrations in filename order', async () => {

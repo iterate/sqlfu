@@ -10,10 +10,7 @@ import {z} from 'zod';
 import {loadProjectStateFrom, resolveProjectConfig} from '../core/config.js';
 import {PortInUseError, getListeningProcesses} from '../core/port-process.js';
 
-import {
-  analyzeAdHocSqlForConfig,
-  generateQueryTypesForConfig,
-} from '../typegen/index.js';
+import {analyzeAdHocSqlForConfig, generateQueryTypesForConfig} from '../typegen/index.js';
 import type {QueryCatalog, QueryCatalogEntry} from '../typegen/query-catalog.js';
 import type {CheckAnalysis} from '../api.js';
 import {
@@ -26,7 +23,16 @@ import {
 import {createNodeSqliteClient} from '../client.js';
 import {splitSqlStatements} from '../core/sqlite.js';
 import type {QueryArg, SqlfuProjectConfig} from '../core/types.js';
-import type {QueryExecutionResponse, SchemaCheckCard, SchemaCheckRecommendation, SqlAnalysisResponse, SqlEditorDiagnostic, StudioColumn, TableRowKey, TableRowsResponse} from './shared.js';
+import type {
+  QueryExecutionResponse,
+  SchemaCheckCard,
+  SchemaCheckRecommendation,
+  SqlAnalysisResponse,
+  SqlEditorDiagnostic,
+  StudioColumn,
+  TableRowKey,
+  TableRowsResponse,
+} from './shared.js';
 import type {DatabaseSync as DatabaseSyncType} from 'node:sqlite';
 
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
@@ -176,10 +182,12 @@ const uiRouter = {
         };
       }),
       resultantSchema: uiBase
-        .input(z.object({
-          source: z.enum(['migrations', 'history']),
-          id: z.string(),
-        }))
+        .input(
+          z.object({
+            source: z.enum(['migrations', 'history']),
+            id: z.string(),
+          }),
+        )
         .handler(async ({context, input}) => {
           if (!input.id.trim()) {
             throw new Error('Migration id is required');
@@ -191,10 +199,12 @@ const uiRouter = {
         }),
     },
     command: uiBase
-      .input(z.object({
-        command: z.string(),
-        confirmation: z.string().optional(),
-      }))
+      .input(
+        z.object({
+          command: z.string(),
+          confirmation: z.string().optional(),
+        }),
+      )
       .handler(async ({context, input}) => {
         if (!input.command.trim()) {
           throw new Error('Command is required');
@@ -230,9 +240,11 @@ const uiRouter = {
         return {ok: true} as const;
       }),
     definitions: uiBase
-      .input(z.object({
-        sql: z.string(),
-      }))
+      .input(
+        z.object({
+          sql: z.string(),
+        }),
+      )
       .handler(async ({context, input}) => {
         if (!input.sql.trim()) {
           throw new Error('Desired Schema is required');
@@ -245,35 +257,49 @@ const uiRouter = {
   catalog: uiBase.handler(({context}) => loadCatalog(requireProjectConfig(context.project))),
   table: {
     list: uiBase
-      .input(z.object({
-        relationName: z.string(),
-        page: z.number().int(),
-      }))
-      .handler(({context, input}) => getTableRows(requireProjectConfig(context.project).db, input.relationName, input.page)),
+      .input(
+        z.object({
+          relationName: z.string(),
+          page: z.number().int(),
+        }),
+      )
+      .handler(({context, input}) =>
+        getTableRows(requireProjectConfig(context.project).db, input.relationName, input.page),
+      ),
     save: uiBase
-      .input(z.object({
-        relationName: z.string(),
-        page: z.number().int(),
-        originalRows: z.array(rowRecordSchema),
-        rows: z.array(rowRecordSchema),
-        rowKeys: z.array(tableRowKeySchema),
-      }))
-      .handler(({context, input}) => saveTableRows(requireProjectConfig(context.project).db, input.relationName, input)),
+      .input(
+        z.object({
+          relationName: z.string(),
+          page: z.number().int(),
+          originalRows: z.array(rowRecordSchema),
+          rows: z.array(rowRecordSchema),
+          rowKeys: z.array(tableRowKeySchema),
+        }),
+      )
+      .handler(({context, input}) =>
+        saveTableRows(requireProjectConfig(context.project).db, input.relationName, input),
+      ),
     delete: uiBase
-      .input(z.object({
-        relationName: z.string(),
-        page: z.number().int(),
-        originalRow: rowRecordSchema,
-        rowKey: tableRowKeySchema,
-      }))
-      .handler(({context, input}) => deleteTableRow(requireProjectConfig(context.project).db, input.relationName, input)),
+      .input(
+        z.object({
+          relationName: z.string(),
+          page: z.number().int(),
+          originalRow: rowRecordSchema,
+          rowKey: tableRowKeySchema,
+        }),
+      )
+      .handler(({context, input}) =>
+        deleteTableRow(requireProjectConfig(context.project).db, input.relationName, input),
+      ),
   },
   sql: {
     run: uiBase
-      .input(z.object({
-        sql: z.string(),
-        params: z.unknown().optional(),
-      }))
+      .input(
+        z.object({
+          sql: z.string(),
+          params: z.unknown().optional(),
+        }),
+      )
       .handler(({context, input}) => {
         const config = requireProjectConfig(context.project);
         const trimmedSql = input.sql.trim();
@@ -311,15 +337,19 @@ const uiRouter = {
         }
       }),
     analyze: uiBase
-      .input(z.object({
-        sql: z.string(),
-      }))
+      .input(
+        z.object({
+          sql: z.string(),
+        }),
+      )
       .handler(({context, input}) => analyzeSql(requireProjectConfig(context.project), input)),
     save: uiBase
-      .input(z.object({
-        sql: z.string(),
-        name: z.string(),
-      }))
+      .input(
+        z.object({
+          sql: z.string(),
+          name: z.string(),
+        }),
+      )
       .handler(async ({context, input}) => {
         const config = requireProjectConfig(context.project);
         const sql = input.sql.trim();
@@ -342,11 +372,13 @@ const uiRouter = {
   },
   query: {
     execute: uiBase
-      .input(z.object({
-        queryId: z.string(),
-        data: z.record(z.string(), z.unknown()).optional(),
-        params: z.record(z.string(), z.unknown()).optional(),
-      }))
+      .input(
+        z.object({
+          queryId: z.string(),
+          data: z.record(z.string(), z.unknown()).optional(),
+          params: z.record(z.string(), z.unknown()).optional(),
+        }),
+      )
       .handler(async ({context, input}): Promise<QueryExecutionResponse> => {
         const config = requireProjectConfig(context.project);
         const catalog = await loadCatalog(config);
@@ -380,10 +412,12 @@ const uiRouter = {
         }
       }),
     update: uiBase
-      .input(z.object({
-        queryId: z.string(),
-        sql: z.string(),
-      }))
+      .input(
+        z.object({
+          queryId: z.string(),
+          sql: z.string(),
+        }),
+      )
       .handler(async ({context, input}) => {
         const config = requireProjectConfig(context.project);
         const catalog = await loadCatalog(config);
@@ -404,10 +438,12 @@ const uiRouter = {
         };
       }),
     rename: uiBase
-      .input(z.object({
-        queryId: z.string(),
-        name: z.string(),
-      }))
+      .input(
+        z.object({
+          queryId: z.string(),
+          name: z.string(),
+        }),
+      )
       .handler(async ({context, input}) => {
         const config = requireProjectConfig(context.project);
         const catalog = await loadCatalog(config);
@@ -430,9 +466,11 @@ const uiRouter = {
         };
       }),
     delete: uiBase
-      .input(z.object({
-        queryId: z.string(),
-      }))
+      .input(
+        z.object({
+          queryId: z.string(),
+        }),
+      )
       .handler(async ({context, input}) => {
         const config = requireProjectConfig(context.project);
         const catalog = await loadCatalog(config);
@@ -469,9 +507,7 @@ export async function startSqlfuServer(input: StartSqlfuServerOptions = {}) {
       })
     : http.createServer();
   const uiAssets = input.ui ? resolveUiAssets(input.ui) : undefined;
-  const vite = input.dev && uiAssets
-    ? await createUiDevServer(uiAssets.root, httpServer)
-    : undefined;
+  const vite = input.dev && uiAssets ? await createUiDevServer(uiAssets.root, httpServer) : undefined;
 
   httpServer.on('request', async (req, res) => {
     try {
@@ -564,12 +600,13 @@ async function runCliServer() {
     templateRoot: readOption('--template-root') ?? undefined,
     port: port ? Number(port) : undefined,
     dev,
-    tls: tlsKeyPath && tlsCertPath
-      ? {
-          key: await fs.readFile(tlsKeyPath, 'utf8'),
-          cert: await fs.readFile(tlsCertPath, 'utf8'),
-        }
-      : undefined,
+    tls:
+      tlsKeyPath && tlsCertPath
+        ? {
+            key: await fs.readFile(tlsKeyPath, 'utf8'),
+            cert: await fs.readFile(tlsCertPath, 'utf8'),
+          }
+        : undefined,
   });
   void server;
   console.log('sqlfu ready at https://local.sqlfu.dev');
@@ -606,9 +643,7 @@ async function loadNodeSqliteModule() {
 
 function isNodeSqliteExperimentalWarning(warning: string | Error, args: unknown[]) {
   const message = typeof warning === 'string' ? warning : warning.message;
-  const type = typeof warning === 'string'
-    ? (typeof args[0] === 'string' ? args[0] : '')
-    : warning.name;
+  const type = typeof warning === 'string' ? (typeof args[0] === 'string' ? args[0] : '') : warning.name;
 
   return type === 'ExperimentalWarning' && message.includes('SQLite is an experimental feature');
 }
@@ -648,15 +683,10 @@ async function analyzeSql(
 
 function isInternalUnsupportedSqlAnalysisError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
-  return [
-    'traverse_Sql_stmtContext',
-    'Not supported!',
-  ].includes(message);
+  return ['traverse_Sql_stmtContext', 'Not supported!'].includes(message);
 }
 
-function buildSchemaCheckCards(
-  analysis: CheckAnalysis,
-): readonly SchemaCheckCard[] {
+function buildSchemaCheckCards(analysis: CheckAnalysis): readonly SchemaCheckCard[] {
   const mismatchByKind = new Map(analysis.mismatches.map((mismatch) => [mismatch.kind, mismatch]));
   const recommendationKinds = new Set(analysis.recommendations.map((recommendation) => recommendation.kind));
 
@@ -715,17 +745,22 @@ function toSchemaCheckCard(
   title: string,
   okTitle: string,
   explainer: string,
-  mismatch: {
-    readonly kind: SchemaCheckCard['key'];
-    readonly summary: string;
-    readonly details: readonly string[];
-  } | undefined,
+  mismatch:
+    | {
+        readonly kind: SchemaCheckCard['key'];
+        readonly summary: string;
+        readonly details: readonly string[];
+      }
+    | undefined,
   recommendationKinds?: ReadonlySet<string>,
-  mismatchByKind?: ReadonlyMap<string, {
-    readonly kind: SchemaCheckCard['key'];
-    readonly summary: string;
-    readonly details: readonly string[];
-  }>,
+  mismatchByKind?: ReadonlyMap<
+    string,
+    {
+      readonly kind: SchemaCheckCard['key'];
+      readonly summary: string;
+      readonly details: readonly string[];
+    }
+  >,
 ): SchemaCheckCard {
   const variant = getSchemaCheckCardVariant(key, mismatch, recommendationKinds, mismatchByKind);
   return {
@@ -742,27 +777,28 @@ function toSchemaCheckCard(
 
 function getSchemaCheckCardVariant(
   key: SchemaCheckCard['key'],
-  mismatch: {
-    readonly kind: SchemaCheckCard['key'];
-    readonly summary: string;
-    readonly details: readonly string[];
-  } | undefined,
+  mismatch:
+    | {
+        readonly kind: SchemaCheckCard['key'];
+        readonly summary: string;
+        readonly details: readonly string[];
+      }
+    | undefined,
   recommendationKinds: ReadonlySet<string> = new Set(),
-  mismatchByKind: ReadonlyMap<string, {
-    readonly kind: SchemaCheckCard['key'];
-    readonly summary: string;
-    readonly details: readonly string[];
-  }> = new Map(),
+  mismatchByKind: ReadonlyMap<
+    string,
+    {
+      readonly kind: SchemaCheckCard['key'];
+      readonly summary: string;
+      readonly details: readonly string[];
+    }
+  > = new Map(),
 ): SchemaCheckCard['variant'] {
   if (!mismatch) {
     return 'ok';
   }
 
-  if (
-    key === 'syncDrift'
-    && mismatchByKind.has('pendingMigrations')
-    && !recommendationKinds.has('sync')
-  ) {
+  if (key === 'syncDrift' && mismatchByKind.has('pendingMigrations') && !recommendationKinds.has('sync')) {
     return 'info';
   }
 
@@ -794,9 +830,10 @@ function toSqlEditorDiagnostic(sql: string, error: unknown): SqlEditorDiagnostic
     };
   }
 
-  const nearToken = message.match(/near ['"`]([^'"`]+)['"`]/i)?.[1]
-    ?? message.match(/no such (?:table|column):\s*([A-Za-z0-9_."]+)/i)?.[1]
-    ?? message.match(/Must select the join column:\s*([A-Za-z0-9_."]+)/i)?.[1];
+  const nearToken =
+    message.match(/near ['"`]([^'"`]+)['"`]/i)?.[1] ??
+    message.match(/no such (?:table|column):\s*([A-Za-z0-9_."]+)/i)?.[1] ??
+    message.match(/Must select the join column:\s*([A-Za-z0-9_."]+)/i)?.[1];
   const tokenLocation = nearToken ? locateToken(sql, nearToken) : null;
   if (tokenLocation) {
     return {
@@ -829,9 +866,7 @@ function locateExplicitPosition(sql: string, message: string) {
     return null;
   }
 
-  const from = lines
-    .slice(0, lineNumber - 1)
-    .reduce((total, line) => total + line.length + 1, 0) + (columnNumber - 1);
+  const from = lines.slice(0, lineNumber - 1).reduce((total, line) => total + line.length + 1, 0) + (columnNumber - 1);
 
   return {
     from,
@@ -903,13 +938,22 @@ function encodeScalar(
     }
     return value.replace('T', ' ').replace(/\.\d+Z?$/, '');
   }
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean' || value instanceof Uint8Array) {
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'bigint' ||
+    typeof value === 'boolean' ||
+    value instanceof Uint8Array
+  ) {
     return value;
   }
   return JSON.stringify(value);
 }
 
-function getRelationColumns(client: ReturnType<typeof createNodeSqliteClient>, relationName: string): readonly StudioColumn[] {
+function getRelationColumns(
+  client: ReturnType<typeof createNodeSqliteClient>,
+  relationName: string,
+): readonly StudioColumn[] {
   return client
     .all<Record<string, unknown>>({
       sql: `PRAGMA table_xinfo("${escapeIdentifier(relationName)}")`,
@@ -955,9 +999,7 @@ async function getTableRows(dbPath: string, relationName: string, page: number):
       page: safePage,
       pageSize,
       editable: relation.type === 'table',
-      rowKeys: relation.type === 'table'
-        ? materializedRows.map((row) => buildTableRowKey(row, primaryKeyColumns))
-        : [],
+      rowKeys: relation.type === 'table' ? materializedRows.map((row) => buildTableRowKey(row, primaryKeyColumns)) : [],
       columns,
       rows: materializedRows.map(stripInternalRowValues),
     };
@@ -997,27 +1039,34 @@ async function saveTableRows(
       }
       const normalizedNextRow = normalizeEditedRow(nextRow, originalRow);
 
-      const changedColumns = Object.keys(normalizedNextRow).filter((column) => !isSameValue(normalizedNextRow[column], originalRow[column]));
+      const changedColumns = Object.keys(normalizedNextRow).filter(
+        (column) => !isSameValue(normalizedNextRow[column], originalRow[column]),
+      );
       if (changedColumns.length === 0) {
         return [];
       }
 
-      return [{
-        rowKey: input.rowKeys[index]!,
-        originalRow,
-        nextRow: normalizedNextRow,
-        changedColumns,
-      }];
+      return [
+        {
+          rowKey: input.rowKeys[index]!,
+          originalRow,
+          nextRow: normalizedNextRow,
+          changedColumns,
+        },
+      ];
     });
 
     for (const row of changedRows) {
-      const sql = row.rowKey.kind === 'new'
-        ? buildInsertRowStatement(relationName, row.nextRow, row.changedColumns)
-        : buildUpdateRowStatement(relationName, row.rowKey, row.originalRow, row.nextRow, row.changedColumns);
+      const sql =
+        row.rowKey.kind === 'new'
+          ? buildInsertRowStatement(relationName, row.nextRow, row.changedColumns)
+          : buildUpdateRowStatement(relationName, row.rowKey, row.originalRow, row.nextRow, row.changedColumns);
       try {
         executePreparedRun(database.prepare(sql.sql), sql.args);
       } catch (error) {
-        throw new Error(`${error instanceof Error ? error.message : String(error)}\nSQL: ${sql.sql}\nArgs: ${JSON.stringify(sql.args)}`);
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)}\nSQL: ${sql.sql}\nArgs: ${JSON.stringify(sql.args)}`,
+        );
       }
     }
 
@@ -1107,9 +1156,7 @@ function executePreparedAll<TRow extends Record<string, unknown>>(
   if (params == null) {
     return statement.all() as TRow[];
   }
-  return Array.isArray(params)
-    ? statement.all(...params) as TRow[]
-    : statement.all(params as never) as TRow[];
+  return Array.isArray(params) ? (statement.all(...params) as TRow[]) : (statement.all(params as never) as TRow[]);
 }
 
 function executePreparedRun(
@@ -1119,9 +1166,7 @@ function executePreparedRun(
   if (params == null) {
     return statement.run();
   }
-  return Array.isArray(params)
-    ? statement.run(...params)
-    : statement.run(params as never);
+  return Array.isArray(params) ? statement.run(...params) : statement.run(params as never);
 }
 
 function materializeRow(row: Record<string, unknown>) {
@@ -1194,7 +1239,11 @@ function buildRowWhereClause(rowKey: TableRowKey, originalRow: Record<string, un
 
   const entries = Object.entries(rowKey.values);
   return {
-    sql: entries.map(([column, value]) => (value == null ? `"${escapeIdentifier(column)}" is null` : `"${escapeIdentifier(column)}" = ?`)).join(' and '),
+    sql: entries
+      .map(([column, value]) =>
+        value == null ? `"${escapeIdentifier(column)}" is null` : `"${escapeIdentifier(column)}" = ?`,
+      )
+      .join(' and '),
     args: entries.flatMap(([, value]) => (value == null ? [] : [normalizeDbValue(value)])),
   };
 }
@@ -1202,7 +1251,11 @@ function buildRowWhereClause(rowKey: TableRowKey, originalRow: Record<string, un
 function buildExactRowMatchClause(row: Record<string, unknown>) {
   const entries = Object.entries(row);
   return {
-    sql: entries.map(([column, value]) => (value == null ? `"${escapeIdentifier(column)}" is null` : `"${escapeIdentifier(column)}" = ?`)).join(' and '),
+    sql: entries
+      .map(([column, value]) =>
+        value == null ? `"${escapeIdentifier(column)}" is null` : `"${escapeIdentifier(column)}" = ?`,
+      )
+      .join(' and '),
     args: entries.flatMap(([, value]) => (value == null ? [] : [normalizeDbValue(value)])),
   };
 }
@@ -1250,7 +1303,7 @@ function buildDeleteRowStatement(
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 function isTableRowKey(value: unknown): value is TableRowKey {
@@ -1379,11 +1432,7 @@ function createSubdomainProjectResolver(input: {
   };
 }
 
-async function ensureProjectConfig(input: {
-  projectName: string;
-  projectsRoot: string;
-  templateRoot: string;
-}) {
+async function ensureProjectConfig(input: {projectName: string; projectsRoot: string; templateRoot: string}) {
   const projectRoot = path.join(input.projectsRoot, input.projectName);
   await ensureProjectFiles({
     projectRoot,
@@ -1394,11 +1443,7 @@ async function ensureProjectConfig(input: {
   return await loadProjectStateFrom(projectRoot);
 }
 
-async function ensureProjectFiles(input: {
-  projectRoot: string;
-  projectsRoot: string;
-  templateRoot: string;
-}) {
+async function ensureProjectFiles(input: {projectRoot: string; projectsRoot: string; templateRoot: string}) {
   await fs.mkdir(input.projectsRoot, {recursive: true});
   try {
     await fs.access(input.projectRoot);
@@ -1518,9 +1563,7 @@ async function toWebRequest(req: http.IncomingMessage, url: URL) {
     }
   }
 
-  const body = method === 'GET' || method === 'HEAD'
-    ? undefined
-    : await readIncomingMessage(req);
+  const body = method === 'GET' || method === 'HEAD' ? undefined : await readIncomingMessage(req);
 
   return new Request(url, {
     method,
@@ -1571,11 +1614,14 @@ async function serveBuiltUi(res: http.ServerResponse, url: URL, distDir: string)
   if (isInsideDist(candidatePath, distDir)) {
     try {
       const file = await fs.readFile(candidatePath);
-      await sendWebResponse(res, new Response(file, {
-        headers: {
-          'content-type': contentTypeForPath(candidatePath),
-        },
-      }));
+      await sendWebResponse(
+        res,
+        new Response(file, {
+          headers: {
+            'content-type': contentTypeForPath(candidatePath),
+          },
+        }),
+      );
       return;
     } catch {}
   }
@@ -1623,11 +1669,7 @@ async function createUiDevServer(root: string, httpServer: http.Server) {
     root,
     appType: 'custom',
     server: {
-      allowedHosts: [
-        'local.sqlfu.dev',
-        '.ngrok.app',
-        '.ngrok.dev',
-      ],
+      allowedHosts: ['local.sqlfu.dev', '.ngrok.app', '.ngrok.dev'],
       middlewareMode: true,
       hmr: {
         server: httpServer,
@@ -1747,10 +1789,7 @@ function renderErrorPage(error: unknown) {
 }
 
 function escapeHtml(value: string) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
 function getServerPort(server: http.Server) {

@@ -17,7 +17,9 @@ export interface BetterSqlite3DatabaseLike {
 }
 
 export function createBetterSqlite3Client(database: BetterSqlite3DatabaseLike): SyncClient<BetterSqlite3DatabaseLike> {
-  const client: Omit<SyncClient<BetterSqlite3DatabaseLike>, 'sql'> & {sql: SyncClient<BetterSqlite3DatabaseLike>['sql']} = {
+  const client: Omit<SyncClient<BetterSqlite3DatabaseLike>, 'sql'> & {
+    sql: SyncClient<BetterSqlite3DatabaseLike>['sql'];
+  } = {
     driver: database,
     all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       return database.prepare<TRow>(query.sql).all(...query.args);
