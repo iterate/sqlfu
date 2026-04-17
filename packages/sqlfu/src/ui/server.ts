@@ -485,7 +485,7 @@ export async function startSqlfuServer(input: StartSqlfuServerOptions = {}) {
 
   await new Promise<void>((resolve, reject) => {
     httpServer.once('error', reject);
-    httpServer.listen(input.port ?? 3217, () => {
+    httpServer.listen(input.port ?? 56081, () => {
       httpServer.off('error', reject);
       resolve();
     });

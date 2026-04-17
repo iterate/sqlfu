@@ -76,7 +76,7 @@ Current working idea:
 The right first slice is:
 
 - extract API from `packages/ui` into `packages/sqlfu`
-- make `npx sqlfu` start the local backend on `localhost:3217`
+- make `npx sqlfu` start the local backend on `localhost:56081`
 - stand up a simple static docs site that points users to `local.sqlfu.dev`
 
 That gives us the intended local product model without taking on remote execution, auth, or user-data hosting.
@@ -85,7 +85,7 @@ That gives us the intended local product model without taking on remote executio
 
 - Should the website build render markdown ahead of time, or is client-side markdown rendering acceptable for the first version?
 - Do we want a custom local error page only in the `sqlfu` server, or also a browser-side fallback on the website when the local backend is unavailable?
-- Should the hosted `local.sqlfu.dev` frontend auto-detect `https://localhost:3217` versus `http://127.0.0.1:3217`, or should the local backend story require HTTPS once we harden the browser support matrix?
+- Should the hosted `local.sqlfu.dev` frontend auto-detect `https://localhost:56081` versus `http://127.0.0.1:56081`, or should the local backend story require HTTPS once we harden the browser support matrix?
 
 ## Risks
 

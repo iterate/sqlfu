@@ -13,7 +13,7 @@ const repoRoot = path.resolve(uiRoot, '..', '..');
 const defaultProjectRoot = path.join(currentDir, 'projects', 'dev-project');
 
 const projectRoot = path.resolve(readOption('--project-root') || defaultProjectRoot);
-const apiPort = Number(readOption('--api-port') || '3217');
+const apiPort = Number(readOption('--api-port') || '56081');
 const uiPort = Number(readOption('--ui-port') || '3218');
 const ngrokDomain = readOption('--ngrok-domain') || process.env.SQLFU_NGROK_DOMAIN || '';
 const ngrokUrl = readOption('--ngrok-url') || process.env.SQLFU_NGROK_URL || '';

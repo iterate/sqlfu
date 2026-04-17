@@ -162,7 +162,7 @@ function renderLandingPage(renderedDocs) {
         </article>
         <aside class="panel">
           <div class="eyebrow">local workflow</div>
-          <p><code>npx sqlfu</code> starts the local backend on <code>localhost:3217</code>.</p>
+          <p><code>npx sqlfu</code> starts the local backend on <code>localhost:56081</code>.</p>
           <p><code>local.sqlfu.dev</code> should resolve to that local server. The browser UI talks to the backend there; the heavy client bundle stays separate from the published runtime package.</p>
           <pre><code>npx sqlfu
 

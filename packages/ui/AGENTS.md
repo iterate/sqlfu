@@ -53,7 +53,7 @@ This is the general-purpose harness for normal UI development and most UI tests.
 
 It starts:
 
-- one local sqlfu backend server on `3217`
+- one local sqlfu backend server on `56081`
 - one local Vite UI server on `3218`
 - one `ngrok` tunnel pointed only at the UI server
 

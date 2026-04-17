@@ -238,7 +238,9 @@ For end users, start the local backend from your sqlfu project root:
 npx sqlfu
 ```
 
-That starts the UI backend on `localhost:3217`. The intended browser origin is `local.sqlfu.dev`, which should resolve to that local server.
+That starts the UI backend on `localhost:56081`. The intended browser origin is `local.sqlfu.dev`, which should resolve to that local server.
+
+If you ever need to avoid a local port conflict, `sqlfu serve --port <port>` overrides the default. Most users should never need this.
 
 While developing the UI itself inside this repo, the client bundle still lives in `packages/ui`:
 
