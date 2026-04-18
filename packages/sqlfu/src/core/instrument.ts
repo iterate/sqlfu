@@ -64,17 +64,24 @@ export interface SpanLike {
   end(): void;
 }
 
-// OTel's SpanStatusCode: UNSET = 0, OK = 1, ERROR = 2. Hardcoded so the
-// library doesn't need to import from @opentelemetry/api.
-const OTEL_STATUS_OK = 1;
-const OTEL_STATUS_ERROR = 2;
-
 /**
- * Build a hook that emits an OTel span per query, populated with the
- * standard DB semantic attributes (`db.query.summary`, `db.query.text`,
- * `db.system.name`). Records exceptions and sets ERROR status on throw.
+ * Reference OTel hook. Emits a span per query with `db.query.summary`,
+ * `db.query.text`, `db.system.name`; records exceptions and sets ERROR
+ * status on throw.
+ *
+ * This is a deliberately small and readable reference implementation. If
+ * your team has different conventions (different attribute names, extra
+ * resource attributes, custom span kind, sampling hints, etc.), copy this
+ * function body into your codebase and edit it — that's expected and fine.
+ * `QueryExecutionHook` is a stable contract; `createOtelHook` is one way
+ * to satisfy it, not the only way.
  */
 export function createOtelHook(options: {readonly tracer: TracerLike}): QueryExecutionHook {
+  // OTel's SpanStatusCode: UNSET = 0, OK = 1, ERROR = 2. Inlined so the
+  // library doesn't need to import from @opentelemetry/api.
+  const OTEL_STATUS_OK = 1;
+  const OTEL_STATUS_ERROR = 2;
+
   const {tracer} = options;
   return <TResult>(context: QueryExecutionContext, execute: () => TResult): TResult => {
     const name = spanNameFor(context.query);
@@ -110,39 +117,45 @@ export function createOtelHook(options: {readonly tracer: TracerLike}): QueryExe
   };
 }
 
+export interface QueryErrorReport {
+  readonly context: QueryExecutionContext;
+  readonly error: unknown;
+}
+
 /**
- * Build a hook that invokes `report` whenever a query throws (or its
- * promise rejects). The error is always rethrown; `report`'s return value
- * is discarded and any promise it returns is not awaited.
+ * Reference error-reporter hook. Invokes `report` whenever a query throws
+ * (or its promise rejects), then always rethrows so higher hooks (and the
+ * caller) still see the error. `report`'s return value is discarded; any
+ * promise it returns is not awaited.
  *
- * Useful for Sentry-style error capture without pulling Sentry into the
- * library: `createErrorReporterHook((ctx, err) => Sentry.captureException(err, { tags: { 'db.query.summary': ctx.query.name ?? 'sql' } }))`.
+ * Like `createOtelHook`, this is a deliberately small reference impl — if
+ * you want extra context (breadcrumbs, rate limiting, redaction), copy
+ * this body and edit it.
+ *
+ * Useful for Sentry-style capture without pulling Sentry into the library:
+ * `createErrorReporterHook(({ context, error }) => Sentry.captureException(error, { tags: { 'db.query.summary': context.query.name ?? 'sql' } }))`.
  */
 export function createErrorReporterHook(
-  report: (context: QueryExecutionContext, error: unknown) => unknown,
+  report: (params: QueryErrorReport) => unknown,
 ): QueryExecutionHook {
   return <TResult>(context: QueryExecutionContext, execute: () => TResult): TResult => {
+    const fail = (error: unknown): never => {
+      try {
+        report({context, error});
+      } catch {
+        // the error handler itself failing shouldn't mask the original error
+      }
+      throw error;
+    };
+
     try {
       const result = execute();
       if (isPromiseLike(result)) {
-        return result.then(
-          (value) => value,
-          (error: unknown) => {
-            try {
-              report(context, error);
-            } catch {
-              // the error handler itself failing shouldn't mask the original error
-            }
-            throw error;
-          },
-        ) as TResult;
+        return result.then((value) => value, fail) as TResult;
       }
       return result;
     } catch (error) {
-      try {
-        report(context, error);
-      } catch {}
-      throw error;
+      return fail(error);
     }
   };
 }

@@ -14,7 +14,6 @@ import {
   createNodeSqliteClient,
   createOtelHook,
   instrumentClient,
-  type QueryExecutionContext,
   type SqlQuery,
 } from '../src/client.js';
 
@@ -33,7 +32,7 @@ test('named and ad-hoc queries surface on OTel spans and error reporter fires on
     createNodeSqliteClient(db),
     composeHooks(
       createOtelHook({tracer: otel.tracer}),
-      createErrorReporterHook((context: QueryExecutionContext, error) => {
+      createErrorReporterHook(({context, error}) => {
         errorReports.push({queryName: context.query.name, error});
       }),
     ),
