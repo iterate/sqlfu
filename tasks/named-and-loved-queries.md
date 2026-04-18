@@ -1,19 +1,123 @@
-status: ready
+status: spec-revised
 size: medium
 
 # Named And Loved Queries
 
 ## Status Summary
 
-- Mostly clear now: the first implementation should be very small.
-- Main completed pieces:
-  - `sql/*.sql` already gives queries stable names
-  - typegen already knows the filename-derived id
-  - generated queries already centralize execution through wrappers
-- Main missing pieces:
-  - generated wrappers drop the name before runtime
-  - there is no runtime field for query name
-  - there is no proof that the name shows up in real OTel spans end to end
+- First-pass AFK implementation (originally `status: done-pending-review`) has been reviewed. Several decisions are being revised. See [Revision — post-review](#revision--post-review-2026-04-18) for the new scope.
+- First-pass changes currently sit in the working tree unstaged (not committed). They'll be salvaged into the revised implementation rather than committed as-is.
+- Revised implementation will land as a series of small commits on this branch, each pushable in isolation.
+
+## Revision — post-review (2026-04-18)
+
+After reviewing the first pass, six things are changing. The core mechanism (name on `SqlQuery`, typegen emits it, `instrumentClient` wraps a client with a hook, end-to-end OTel test) stays.
+
+### 1. Field rename: `dbQueryName` → `name`
+
+Original justification ("matches the wire attribute `db.query.name` exactly") is dead because we're switching wire attribute to `db.query.summary` (see below). With the 1:1 motivation gone, `query.name` is cleaner and less ugly than `query.dbQueryName`.
+
+### 2. Wire attribute: `db.query.summary`, not `db.query.name`
+
+`db.query.name` is a custom key and isn't a standard OTel attribute. `db.query.summary` *is* official ("low-cardinality summary of the query") and observability tools (Sentry, Datadog, etc.) bucket spans by it automatically. A user-authored filename like `list-profiles` is low-cardinality by construction — arguably a better summary than any auto-derived one. Emit `db.query.summary=<name>` and drop `db.query.name`.
+
+Also add:
+- `db.query.text = query.sql` (raw parameterized SQL, no values interpolated)
+- `db.system = client.system` — new field on `Client`, stamped by each adapter (`'sqlite'` for node-sqlite/better-sqlite3, `'postgresql'` for pg, etc.). Values match OTel's official `db.system` vocabulary so mapping is 1:1 at the hook.
+
+### 3. Ship a packaged OTel helper + error hook + composition primitive — no peer deps
+
+First pass punted the packaged helper to a follow-up. Reopening: shipping the mechanism without an integration means every user writes ~18 lines of identical OTel boilerplate. Do it now.
+
+No peer dependencies on `@opentelemetry/api` or `@sentry/*`. Instead: author minimal structural types (`TracerLike`, `SpanLike`) that OTel's real `Tracer`/`Span` happen to satisfy. Users pass their tracer instance in. Doc: "if you use OpenTelemetry, pass `trace.getTracer('...')` as `tracer`."
+
+Rationale: peer deps are painful (version conflicts, `peerDependenciesMeta.optional`, managing a floor), and the surface we touch is tiny (5 methods). A drift in OTel's types would surface as a user-side compile error at the callsite, not inside `sqlfu`, which is the correct place for it to surface.
+
+Sentry specifically: we are **not** shipping a dedicated Sentry helper. Sentry v8+ has first-class OTel integration, so OTel users already route spans to Sentry. Users who want Sentry without OTel get it via a generic "on error" hook primitive.
+
+New public surface (all from `sqlfu` root; no `sqlfu/otel` subpath — helpers are small enough):
+
+```ts
+// core:
+instrumentClient(client, hook)  // already exists
+composeHooks(...hooks)          // new — runs hooks left-to-right, each wrapping the next
+
+// packaged helpers:
+createOtelHook({ tracer: TracerLike })      // new — stays narrow, just tracing
+createErrorReporterHook(report)             // new — (ctx, error) => void; fires on thrown errors only
+
+// structural types (authored by us, no peer dep):
+export interface TracerLike { startActiveSpan<T>(name: string, fn: (span: SpanLike) => T): T }
+export interface SpanLike {
+  setAttribute(key: string, value: string | number | boolean): this | void
+  recordException(error: unknown): void
+  setStatus(status: { code: number; message?: string }): this | void
+  end(): void
+}
+```
+
+Usage:
+
+```ts
+const hook = composeHooks(
+  createOtelHook({ tracer: trace.getTracer('my-app') }),
+  createErrorReporterHook((ctx, error) => Sentry.captureException(error, {
+    tags: { 'db.query.summary': ctx.query.name ?? 'sql' },
+  })),
+)
+const client = instrumentClient(baseClient, hook)
+```
+
+### 4. Span naming via existing `naming.ts` + short hash
+
+Span name is derived in a single helper (`packages/sqlfu/src/core/naming.ts` already exists and has `queryNickname`, `migrationNickname`, `generateRandomName`):
+
+- Named query: span name = `query.name` verbatim (e.g. `list-profiles`). Stable across SQL edits — author opts into stability by giving the query a name. If the query's purpose genuinely changes, the author renames the file.
+- Ad-hoc query: span name = `sql-${queryNickname(query.sql)}-${shortHash(normalize(query.sql))}`. Examples: `sql-list-profiles-a1b2c3`, `sql-update-users-d4e5f6`. Readable prefix from `queryNickname` (already implemented), hash over the parameterized SQL so different `id` values don't fragment buckets.
+  - Normalization before hashing: `dedent(sql).trim().replace(/\s+/g, ' ')`. Covers whitespace nudges; not a full SQL parser.
+  - Hash length: 7 hex chars.
+  - `client.raw()` callers are on their own — raw interpolates values into `query.sql`, so the hash becomes per-value. Documented caveat, not a code change. Escape hatch: `client.run({ sql, args, name: 'custom' })` — first-class because `name` is just an optional field on `SqlQuery`.
+- Ship a `dedent` tag in `packages/sqlfu/src/core/util.ts` (or existing util home) — ~10 lines, we'll use it internally for SQL fixtures too.
+- Add `packages/sqlfu/test/naming.test.ts` with table-driven cases locking in `queryNickname` and `migrationNickname` behavior. `naming.ts` is load-bearing for span identity; it needs tests.
+
+### 5. Nested query directories: relative to the glob's static prefix
+
+Relaxing the "flat only" instinct. Instead, typegen derives the name as the file path relative to the glob's static prefix (everything before the first wildcard char, truncated to the last `/`):
+
+| `queries` config | base | file | name |
+|---|---|---|---|
+| `sql/*.sql` | `sql/` | `sql/list-profiles.sql` | `list-profiles` |
+| `sql/**/*.sql` | `sql/` | `sql/users/list-profiles.sql` | `users/list-profiles` |
+| `sql/users/*.sql` | `sql/users/` | `sql/users/list-profiles.sql` | `list-profiles` |
+| `**/*.sql` | `./` | `sql/list-profiles.sql` | `sql/list-profiles` |
+
+OTel span names happily contain `/`. No collisions, no prescription, no magic. Author's choice of glob = author's choice of namespace.
+
+Document this behavior in the config docs. Leaving a future door open for a structured config shape (`queries: string | { glob, base }`) once real users have opinions.
+
+### 6. Not in scope this revision
+
+- `@opentelemetry/instrumentation-http` auto-instrumentation (still not needed to prove anything).
+- Hash-seeded `generateRandomName` for ad-hoc (cute, not essential — hex hash is more pragmatic).
+- Structured `queries` config shape. String-only for now.
+- Typegen collision detection (moot under path-relative names).
+- `iterate` / `raw` / `transaction`-span-level instrumentation. `iterate` remains pass-through (task file previously misdescribed this as "lazy" — it isn't, and shouldn't be in this pass). Queries inside transactions still fire the hook because the tx client is re-instrumented.
+
+### Revised checklist
+
+- [ ] Rename `dbQueryName` → `name` on `SqlQuery` + update typegen emission + update generate.test.ts snapshots
+- [ ] Add `system: string` to `Client` interface; stamp on every adapter
+- [ ] Add `dedent` tag util
+- [ ] Add `packages/sqlfu/test/naming.test.ts` covering `queryNickname` + `migrationNickname`
+- [ ] Add span-name helper in `naming.ts` that handles named + ad-hoc + hash
+- [ ] Implement path-relative-to-glob-base naming in typegen
+- [ ] Add `TracerLike` / `SpanLike` structural types
+- [ ] Implement `composeHooks`
+- [ ] Implement `createOtelHook({ tracer })` — emits `db.query.summary`, `db.query.text`, `db.system`; records exception + ERROR status on throw
+- [ ] Implement `createErrorReporterHook(report)` — calls `report(ctx, error)` on thrown errors and rethrows
+- [ ] Update `test/otel-tracing.test.ts` to use the packaged helper and composed hooks; add failing-query case; assert `db.query.summary` / `db.query.text` / `db.system`
+- [ ] Doc note: `client.raw()` is not uniquely identified in observability; use `client.run({ sql, args, name })` if you need named observability on dynamic SQL
+- [ ] Doc note: nested query folder naming rule
 
 ## Goal
 
@@ -147,16 +251,13 @@ These are the concrete choices made while the user is away. If they're wrong, th
 
 ## Checklist
 
-- [ ] Add a single runtime field for the query name.
-  Keep it optional so raw ad hoc SQL remains simple.
-- [ ] Make typegen populate the field for generated queries.
-  Source of truth: filename without `.sql`.
-- [ ] Preserve that field through client and adapter execution without changing behavior.
-- [ ] Add one official query-execution hook or callback surface.
-  It only needs enough data to emit telemetry cleanly.
-- [ ] Emit `db.query.name` from that hook in the reference OTel integration.
-- [ ] Do not add extra filename-derived metadata in this first implementation.
-- [ ] Prove the feature with a real OTel end-to-end test, not just a unit test.
+- [x] Add a single runtime field for the query name. _`dbQueryName?: string` on `SqlQuery` in `packages/sqlfu/src/core/types.ts`._
+- [x] Make typegen populate the field for generated queries. _`renderQueryWrapper` in `packages/sqlfu/src/typegen/index.ts` now emits `dbQueryName: "<filename>"` in every generated wrapper; `test/generate.test.ts` snapshots updated._
+- [x] Preserve that field through client and adapter execution without changing behavior. _Adapters pass the full `SqlQuery` object through; they only read `.sql` and `.args`, so `.dbQueryName` survives untouched to any instrumentation wrapper._
+- [x] Add one official query-execution hook or callback surface. _`instrumentClient(client, hook)` in `packages/sqlfu/src/core/instrument.ts`, re-exported from `sqlfu/client`._
+- [x] Emit `db.query.name` from that hook in the reference OTel integration. _Shown in `test/otel-tracing.test.ts`: the hook calls `span.setAttribute('db.query.name', ctx.query.dbQueryName)`._
+- [x] Do not add extra filename-derived metadata in this first implementation. _Only `dbQueryName` is added. No function-name metadata, no camelCase alias, no `sqlFile` on the runtime query, no `db.operation.name`._
+- [x] Prove the feature with a real OTel end-to-end test, not just a unit test. _`test/otel-tracing.test.ts` runs a real Hono server via `@hono/node-server`, a real `NodeTracerProvider` with `SimpleSpanProcessor` + `OTLPTraceExporter` (HTTP/JSON), and a local HTTP receiver on 127.0.0.1 that captures `POST /v1/traces` payloads. Inline snapshot shows the normalized trace tree._
 
 ## Testing / Proof Plan
 
@@ -336,13 +437,44 @@ This task is done when:
 
 ## Implementation Notes
 
-- Current likely source of truth:
-  - the query filename without extension
-- Current likely implementation seam:
-  - `renderQueryWrapper()` in `packages/sqlfu/src/typegen/index.ts`
-- Current likely proof seam:
-  - a new integration-style test under `packages/sqlfu/test/` that starts:
-    - sqlite
-    - hono
-    - otel sdk
-    - a local otlp receiver
+### Log
+
+- `src/core/types.ts` — added `dbQueryName?: string` to `SqlQuery`.
+- `src/typegen/index.ts` — `renderQueryWrapper` now emits `dbQueryName: "<filename>"` on the generated query object literal. Derived from `path.basename(sqlPath, '.sql')` (same source used for `functionName` and the catalog `id`).
+- `src/core/instrument.ts` (new) — exports `instrumentClient`, `QueryExecutionHook`, `QueryExecutionContext`, `QueryOperation = 'all' | 'run'`. Dispatches to sync vs async wrapper based on `client.all.constructor.name === 'AsyncFunction'` (side-effect-free discriminator that works with every existing sqlfu adapter). The wrapper preserves the original adapter's `driver`, delegates `raw` / `iterate` / `transaction` through, and rewraps the tx client so queries inside transactions are instrumented too. `raw` and `iterate` are intentionally not instrumented in this first pass.
+- `src/client.ts` — re-exports `./core/instrument.js`.
+- `test/generate.test.ts` — inline snapshots updated to include `dbQueryName` in every generated wrapper.
+- `test/otel-tracing.test.ts` (new) — real Hono server + real `NodeTracerProvider` + real `OTLPTraceExporter` + local `POST /v1/traces` receiver. Two routes: `/profiles` uses a named-generated-query-shaped `SqlQuery`; `/ad-hoc` uses the `sql` template tag. Snapshot asserts:
+
+  ```
+  GET /profiles
+    sqlfu.list-profiles
+      db.query.name=list-profiles
+  GET /ad-hoc
+    sqlfu.ad-hoc-query
+  ```
+
+### Design choices worth calling out
+
+- **Field name is `dbQueryName`** (not `name` / `queryName`). The OTel attribute we want to emit is `db.query.name`; matching the shape means the instrumentation hook is a one-liner and future typegen additions (`db.operation.name`, `db.system.name`, etc.) stay consistent.
+- **Hook is an around-function**, not a pair of start/end callbacks. An around-function is the canonical shape for OTel's `startActiveSpan(name, fn)`; start/end callbacks are awkward for span scoping and error recording.
+- **`instrumentClient` returns the same `Client` shape** — both sync and async — so user code that already typechecks against `SyncClient<T>` or `AsyncClient<T>` keeps working without casts.
+- **No dedicated `sqlfu/otel` subpath in this pass.** The hook body is ~10 lines of plain OTel JS API in the test. Once the test shape looks right, we can fold a helper into `sqlfu/otel` in a follow-up.
+
+### Skipped / deferred
+
+- `iterate` instrumentation — would require wrapping the iterator and starting the span lazily. Not needed for OTel parity with the common case (`all`/`run`). Easy to add later by calling the hook inside the generator.
+- `raw` instrumentation — no query name available, skip.
+- Parameterized-query snapshot cases. Worth adding once the design is validated.
+- Failure path snapshot. The hook already handles errors (records exception, sets ERROR status, rethrows) but it isn't asserted in a snapshot yet.
+- `@opentelemetry/instrumentation-http` auto-instrumentation. Would show an inbound HTTP span too. Would add a big dependency that isn't needed to prove the feature.
+
+### Files changed
+
+- modified: `packages/sqlfu/package.json` (dev deps)
+- modified: `packages/sqlfu/src/client.ts`
+- modified: `packages/sqlfu/src/core/types.ts`
+- modified: `packages/sqlfu/src/typegen/index.ts`
+- modified: `packages/sqlfu/test/generate.test.ts` (snapshot updates only)
+- added: `packages/sqlfu/src/core/instrument.ts`
+- added: `packages/sqlfu/test/otel-tracing.test.ts`
