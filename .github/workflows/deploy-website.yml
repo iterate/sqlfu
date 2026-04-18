@@ -1,0 +1,38 @@
+name: deploy-website
+
+on:
+  push:
+    branches:
+      - main
+      - demo
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install website dependencies
+        working-directory: website
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build website
+        working-directory: website
+        run: node build.mjs
+
+      - name: Upload website artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: website
+          path: website/dist
