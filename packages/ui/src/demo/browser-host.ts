@@ -1,7 +1,7 @@
+import {createSqliteWasmClient} from 'sqlfu/client';
 import type {
   AdHocSqlParams,
   AdHocSqlResult,
-  AsyncClient,
   DisposableAsyncClient,
   HostCatalog,
   HostFs,
@@ -12,8 +12,7 @@ import type {
 } from 'sqlfu/browser';
 
 import {buildQueryCatalog} from './catalog.js';
-import {createWasmAsyncClient} from './sqlfu-client-adapter.js';
-import {createWasmSqliteClient, type WasmSqliteClient} from './sqlite-wasm-client.js';
+import {openWasmDatabase, type Database} from './sqlite-wasm-client.js';
 import {DemoVfs} from './vfs.js';
 
 export const DEMO_PROJECT_ROOT = '/demo';
@@ -32,11 +31,11 @@ export function buildDemoConfig(): SqlfuProjectConfig {
 
 export async function createBrowserHost(input: {
   onSchemaChange: () => void;
-}): Promise<{host: SqlfuHost; config: SqlfuProjectConfig; vfs: DemoVfs; wasm: WasmSqliteClient}> {
+}): Promise<{host: SqlfuHost; config: SqlfuProjectConfig; vfs: DemoVfs; database: Database}> {
   const vfs = new DemoVfs();
-  const wasm = await createWasmSqliteClient();
-  const liveClient = createWasmAsyncClient(wasm);
-  await seedLiveDatabase(wasm, vfs.definitions);
+  const database = await openWasmDatabase();
+  const liveClient = createSqliteWasmClient(database);
+  seedLiveDatabase(database, vfs.definitions);
 
   const config = buildDemoConfig();
   const fs = createVfsFs(vfs, config, input.onSchemaChange);
@@ -48,33 +47,38 @@ export async function createBrowserHost(input: {
       async [Symbol.asyncDispose]() {},
     }),
     openScratchDb: async () => {
-      const scratchWasm = await createWasmSqliteClient();
-      const scratchClient = createWasmAsyncClient(scratchWasm);
+      const scratchDatabase = await openWasmDatabase();
+      const scratchClient = createSqliteWasmClient(scratchDatabase);
       return {
         client: scratchClient,
         async [Symbol.asyncDispose]() {
-          scratchWasm.db.close();
+          scratchDatabase.close();
         },
       } satisfies DisposableAsyncClient;
     },
-    execAdHocSql: async (client, sql, params): Promise<AdHocSqlResult> => {
-      const wasmClient = client.driver as WasmSqliteClient;
-      const returnsRows = wasmClient.columnCount(sql) > 0;
+    execAdHocSql: async (client, sqlText, params): Promise<AdHocSqlResult> => {
+      const db = client.driver as Database;
       const bindings = normalizeAdHocParams(params);
+      const returnsRows = statementReturnsRows(db, sqlText);
       if (returnsRows) {
-        const rows = wasmClient.all<ResultRow>(sql, bindings as never);
+        const rows = db.exec({
+          sql: sqlText,
+          bind: bindings as never,
+          rowMode: 'object',
+          returnValue: 'resultRows',
+        }) as ResultRow[];
         input.onSchemaChange();
         return {mode: 'rows', rows};
       }
-      const result = wasmClient.run(sql, bindings as never);
+      db.exec({sql: sqlText, bind: bindings as never});
       input.onSchemaChange();
-      return {
-        mode: 'metadata',
-        metadata: {
-          rowsAffected: result.rowsAffected,
-          lastInsertRowid: result.lastInsertRowid,
-        },
-      };
+      const rowsAffected = Number(db.changes(false, false) ?? 0);
+      const lastInsertRowidValue = db.selectValue('select last_insert_rowid() as value');
+      const lastInsertRowid =
+        typeof lastInsertRowidValue === 'bigint'
+          ? Number(lastInsertRowidValue)
+          : ((lastInsertRowidValue as number | null | undefined) ?? null);
+      return {mode: 'metadata', metadata: {rowsAffected, lastInsertRowid}};
     },
     initializeProject: async () => {
       throw new Error('sqlfu init is not supported in demo mode');
@@ -92,7 +96,16 @@ export async function createBrowserHost(input: {
     catalog,
   };
 
-  return {host, config, vfs, wasm};
+  return {host, config, vfs, database};
+}
+
+function statementReturnsRows(db: Database, sqlText: string): boolean {
+  const stmt = db.prepare(sqlText);
+  try {
+    return stmt.columnCount > 0;
+  } finally {
+    stmt.finalize();
+  }
 }
 
 function createBrowserCatalog(vfs: DemoVfs): HostCatalog {
@@ -205,9 +218,9 @@ function createVfsFs(vfs: DemoVfs, config: SqlfuProjectConfig, notify: () => voi
   };
 }
 
-async function seedLiveDatabase(wasm: WasmSqliteClient, definitionsSql: string) {
-  wasm.exec(definitionsSql);
-  wasm.exec(`
+function seedLiveDatabase(database: Database, definitionsSql: string) {
+  database.exec(definitionsSql);
+  database.exec(`
     insert into posts (slug, title, body, published) values
       ('hello-world', 'Hello World', 'First post body', 1),
       ('draft-notes', 'Draft Notes', 'Unpublished notes', 0);
