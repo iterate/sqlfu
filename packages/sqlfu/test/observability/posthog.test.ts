@@ -7,18 +7,24 @@ import {expect, test} from 'vitest';
 
 import {createNodeSqliteClient, instrument} from '../../src/client.js';
 
-// Recipe: emit a PostHog event per query with timing.
+// Recipe: emit a PostHog event per query (success + failure) and capture
+// errors as PostHog exceptions — all in one hook.
 //
-// Neither `instrument.onError` nor `instrument.otel` fits PostHog —
-// PostHog is event-capture, not tracing or error reporting. But any
-// function matching `QueryExecutionHook` plugs straight into `instrument`,
-// so we write a small hook inline. That function is the whole recipe.
+// PostHog surfaces product-analytics events (`capture`) and error
+// tracking (`captureException`) through the same SDK. There's no
+// separate "metrics" API — numeric properties on events are the metric,
+// so you'd query `avg(duration_ms) WHERE event = 'db_query'` in PostHog
+// directly.
 //
-// The test scaffolding (local capture server + `await using posthog`)
-// exists so we can make assertions on what would have been sent over the
-// wire; in a real app you init a PostHog client once at startup and skip
-// that part.
-test('every query emits a db_query event to PostHog with name and duration', async () => {
+// The hook below:
+//   - always emits `db_query` with timing + `outcome: 'success' | 'error'`
+//   - additionally calls `captureException` on failure so PostHog's
+//     error tracking picks it up with the query name as context
+//
+// The test scaffolding (local capture server + `await using`) exists so
+// we can assert on what would have been sent. In a real app you init a
+// PostHog client once at startup and skip that part.
+test('queries emit db_query events on success and $exception + db_query on failure', async () => {
   await using posthog = await setupPostHogForTest();
 
   const db = new DatabaseSync(':memory:');
@@ -29,48 +35,89 @@ test('every query emits a db_query event to PostHog with name and duration', asy
     createNodeSqliteClient(db),
     ({context, execute, processResult}) => {
       const start = Date.now();
-      return processResult(execute, (value) => {
-        posthog.client.capture({
-          distinctId: 'app',
-          event: 'db_query',
-          properties: {
-            'db.query.summary': context.query.name ?? 'sql',
-            'db.system.name': context.system,
-            duration_ms: Date.now() - start,
-            operation: context.operation,
-          },
-        });
-        return value;
-      });
+      const distinctId = 'app';
+      const baseProps = {
+        'db.query.summary': context.query.name ?? 'sql',
+        'db.system.name': context.system,
+        operation: context.operation,
+      };
+      return processResult(
+        execute,
+        (value) => {
+          posthog.client.capture({
+            distinctId,
+            event: 'db_query',
+            properties: {...baseProps, duration_ms: Date.now() - start, outcome: 'success'},
+          });
+          return value;
+        },
+        (error) => {
+          posthog.client.capture({
+            distinctId,
+            event: 'db_query',
+            properties: {...baseProps, duration_ms: Date.now() - start, outcome: 'error'},
+          });
+          posthog.client.captureException(error, distinctId, {
+            ...baseProps,
+            'db.query.text': context.query.sql,
+          });
+          throw error;
+        },
+      );
     },
   );
 
   client.all({sql: 'select id, name from profiles order by id', args: [], name: 'list-profiles'});
-  client.run({sql: 'insert into profiles (name) values (?)', args: ['grace'], name: 'insert-profile'});
+  expect(() =>
+    client.all({sql: 'select * from nonexistent', args: [], name: 'find-missing'}),
+  ).toThrow(/no such table/);
 
   const events = await posthog.flush();
-  expect(events).toHaveLength(2);
-  expect(events[0]).toMatchObject({
-    event: 'db_query',
-    properties: {
-      'db.query.summary': 'list-profiles',
-      'db.system.name': 'sqlite',
-      operation: 'all',
-    },
-  });
-  expect(events[1]).toMatchObject({
-    event: 'db_query',
-    properties: {
-      'db.query.summary': 'insert-profile',
-      'db.system.name': 'sqlite',
-      operation: 'run',
-    },
-  });
-  expect(events[0]!.properties.duration_ms).toBeTypeOf('number');
+  expect(renderEvents(events)).toMatchInlineSnapshot(`
+    "db_query  db.query.summary=list-profiles  db.system.name=sqlite  operation=all  outcome=success  duration_ms=<ms>
+    db_query  db.query.summary=find-missing  db.system.name=sqlite  operation=all  outcome=error  duration_ms=<ms>
+    $exception  db.query.summary=find-missing  db.system.name=sqlite  operation=all  db.query.text=select * from nonexistent  $exception_list=[Error: no such table: nonexistent]"
+  `);
 });
 
+interface CapturedEvent {
+  readonly event: string;
+  readonly properties: Record<string, unknown>;
+}
+
+function renderEvents(events: readonly CapturedEvent[]): string {
+  const relevantPropertyOrder = [
+    'db.query.summary',
+    'db.system.name',
+    'operation',
+    'outcome',
+    'duration_ms',
+    'db.query.text',
+  ];
+  return events
+    .map((e) => {
+      const parts: string[] = [e.event];
+      for (const key of relevantPropertyOrder) {
+        if (key in e.properties) {
+          const raw = e.properties[key];
+          const value = key === 'duration_ms' ? '<ms>' : String(raw);
+          parts.push(`${key}=${value}`);
+        }
+      }
+      const exceptionList = (e.properties['$exception_list'] ?? undefined) as
+        | Array<{type?: string; value?: string}>
+        | undefined;
+      if (exceptionList && exceptionList.length > 0) {
+        const first = exceptionList[0]!;
+        parts.push(`$exception_list=[${first.type ?? 'Error'}: ${first.value ?? ''}]`);
+      }
+      return parts.join('  ');
+    })
+    .join('\n');
+}
+
 async function setupPostHogForTest() {
-  const captured: Array<{event: string; properties: Record<string, unknown>}> = [];
+  const captured: CapturedEvent[] = [];
   const receiver = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -80,9 +127,11 @@ async function setupPostHogForTest() {
         body = gunzipSync(body);
       }
       try {
-        const parsed = JSON.parse(body.toString('utf8')) as {batch?: Array<{event: string; properties: Record<string, unknown>}>};
+        const parsed = JSON.parse(body.toString('utf8')) as {batch?: CapturedEvent[]};
         for (const event of parsed.batch ?? []) {
-          captured.push({event: event.event, properties: event.properties});
+          if (event.event === 'db_query' || event.event === '$exception') {
+            captured.push({event: event.event, properties: event.properties});
+          }
         }
       } catch {
         // posthog may POST other payload shapes on startup; ignore
@@ -111,7 +160,7 @@ async function setupPostHogForTest() {
     client,
     async flush() {
       await shutdown();
-      return captured.filter((e) => e.event === 'db_query');
+      return captured;
     },
     async [Symbol.asyncDispose]() {
       await shutdown();

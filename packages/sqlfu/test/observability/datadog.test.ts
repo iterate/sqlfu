@@ -53,15 +53,12 @@ test('every query emits a timing + count metric to DogStatsD with tags', async (
   client.run({sql: 'insert into profiles (name) values (?)', args: ['grace'], name: 'insert-profile'});
 
   const packets = await statsd.flush();
-  expect(packets.filter((p) => p.metric === 'db.query.count')).toHaveLength(2);
-  const listTiming = packets.find((p) =>
-    p.metric === 'db.query.duration' && p.tags.includes('db.query.summary:list-profiles'),
-  );
-  const insertTiming = packets.find((p) =>
-    p.metric === 'db.query.duration' && p.tags.includes('db.query.summary:insert-profile'),
-  );
-  expect(listTiming).toMatchObject({type: 'ms', tags: expect.arrayContaining(['db.system.name:sqlite', 'operation:all'])});
-  expect(insertTiming).toMatchObject({type: 'ms', tags: expect.arrayContaining(['db.system.name:sqlite', 'operation:run'])});
+  expect(renderPackets(packets)).toMatchInlineSnapshot(`
+    "db.query.duration:<ms>|ms|#db.query.summary:list-profiles,db.system.name:sqlite,operation:all
+    db.query.count:1|c|#db.query.summary:list-profiles,db.system.name:sqlite,operation:all
+    db.query.duration:<ms>|ms|#db.query.summary:insert-profile,db.system.name:sqlite,operation:run
+    db.query.count:1|c|#db.query.summary:insert-profile,db.system.name:sqlite,operation:run"
+  `);
 });
 
 interface StatsdPacket {
@@ -69,6 +66,16 @@ interface StatsdPacket {
   readonly value: number;
   readonly type: 'c' | 'ms' | 'g' | 'h';
   readonly tags: readonly string[];
+}
+
+function renderPackets(packets: readonly StatsdPacket[]): string {
+  return packets
+    .map((packet) => {
+      const value = packet.metric === 'db.query.duration' ? '<ms>' : String(packet.value);
+      const tags = [...packet.tags].sort().join(',');
+      return `${packet.metric}:${value}|${packet.type}|#${tags}`;
+    })
+    .join('\n');
 }
 
 async function setupStatsdForTest() {
