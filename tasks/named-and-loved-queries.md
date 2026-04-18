@@ -5,9 +5,8 @@ size: medium
 
 ## Status Summary
 
-- Revised implementation landed as a series of small commits on `named-and-loved-queries`. All 1651 sqlfu tests pass (1626 baseline + 25 new naming tests; otel test rewritten).
-- Shipped: packaged `createOtelHook` + `createErrorReporterHook` + `composeHooks` with structural `TracerLike`/`SpanLike` types (no peer deps); `db.query.summary` / `db.query.text` / `db.system.name` emitted; span name via `queryNickname` + 7-char djb2 hash; `dedent` tag + `shortHash` in core/util.
-- Deferred to follow-up: nested query directory support (typegen — see [Revision §5](#5-nested-query-directories-relative-to-the-globs-static-prefix)). Turns out this touches the generated barrel, function-name derivation, and output tree layout; not a blocker for the OTel work.
+- Revised implementation landed as a series of small commits on `named-and-loved-queries`. All 1652 sqlfu tests pass (1626 baseline + 25 new naming tests + 1 new nested-typegen test; otel test rewritten).
+- Shipped: packaged `createOtelHook` + `createErrorReporterHook` + `composeHooks` with structural `TracerLike`/`SpanLike` types (no peer deps); `db.query.summary` / `db.query.text` / `db.system.name` emitted; span name via `queryNickname` + 7-char djb2 hash; `dedent` tag + `shortHash` in core/util; nested query directories supported in typegen (query name + function name use the relative path so collisions can't happen).
 
 ## Revision — post-review (2026-04-18)
 
@@ -110,7 +109,7 @@ Document this behavior in the config docs. Leaving a future door open for a stru
 - [x] Add `dedent` tag util. _Commit fb4e74b. Also added `normalizeSqlForHash` and djb2-based `shortHash` in the same util file (runtime-agnostic — no `node:crypto` dep so it works in workerd / expo)._
 - [x] Add `packages/sqlfu/test/naming.test.ts` covering `queryNickname` + `migrationNickname`. _Commit 812b9e1. Table-driven with 11 queryNickname + 7 migrationNickname cases plus spanNameFor / dedent / shortHash sanity tests._
 - [x] Add span-name helper in `naming.ts`. _Commit 812b9e1. `spanNameFor(query)` returns `query.name` verbatim or `sql-<nickname>-<hash>` for ad-hoc. Also fixed an existing bug where `queryNickname` returned `insert-into` instead of `insert-<table>` for INSERT statements — test caught it._
-- [ ] ~~Implement path-relative-to-glob-base naming in typegen~~ — **deferred**. Touches the generated barrel + function-name derivation + output tree layout; bigger than intended. Follow-up task.
+- [x] Support nested query directories in typegen. _Commit f0c007e. Recursive walk under `config.queries`; output mirrors source tree; `query.name`, function name, catalog id all use the relative path (e.g. `users/list-profiles`). Using the full relative path means collisions are impossible by construction — I'd originally flagged this as bigger scope than it turned out to be._
 - [x] Add `TracerLike` / `SpanLike` structural types. _Commit 3e51f1c. Five methods total across two interfaces; verified that real `@opentelemetry/api` Tracer is assignable to `TracerLike`._
 - [x] Implement `composeHooks`. _Commit 3e51f1c. Chains hooks left-to-right, outermost first._
 - [x] Implement `createOtelHook({ tracer })`. _Commit 3e51f1c. Emits `db.query.summary` / `db.query.text` / `db.system.name`; records exception + ERROR status on throw; handles sync and async execute via `isPromiseLike`._
@@ -132,6 +131,8 @@ Commits on `named-and-loved-queries`:
 | 812b9e1 | add `spanNameFor` + naming.test.ts; fix queryNickname insert bug |
 | 3e51f1c | add `instrumentClient`, `composeHooks`, `createOtelHook`, `createErrorReporterHook` |
 | 63429da | test: otel trace snapshot covers named, ad-hoc, failing queries |
+| 01e2f67 | tasks: mark checklist complete |
+| f0c007e | typegen: support nested query directories |
 
 Notable decisions reaffirmed during implementation:
 
