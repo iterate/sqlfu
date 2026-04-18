@@ -2005,7 +2005,7 @@ function ModeBanner() {
   return (
     <div className="mode-banner demo">
       <strong>Demo mode</strong>
-      <span>In-browser SQLite. Nothing is saved — refresh to reset.</span>
+      <span>In-browser SQLite. Nothing is saved. Refresh to reset.</span>
       <a className="mode-banner-link" href={LOCAL_URL}>Back to local.sqlfu.dev</a>
     </div>
   );
