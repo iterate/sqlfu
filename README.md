@@ -4,7 +4,7 @@
 
 It is built around a simple idea: SQL should be the source language for schema, migrations, queries, formatting, and diffing. TypeScript comes second. You should still get good generated types and wrappers, but without having to push the whole project through an ORM-shaped API.
 
-![i know sqlfu](./docs/i-know-sqlfu.gif)
+![i know sqlfu](./packages/sqlfu/docs/i-know-sqlfu.gif)
 
 - [What Is sqlfu?](#what-is-sqlfu)
 - [Philosophy](#philosophy)
@@ -126,10 +126,10 @@ It started from a vendored copy of [`sql-formatter`](https://github.com/sql-form
 
 If you want to see or change that behavior, start here:
 
-- [src/formatter.ts](./src/formatter.ts)
-- [src/vendor/sql-formatter/AGENTS.md](./src/vendor/sql-formatter/AGENTS.md)
-- [test/formatter/sqlite.fixture.sql](./test/formatter/sqlite.fixture.sql)
-- [test/formatter.test.ts](./test/formatter.test.ts)
+- [src/formatter.ts](./packages/sqlfu/src/formatter.ts)
+- [src/vendor/sql-formatter/AGENTS.md](./packages/sqlfu/src/vendor/sql-formatter/AGENTS.md)
+- [test/formatter/sqlite.fixture.sql](./packages/sqlfu/test/formatter/sqlite.fixture.sql)
+- [test/formatter.test.ts](./packages/sqlfu/test/formatter.test.ts)
 
 ### Observability
 
