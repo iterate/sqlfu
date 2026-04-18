@@ -115,8 +115,27 @@ Document this behavior in the config docs. Leaving a future door open for a stru
 - [x] Implement `createOtelHook({ tracer })`. _Commit 3e51f1c. Emits `db.query.summary` / `db.query.text` / `db.system.name`; records exception + ERROR status on throw; handles sync and async execute via `isPromiseLike`._
 - [x] Implement `createErrorReporterHook(report)`. _Commit 3e51f1c. Fires on throw or rejected promise, always rethrows, swallows errors in the reporter itself so they can't mask the original error._
 - [x] Update `test/otel-tracing.test.ts`. _Commit 63429da. Hono + real OTLP exporter + local receiver; snapshot covers named + ad-hoc + failing query; asserts the errorReporter hook captured the failure._
-- [ ] Doc note: `client.raw()` caveat (documented inline in `spanNameFor` JSDoc; no user-facing docs updated yet).
-- [ ] Doc note: nested query folder naming rule (deferred with the feature).
+- [ ] User-facing docs (see [Docs plan](#docs-plan) below). Inline JSDoc covers the `client.raw()` caveat for now.
+- [ ] User-facing docs: nested query folder naming rule (same page as above).
+
+## Docs plan
+
+Not built yet — sketched after the implementation so it's locked in before anyone writes copy.
+
+**Framing that shaped every decision.** This looks like "observability integration" but it's really: *your filename is your query's identity everywhere.* You name `sql/list-profiles.sql` and that name reaches typegen, runtime `SqlQuery.name`, Sentry, Datadog. That framing fits sqlfu's existing "SQL First. TypeScript Second." voice — observability is a *consequence* of naming, not a new feature axis. Naming is foundational; OTel is the payoff for users who happen to use OTel.
+
+**Importance.** Tentpole-adjacent, not tentpole. Irrelevant to hobbyists; a genuine differentiator against Drizzle / Kysely / Prisma (none of which do this out of the box) for teams running in prod. Earns prominent-but-not-dominant placement.
+
+**Placement.**
+
+1. **Landing page** — augment the existing "Types, generated" panel with one sentence: *"Your query names travel with them — to OpenTelemetry, Sentry, Datadog, whatever."* Don't add a 4th panel (would feel like a feature-grid pivot). Don't make it the headline (overclaims — the three current panels are the actual core).
+2. **New docs page** — 5th in sidebar, `packages/sqlfu/docs/observability.md`, registered in `website/build.mjs`. Title **Observability** (not "Tracing and errors" — chose the jargon for SEO; `sqlfu observability` / `sqlfu opentelemetry` / `sqlfu sentry` should land here). Covers: the `name` field, `QueryExecutionHook`, `instrumentClient`, `composeHooks`, `sqlfu/otel`'s `createOtelHook`, `createErrorReporterHook` + Sentry example, the `client.raw()` caveat, the nested-dir naming rule.
+3. **`packages/sqlfu/README.md`** — one paragraph under core concepts noting that generated queries carry names and those names reach observability tools. NOTE this file IS the website's "sqlfu" overview docs page (synced via `website/build.mjs`), so edit it once.
+4. **Root `README.md`** — **do not edit directly**. It's generated from `packages/ui/README.md` via `scripts/sync-root-readme.ts`. Irrelevant to this feature since it's the UI readme.
+
+**Positioning of the reference hooks.** Docs should invite copy-paste. `createOtelHook` and `createErrorReporterHook` are ~40 lines each, sitting under `sqlfu/otel` and `sqlfu` root respectively. They're reference implementations, not the blessed-forever API. The stable contract is `QueryExecutionHook`; the helpers are one valid satisfaction of it. Doc should say so plainly.
+
+**Why `sqlfu/otel` subpath, not root.** Core instrumentation (hook contract, compose, instrumentClient, errorReporter) stays at root — library-general. OTel-specific types (`TracerLike`, `SpanLike`) and `createOtelHook` live at `sqlfu/otel`. Makes tree-shaking obvious and clearly labels which types are "happens to match OTel" vs general. Commit 34589cd.
 
 ## Implementation log (2026-04-18)
 
