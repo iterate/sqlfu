@@ -77,6 +77,19 @@ test('sqlfu server can serve the packages/ui Vite client in dev mode', async () 
   });
 });
 
+test('sql.analyze resolves sqlite_schema columns without reporting "no such column"', async () => {
+  await using fixture = await createUiServerFixture();
+
+  const analysis = await fixture.client.sql.analyze({
+    sql: `select name, type
+from sqlite_schema
+where name not like 'sqlite_%'
+order by type, name;`,
+  });
+
+  expect(analysis).toMatchObject({diagnostics: []});
+});
+
 test('sqlfu server can serve the packages/ui Vite client in dev mode for ngrok-style hosts when opted in', async () => {
   await using fixture = await createUiServerFixture({
     dev: true,
