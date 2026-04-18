@@ -8,14 +8,7 @@ import type {AddressInfo} from 'node:net';
 import {DatabaseSync} from 'node:sqlite';
 import {expect, test} from 'vitest';
 
-import {
-  composeHooks,
-  createErrorReporterHook,
-  createNodeSqliteClient,
-  instrumentClient,
-  type SqlQuery,
-} from '../src/client.js';
-import {createOtelHook} from '../src/otel.js';
+import {createNodeSqliteClient, instrument, type SqlQuery} from '../src/client.js';
 
 test('named and ad-hoc queries surface on OTel spans and error reporter fires on failure', async () => {
   await using otel = await createOtelFixture();
@@ -28,14 +21,12 @@ test('named and ad-hoc queries surface on OTel spans and error reporter fires on
     insert into profiles (name) values ('linus');
   `);
 
-  const client = instrumentClient(
+  const client = instrument(
     createNodeSqliteClient(db),
-    composeHooks(
-      createOtelHook({tracer: otel.tracer}),
-      createErrorReporterHook(({context, error}) => {
-        errorReports.push({queryName: context.query.name, error});
-      }),
-    ),
+    instrument.otel({tracer: otel.tracer}),
+    instrument.onError(({context, error}) => {
+      errorReports.push({queryName: context.query.name, error});
+    }),
   );
 
   const listProfilesQuery: SqlQuery = {
