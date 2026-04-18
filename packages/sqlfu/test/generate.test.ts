@@ -773,6 +773,65 @@ test('generate snapshots cte queries with the works in one query', async () => {
   `);
 });
 
+test('generate preserves nested query directories in output, name, and functionName', async () => {
+  await using project = await createGenerateFixture({
+    definitionsSql: dedent`
+      create table profiles (id integer primary key, name text not null);
+      create table orders (id integer primary key, total integer not null);
+    `,
+    files: {
+      'sql/users/list-profiles.sql': `select id, name from profiles;`,
+      'sql/orders/list-orders.sql': `select id, total from orders;`,
+    },
+  });
+
+  await project.generate();
+
+  await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
+  expect(await project.dumpFs({includeGlobs: ['sql/.generated/**/*.ts']})).toMatchInlineSnapshot(`
+    "sql/
+      .generated/
+        index.ts
+          export * from "./orders/list-orders.sql.js";
+          export * from "./users/list-profiles.sql.js";
+        orders/
+          list-orders.sql.ts
+            import type {Client, SqlQuery} from 'sqlfu';
+            
+            export type OrdersListOrdersResult = {
+            	id: number;
+            	total: number;
+            }
+            
+            const OrdersListOrdersSql = \`
+            select id, total from orders;
+            \`
+            
+            export async function ordersListOrders(client: Client): Promise<OrdersListOrdersResult[]> {
+            	const query: SqlQuery = { sql: OrdersListOrdersSql, args: [], name: "orders/list-orders" };
+            	return client.all<OrdersListOrdersResult>(query);
+            }
+        users/
+          list-profiles.sql.ts
+            import type {Client, SqlQuery} from 'sqlfu';
+            
+            export type UsersListProfilesResult = {
+            	id: number;
+            	name: string;
+            }
+            
+            const UsersListProfilesSql = \`
+            select id, name from profiles;
+            \`
+            
+            export async function usersListProfiles(client: Client): Promise<UsersListProfilesResult[]> {
+            	const query: SqlQuery = { sql: UsersListProfilesSql, args: [], name: "users/list-profiles" };
+            	return client.all<UsersListProfilesResult>(query);
+            }
+    "
+  `);
+});
+
 async function createGenerateFixture(input: {
   definitionsSql: string;
   files: Record<string, string>;
