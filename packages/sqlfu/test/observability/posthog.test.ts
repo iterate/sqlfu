@@ -5,7 +5,7 @@ import {gunzipSync} from 'node:zlib';
 import {PostHog} from 'posthog-node';
 import {expect, test} from 'vitest';
 
-import {createNodeSqliteClient, instrument, type QueryExecutionHook} from '../../src/client.js';
+import {createNodeSqliteClient, instrument} from '../../src/client.js';
 
 // Recipe: emit a PostHog event per query with timing.
 //
@@ -21,28 +21,29 @@ import {createNodeSqliteClient, instrument, type QueryExecutionHook} from '../..
 test('every query emits a db_query event to PostHog with name and duration', async () => {
   await using posthog = await setupPostHogForTest();
 
-  const captureQuery: QueryExecutionHook = ({context, execute, processResult}) => {
-    const start = Date.now();
-    return processResult(execute, (value) => {
-      posthog.client.capture({
-        distinctId: 'app',
-        event: 'db_query',
-        properties: {
-          'db.query.summary': context.query.name ?? 'sql',
-          'db.system.name': context.system,
-          duration_ms: Date.now() - start,
-          operation: context.operation,
-        },
-      });
-      return value;
-    });
-  };
-
   const db = new DatabaseSync(':memory:');
   db.exec(`create table profiles (id integer primary key, name text not null);`);
   db.exec(`insert into profiles (id, name) values (1, 'ada'), (2, 'linus');`);
 
-  const client = instrument(createNodeSqliteClient(db), captureQuery);
+  const client = instrument(
+    createNodeSqliteClient(db),
+    ({context, execute, processResult}) => {
+      const start = Date.now();
+      return processResult(execute, (value) => {
+        posthog.client.capture({
+          distinctId: 'app',
+          event: 'db_query',
+          properties: {
+            'db.query.summary': context.query.name ?? 'sql',
+            'db.system.name': context.system,
+            duration_ms: Date.now() - start,
+            operation: context.operation,
+          },
+        });
+        return value;
+      });
+    },
+  );
 
   client.all({sql: 'select id, name from profiles order by id', args: [], name: 'list-profiles'});
   client.run({sql: 'insert into profiles (name) values (?)', args: ['grace'], name: 'insert-profile'});

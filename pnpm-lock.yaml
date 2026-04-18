@@ -75,6 +75,9 @@ importers:
       hono:
         specifier: ^4.12.14
         version: 4.12.14
+      hot-shots:
+        specifier: ^14.3.1
+        version: 14.3.1
       libsql:
         specifier: 0.5.29
         version: 0.5.29
@@ -3079,6 +3082,10 @@ packages:
     resolution: {integrity: sha512-am5zfg3yu6sqn5yjKBNqhnTX7Cv+m00ox+7jbaKkrLMRJ4rAdldd1xPd/JzbBWspqaQv6RSTrgFN95EsfhC+7w==}
     engines: {node: '>=16.9.0'}
 
+  hot-shots@14.3.1:
+    resolution: {integrity: sha512-2mKuFf3quca37vsT4u4BW9nUZIaz1uuHSpLG0uFQxdg6QAuNU8QnMU6tpEyX/EJe1oEgOrdmFq+DL0NrBIKhkA==}
+    engines: {node: '>=18.0.0'}
+
   human-signals@8.0.1:
     resolution: {integrity: sha512-eKCa6bwnJhvxj14kZk5NCPc6Hb6BdsU9DZcOnmQKSnO1VKrfV0zCvtttPZUsBvjmNDn8rpcJfpwSYnHBjc95MQ==}
     engines: {node: '>=18.18.0'}
@@ -3353,6 +3360,9 @@ packages:
 
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
+
+  nan@2.26.2:
+    resolution: {integrity: sha512-0tTvBTYkt3tdGw22nrAy50x7gpbGCCFH3AFcyS5WiUu7Eu4vWlri1woE6qHBSfy11vksDqkiwjOnlR7WV8G1Hw==}
 
   nanoid@3.3.11:
     resolution: {integrity: sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==}
@@ -3889,6 +3899,10 @@ packages:
 
   universal-user-agent@7.0.3:
     resolution: {integrity: sha512-TmnEAEAsBJVZM/AADELsK76llnwcf9vMKuPz8JflO1frO8Lchitr0fNaN9d+Ap0BjKtqWqd/J17qeDnXh8CL2A==}
+
+  unix-dgram@2.0.7:
+    resolution: {integrity: sha512-pWaQorcdxEUBFIKjCqqIlQaOoNVmchyoaNAJ/1LwyyfK2XSxcBhgJNiSE8ZRhR0xkNGyk4xInt1G03QPoKXY5A==}
+    engines: {node: '>=0.10.48'}
 
   update-browserslist-db@1.2.3:
     resolution: {integrity: sha512-Js0m9cx+qOgDxo0eMiFGEueWztz+d4+M3rGlmKPT+T4IS/jP4ylw3Nwpu6cpTTP8R1MAC1kF4VbdLt3ARf209w==}
@@ -7084,6 +7098,10 @@ snapshots:
 
   hono@4.12.14: {}
 
+  hot-shots@14.3.1:
+    optionalDependencies:
+      unix-dgram: 2.0.7
+
   human-signals@8.0.1: {}
 
   ieee754@1.2.1: {}
@@ -7327,6 +7345,9 @@ snapshots:
   moo@0.5.3: {}
 
   ms@2.1.3: {}
+
+  nan@2.26.2:
+    optional: true
 
   nanoid@3.3.11: {}
 
@@ -7867,6 +7888,12 @@ snapshots:
   unicorn-magic@0.3.0: {}
 
   universal-user-agent@7.0.3: {}
+
+  unix-dgram@2.0.7:
+    dependencies:
+      bindings: 1.5.0
+      nan: 2.26.2
+    optional: true
 
   update-browserslist-db@1.2.3(browserslist@4.28.2):
     dependencies:
