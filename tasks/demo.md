@@ -8,6 +8,43 @@ Linked reference: https://sqlite.org/wasm/doc/trunk/demo-123.md (official `@sqli
 
 phase 2 landed: all UiRouter endpoints now run in-browser. Schema drift detection, migrations (draft / baseline / migrate / sync / goto), authorities view, and save/rename/delete/execute for saved queries all work end-to-end against the in-browser SQLite. Deploy still needs `alchemy deploy` run by hand.
 
+phase 3 (in progress): the demo was landed by forking ~1,300 lines from `packages/sqlfu` (router, analyze, migrations, schema-diff) because the node backend bakes in `node:fs`/`node:sqlite`/`node:crypto` at call sites. This phase removes that duplication by threading a `SqlfuHost` dependency through `packages/sqlfu`; the node CLI injects node implementations, the browser adapter injects wasm + memfs + web crypto, and the demo collapses to a thin adapter.
+
+## Phase 3 plan — inject a host into packages/sqlfu
+
+**Goal.** One `uiRouter` + one set of command/analysis functions, shared between `local.sqlfu.dev` (node) and `demo.local.sqlfu.dev` (browser). The platform-specific pieces (fs, sqlite driver, crypto digest, typegen/catalog) move behind an injected interface.
+
+**New `SqlfuHost` interface** (in `packages/sqlfu/src/core/host.ts`):
+
+- `fs`: `readFile` / `writeFile` / `readdir` / `mkdir` / `rm` / `rename` / `exists`. Path-keyed; node adapter uses `node:fs/promises`, browser adapter routes paths to a memfs-like store.
+- `openDb(path)`: returns a disposable `AsyncClient`. Node uses `node:sqlite`'s `DatabaseSync` (wrapped as async); browser uses the existing `createWasmAsyncClient` against a wasm db.
+- `openScratchDb(slug)`: returns a disposable `AsyncClient` backed by a fresh in-memory db. Replaces the current `createScratchDatabase` (node: `.sqlfu/<slug>-<uuid>.db`, browser: `:memory:`).
+- `digest(content)`: returns the sha256 hex digest. Node uses `node:crypto.createHash`; browser uses `crypto.subtle.digest`. This becomes async everywhere — `migrationChecksum` is the only public caller and all its callers are already async.
+- `now()`, `uuid()`, `logger`: thin utilities so migrations timestamps / scratch-db filenames / diagnostic output are host-controlled. `globalThis.crypto.randomUUID()` exists in both, but we thread it through the host for testability.
+- `catalog`: `load(config)` / `refresh(config)` / `analyzeSql(config, sql)`. Node wires `generateQueryTypesForConfig` + `analyzeAdHocSqlForConfig`; browser synthesizes entries from the vfs via a regex (as today) and returns `{}` from `analyzeSql` (typesql/ts-morph stay out of the browser bundle).
+
+**Node adapter** (`packages/sqlfu/src/core/node-host.ts`): builds a `SqlfuHost` from `node:fs` / `node:sqlite` / `node:crypto` / typegen pipeline. This is where `loadNodeSqliteModule()` lives — removes the top-level `await` in `ui/server.ts:34` that currently prevents the router module from being imported in a browser bundle.
+
+**Browser adapter** (replaces the bulk of `packages/ui/src/demo/`): builds a `SqlfuHost` from the existing `createWasmSqliteClient` + a `DemoVfs`-backed `HostFs` + `crypto.subtle.digest`. ~150 lines vs. the current ~1,300.
+
+**Call-site changes:**
+
+- `migrations/index.ts`: `migrationChecksum` becomes async and takes the host (or a digest fn). `applyMigrations` / `replaceMigrationHistory` / `baselineMigrationHistory` take `host`, use `host.now()` for `applied_at`, and call the async checksum. Any call to `migrationChecksum(content)` in analysis code also becomes `await host.digest(content)`.
+- `schemadiff/sqlite/index.ts`: `diffBaselineSqlToDesiredSqlNative` and `inspectSqliteSchemaSql` take `host`, call `host.openScratchDb` instead of the inline bun/node switch. Rename drops the "Native" suffix. The file-cleanup branch moves into the node adapter's `openScratchDb` disposer.
+- `api.ts`: every function takes `host` (either as argument or bundled into `SqlfuContext`). `openMainDevDatabase(path)` → `host.openDb(path)`. `fs.*` → `host.fs.*`. `randomUUID()` → `host.uuid()`. `new Date()` → `host.now()`. `runSqlfuCommand(context, command, confirm)` → `runSqlfuCommand(host, context, command, confirm)`. The confirmation prompt continues to be injected exactly as it is today — that piece doesn't change.
+- `ui/server.ts`: `uiRouter` handlers read `host` off `context`. Every `new DatabaseSync(...)`/`database.prepare(...)` call becomes `host.openDb(...)` + `AsyncClient` methods; `executePreparedAll`/`executePreparedRun` helpers delete. Every `fs.*`/`path.*`-for-IO becomes `host.fs.*`. `loadCatalog` becomes `host.catalog.load`. `generateCatalogForProject(projectRoot)` after saves becomes `host.catalog.refresh(config)`. `startSqlfuServer`, project resolver, vite, TLS, http listener all stay node-only and call `createNodeHost()` once at startup.
+- `schemadiff/index.ts`: `diffSchemaSql` takes `host` instead of `projectRoot`.
+
+**Files deleted:** `packages/ui/src/demo/router.ts` (733), `analyze.ts` (307), `migrations.ts` (127), `schema-diff.ts` (156), `scratch-db.ts` (22). Kept and possibly trimmed: `sqlite-wasm-client.ts`, `sqlfu-client-adapter.ts`, `vfs.ts`, `index.ts`.
+
+**Not changing in this phase:**
+
+- Deployment shape (still single bucket, two domains).
+- `@sqlite.org/sqlite-wasm` pin.
+- `startSqlfuServer` signature / http layer.
+- Typesql analysis / generated wrapper emission — still gated to node via `host.catalog`.
+- CLI behavior.
+
 ## Decisions (filled in from the original sketch)
 
 - **SQLite in the browser:** use the official `@sqlite.org/sqlite-wasm` package. In-memory `:memory:` database per tab. Page reload = fresh workspace. No OPFS (for now). Don't persist across sessions.
