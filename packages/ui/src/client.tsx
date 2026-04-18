@@ -235,6 +235,7 @@ function StartupFailureScreen(input: {
 
   return (
     <main className="startup-shell">
+      <TryDemoBanner />
       <section className="startup-card">
         <h1><code>sqlfu</code></h1>
         <p className="startup-lede">Connecting to the sqlfu backend on {apiHost}</p>
@@ -1998,14 +1999,21 @@ function Shell(input: {
 }
 
 function ModeBanner() {
+  if (!demoMode) {
+    return null;
+  }
+  return (
+    <div className="mode-banner demo">
+      <strong>Demo mode</strong>
+      <span>In-browser SQLite. Nothing is saved — refresh to reset.</span>
+      <a className="mode-banner-link" href={LOCAL_URL}>Back to local.sqlfu.dev</a>
+    </div>
+  );
+}
+
+function TryDemoBanner() {
   if (demoMode) {
-    return (
-      <div className="mode-banner demo">
-        <strong>Demo mode</strong>
-        <span>In-browser SQLite. Nothing is saved — refresh to reset.</span>
-        <a className="mode-banner-link" href={LOCAL_URL}>Back to local.sqlfu.dev</a>
-      </div>
-    );
+    return null;
   }
   return (
     <div className="mode-banner">

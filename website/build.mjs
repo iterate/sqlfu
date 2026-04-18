@@ -160,6 +160,7 @@ function renderLandingPage(renderedDocs) {
           </p>
           <div class="cta-row">
             <a class="button primary" href="/docs/">Read the docs</a>
+            <a class="button" href="https://local.sqlfu.dev/?demo=1">Try the demo</a>
           </div>
         </article>
       </section>
@@ -256,6 +257,7 @@ function renderPage({title, body}) {
     '      <a class="brand" href="/">sqlfu</a>',
     '      <nav class="nav">',
     '        <a href="/docs/">Docs</a>',
+    '        <a href="https://local.sqlfu.dev/?demo=1">Demo</a>',
     `        <a href="${repositoryBaseUrl}" target="_blank" rel="noreferrer">GitHub</a>`,
     '      </nav>',
     '    </header>',

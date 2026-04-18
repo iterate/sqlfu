@@ -4,16 +4,12 @@ import {uiRouter} from 'sqlfu/ui/browser';
 
 import {buildDemoConfig, createBrowserHost, DEMO_PROJECT_ROOT} from './browser-host.js';
 
-export const DEMO_HOST = 'demo.local.sqlfu.dev';
-export const DEMO_URL = `https://${DEMO_HOST}/`;
+export const DEMO_URL = 'https://local.sqlfu.dev/?demo=1';
 export const LOCAL_URL = 'https://local.sqlfu.dev/';
 
 export function isDemoMode() {
   if (typeof window === 'undefined') {
     return false;
-  }
-  if (window.location.hostname === DEMO_HOST) {
-    return true;
   }
   return new URLSearchParams(window.location.search).get('demo') === '1';
 }

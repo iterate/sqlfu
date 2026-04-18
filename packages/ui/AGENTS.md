@@ -103,11 +103,11 @@ If you are working on:
 - hosted-frontend-to-localhost behavior, think in terms of the `local.sqlfu.dev` simulation and the separate ngrok spec
 - localhost certs / CORS / private-network issues, those belong in `packages/sqlfu`, not in the UI package
 
-## Demo mode (`demo.local.sqlfu.dev`)
+## Demo mode (`?demo=1`)
 
-The same `packages/ui` bundle is also deployed at `demo.local.sqlfu.dev`. In demo mode the UI runs fully in the browser against an in-memory SQLite database via `@sqlite.org/sqlite-wasm` — there is no backend at all.
+The same `packages/ui` bundle runs in demo mode when `?demo=1` is in the URL. In demo mode the UI runs fully in the browser against an in-memory SQLite database via `@sqlite.org/sqlite-wasm` — there is no backend at all.
 
-- Mode detection: `hostname === 'demo.local.sqlfu.dev'` or `?demo=1`.
+- Mode detection: URL search param `?demo=1`.
 - See `src/demo/` for the wasm client, the in-browser router implementation, and the mode helpers. The in-browser router is typed as `RouterClient<UiRouter>` so `client.tsx` can consume it interchangeably with the normal fetch-based oRPC client.
 - Only the subset of `UiRouter` that makes sense without a filesystem is implemented: `project.status`, `schema.get`, `table.*`, `sql.run`, `sql.analyze` (no-op), `catalog` (empty). Other procedures throw a "not available in demo mode" error.
-- The demo deployment is wired from `alchemy.run.mts` — the same `sqlfu-local-ui` worker serves both `local.sqlfu.dev` and `demo.local.sqlfu.dev`.
+- Because demo mode is pure static assets with no backend, the built `dist/` can be hosted anywhere — the `deploy-ui` workflow uploads it as a GitHub Actions artifact so `artifact.ci` can serve PR previews. `vite.config.ts` sets `base: './'` to keep asset paths relative for that case.

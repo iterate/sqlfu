@@ -16,7 +16,7 @@ import {createWasmAsyncClient} from './sqlfu-client-adapter.js';
 import {createWasmSqliteClient, type WasmSqliteClient} from './sqlite-wasm-client.js';
 import {DemoVfs} from './vfs.js';
 
-export const DEMO_PROJECT_ROOT = 'demo.local.sqlfu.dev';
+export const DEMO_PROJECT_ROOT = '/demo';
 export const DEMO_PROJECT_NAME = 'demo';
 
 export function buildDemoConfig(): SqlfuProjectConfig {
