@@ -8,8 +8,13 @@ import type {AddressInfo} from 'node:net';
 import {DatabaseSync} from 'node:sqlite';
 import {expect, test} from 'vitest';
 
-import {createNodeSqliteClient, instrument, type SqlQuery} from '../src/client.js';
+import {createNodeSqliteClient, instrument, type SqlQuery} from '../../src/client.js';
 
+// This recipe covers any backend that accepts OTLP over HTTP: OpenTelemetry
+// collectors, Honeycomb, Grafana Tempo, New Relic, and Datadog (point the
+// `OTLPTraceExporter` url at Datadog's intake URL and add the API key
+// header). The hook wiring below is identical for every destination — only
+// the exporter's URL and headers change.
 test('named and ad-hoc queries surface on OTel spans and error reporter fires on failure', async () => {
   await using otel = await createOtelFixture();
   const errorReports: Array<{queryName: string | undefined; error: unknown}> = [];
