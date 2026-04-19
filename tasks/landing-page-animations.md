@@ -1,13 +1,26 @@
-status: ready
+status: in-progress
 size: medium
 
 # Landing-page animations
 
 ## Status
 
-Planning only. No implementation yet. Three value panels on `sqlfu.dev` are
-currently static text; we want each to get a short looping animation that
-dramatizes the concept the copy describes.
+In progress on branch `landing-page-animations`. Scaffold + animations 1-3
+built, alternatives A-D scaffolded. Animation 1 rendered to mp4/webm and
+wired into the landing page. Alternatives live behind
+`?animation_alternative=a|b|c|d`.
+
+What's done:
+- Remotion 4.0.448 project under `website/animations/`
+- Animations 1-3 composed
+- Alternatives A-D composed (some are stubs, clearly labeled)
+- Landing page wired: `<video>` per panel with prefers-reduced-motion CSS
+- Real fixtures: `sqlfu generate` output for animation 2, `sqlfu draft` SQL for animation 3
+
+What's pending (see "Implementation notes" at the bottom):
+- Pacing review with user (could not render + eyeball solo at bedtime)
+- Final render of all 7 animations (animation 1 rendered; others WIP)
+- Lighthouse / mobile eyeball
 
 ## Goal
 
@@ -135,17 +148,19 @@ doing the heavy lifting.
 
 ### Tooling
 
-- **Remotion** for authoring. Renders React compositions to webm/mp4
-  through headless Chrome. Primitives (`interpolate`, `spring`,
-  `Sequence`, `AbsoluteFill`) fit this kind of timed code-editor work
-  well. Re-verify it's still the best choice at implementation time —
-  this plan was written assuming Remotion is current.
-- Code rendering: Remotion has code-highlighting helpers
-  (`@remotion/shiki` / `@remotion/code-highlighter`). For "typing" a
-  file, animate a character-index cursor and re-highlight each frame.
+- **Remotion 4.0.448** for authoring. Confirmed current on npm (published
+  2026-04-10). Primitives (`interpolate`, `spring`, `Sequence`,
+  `AbsoluteFill`) fit this kind of timed code-editor work well.
+- Code rendering: `@remotion/shiki` and `@remotion/code-highlighter`
+  aren't actually on npm (404). We roll our own — plain `<pre>`-style
+  surfaces with token colorization via small helper functions. Good
+  enough for short loops, no external dep.
 - Output: render both `webm` (vp9) and `mp4` (h264) for
   compatibility; use a poster frame as the `prefers-reduced-motion`
   fallback.
+- Resolution: 1280×720 @ 30fps. Value panels on mobile go full-width
+  in the grid's single-column layout, so 16:9 reads cleanly at every
+  breakpoint.
 
 ### Where it lives
 
@@ -201,17 +216,18 @@ doing the heavy lifting.
 - [ ] Lighthouse quick check — we don't want these clips tanking the
       landing page's perf score.
 
-## Open questions
+## Open questions (resolved during implementation)
 
-- Code surface aesthetic: match the terminal/dark site look, or go for
-  a clean neutral code-editor look à la drizzle.team? (Probably match
-  the site; decide during animation 1.)
-- Aspect ratio per card: 16:9 vs something closer to square? Depends on
-  how the `.section-grid` wraps on mobile. Check the current CSS
-  (`website/src/styles.css`, `.value-panel`) and pick accordingly.
-- Should the autocomplete popover in animation 2 be rendered or skipped
-  if it gets too fiddly? It's the best beat but also the hardest to
-  fake convincingly.
+- Code surface aesthetic — **resolved**: match the site. We use the
+  site's terminal pre/code styling (deep-brown `#20140f` background,
+  cream text) so the animations feel like an extension of the
+  existing `.panel pre` surface, not a foreign object.
+- Aspect ratio per card — **resolved**: 16:9 (1280×720). On mobile the
+  `.section-grid` collapses to one column and the video goes
+  full-width of the panel; a 16:9 clip reads fine at every size.
+- Autocomplete popover in animation 2 — **resolved**: included. It's a
+  simple positioned `<div>` with three list items and a highlight
+  bar; no real editor behavior needed. It really is the sell.
 
 ## Research notes
 
