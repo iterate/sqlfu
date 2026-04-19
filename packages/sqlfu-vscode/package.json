@@ -1,29 +1,14 @@
 {
   "name": "@sqlfu/vscode",
   "displayName": "sqlfu",
-  "private": true,
   "version": "0.0.1-0",
+  "private": true,
   "description": "VS Code extension for sqlfu projects. Today: one command — open the sqlfu UI for the current workspace.",
-  "publisher": "sqlfu",
-  "engines": {
-    "vscode": "^1.90.0"
-  },
   "categories": [
     "Other"
   ],
+  "publisher": "sqlfu",
   "main": "./dist/extension.js",
-  "activationEvents": [
-    "onCommand:sqlfu.openUi"
-  ],
-  "contributes": {
-    "commands": [
-      {
-        "command": "sqlfu.openUi",
-        "title": "sqlfu: Open UI",
-        "category": "sqlfu"
-      }
-    ]
-  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
@@ -33,5 +18,20 @@
     "@types/node": "^24.5.2",
     "@types/vscode": "^1.90.0",
     "typescript": "^5.9.3"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "sqlfu.openUi",
+        "title": "sqlfu: Open UI",
+        "category": "sqlfu"
+      }
+    ]
+  },
+  "activationEvents": [
+    "onCommand:sqlfu.openUi"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
   }
 }

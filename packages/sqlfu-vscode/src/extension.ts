@@ -59,7 +59,9 @@ async function openUi(context: vscode.ExtensionContext): Promise<void> {
   const port = await findFreePort();
   const output = vscode.window.createOutputChannel('sqlfu');
   context.subscriptions.push(output);
-  output.appendLine(`[sqlfu-vscode] starting \`${cli.command} ${cli.args.concat(['serve', '--port', String(port)]).join(' ')}\``);
+  output.appendLine(
+    `[sqlfu-vscode] starting \`${cli.command} ${cli.args.concat(['serve', '--port', String(port)]).join(' ')}\``,
+  );
 
   const child = childProcess.spawn(cli.command, [...cli.args, 'serve', '--port', String(port)], {
     cwd: projectRoot,
