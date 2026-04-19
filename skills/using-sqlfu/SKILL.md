@@ -59,7 +59,7 @@ If an agent edits `definitions.sql` or files under `sql/`, the generated wrapper
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.file_path' | grep -qE '(^|/)(definitions\\.sql|sql/[^/]+\\.sql)$' && pnpm sqlfu generate >/dev/null 2>&1 || true"
+            "command": "jq -r '.tool_input.file_path' | grep -q '\\.sql$' && pnpm sqlfu generate >/dev/null 2>&1 || true"
           }
         ]
       }
