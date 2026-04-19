@@ -80,18 +80,25 @@ Starlight only renders under `/docs/*`.
 
 ## Deliverables checklist
 
-- [ ] scaffold Astro + Starlight under `website/` (keep existing folder)
-- [ ] port `website/src/styles.css` into Astro's custom-css layer + site.css for the landing page
-- [ ] write `scripts/sync-docs.mjs` (link rewriting, asset copying, frontmatter prepending)
-- [ ] configure Starlight sidebar with the five existing docs (order: sqlfu, schema-diff-model, migration-model, observability, ui)
-- [ ] landing page at `src/pages/index.astro`
-- [ ] post-build `scripts/make-portable.mjs` that replicates the path-prefix rewrite
-- [ ] update root `package.json` scripts: `pnpm build:website`, `pnpm website` still work; prefer `pnpm --filter sqlfu-website build` too
-- [ ] add `website` to pnpm workspace (so workspace filters work; right now it's a standalone package)
-- [ ] delete `website/build.mjs` once Astro equivalent renders correctly
-- [ ] verify `alchemy.run.mts` still works — its `Website('www', ..., cwd: './website', build: 'pnpm build', assets: './dist')` config should just work since Astro also outputs to `./dist`
-- [ ] visually spot-check `dist/`: index.html, `docs/sqlfu/index.html`, `docs/observability/index.html`, asset present at `docs/assets/packages/sqlfu/docs/i-know-sqlfu.webp`
-- [ ] custom "Source: …" link in each docs page pointing at the GitHub permalink (Starlight supports an `editUrl` + custom components; or a small `<SourceLink>` component rendered from frontmatter)
+- [x] scaffold Astro + Starlight under `website/` _astro 5 + starlight 0.37, no integration scaffold; wrote config by hand_
+- [x] port `website/src/styles.css` into Astro's custom-css layer + site.css for the landing page _custom.css for Starlight, landing.css for src/pages/index.astro_
+- [x] write `scripts/sync-docs.mjs` (link rewriting, asset copying, frontmatter prepending) _sync-docs.mjs; strips leading h1 since Starlight renders title from frontmatter_
+- [x] configure Starlight sidebar with the five existing docs _slugs under docs/ so URLs are /docs/<slug>/_
+- [x] landing page at `src/pages/index.astro` _hand-rolled, bypasses Starlight_
+- [x] post-build `scripts/make-portable.mjs` that replicates the path-prefix rewrite _walks dist/**/*.html and rewrites absolute hrefs/srcs_
+- [x] update root `package.json` scripts _`build:website`, `build`, `website` all point at pnpm --filter sqlfu-website; `website` now runs dev server_
+- [x] add `website` to pnpm workspace _added to pnpm-workspace.yaml_
+- [x] delete `website/build.mjs` _done; old src/styles.css also removed_
+- [x] verify `alchemy.run.mts` still works _no changes needed; it runs `pnpm build` in ./website and reads ./dist_
+- [x] visually spot-check `dist/` _index.html, all five docs pages, i-know-sqlfu.webp present, absolute paths rewritten to relative_
+- [x] custom "Source: …" link in each docs page pointing at the GitHub permalink _via src/starlight-overrides/PageTitle.astro reading sourceUrl/sourcePath frontmatter injected by sync-docs.mjs_
+
+## Implementation log
+
+- Starlight's official export map doesn't expose `./constants`, so `PAGE_TITLE_ID = '_top'` is inlined in the PageTitle override. Low-risk since it's a public HTML id and unlikely to churn.
+- Starlight's theme selector (Dark/Light/Auto) is left enabled even though the source site is single-themed. Low-cost to keep; if it looks bad we can drop it in the config.
+- `/docs/` redirects to `/docs/sqlfu/` via astro's `redirects` config.
+- The README's top-of-page manual anchor TOC renders under the Starlight TOC. Mildly redundant but harmless; fixing it would require a sync-docs pass that strips the top bullet block from the sqlfu README specifically, which is more surgery than bedtime warrants.
 
 ## Non-goals (this PR)
 
