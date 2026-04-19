@@ -1,10 +1,37 @@
 import type {Client} from '../core/types.js';
-import type {SqlfuHost} from '../core/host.js';
 import {basename} from '../core/paths.js';
 
 export type Migration = {
   path: string;
   content: string;
+};
+
+/**
+ * The slice of host behavior `applyMigrations` / `baselineMigrationHistory` /
+ * `replaceMigrationHistory` actually use. Narrower than `SqlfuHost` so runtimes
+ * without a filesystem / scratch db / catalog (durable objects, edge workers,
+ * browsers) don't have to fake one. The full `SqlfuHost` satisfies this type,
+ * so existing callers pass unchanged.
+ */
+export type MigrationsHost = {
+  digest(content: string): Promise<string>;
+  now(): Date;
+};
+
+/**
+ * Cross-runtime `MigrationsHost` backed by WebCrypto SHA-256 and `new Date()`.
+ * Works in Node 19+, Cloudflare Workers, durable objects, browsers — anywhere
+ * `globalThis.crypto.subtle` is available. Use as the default host for
+ * `applyMigrations` when you don't have or need a full `SqlfuHost`.
+ */
+export const defaultMigrationsHost: MigrationsHost = {
+  async digest(content) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
+    return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+  },
+  now() {
+    return new Date();
+  },
 };
 
 /**
@@ -77,7 +104,7 @@ export async function readMigrationHistory(client: Client): Promise<AppliedMigra
   });
 }
 
-export async function baselineMigrationHistory(host: SqlfuHost, client: Client, params: {
+export async function baselineMigrationHistory(host: MigrationsHost, client: Client, params: {
   migrations: readonly Migration[];
   target: string;
 }) {
@@ -92,7 +119,7 @@ export async function baselineMigrationHistory(host: SqlfuHost, client: Client, 
   });
 }
 
-export async function replaceMigrationHistory(host: SqlfuHost, client: Client, migrations: readonly Migration[]) {
+export async function replaceMigrationHistory(host: MigrationsHost, client: Client, migrations: readonly Migration[]) {
   await ensureMigrationTable(client);
   await client.run({sql: 'delete from sqlfu_migrations', args: []});
   for (const migration of migrations) {
@@ -106,7 +133,7 @@ export async function replaceMigrationHistory(host: SqlfuHost, client: Client, m
   }
 }
 
-export async function applyMigrations(host: SqlfuHost, client: Client, params: {
+export async function applyMigrations(host: MigrationsHost, client: Client, params: {
   migrations: readonly Migration[];
 }): Promise<void> {
   await ensureMigrationTable(client);

@@ -190,7 +190,13 @@ async function loadQueryFiles(queriesDir: string): Promise<readonly QueryFile[]>
   const files: QueryFile[] = [];
 
   async function walk(currentDir: string, relativePrefix: string): Promise<void> {
-    const entries = await fs.readdir(currentDir, {withFileTypes: true});
+    let entries;
+    try {
+      entries = await fs.readdir(currentDir, {withFileTypes: true});
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
+    }
     entries.sort((left, right) => left.name.localeCompare(right.name));
 
     for (const entry of entries) {

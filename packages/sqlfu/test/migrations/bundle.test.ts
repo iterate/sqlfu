@@ -98,7 +98,6 @@ async function createBundleFixture(files: Record<string, string>) {
         queries: './sql',
       };
     `,
-    'sql/.gitkeep': '',
     ...files,
   });
 
