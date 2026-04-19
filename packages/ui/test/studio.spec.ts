@@ -997,7 +997,10 @@ async function confirmAndRunSchemaCommand(
   if (confirmation != null) {
     await replaceCodeMirrorText(dialog, 'Confirmation body editor', confirmation);
   }
-  await dialog.getByRole('button', {name: 'Confirm'}).click();
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes('/api/rpc/schema/submitConfirmation')),
+    dialog.getByRole('button', {name: 'Confirm'}).click(),
+  ]);
   await expect(dialog).not.toBeVisible();
 }
 
