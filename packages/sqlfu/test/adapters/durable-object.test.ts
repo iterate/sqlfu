@@ -12,7 +12,6 @@ declare const createDurableObjectClient: typeof import('../../src/index.ts').cre
 declare const sql: typeof import('../../src/index.ts').sql;
 declare const applyMigrations: typeof import('../../src/migrations/index.ts').applyMigrations;
 declare const migrationsFromBundle: typeof import('../../src/migrations/index.ts').migrationsFromBundle;
-declare const defaultMigrationsHost: typeof import('../../src/migrations/index.ts').defaultMigrationsHost;
 
 test('createDurableObjectClient works in a real durable object', async () => {
   await using fixture = await createDOFixture(
@@ -83,11 +82,22 @@ test('applyMigrations can run inside a durable object using a migrations bundle'
           'migrations/2026-04-10T00.00.00.000Z_create_posts.sql': 'create table posts (id integer primary key, slug text not null);',
           'migrations/2026-04-10T01.00.00.000Z_add_body.sql': 'alter table posts add column body text;',
         };
+        // Hand-rolled host + `as any` cast because `applyMigrations` currently
+        // demands full `SqlfuHost` even though it only uses `digest` and `now`.
+        // Follow-up in tasks/migrations-sync-async.md will drop the host
+        // parameter entirely so this stub and cast go away.
+        const host = {
+          digest: async (content: string) => {
+            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
+            return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+          },
+          now: () => new Date(),
+        };
         // blockConcurrencyWhile gates incoming handlers until migrations finish,
         // so getColumns / getApplied can use this.client directly — no per-handler
         // await-ready dance.
         state.blockConcurrencyWhile(() =>
-          applyMigrations(defaultMigrationsHost, this.client, {
+          applyMigrations(host as any, this.client, {
             migrations: migrationsFromBundle(bundle),
           }),
         );
@@ -179,7 +189,7 @@ async function createDOFixture<TInstance extends object>(
     dedent`
       import {createDurableObjectClient} from './runtime/adapters/durable-object.js';
       import {sql} from './runtime/core/sql.js';
-      import {applyMigrations, migrationsFromBundle, defaultMigrationsHost} from './runtime/migrations/index.js';
+      import {applyMigrations, migrationsFromBundle} from './runtime/migrations/index.js';
 
       ${classDefString}
       
