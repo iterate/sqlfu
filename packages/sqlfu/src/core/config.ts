@@ -80,6 +80,9 @@ export function resolveProjectConfig(
     definitions: resolveConfigPathValue(configDir, fileConfig.definitions),
     queries: resolveConfigPathValue(configDir, fileConfig.queries),
     generatedImportExtension: fileConfig.generatedImportExtension ?? inferGeneratedImportExtension(tsconfigPreferences),
+    generate: {
+      zod: fileConfig.generate?.zod === true,
+    },
   };
 }
 
@@ -191,6 +194,16 @@ function assertConfigShape(configPath: string, config: object): asserts config i
   for (const field of ['db', 'migrations', 'definitions', 'queries'] as const) {
     if (!(field in config) || typeof (config as Record<string, unknown>)[field] !== 'string') {
       throw new Error(`Invalid sqlfu config at ${configPath}: missing required string field "${field}".`);
+    }
+  }
+  const generate = (config as Record<string, unknown>).generate;
+  if (generate !== undefined) {
+    if (typeof generate !== 'object' || generate === null || Array.isArray(generate)) {
+      throw new Error(`Invalid sqlfu config at ${configPath}: "generate" must be an object.`);
+    }
+    const zod = (generate as Record<string, unknown>).zod;
+    if (zod !== undefined && typeof zod !== 'boolean') {
+      throw new Error(`Invalid sqlfu config at ${configPath}: "generate.zod" must be a boolean.`);
     }
   }
 }

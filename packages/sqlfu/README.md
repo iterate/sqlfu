@@ -120,6 +120,8 @@ For the engine model itself, see [docs/schema-diff-model.md](./docs/schema-diff-
 
 The goal is to keep SQL as the authored source while still getting useful TypeScript output in application code.
 
+Opt in to runtime validation by setting `generate.zod: true` in your config. Wrappers then emit zod schemas as the source of truth, validate params on the way in, validate each row on the way out, and derive types via `z.infer`. See [docs/runtime-validation.md](./docs/runtime-validation.md).
+
 ### Formatter
 
 `sqlfu` includes a SQL formatter via `formatSql()`.

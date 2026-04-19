@@ -59,6 +59,7 @@ export async function generateQueryTypesForConfig(config: SqlfuProjectConfig): P
         ? renderQueryWrapper({
             relativePath: queryFile.relativePath,
             descriptor: refineDescriptor(analysis.descriptor, queryFile.sqlContent, schema),
+            zod: config.generate.zod,
           })
         : `//Invalid SQL\nexport {};\n`;
       await fs.writeFile(wrapperPath, contents);
@@ -358,7 +359,15 @@ function toAdHocQueryAnalysis(descriptor: GeneratedQueryDescriptor): AdHocQueryA
   };
 }
 
-function renderQueryWrapper(input: {relativePath: string; descriptor: GeneratedQueryDescriptor}): string {
+function renderQueryWrapper(input: {
+  relativePath: string;
+  descriptor: GeneratedQueryDescriptor;
+  zod: boolean;
+}): string {
+  if (input.zod) {
+    return renderZodQueryWrapper(input);
+  }
+
   const queryName = input.relativePath;
   const functionName = toCamelCase(queryName);
   const capitalizedName = functionName[0]!.toUpperCase() + functionName.slice(1);
@@ -397,6 +406,191 @@ function renderQueryWrapper(input: {relativePath: string; descriptor: GeneratedQ
     `}`,
     ``,
   ].join('\n');
+}
+
+function renderZodQueryWrapper(input: {relativePath: string; descriptor: GeneratedQueryDescriptor}): string {
+  const queryName = input.relativePath;
+  const functionName = toCamelCase(queryName);
+  const descriptor = input.descriptor;
+  const resultMode = getResultMode(descriptor);
+  const resultFields = getResultFields(descriptor);
+  const hasData = (descriptor.data?.length ?? 0) > 0;
+  const hasParams = descriptor.parameters.length > 0;
+
+  // Local schemas declared as module-scoped consts, so the function signature
+  // can reference their z.infer without a circular dependency on the
+  // namespace-merged `${functionName}.Params` type. The namespace types below
+  // point at the same schemas through the merged export.
+  const schemaDeclarations: string[] = [];
+  if (hasData) {
+    schemaDeclarations.push(...renderTopLevelZodSchema('Data', descriptor.data!, 'parameter'));
+  }
+  if (hasParams) {
+    schemaDeclarations.push(...renderTopLevelZodSchema('Params', descriptor.parameters, 'parameter'));
+  }
+  schemaDeclarations.push(...renderTopLevelZodSchema('Result', resultFields, 'result'));
+
+  const sqlLines = [`const sql = \``, normalizeSqlForTemplate(descriptor.sql).join('\n').trim(), `\`;`];
+
+  const functionSignatureArgs: string[] = [`client: Client`];
+  if (hasData) functionSignatureArgs.push(`data: z.infer<typeof Data>`);
+  if (hasParams) functionSignatureArgs.push(`params: z.infer<typeof Params>`);
+
+  const returnType = getReturnType(descriptor, `z.infer<typeof Result>`);
+
+  const validationLines: string[] = [];
+  if (hasData) validationLines.push(`\t\tconst validatedData = Data.parse(data);`);
+  if (hasParams) validationLines.push(`\t\tconst validatedParams = Params.parse(params);`);
+
+  const argsExpression = buildZodQueryArgs(descriptor, {
+    dataVariable: hasData ? 'validatedData' : null,
+    paramsVariable: hasParams ? 'validatedParams' : null,
+  });
+
+  const implementationLines = buildZodImplementation({resultMode, resultFields});
+
+  const attachedProperties: string[] = [];
+  if (hasData) attachedProperties.push('Data');
+  if (hasParams) attachedProperties.push('Params');
+  attachedProperties.push('Result', 'sql');
+
+  const namespaceLines: string[] = [];
+  if (hasData) namespaceLines.push(`\texport type Data = z.infer<typeof ${functionName}.Data>;`);
+  if (hasParams) namespaceLines.push(`\texport type Params = z.infer<typeof ${functionName}.Params>;`);
+  namespaceLines.push(`\texport type Result = z.infer<typeof ${functionName}.Result>;`);
+
+  return [
+    `import {z} from 'zod';`,
+    `import type {Client, SqlQuery} from 'sqlfu';`,
+    ``,
+    ...schemaDeclarations,
+    ...sqlLines,
+    ``,
+    `export const ${functionName} = Object.assign(`,
+    `\tasync function ${functionName}(${functionSignatureArgs.join(', ')}): Promise<${returnType}> {`,
+    ...validationLines,
+    `\t\tconst query: SqlQuery = { sql, args: ${argsExpression}, name: ${JSON.stringify(queryName)} };`,
+    ...implementationLines,
+    `\t},`,
+    `\t{ ${attachedProperties.join(', ')} },`,
+    `);`,
+    ``,
+    `export namespace ${functionName} {`,
+    ...namespaceLines,
+    `}`,
+    ``,
+  ].join('\n');
+}
+
+function renderTopLevelZodSchema(
+  name: 'Data' | 'Params' | 'Result',
+  fields: readonly GeneratedField[],
+  fieldKind: 'parameter' | 'result',
+): string[] {
+  const lines: string[] = [`const ${name} = z.object({`];
+  for (const field of fields) {
+    lines.push(`\t${field.name}: ${zodExpressionForField(field, fieldKind)},`);
+  }
+  lines.push(`});`);
+  return lines;
+}
+
+function zodExpressionForField(field: GeneratedField, fieldKind: 'parameter' | 'result'): string {
+  let expression = zodForTsType(field.tsType);
+  if (!field.notNull) {
+    expression = `${expression}.nullable()`;
+  }
+  if (fieldKind === 'parameter' && Boolean(field.optional)) {
+    expression = `${expression}.optional()`;
+  }
+  return expression;
+}
+
+function zodForTsType(tsType: string): string {
+  if (tsType === 'string') return 'z.string()';
+  if (tsType === 'number') return 'z.number()';
+  if (tsType === 'boolean') return 'z.boolean()';
+  if (tsType === 'Date') return 'z.date()';
+  if (tsType === 'Uint8Array' || tsType === 'ArrayBuffer') return 'z.instanceof(Uint8Array)';
+  if (tsType === 'any') return 'z.unknown()';
+  if (tsType.endsWith('[]')) {
+    return `z.array(${zodForTsType(tsType.slice(0, -2))})`;
+  }
+
+  const enumValues = parseStringLiteralUnion(tsType);
+  if (enumValues) {
+    return `z.enum([${enumValues.map((value) => JSON.stringify(value)).join(', ')}])`;
+  }
+
+  return 'z.unknown()';
+}
+
+function buildZodQueryArgs(
+  descriptor: GeneratedQueryDescriptor,
+  variables: {dataVariable: string | null; paramsVariable: string | null},
+): string {
+  const args: string[] = [];
+  for (const field of descriptor.data ?? []) {
+    args.push(toDriver(variables.dataVariable!, field));
+  }
+  for (const field of descriptor.parameters) {
+    args.push(toDriver(variables.paramsVariable!, field));
+  }
+  return args.length > 0 ? `[${args.join(', ')}]` : '[]';
+}
+
+function buildZodImplementation(input: {
+  resultMode: 'many' | 'nullableOne' | 'one' | 'metadata';
+  resultFields: readonly GeneratedField[];
+}): string[] {
+  if (input.resultMode === 'many') {
+    return [
+      `\t\tconst rows = await client.all(query);`,
+      `\t\treturn rows.map((row) => Result.parse(row));`,
+    ];
+  }
+
+  if (input.resultMode === 'nullableOne') {
+    return [
+      `\t\tconst rows = await client.all(query);`,
+      `\t\treturn rows.length > 0 ? Result.parse(rows[0]) : null;`,
+    ];
+  }
+
+  if (input.resultMode === 'one') {
+    return [
+      `\t\tconst rows = await client.all(query);`,
+      `\t\treturn Result.parse(rows[0]);`,
+    ];
+  }
+
+  const metadataObjectLines = input.resultFields.map((field) => {
+    if (field.name === 'lastInsertRowid') {
+      return `\t\t\tlastInsertRowid: Number(result.lastInsertRowid),`;
+    }
+    return `\t\t\t${field.name}: result.${field.name},`;
+  });
+  const guards = input.resultFields.flatMap((field) => {
+    if (field.name === 'lastInsertRowid') {
+      return [
+        `\t\tif (result.lastInsertRowid === undefined || result.lastInsertRowid === null) {`,
+        `\t\t\tthrow new Error('Expected lastInsertRowid to be present on query result');`,
+        `\t\t}`,
+      ];
+    }
+    return [
+      `\t\tif (result.${field.name} === undefined) {`,
+      `\t\t\tthrow new Error('Expected ${field.name} to be present on query result');`,
+      `\t\t}`,
+    ];
+  });
+  return [
+    `\t\tconst result = await client.run(query);`,
+    ...guards,
+    `\t\treturn Result.parse({`,
+    ...metadataObjectLines,
+    `\t\t});`,
+  ];
 }
 
 function getReturnType(descriptor: GeneratedQueryDescriptor, resultTypeName: string): string {
@@ -617,7 +811,7 @@ function toCatalogField(field: GeneratedField): QueryCatalogField {
 }
 
 function toDriver(
-  variableName: 'data' | 'params',
+  variableName: string,
   param: GeneratedField & {
     readonly toDriver: string;
     readonly isArray: boolean;

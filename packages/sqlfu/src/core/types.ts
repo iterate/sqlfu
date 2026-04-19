@@ -77,12 +77,22 @@ export interface SqlRowsPromise<TRow extends ResultRow = ResultRow> extends Prom
 
 export type SqlValue = QueryArg | SqlFragment;
 
+export interface SqlfuGenerateConfig {
+  /**
+   * Emit zod schemas as the source of truth for each generated query's params and result.
+   * When true, generated wrappers `.parse()` params on the way in and each row on the way out,
+   * and types are derived via `z.infer`. Default: false (plain TS types, no runtime validation).
+   */
+  readonly zod?: boolean;
+}
+
 export interface SqlfuConfig {
   readonly db: string;
   readonly migrations: string;
   readonly definitions: string;
   readonly queries: string;
   readonly generatedImportExtension?: '.js' | '.ts';
+  readonly generate?: SqlfuGenerateConfig;
 }
 
 export interface SqlfuProjectConfig {
@@ -92,6 +102,7 @@ export interface SqlfuProjectConfig {
   readonly definitions: string;
   readonly queries: string;
   readonly generatedImportExtension: '.js' | '.ts';
+  readonly generate: {readonly zod: boolean};
 }
 
 export interface MigrateDiffResult {

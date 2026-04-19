@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 size: medium
 ---
 
@@ -9,9 +9,9 @@ Generate zod schemas as the source of truth for each query's params and result, 
 
 ## Status summary
 
-- Concrete design chosen below.
-- Implementation plan: update config, extend typegen, delete the rejected "TS + zod side by side" shape, add tests, update docs.
+- Shipped. Config (`generate.zod: true`), new zod renderer, integration tests, and docs page added.
 - Primary use case: runtime validation (params + rows) at the generated-wrapper boundary.
+- Minor refinement from the spec below: zod schemas are hoisted to module-scoped `const`s (not nested inside `Object.assign`) so the function signature's `z.infer<typeof Params>` doesn't hit a circular-inference snag with the namespace-merged `findPostBySlug.Params` type. Same identifier surface for consumers; cleaner TS inference.
 
 ## Design
 
@@ -53,28 +53,27 @@ The function name (camelCase, matching the SQL filename) is **the** identifier. 
 import {z} from 'zod';
 import type {Client, SqlQuery} from 'sqlfu';
 
+const Params = z.object({
+  slug: z.string(),
+});
+const Result = z.object({
+  id: z.number(),
+  slug: z.string(),
+  title: z.string().nullable(),
+});
+const sql = `select id, slug, title from posts where slug = ? limit 1;`;
+
 export const findPostBySlug = Object.assign(
-  async function findPostBySlug(client: Client, params: findPostBySlug.Params): Promise<findPostBySlug.Result | null> {
-    const validatedParams = findPostBySlug.Params.parse(params);
-    const query: SqlQuery = {
-      sql: findPostBySlug.sql,
-      args: [validatedParams.slug],
-      name: 'find-post-by-slug',
-    };
+  async function findPostBySlug(
+    client: Client,
+    params: z.infer<typeof Params>,
+  ): Promise<z.infer<typeof Result> | null> {
+    const validatedParams = Params.parse(params);
+    const query: SqlQuery = {sql, args: [validatedParams.slug], name: 'find-post-by-slug'};
     const rows = await client.all(query);
-    return rows.length > 0 ? findPostBySlug.Result.parse(rows[0]) : null;
+    return rows.length > 0 ? Result.parse(rows[0]) : null;
   },
-  {
-    Params: z.object({
-      slug: z.string(),
-    }),
-    Result: z.object({
-      id: z.number(),
-      slug: z.string(),
-      title: z.string().nullable(),
-    }),
-    sql: `select id, slug, title from posts where slug = ? limit 1;`,
-  },
+  {Params, Result, sql},
 );
 
 export namespace findPostBySlug {
@@ -121,16 +120,15 @@ This is why the zod schemas are *used* in the generated wrapper, not just re-exp
 
 ## Checklist
 
-- [ ] Extend `SqlfuConfig` + `SqlfuProjectConfig` with a `generate?: {zod?: boolean}` field.
-- [ ] Update `assertConfigShape` / `resolveProjectConfig` in `core/config.ts` to validate the new group.
-- [ ] Add a failing integration test asserting the new generated output shape (zod-enabled, Object.assign + namespace).
-- [ ] Implement the zod renderer in `typegen/index.ts`. Mode is a single boolean.
-- [ ] Make the generated wrapper actually call `.parse()` on params/data and each result row.
-- [ ] Keep the default (zod off) output byte-identical to today.
-- [ ] Update `packages/sqlfu/docs/` — add `docs/zod.md` (or append to typegen section — TBD; likely standalone page titled "Runtime validation with zod").
-- [ ] Short mention in `packages/sqlfu/README.md` Type Generator section (one paragraph + link).
-- [ ] `pnpm --filter sqlfu test` green.
-- [ ] `pnpm --filter sqlfu typecheck` green.
+- [x] Extend `SqlfuConfig` + `SqlfuProjectConfig` with a `generate?: {zod?: boolean}` field. _core/types.ts + core/config.ts_
+- [x] Update `assertConfigShape` / `resolveProjectConfig` in `core/config.ts` to validate the new group. _see `assertConfigShape`_
+- [x] Add a failing integration test asserting the new generated output shape. _test/generate.test.ts — 4 new tests_
+- [x] Implement the zod renderer in `typegen/index.ts`. Mode is a single boolean. _`renderZodQueryWrapper`_
+- [x] Make the generated wrapper actually call `.parse()` on params/data and each result row.
+- [x] Keep the default (zod off) output byte-identical to today. _asserted by the "plain TS output unchanged" test_
+- [x] Add `docs/runtime-validation.md` and short mention in `packages/sqlfu/README.md`.
+- [x] `pnpm --filter sqlfu test` green. _1665 passed, 6 skipped_
+- [x] `pnpm --filter sqlfu typecheck` green.
 
 ## Open questions / decisions made-up-on-user's-behalf (bedtime task)
 
