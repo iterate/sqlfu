@@ -3,7 +3,7 @@
  * This file turns inspected SQLite schema objects into planner-facing facts so planning can consume typed records instead of re-deriving dependencies inline.
  *
  * Inspired by dependency handling in @pgkit/migra / @pgkit/schemainspect (TypeScript ports of djrobstep's Python originals).
- * See ../AGENTS.md for the broader inspiration notes.
+ * See ../CLAUDE.md for the broader inspiration notes.
  */
 import {splitTopLevelCommaList, sqlIdentifierTokens, sqlMentionsIdentifier} from './sqltext.js';
 import type {

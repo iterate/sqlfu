@@ -172,7 +172,7 @@ Column `collate ...` clauses are supported as part of table diffing. Separate SQ
 
 The shape of this engine - inspect both schemas into a typed model, diff the inspected models, emit an ordered plan - is taken from [`@pgkit/schemainspect`](https://github.com/mmkal/pgkit/tree/main/packages/schemainspect) and [`@pgkit/migra`](https://github.com/mmkal/pgkit/tree/main/packages/migra), which are themselves TypeScript ports of [`djrobstep/schemainspect`](https://github.com/djrobstep/schemainspect) and [`djrobstep/migra`](https://github.com/djrobstep/migra) by Robert Lechte.
 
-Those projects are PostgreSQL-only. The sqlfu implementation is SQLite-only today and does not copy their code. See [`src/schemadiff/AGENTS.md`](../src/schemadiff/AGENTS.md) for more detail on what is borrowed versus sqlfu-specific.
+Those projects are PostgreSQL-only. The sqlfu implementation is SQLite-only today and does not copy their code. See [`src/schemadiff/CLAUDE.md`](../src/schemadiff/CLAUDE.md) for more detail on what is borrowed versus sqlfu-specific.
 
 ## Why This Replaced `sqlite3def`
 
