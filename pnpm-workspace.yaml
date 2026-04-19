@@ -1,5 +1,6 @@
 packages:
   - packages/*
+  - website/animations
 
 ignoredBuiltDependencies:
   - esbuild
