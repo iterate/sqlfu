@@ -19,6 +19,7 @@
     "./client": "./src/client.ts",
     "./api": "./src/api.ts",
     "./cli": "./src/cli.ts",
+    "./eslint": "./src/eslint.ts",
     "./ui": {
       "browser": "./src/ui/browser.ts",
       "default": "./src/ui/index.ts"
@@ -46,6 +47,10 @@
       "./cli": {
         "types": "./dist/cli.d.ts",
         "default": "./dist/cli.js"
+      },
+      "./eslint": {
+        "types": "./dist/eslint.d.ts",
+        "default": "./dist/eslint.js"
       },
       "./ui": {
         "types": "./dist/ui/index.d.ts",
@@ -85,11 +90,14 @@
     "@orpc/client": "1.13.13",
     "@sentry/node": "^10.49.0",
     "@sqlite.org/sqlite-wasm": "3.51.2-build9",
+    "@types/eslint": "^9.6.1",
+    "@types/estree": "^1.0.8",
     "@types/node": "^24.5.2",
     "better-sqlite3": "^12.8.0",
     "dedent": "^1.7.2",
     "devalue": "^5.7.1",
     "esbuild": "^0.25.0",
+    "eslint": "^9.36.0",
     "execa": "^9.6.1",
     "hono": "^4.12.14",
     "hot-shots": "^14.3.1",
@@ -101,5 +109,13 @@
     "typescript": "^5.9.3",
     "vite": "^7.1.12",
     "vitest": "^4.1.1"
+  },
+  "peerDependencies": {
+    "eslint": ">=8"
+  },
+  "peerDependenciesMeta": {
+    "eslint": {
+      "optional": true
+    }
   }
 }

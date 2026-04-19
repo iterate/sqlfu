@@ -18,6 +18,7 @@ It is built around a simple idea: SQL should be the source language for schema, 
   - [Type Generator](#type-generator)
   - [Formatter](#formatter)
   - [UI](#ui)
+  - [ESLint rule](#eslint-rule)
   - [Agent skill](#agent-skill)
 - [Quick Start](#quick-start)
   - [Install](#install)
@@ -153,6 +154,26 @@ No peer dependencies on OpenTelemetry or Sentry — `TracerLike` is structural, 
 ### UI
 
 `sqlfu` also has a UI package for working with the project interactively. It sits on top of the same SQL-first model rather than inventing a separate one.
+
+### ESLint rule
+
+`sqlfu` ships one ESLint rule, `sqlfu/no-unnamed-inline-sql`. It flags inline SQL passed to `client.all` / `client.run` / `client.iterate` / `` client.sql`...` `` when the normalized text matches a checked-in `.sql` file under your project's `queries` directory. The point is sqlfu's `SQL First` model: your filename is your query's identity, so an inline string that duplicates a named file loses its name, its generated types, and its observability metadata.
+
+Wire it into your ESLint flat config:
+
+```js
+// eslint.config.js
+import sqlfu from 'sqlfu/eslint';
+
+export default [
+  {
+    plugins: {sqlfu},
+    rules: {'sqlfu/no-unnamed-inline-sql': 'error'},
+  },
+];
+```
+
+The plugin is published as a sub-export of `sqlfu` itself with zero runtime dependencies, so adding it to a lint config does not grow your install graph.
 
 ### Agent skill
 

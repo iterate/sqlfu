@@ -7,7 +7,9 @@ size: large
 
 MVP sketch, picking the simplest-viable path for both halves. Original spec was two bullets; this is the AFK-fleshed-out plan the user asked for.
 
-- **Lint plugin**: shipping an ESLint-compatible plugin (`@sqlfu/eslint-plugin`). oxlint supports JS plugins via an ESLint-compatible API (alpha, as of 2026-04), so the same plugin package is loadable from `.oxlintrc.json` once the user opts in. MVP rule: `sqlfu/no-unnamed-inline-sql` — flags `client.all(\`...\`)` / `client.run(\`...\`)` / `client.iterate(\`...\`)` callsites where the inline SQL appears verbatim (modulo whitespace) inside a `.sql` file in the sqlfu project's `queries` glob. Suggests the named wrapper import. Scoped to the MVP; other candidate rules listed below but deferred.
+**Restructure (post PR #16 review):** the lint plugin was originally shipped as a separate `@sqlfu/eslint-plugin` package. The user rejected that shape — the rule is now bundled inside the main `sqlfu` package as a single-file export at `sqlfu/eslint`, with **zero runtime dependencies** (compiled output only imports `node:fs` and `node:path`). The old `packages/sqlfu-eslint-plugin/` directory was deleted. See the log at the bottom for the commit.
+
+- **Lint plugin**: shipped as `sqlfu/eslint` (single file, zero runtime deps). oxlint supports JS plugins via an ESLint-compatible API (alpha, as of 2026-04), so the same export is loadable from `.oxlintrc.json` once the user opts in. MVP rule: `sqlfu/no-unnamed-inline-sql` — flags `client.all(\`...\`)` / `client.run(\`...\`)` / `client.iterate(\`...\`)` callsites where the inline SQL appears verbatim (modulo whitespace) inside a `.sql` file in the sqlfu project's `queries` glob. Suggests the named wrapper import. Scoped to the MVP; other candidate rules listed below but deferred.
 - **VS Code extension**: scaffolding only. Downscoping from "show hover types over `.sql` files" (would need an LSP) to **one command**: `sqlfu: open UI`, which runs `sqlfu ui` (or `sqlfu-ui` from the workspace's installed packages) for the current workspace root and opens the UI in a webview panel. This gets the user a real artifact they can load via F5 tonight. Further ambition (codelens over `.sql`, inline types) is sketched below, not built.
 
 ## Part A — lint plugin
@@ -113,7 +115,8 @@ If the scaffolding turns into an afternoon of tsconfig wrangling or CSP headache
 ## Checklist
 
 - [x] flesh out this task file with concrete plan _(committed separately as the first commit on the `devtools` branch)_
-- [x] create `packages/sqlfu-eslint-plugin/` with MVP rule + tests _see implementation notes_
+- [x] ~~create `packages/sqlfu-eslint-plugin/` with MVP rule + tests~~ _rejected — see next item. Package deleted; rule lives inside `packages/sqlfu/src/eslint.ts`._
+- [x] ship the ESLint rule inside `sqlfu` itself (`sqlfu/eslint` export) with zero runtime deps _implemented at `packages/sqlfu/src/eslint.ts`, tested at `packages/sqlfu/test/eslint.test.ts` (7 cases)_
 - [x] create `packages/sqlfu-vscode/` with one-command extension _see implementation notes_
 - [x] open PR `devtools: lint plugin + vscode extension scaffolding` _see implementation log_
 
@@ -149,5 +152,18 @@ oxlint 1.x **does** support JS plugins via `jsPlugins` in `.oxlintrc.json`, usin
 | commit | summary |
 |---|---|
 | e28de61 | task: flesh out devtools plan |
-| (next) | eslint-plugin MVP + vscode extension scaffold |
+| 50d673b | eslint-plugin MVP + vscode extension scaffold |
+| (next) | fold eslint rule into `sqlfu/eslint` (zero runtime deps); delete `packages/sqlfu-eslint-plugin/` |
+
+### Restructure (post PR #16 review)
+
+The user pushed back on `@sqlfu/eslint-plugin` as a separate package: ESLint plugins "are basically just a `create(...) { ... }` function", so the rule belongs inline in the main package. Restructure:
+
+- Deleted `packages/sqlfu-eslint-plugin/` wholesale. Pre-alpha — no back-compat.
+- New entry point: `packages/sqlfu/src/eslint.ts` (single file, folds together the rule, the query loader, and the normalization helper).
+- New export: `"./eslint": {"types": "./dist/eslint.d.ts", "default": "./dist/eslint.js"}` in `packages/sqlfu/package.json`.
+- `eslint` is a peer dep on `sqlfu` itself (optional) so the dep graph of `sqlfu` doesn't change for users who don't lint. `@types/eslint` and `@types/estree` are devDeps-only (type-only imports erase at compile time).
+- Compiled `dist/eslint.js` is 10 kB and only imports `node:fs` / `node:path` — zero third-party runtime deps.
+- Tests moved to `packages/sqlfu/test/eslint.test.ts`. All 7 cases from the old package pass; full sqlfu suite (1669 tests) still green.
+- README gained a short **ESLint rule** section under Capabilities, with a copy-pasteable flat-config snippet.
 

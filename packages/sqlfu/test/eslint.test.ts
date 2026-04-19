@@ -5,8 +5,7 @@ import path from 'node:path';
 import {Linter} from 'eslint';
 import {expect, test} from 'vitest';
 
-import plugin from '../src/index.js';
-import {resetQueryCache} from '../src/lib/load-queries.js';
+import plugin, {resetQueryCache} from '../src/eslint.js';
 
 test('flags an inline SQL template that duplicates a named .sql file', async () => {
   await using project = await setupProject({
