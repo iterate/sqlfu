@@ -1,0 +1,71 @@
+---
+import '../styles/landing.css';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>sqlfu</title>
+    <meta
+      name="description"
+      content="All you need is sql. sqlfu lets you (or your agent) write schema, migrations, and queries as .sql files, and generates typed TypeScript wrappers next to them."
+    />
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="topbar">
+        <a class="brand" href="/">sqlfu</a>
+        <nav class="nav">
+          <a href="/docs/sqlfu/">Docs</a>
+          <a href="https://local.sqlfu.dev/?demo=1">Demo</a>
+          <a href="https://github.com/mmkal/sqlfu" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </header>
+
+      <section class="hero hero-solo">
+        <article class="hero-main">
+          <div class="eyebrow lowercase">npm install sqlfu</div>
+          <h1>all you need is sql.</h1>
+          <p class="lede">
+            sqlfu lets you (or your agent) write schema, migrations, and queries as <code>.sql</code> files, and generates typed TypeScript wrappers next to them. Not the abstraction of the month.
+          </p>
+          <div class="cta-row">
+            <a class="button primary" href="/docs/sqlfu/">Read the docs</a>
+            <a class="button" href="https://local.sqlfu.dev/?demo=1">Try the demo</a>
+          </div>
+        </article>
+      </section>
+
+      <figure class="showreel">
+        <img src="/docs/assets/packages/sqlfu/docs/i-know-sqlfu.webp" alt="I know sqlfu" />
+      </figure>
+
+      <h2 class="section-title">SQL first. TypeScript second.</h2>
+      <section class="section-grid">
+        <article class="panel value-panel">
+          <div class="eyebrow">source of truth</div>
+          <h3>Schema, migrations, queries. All <code>.sql</code>.</h3>
+          <p>Your schema lives in <code>definitions.sql</code>. Migrations are ordered SQL files. Queries are <code>.sql</code> files checked in next to the code that calls them. No DSL, no runtime builder to fight.</p>
+        </article>
+        <article class="panel value-panel">
+          <div class="eyebrow">types, generated</div>
+          <h3>TypeScript wrappers <i>from</i> your SQL</h3>
+          <p>
+            <code>sqlfu generate</code> reads your <code>.sql</code> files and emits typed wrappers next to them: typed params, typed rows, and a client you can call from application code. Your query names travel with them &mdash; to <a href="/docs/observability/">OpenTelemetry, Sentry, Datadog, PostHog</a>, whatever.
+          </p>
+        </article>
+        <article class="panel value-panel">
+          <div class="eyebrow">diff-driven migrations</div>
+          <h3>Drafts your next migration</h3>
+          <p>The native SQLite diff engine compares replayed migration history against <code>definitions.sql</code> and writes the next migration for you. You review, edit for renames or backfills, and commit.</p>
+        </article>
+      </section>
+
+      <footer class="footer">
+        Static docs site for sqlfu. Local studio backend lives at <code>local.sqlfu.dev</code> when <code>npx sqlfu</code> is running.
+      </footer>
+    </div>
+  </body>
+</html>

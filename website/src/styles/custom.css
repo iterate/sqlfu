@@ -1,0 +1,168 @@
+/*
+ * Starlight theme overrides to preserve the sqlfu "motherfuckingwebsite" aesthetic:
+ * warm beige/orange palette, serif body, mono eyebrow labels, rounded panels.
+ * Only light mode is intentional — the source site is single-themed.
+ */
+
+:root,
+:root[data-theme='light'],
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #f6d9b6;
+  --sl-color-accent: #9d4d12;
+  --sl-color-accent-high: #6f2d00;
+  --sl-color-white: #201710;
+  --sl-color-gray-1: #201710;
+  --sl-color-gray-2: #3b2a1d;
+  --sl-color-gray-3: #6f5947;
+  --sl-color-gray-4: #8a7563;
+  --sl-color-gray-5: #b8a78e;
+  --sl-color-gray-6: #e4d7bf;
+  --sl-color-gray-7: #efe1c6;
+  --sl-color-black: #fffdf9;
+  --sl-color-bg: transparent;
+  --sl-color-bg-nav: transparent;
+  --sl-color-bg-sidebar: transparent;
+  --sl-color-bg-inline-code: rgba(121, 73, 24, 0.08);
+  --sl-color-text: #201710;
+  --sl-color-text-accent: #6f2d00;
+  --sl-color-text-invert: #fff9f2;
+  --sl-color-hairline: rgba(85, 52, 24, 0.16);
+  --sl-color-hairline-light: rgba(85, 52, 24, 0.1);
+  --sl-color-hairline-shade: rgba(85, 52, 24, 0.22);
+  --sl-font: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+  --sl-font-system: ui-sans-serif, system-ui, sans-serif;
+  --sl-font-system-mono: ui-monospace, 'SFMono-Regular', monospace;
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top, rgba(255, 214, 153, 0.38), transparent 32rem),
+    linear-gradient(180deg, #efe1c6 0%, #f6efe2 22%, #fffdf9 100%);
+  background-attachment: fixed;
+}
+
+body {
+  color: var(--sl-color-text);
+}
+
+/* Header / nav */
+
+header.header {
+  background: rgba(255, 252, 246, 0.72);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--sl-color-hairline);
+}
+
+.site-title {
+  font-family: var(--sl-font-system-mono);
+  font-size: 0.84rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sl-color-accent);
+}
+
+/* Sidebar */
+
+nav.sidebar {
+  background: rgba(248, 240, 223, 0.55);
+  border-right: 1px solid var(--sl-color-hairline);
+}
+
+.sidebar-content ul li a {
+  font-family: var(--sl-font-system);
+}
+
+/* Main content */
+
+.main-frame {
+  background: transparent;
+}
+
+main h1,
+main h2,
+main h3 {
+  font-family: var(--sl-font);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+main h1 {
+  font-size: clamp(2.6rem, 6vw, 4.4rem);
+}
+
+main h2 {
+  margin-top: 2.2rem;
+  font-size: 1.9rem;
+}
+
+main h3 {
+  margin-top: 1.7rem;
+  font-size: 1.35rem;
+}
+
+main p,
+main li,
+main blockquote {
+  font-size: 1.05rem;
+  line-height: 1.75;
+}
+
+main :not(pre) > code {
+  font-family: var(--sl-font-system-mono);
+  font-size: 0.92em;
+  background: rgba(121, 73, 24, 0.08);
+  padding: 0.12rem 0.32rem;
+  border-radius: 0.35rem;
+  color: var(--sl-color-text);
+}
+
+main pre {
+  border-radius: 1rem;
+  background: #20140f !important;
+  color: #fff4e8;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+main table {
+  border-collapse: collapse;
+  border-radius: 0.9rem;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 0 0 1px var(--sl-color-hairline);
+}
+
+main th {
+  font-family: var(--sl-font-system);
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sl-color-accent-high);
+  background: rgba(239, 225, 198, 0.7);
+}
+
+main blockquote {
+  margin: 1rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid rgba(121, 73, 24, 0.28);
+  color: var(--sl-color-gray-3);
+}
+
+/* "Source: …" meta shown at the top of each page */
+
+.doc-source-meta {
+  margin: 0 0 1.25rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--sl-color-gray-3);
+  font-family: var(--sl-font-system);
+  font-size: 0.9rem;
+}
+
+.doc-source-meta a {
+  color: inherit;
+  text-decoration-thickness: 1px;
+}
