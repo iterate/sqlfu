@@ -79,7 +79,8 @@ test('applyMigrations can run inside a durable object using a migrations bundle'
       constructor(state: any) {
         this.client = createDurableObjectClient(state.storage.sql);
         const bundle = {
-          'migrations/2026-04-10T00.00.00.000Z_create_posts.sql': 'create table posts (id integer primary key, slug text not null);',
+          'migrations/2026-04-10T00.00.00.000Z_create_posts.sql':
+            'create table posts (id integer primary key, slug text not null);',
           'migrations/2026-04-10T01.00.00.000Z_add_body.sql': 'alter table posts add column body text;',
         };
         // Hand-rolled host + `as any` cast because `applyMigrations` currently
@@ -117,11 +118,7 @@ test('applyMigrations can run inside a durable object using a migrations bundle'
     },
   );
 
-  expect(await fixture.stub.getColumns()).toMatchObject([
-    {name: 'id'},
-    {name: 'slug'},
-    {name: 'body'},
-  ]);
+  expect(await fixture.stub.getColumns()).toMatchObject([{name: 'id'}, {name: 'slug'}, {name: 'body'}]);
 
   expect(await fixture.stub.getApplied()).toMatchObject([
     {name: '2026-04-10T00.00.00.000Z_create_posts'},

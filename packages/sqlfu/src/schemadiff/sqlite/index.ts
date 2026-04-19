@@ -43,10 +43,7 @@ export async function diffBaselineSqlToDesiredSql(
   });
 }
 
-export async function inspectSqliteSchemaSql(
-  host: SqlfuHost,
-  sql: string,
-): Promise<SqliteInspectedDatabase> {
+export async function inspectSqliteSchemaSql(host: SqlfuHost, sql: string): Promise<SqliteInspectedDatabase> {
   await using database = await host.openScratchDb('inspect');
   if (sql.trim()) {
     await applySchemaSql(database.client, sql);

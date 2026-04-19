@@ -86,10 +86,13 @@ describe('migrate', () => {
 
     await fixture.api.migrate();
 
-    await fixture.writeFile('definitions.sql', dedent`
+    await fixture.writeFile(
+      'definitions.sql',
+      dedent`
       create table person(name text);
       create table pet(name text, species text);
-    `);
+    `,
+    );
     await fixture.writeMigration('add_pet', `create table pet(name text, species text)`);
 
     await fixture.api.migrate();
@@ -186,10 +189,13 @@ describe('migrate', () => {
     });
 
     await fixture.api.migrate();
-    await fixture.writeMigration('add_pet_and_fail', dedent`
+    await fixture.writeMigration(
+      'add_pet_and_fail',
+      dedent`
       create table pet(name text);
       this is not valid sql;
-    `);
+    `,
+    );
 
     await expect(fixture.api.migrate()).rejects.toMatchInlineSnapshot(`
       [Error: Migration 2026-04-10T02.00.00.000Z_add_pet_and_fail failed: near "this": syntax error
@@ -212,11 +218,14 @@ describe('migrate', () => {
     await fixture.api.migrate();
     // a real-world user typo: `commit;` ends the migration transaction early, so the
     // `create table pet` is persisted and the subsequent syntax error cannot be rolled back
-    await fixture.writeMigration('commit_then_fail', dedent`
+    await fixture.writeMigration(
+      'commit_then_fail',
+      dedent`
       create table pet(name text);
       commit;
       this is not valid sql;
-    `);
+    `,
+    );
 
     await expect(fixture.api.migrate()).rejects.toMatchInlineSnapshot(`
       [Error: Migration 2026-04-10T02.00.00.000Z_commit_then_fail failed: near "this": syntax error
