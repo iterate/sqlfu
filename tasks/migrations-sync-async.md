@@ -1,9 +1,25 @@
 ---
-status: ready
+status: in-progress
 size: medium
 ---
 
 # applyMigrations: portable host + sync/async unification
+
+## High-level status
+
+- Plan refined: dropping the `host` parameter entirely (not narrowing), using WebCrypto (async) + `node:crypto.createHash` (sync) inline, with no cross-runtime sync SHA-256 fallback yet.
+- Dual-dispatch: hand-rolled a tiny generator-based utility (`quansync`-shaped), rather than depending on `quansync`. ~30 lines; zero new deps.
+- DO adapter kept as-is (pass-through `transaction`). The DO test wraps the call in `state.storage.transactionSync(...)` to get real per-request atomicity.
+- All three migration-history functions unified via overloads.
+
+## Decisions made for this worktree
+
+1. **Drop the `host: SqlfuHost` parameter entirely** from `applyMigrations`, `baselineMigrationHistory`, and `replaceMigrationHistory`. All three now just take `(client, params)`.
+2. **Digest**: async path uses `crypto.subtle.digest('SHA-256', …)` (cross-runtime). Sync path uses `node:crypto.createHash('sha256')` (Node-only, but that covers the node-sqlite sync cases). DO sync callers will also end up on Node's `createHash` because miniflare's worker runtime exposes `node:crypto` via `nodejs_compat`. If a future runtime has a sync SQL adapter with no `node:crypto`, we can add a tiny vendored sync SHA-256 at that point — but YAGNI for now.
+3. **Dual-dispatch**: internal utility at `packages/sqlfu/src/migrations/dual-dispatch.ts`. Generator-yielded promises get awaited in the async driver, or their synchronous equivalents are passed through in the sync driver. Mirrors `quansync`'s shape (yield a promise, it resolves and becomes the resume value).
+4. **DO adapter**: keep `client.transaction` as a pass-through (current behavior). The DO test wraps the whole `applyMigrations` call in `state.storage.transactionSync(...)` — that's the real atomicity boundary. No adapter API change.
+
+## 1. The `host: SqlfuHost` parameter is too wide for fsless callers
 
 Two related problems with `applyMigrations`/`baselineMigrationHistory`/`replaceMigrationHistory`. Both surfaced while building the migrations bundle (PR #8) for durable-object use; both are tracked here for whoever picks them up.
 
@@ -58,10 +74,22 @@ The real fix is to let DO callers wrap the whole thing in `state.storage.transac
 - All existing tests keep passing — `bundle.test.ts`, the migration-failure tests, everything in `test/migrations/*`.
 - No new dependency unless it's `quansync`-like and small.
 
-## Open questions
+## Open questions — resolved
 
-- Bundle a sync SHA-256 or accept a user-supplied digest? Leaning bundle.
-- Can the DO `client.transaction` adapter (currently a pass-through with no `BEGIN`/`COMMIT` — see `packages/sqlfu/src/adapters/durable-object.ts`) route automatically to `storage.transactionSync` once we have a sync `applyMigrations`? Probably yes; the DO adapter would gain a `storage` reference instead of just `storage.sql`.
+- Bundle a sync SHA-256 or accept a user-supplied digest? **Neither.** Use Node's `createHash` for the sync path. All current sync clients run in Node-compatible runtimes. Revisit only when a real non-Node sync caller appears.
+- Can the DO `client.transaction` adapter route automatically to `storage.transactionSync`? **Left as pass-through.** The DO test wraps the outer call in `transactionSync` explicitly — that's the documented atomicity boundary. Auto-routing from inside `client.transaction` would work but is redundant given the explicit outer wrap and harder to reason about when users compose.
+
+## Checklist
+
+- [x] _refined plan, committed in isolation_
+- [x] _failing DO integration test that wraps `applyMigrations` in `state.storage.transactionSync`_
+- [x] _dual-dispatch utility `packages/sqlfu/src/migrations/dual-dispatch.ts`_
+- [x] _overload `applyMigrations` (sync → void, async → Promise<void>)_
+- [x] _same treatment for `baselineMigrationHistory` + `replaceMigrationHistory`_
+- [x] _drop `host` param from all three; update every caller_
+- [x] _remove `as any` + hand-rolled host stub from DO test_
+- [x] _all existing tests pass (`pnpm --filter sqlfu test`)_
+- [x] _typecheck green (`pnpm --filter sqlfu typecheck`)_
 
 ## References
 
