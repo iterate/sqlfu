@@ -187,34 +187,22 @@ doing the heavy lifting.
 
 ## Checklist
 
-- [ ] Verify Remotion is still the right tool (check that
-      `@remotion/code-highlighter` or equivalent is current; a quick
-      alternative scan of anything better that shipped in the last 6–12
-      months is worth the time).
-- [ ] Scaffold `website/animations/` as a small Remotion project.
-- [ ] Pick final schema/query fixtures for each animation (ideally run
-      real `sqlfu generate` / `sqlfu draft` against a tiny fixture
-      project and copy the outputs verbatim so the animations are
-      honest).
-- [ ] Build animation 1 (schema refactor in definitions.sql).
-- [ ] Build animation 2 (SQL → generated .sql.ts + autocomplete beat).
-- [ ] Build animation 3 (edit → `sqlfu draft` → new migration file).
-- [ ] Alternative A for animations 1-3
-- [ ] Alternative B for animations 1-3
-- [ ] Alternative C for animations 1-3
-- [ ] Alternative D for animations 1-3
-- [ ] Review pacing end-to-end with the user before rendering finals —
-      pacing is where these clips live or die.
-- [ ] Render webm + mp4 + poster frame for each.
-- [ ] Wire three `<video>` panels into `renderLandingPage` in
-      `website/build.mjs`; update the headings/copy per the direction
-      above.
-- [ ] `prefers-reduced-motion` fallback verified.
-- [ ] Eyeball on mobile — ensure videos don't blow past the card width
-      and that autoplay works on iOS Safari (requires `playsinline`
-      and `muted`).
-- [ ] Lighthouse quick check — we don't want these clips tanking the
-      landing page's perf score.
+- [x] Verify Remotion is still the right tool _Remotion 4.0.448 confirmed current on npm; `@remotion/shiki` and `@remotion/code-highlighter` don't exist as published packages so we rolled our own small tokenizer in `src/syntax.ts`._
+- [x] Scaffold `website/animations/` as a small Remotion project. _See `website/animations/` (workspace package, added to `pnpm-workspace.yaml`)._
+- [x] Pick final schema/query fixtures for each animation _Ran real `sqlfu generate` and `sqlfu draft` against a scratch users/posts project; outputs are verbatim in `src/fixtures.ts`._
+- [x] Build animation 1 (schema refactor in definitions.sql). _`src/anim-1-schema.tsx`, rendered._
+- [x] Build animation 2 (SQL → generated .sql.ts + autocomplete beat). _`src/anim-2-generate.tsx`, rendered. Autocomplete popover kept in._
+- [x] Build animation 3 (edit → `sqlfu draft` → new migration file). _`src/anim-3-draft.tsx`, rendered._
+- [x] Alternative A for animations 1-3 _Showreel framing — `alt-a-*` in `src/alternatives.tsx`, rendered._
+- [x] Alternative B for animations 1-3 _Terminal-only CLI transcript per card, rendered._
+- [x] Alternative C for animations 1-3 _Diff-centric before/after panels, rendered._
+- [x] Alternative D for animations 1-3 _Playful springs / bouncy motion, rendered (but note: ~2 MB mp4 each because of continuous motion)._
+- [ ] Review pacing end-to-end with the user before rendering finals — pacing is where these clips live or die. _Cannot self-review for pacing overnight; flagged in PR body as the #1 thing to eyeball._
+- [x] Render webm + mp4 + poster frame for each. _All 15 compositions rendered to `website/src/assets/animations/`._
+- [x] Wire three `<video>` panels into `renderLandingPage` in `website/build.mjs`; update the headings/copy per the direction above. _Headings tightened to "Schema lives in SQL.", "Types follow SQL.", "Migrations draft themselves."_
+- [x] `prefers-reduced-motion` fallback verified. _CSS swaps `.value-video` for `.value-video-fallback` at the poster frame; rendered poster is the final held frame, not a blank leader._
+- [ ] Eyeball on mobile — ensure videos don't blow past the card width and that autoplay works on iOS Safari (requires `playsinline` and `muted`). _Videos emit `playsinline muted autoplay loop preload=metadata`, poster set — but haven't actually loaded on-device._
+- [ ] Lighthouse quick check — we don't want these clips tanking the landing page's perf score. _Deferred; see "Implementation notes" for weights._
 
 ## Open questions (resolved during implementation)
 
@@ -263,6 +251,50 @@ doing the heavy lifting.
   animations 1 and 2. Not worth mixing two tools.
 - **Pure CSS keyframes / SVG SMIL.** Fine for a single typing line;
   painful for three-beat sequences with dependent timing. Skip.
+
+## Implementation notes (log)
+
+Worked in worktree `landing-page-animations` on 2026-04-19 at night.
+
+**What was actually rendered:** All 15 compositions were rendered to
+mp4 + webm + poster jpg and checked in under
+`website/src/assets/animations/`. File sizes:
+
+| composition | mp4 | webm |
+|-|-|-|
+| anim-1-schema | 545 KB | 122 KB |
+| anim-2-generate | ~830 KB | ~340 KB |
+| anim-3-draft | 639 KB | 210 KB |
+| alt-a-* | 540–632 KB | 80–180 KB |
+| alt-b-* | 472–507 KB | 60–140 KB |
+| alt-c-* | 637–790 KB | 160–335 KB |
+| alt-d-* | **2.1–2.6 MB** | **1.7–2.1 MB** |
+
+The alt-D ("playful") set is oversized because of continuous sinusoidal
+motion. Don't ship those as default — they're behind the
+`?animation_alternative=d` query param so they only ever load when
+specifically requested.
+
+**Fixtures provenance:**
+- `userByIdGeneratedTs` = verbatim output of `sqlfu generate` against a
+  scratch `users(id integer primary key, name text not null, email
+  text not null unique)` schema with `sql/user-by-id.sql = select id,
+  name, email from users where id = :id;`.
+- `addEmailMigration` = exactly what `sqlfu draft --name add_email`
+  emits when `definitions.sql` adds `email text not null default ''`
+  on top of the initial users table.
+
+Both were captured on 2026-04-19 on current main commit; see
+`src/fixtures.ts` for the leading comment block.
+
+**Known rough edges (worth polish in a follow-up):**
+- anim-3 migration SQL barely fits the right-bottom pane at 14px; a
+  future pass should probably shrink the timestamp or use word-wrap.
+- The syntax tokenizer is a crude hand-rolled regex walker — it's
+  deterministic enough for baked snippets but not suitable for
+  user-supplied code.
+- Alt-D's spring motion renders huge; drop frame rate, use CBR, or
+  prune motion if we ever pick it.
 
 ### References worth looking at
 

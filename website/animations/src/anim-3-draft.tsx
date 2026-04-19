@@ -87,19 +87,19 @@ export const DraftAnim: React.FC = () => {
           style={{gridRow: '1 / 2', gridColumn: '2 / 3'}}
         />
         <TerminalStrip
-          command={`$ ${draftCommand}`}
+          command={draftCommand}
           progress={cmdProgress}
           output={terminalOutput}
           style={{gridRow: '2 / 3', gridColumn: '1 / 2'}}
         />
         <CodeSurface
-          title="migrations/20260419000000_add_email.sql"
+          title="migrations/20260419_add_email.sql"
           language="sql"
           source={addEmailMigration}
           charCount={migrationChars}
           fadeIn={migrationFade}
           cursor={frame >= 216 && frame < 264}
-          fontSize={18}
+          fontSize={14}
           accent="generated"
           style={{gridRow: '2 / 3', gridColumn: '2 / 3'}}
         />

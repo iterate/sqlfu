@@ -115,16 +115,16 @@ export const GenerateAnim: React.FC = () => {
           width: 420,
         }}
       >
-        <TerminalStrip command={`$ ${generateCommand}`} progress={cmdProgress} />
+        <TerminalStrip command={generateCommand} progress={cmdProgress} />
       </div>
 
       <div
         style={{
           position: 'absolute',
-          right: 64,
+          left: 64,
           bottom: 64 + interpolate(appSlide, [0, 1], [120, 0]),
           opacity: appSlide,
-          width: 440,
+          width: 520,
         }}
       >
         <div
@@ -186,8 +186,8 @@ function AutocompletePopover({opacity, highlightIndex}: {opacity: number; highli
     <div
       style={{
         position: 'absolute',
-        left: 210,
-        bottom: 20,
+        left: 260,
+        bottom: 28,
         background: '#2b1d15',
         border: `1px solid ${theme.accent}`,
         borderRadius: 10,

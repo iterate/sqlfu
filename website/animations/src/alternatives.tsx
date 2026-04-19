@@ -45,7 +45,7 @@ export const AltBSchema = () => (
   <PanelBackdrop>
     <TerminalOnlyCard
       commands={[
-        {cmd: '$ cat definitions.sql', output: definitionsAfterFK.trim()},
+        {cmd: 'cat definitions.sql', output: definitionsAfterFK.trim()},
       ]}
     />
     <Caption text="schema lives in sql." opacity={fadeInLate()} />
@@ -57,7 +57,7 @@ export const AltBGenerate = () => (
     <TerminalOnlyCard
       commands={[
         {cmd: `$ ${generateCommand}`, output: 'wrote sql/.generated/user-by-id.sql.ts'},
-        {cmd: '$ head sql/.generated/user-by-id.sql.ts', output: userByIdGeneratedTs.split('\n').slice(0, 8).join('\n')},
+        {cmd: 'head sql/.generated/user-by-id.sql.ts', output: userByIdGeneratedTs.split('\n').slice(0, 8).join('\n')},
       ]}
     />
     <Caption text="types follow sql." opacity={fadeInLate()} />
@@ -69,7 +69,7 @@ export const AltBDraft = () => (
     <TerminalOnlyCard
       commands={[
         {cmd: `$ ${draftCommand}`, output: 'drafted migrations/20260419000000_add_email.sql'},
-        {cmd: '$ cat migrations/20260419000000_add_email.sql', output: addEmailMigration.trim()},
+        {cmd: 'cat migrations/20260419000000_add_email.sql', output: addEmailMigration.trim()},
       ]}
     />
     <Caption text="migrations draft themselves." opacity={fadeInLate()} />
@@ -267,7 +267,7 @@ function DraftShort({playful}: {playful?: boolean} = {}) {
           style={{gridRow: '1 / 2', gridColumn: '1 / 2'}}
         />
         <FileTree entries={activeTree} highlightFlash={treeFlash} style={{gridRow: '1 / 2', gridColumn: '2 / 3'}} />
-        <TerminalStrip command={`$ ${draftCommand}`} progress={cmd} style={{gridRow: '2 / 3', gridColumn: '1 / 2'}} />
+        <TerminalStrip command={draftCommand} progress={cmd} style={{gridRow: '2 / 3', gridColumn: '1 / 2'}} />
         <CodeSurface
           title="migrations/20260419000000_add_email.sql"
           language="sql"

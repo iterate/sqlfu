@@ -284,9 +284,15 @@ function renderAnimationAlternativesScript(panels) {
             const video = media.querySelector('video');
             const img = media.querySelector('img');
             const sources = video.querySelectorAll('source');
-            sources[0].src = '/assets/animations/' + slug + '.webm';
-            sources[1].src = '/assets/animations/' + slug + '.mp4';
-            video.poster = '/assets/animations/' + slug + '.poster.jpg';
+            // Derive base URL from the pre-rendered source so we respect
+            // whatever path prefix the site is being served under (artifact.ci
+            // preview URLs, etc.). Everything else — poster, img — shares that
+            // same directory.
+            const firstSrc = sources[0].getAttribute('src') || '';
+            const base = firstSrc.replace(/[^/]+\.webm$/, '');
+            sources[0].src = base + slug + '.webm';
+            sources[1].src = base + slug + '.mp4';
+            video.poster = base + slug + '.poster.jpg';
             img.src = video.poster;
             video.load();
           }
