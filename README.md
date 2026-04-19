@@ -155,7 +155,7 @@ No peer dependencies on OpenTelemetry or Sentry — `TracerLike` is structural, 
 
 ### Agent skill
 
-`sqlfu` ships a [skill](https://github.com/mattpocock/skills) at [`skills/using-sqlfu`](skills/using-sqlfu/SKILL.md). It teaches an agent the project's source-of-truth files, the schema-change workflow, the query workflow, and the command reference — so an agent dropped into a sqlfu repo does not hand-author migrations or invent old config field names.
+`sqlfu` ships an agent skill at [`skills/using-sqlfu`](skills/using-sqlfu/SKILL.md). It teaches an agent the project's source-of-truth files, the schema-change workflow, the query workflow, and the command reference — so an agent dropped into a sqlfu repo does not hand-author migrations or invent old config field names.
 
 Install it into a project:
 
@@ -163,7 +163,7 @@ Install it into a project:
 npx skills@latest add mmkal/sqlfu -s using-sqlfu
 ```
 
-The skill is self-contained — it does not depend on the `sqlfu` package itself, and the format is agent-agnostic (any agent tool that understands the `SKILL.md` convention can use it).
+The skill is self-contained — it does not depend on the `sqlfu` package itself, and the `SKILL.md` format is agent-agnostic.
 
 ## Quick Start
 
