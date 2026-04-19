@@ -12,6 +12,19 @@ import '../styles/landing.css';
       name="description"
       content="All you need is sql. sqlfu lets you (or your agent) write schema, migrations, and queries as .sql files, and generates typed TypeScript wrappers next to them."
     />
+    {/* Mirror Starlight's theme bootstrap: read localStorage 'starlight-theme' key
+        and apply data-theme to <html> before first paint to avoid FOUC. Also picks
+        up OS preference when no explicit choice is stored. */}
+    <script is:inline>
+      (() => {
+        const stored =
+          typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
+        const theme =
+          stored ||
+          (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+      })();
+    </script>
   </head>
   <body>
     <div class="site-shell">
@@ -21,6 +34,15 @@ import '../styles/landing.css';
           <a href="/docs/sqlfu/">Docs</a>
           <a href="https://local.sqlfu.dev/?demo=1">Demo</a>
           <a href="https://github.com/mmkal/sqlfu" target="_blank" rel="noreferrer">GitHub</a>
+          <button
+            type="button"
+            class="theme-toggle"
+            id="landing-theme-toggle"
+            aria-label="Toggle colour theme"
+            title="Toggle colour theme"
+          >
+            <span class="toggle-glyph" aria-hidden="true"></span>
+          </button>
         </nav>
       </header>
 
@@ -67,5 +89,47 @@ import '../styles/landing.css';
         Static docs site for sqlfu. Local studio backend lives at <code>local.sqlfu.dev</code> when <code>npx sqlfu</code> is running.
       </footer>
     </div>
+
+    {/* Landing-page theme toggle. Uses the same 'starlight-theme' localStorage key
+        Starlight owns, so docs and landing stay in sync. Cycles light → dark → auto. */}
+    <script is:inline>
+      (() => {
+        const key = 'starlight-theme';
+        const button = document.getElementById('landing-theme-toggle');
+        if (!button) return;
+
+        const prefersLight = () => window.matchMedia('(prefers-color-scheme: light)').matches;
+
+        const applyTheme = mode => {
+          const resolved = mode === 'auto' ? (prefersLight() ? 'light' : 'dark') : mode;
+          document.documentElement.dataset.theme = resolved;
+          button.dataset.themeMode = mode;
+        };
+
+        const readMode = () => {
+          const stored = localStorage.getItem(key);
+          return stored === 'light' || stored === 'dark' ? stored : 'auto';
+        };
+
+        const writeMode = mode => {
+          if (mode === 'auto') localStorage.setItem(key, '');
+          else localStorage.setItem(key, mode);
+        };
+
+        applyTheme(readMode());
+
+        button.addEventListener('click', () => {
+          const current = readMode();
+          const next = current === 'light' ? 'dark' : current === 'dark' ? 'auto' : 'light';
+          writeMode(next);
+          applyTheme(next);
+        });
+
+        // Keep landing in sync if the OS flips while we're on 'auto'.
+        window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+          if (readMode() === 'auto') applyTheme('auto');
+        });
+      })();
+    </script>
   </body>
 </html>

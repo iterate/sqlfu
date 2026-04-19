@@ -9,6 +9,39 @@
   --accent: #9d4d12;
   --accent-strong: #6f2d00;
   --shadow: 0 24px 70px rgba(74, 43, 15, 0.12);
+
+  --bg-gradient-top: rgba(255, 214, 153, 0.38);
+  --bg-gradient-start: #efe1c6;
+  --bg-gradient-mid: #f6efe2;
+  --bg-gradient-end: #fffdf9;
+
+  --button-bg: rgba(255, 255, 255, 0.7);
+  --button-text-primary: #fff9f2;
+  --code-bg: rgba(121, 73, 24, 0.08);
+  --showreel-filter: none;
+}
+
+:root[data-theme='dark'] {
+  --bg: #1a1410;
+  --bg-strong: #1a1410;
+  --surface: rgba(33, 25, 18, 0.78);
+  --surface-strong: #2a2017;
+  --text: #f0e6d6;
+  --muted: #b5a58f;
+  --line: rgba(240, 230, 214, 0.14);
+  --accent: #e89b66;
+  --accent-strong: #f2b07f;
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+
+  --bg-gradient-top: rgba(232, 155, 102, 0.08);
+  --bg-gradient-start: #15100c;
+  --bg-gradient-mid: #1a1410;
+  --bg-gradient-end: #1f1812;
+
+  --button-bg: rgba(240, 230, 214, 0.06);
+  --button-text-primary: #1a1410;
+  --code-bg: rgba(232, 155, 102, 0.14);
+  --showreel-filter: brightness(0.88) contrast(0.95);
 }
 
 * {
@@ -18,8 +51,9 @@
 html {
   min-height: 100%;
   background:
-    radial-gradient(circle at top, rgba(255, 214, 153, 0.38), transparent 32rem),
-    linear-gradient(180deg, var(--bg-strong) 0%, var(--bg) 22%, #fffdf9 100%);
+    radial-gradient(circle at top, var(--bg-gradient-top), transparent 32rem),
+    linear-gradient(180deg, var(--bg-gradient-start) 0%, var(--bg-gradient-mid) 22%, var(--bg-gradient-end) 100%);
+  background-attachment: fixed;
 }
 
 body {
@@ -67,6 +101,43 @@ a {
 
 .nav a {
   text-decoration: none;
+}
+
+.theme-toggle {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--button-bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.theme-toggle:hover {
+  border-color: var(--accent);
+}
+
+.theme-toggle[data-theme-mode='auto'] .toggle-glyph::before {
+  content: '\25D1'; /* half-filled circle */
+}
+
+.theme-toggle[data-theme-mode='light'] .toggle-glyph::before {
+  content: '\2600'; /* sun */
+}
+
+.theme-toggle[data-theme-mode='dark'] .toggle-glyph::before {
+  content: '\263D'; /* first-quarter moon */
 }
 
 .hero {
@@ -139,11 +210,11 @@ a {
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-weight: 600;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--button-bg);
 }
 
 .button.primary {
-  color: #fff9f2;
+  color: var(--button-text-primary);
   background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
   border-color: transparent;
 }
@@ -152,10 +223,12 @@ a {
   padding: 1.4rem;
 }
 
-.panel code {
+.panel code,
+.hero-main code,
+.footer code {
   font-family: ui-monospace, 'SFMono-Regular', monospace;
   font-size: 0.92em;
-  background: rgba(121, 73, 24, 0.08);
+  background: var(--code-bg);
   padding: 0.12rem 0.32rem;
   border-radius: 0.35rem;
 }
@@ -200,6 +273,7 @@ a {
   border-radius: 1.4rem;
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
+  filter: var(--showreel-filter);
 }
 
 .hero-solo {
