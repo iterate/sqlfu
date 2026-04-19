@@ -71,6 +71,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0",
+    "@noble/hashes": "^2.2.0",
     "@orpc/server": "^1.13.13",
     "nearley": "^2.20.1",
     "trpc-cli": "^0.14.0",

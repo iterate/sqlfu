@@ -7,19 +7,20 @@ size: medium
 
 ## High-level status
 
-- Plan refined: dropping the `host` parameter entirely (not narrowing), using WebCrypto (async) + `node:crypto.createHash` (sync) inline, with no cross-runtime sync SHA-256 fallback yet.
-- Dual-dispatch: hand-rolled a tiny generator-based utility (`quansync`-shaped), rather than depending on `quansync`. ~30 lines; zero new deps.
-- DO adapter kept as-is (pass-through `transaction`). The DO test wraps the call in `state.storage.transactionSync(...)` to get real per-request atomicity.
-- All three migration-history functions unified via overloads.
+- Done. Dropped the `host` parameter from `applyMigrations`/`baseline`/`replace` entirely. Single function for each; overloaded to return `void` for sync clients and `Promise<void>` for async clients.
+- Dual-dispatch: hand-rolled a ~40-line generator utility (`packages/sqlfu/src/migrations/dual-dispatch.ts`), quansync-shaped but no runtime dep on quansync itself.
+- Digest: one codepath for both sync and async, using `@noble/hashes/sha2`. Portable (pure JS, zero deps), byte-identical to `node:crypto.createHash('sha256')`, works in Workers/DO without `nodejs_compat`.
+- DO adapter left as-is (pass-through `transaction`). The DO test wraps the call in `state.storage.transactionSync(...)` — that's the real per-request atomicity boundary.
 
 ## Decisions made for this worktree
 
 1. **Drop the `host: SqlfuHost` parameter entirely** from `applyMigrations`, `baselineMigrationHistory`, and `replaceMigrationHistory`. All three now just take `(client, params)`.
-2. **Digest**: async path uses `crypto.subtle.digest('SHA-256', …)` (cross-runtime). Sync path uses `node:crypto.createHash('sha256')` (Node-only, but that covers the node-sqlite sync cases). DO sync callers will also end up on Node's `createHash` because miniflare's worker runtime exposes `node:crypto` via `nodejs_compat`. If a future runtime has a sync SQL adapter with no `node:crypto`, we can add a tiny vendored sync SHA-256 at that point — but YAGNI for now.
-3. **Dual-dispatch**: internal utility at `packages/sqlfu/src/migrations/dual-dispatch.ts`. Generator-yielded promises get awaited in the async driver, or their synchronous equivalents are passed through in the sync driver. Mirrors `quansync`'s shape (yield a promise, it resolves and becomes the resume value).
+2. **Digest**: one sync implementation (`@noble/hashes/sha2`) serves both sync and async callers. Went with `@noble/hashes` after discovering that `node:crypto.createHash` breaks miniflare's module locator (it'd need `nodejs_compat` and bundling tricks) and that `crypto.subtle.digest` is async-only so it can't service the sync overload. Noble ships pure-JS ESM with explicit file extensions, is zero-dep, and esbuild bundles it cleanly for the DO test.
+3. **Dual-dispatch**: internal utility at `packages/sqlfu/src/migrations/dual-dispatch.ts`. Generator-yielded promises get awaited in the async driver, or their synchronous equivalents are passed through in the sync driver. Mirrors `quansync`'s shape (yield a promise, it resolves and becomes the resume value). The sentinel `GET_IS_ASYNC` yield lets the generator branch when it needs to wire `client.transaction(cb)`, where `cb` itself has to be sync or async depending on the client.
 4. **DO adapter**: keep `client.transaction` as a pass-through (current behavior). The DO test wraps the whole `applyMigrations` call in `state.storage.transactionSync(...)` — that's the real atomicity boundary. No adapter API change.
+5. **DO test fixture**: switched to esbuild bundling for the worker entrypoint so miniflare can resolve `@noble/hashes/sha2.js` (a bare specifier the module locator won't find otherwise). Pre-existing `createDurableObjectClient` unit tests ride on the same fixture and keep passing.
 
-## 1. The `host: SqlfuHost` parameter is too wide for fsless callers
+## Original problem statement
 
 Two related problems with `applyMigrations`/`baselineMigrationHistory`/`replaceMigrationHistory`. Both surfaced while building the migrations bundle (PR #8) for durable-object use; both are tracked here for whoever picks them up.
 
@@ -76,7 +77,7 @@ The real fix is to let DO callers wrap the whole thing in `state.storage.transac
 
 ## Open questions — resolved
 
-- Bundle a sync SHA-256 or accept a user-supplied digest? **Neither.** Use Node's `createHash` for the sync path. All current sync clients run in Node-compatible runtimes. Revisit only when a real non-Node sync caller appears.
+- Bundle a sync SHA-256 or accept a user-supplied digest? **Bundle.** Added `@noble/hashes` (zero-dep, ~27KB ESM). Picked it over `node:crypto.createHash` because the Workers runtime needs bundling tricks + `nodejs_compat` for Node built-ins, and over vendoring a hand-rolled sha256 because Noble is audited and small enough. Hash output is byte-identical to `node:crypto` for existing callers, so migration checksums stay stable.
 - Can the DO `client.transaction` adapter route automatically to `storage.transactionSync`? **Left as pass-through.** The DO test wraps the outer call in `transactionSync` explicitly — that's the documented atomicity boundary. Auto-routing from inside `client.transaction` would work but is redundant given the explicit outer wrap and harder to reason about when users compose.
 
 ## Checklist
