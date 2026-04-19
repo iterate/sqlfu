@@ -1,3 +1,5 @@
+import {rawQueryContext, runSqliteAsync} from '../core/adapter-errors.js';
+import type {MapError} from '../core/errors.js';
 import {bindAsyncSql} from '../core/sql.js';
 import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../core/sqlite.js';
 import type {AsyncClient, ResultRow, SqlQuery} from '../core/types.js';
@@ -19,31 +21,51 @@ export interface D1DatabaseLike {
   prepare(query: string): D1PreparedStatement;
 }
 
-export function createD1Client(database: D1DatabaseLike): AsyncClient<D1DatabaseLike> {
-  const all: AsyncClient<D1DatabaseLike>['all'] = async <TRow extends ResultRow = ResultRow>(sqlQuery: SqlQuery) => {
-    const result = await database
-      .prepare(sqlQuery.sql)
-      .bind(...sqlQuery.args)
-      .all<TRow>();
-    return result.results;
+export interface D1ClientOptions {
+  mapError?: MapError;
+}
+
+export function createD1Client(database: D1DatabaseLike, options: D1ClientOptions = {}): AsyncClient<D1DatabaseLike> {
+  const {mapError} = options;
+  const system = 'sqlite';
+  const all: AsyncClient<D1DatabaseLike>['all'] = <TRow extends ResultRow = ResultRow>(sqlQuery: SqlQuery) => {
+    return runSqliteAsync(
+      async () => {
+        const result = await database
+          .prepare(sqlQuery.sql)
+          .bind(...sqlQuery.args)
+          .all<TRow>();
+        return result.results;
+      },
+      {query: sqlQuery, system, mapError},
+    );
   };
-  const run: AsyncClient<D1DatabaseLike>['run'] = async (sqlQuery: SqlQuery) => {
-    const statement = database.prepare(sqlQuery.sql).bind(...sqlQuery.args);
-    const result = await statement.run();
-    return {
-      rowsAffected: result.meta?.changes,
-      lastInsertRowid: result.meta?.last_row_id,
-    };
+  const run: AsyncClient<D1DatabaseLike>['run'] = (sqlQuery: SqlQuery) => {
+    return runSqliteAsync(
+      async () => {
+        const statement = database.prepare(sqlQuery.sql).bind(...sqlQuery.args);
+        const result = await statement.run();
+        return {
+          rowsAffected: result.meta?.changes,
+          lastInsertRowid: result.meta?.last_row_id,
+        };
+      },
+      {query: sqlQuery, system, mapError},
+    );
   };
-  const raw: AsyncClient<D1DatabaseLike>['raw'] = async (sql: string) => {
-    return rawSqlWithSqlSplittingAsync(async (singleQuery) => {
-      const statement = database.prepare(singleQuery.sql).bind(...singleQuery.args);
-      const result = await statement.run();
-      return {
-        rowsAffected: result.meta?.changes,
-        lastInsertRowid: result.meta?.last_row_id,
-      };
-    }, sql);
+  const raw: AsyncClient<D1DatabaseLike>['raw'] = (sql: string) => {
+    return runSqliteAsync(
+      () =>
+        rawSqlWithSqlSplittingAsync(async (singleQuery) => {
+          const statement = database.prepare(singleQuery.sql).bind(...singleQuery.args);
+          const result = await statement.run();
+          return {
+            rowsAffected: result.meta?.changes,
+            lastInsertRowid: result.meta?.last_row_id,
+          };
+        }, sql),
+      {query: rawQueryContext(sql), system, mapError},
+    );
   };
   const iterate: AsyncClient<D1DatabaseLike>['iterate'] = async function* <TRow extends ResultRow = ResultRow>(
     sqlQuery: SqlQuery,
@@ -54,7 +76,7 @@ export function createD1Client(database: D1DatabaseLike): AsyncClient<D1Database
   };
   const d1Client: Omit<AsyncClient<D1DatabaseLike>, 'sql'> & {sql: AsyncClient<D1DatabaseLike>['sql']} = {
     driver: database,
-    system: 'sqlite',
+    system,
     all,
     run,
     raw,

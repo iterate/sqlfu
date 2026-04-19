@@ -1,3 +1,5 @@
+import {rawQueryContext, runSqliteSync} from '../core/adapter-errors.js';
+import type {MapError} from '../core/errors.js';
 import {bindSyncSql} from '../core/sql.js';
 import {rawSqlWithSqlSplittingSync, surroundWithBeginCommitRollbackSync} from '../core/sqlite.js';
 import type {ResultRow, SqlQuery, SyncClient} from '../core/types.js';
@@ -15,27 +17,45 @@ export interface LibsqlSyncDatabaseLike {
   prepare(query: string): LibsqlSyncStatementLike;
 }
 
-export function createLibsqlSyncClient(database: LibsqlSyncDatabaseLike): SyncClient<LibsqlSyncDatabaseLike> {
+export interface LibsqlSyncClientOptions {
+  mapError?: MapError;
+}
+
+export function createLibsqlSyncClient(
+  database: LibsqlSyncDatabaseLike,
+  options: LibsqlSyncClientOptions = {},
+): SyncClient<LibsqlSyncDatabaseLike> {
+  const {mapError} = options;
+  const system = 'sqlite';
   const all: SyncClient<LibsqlSyncDatabaseLike>['all'] = <TRow extends ResultRow = ResultRow>(query: SqlQuery) => {
-    return database.prepare(query.sql).all(...query.args) as TRow[];
+    return runSqliteSync(() => database.prepare(query.sql).all(...query.args) as TRow[], {query, system, mapError});
   };
   const run: SyncClient<LibsqlSyncDatabaseLike>['run'] = (query: SqlQuery) => {
-    const statement = database.prepare(query.sql);
-    const result = statement.run(...query.args);
-    return {
-      rowsAffected: result.changes,
-      lastInsertRowid: result.lastInsertRowid,
-    };
+    return runSqliteSync(
+      () => {
+        const statement = database.prepare(query.sql);
+        const result = statement.run(...query.args);
+        return {
+          rowsAffected: result.changes,
+          lastInsertRowid: result.lastInsertRowid,
+        };
+      },
+      {query, system, mapError},
+    );
   };
   const raw: SyncClient<LibsqlSyncDatabaseLike>['raw'] = (sql: string) => {
-    return rawSqlWithSqlSplittingSync((singleQuery) => {
-      const statement = database.prepare(singleQuery.sql);
-      const result = statement.run(...singleQuery.args);
-      return {
-        rowsAffected: result.changes,
-        lastInsertRowid: result.lastInsertRowid,
-      };
-    }, sql);
+    return runSqliteSync(
+      () =>
+        rawSqlWithSqlSplittingSync((singleQuery) => {
+          const statement = database.prepare(singleQuery.sql);
+          const result = statement.run(...singleQuery.args);
+          return {
+            rowsAffected: result.changes,
+            lastInsertRowid: result.lastInsertRowid,
+          };
+        }, sql),
+      {query: rawQueryContext(sql), system, mapError},
+    );
   };
   const iterate: SyncClient<LibsqlSyncDatabaseLike>['iterate'] = function* <TRow extends ResultRow = ResultRow>(
     query: SqlQuery,
@@ -44,7 +64,7 @@ export function createLibsqlSyncClient(database: LibsqlSyncDatabaseLike): SyncCl
   };
   const client: Omit<SyncClient<LibsqlSyncDatabaseLike>, 'sql'> & {sql: SyncClient<LibsqlSyncDatabaseLike>['sql']} = {
     driver: database,
-    system: 'sqlite',
+    system,
     all,
     run,
     raw,

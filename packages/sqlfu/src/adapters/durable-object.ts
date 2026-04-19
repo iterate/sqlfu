@@ -1,3 +1,5 @@
+import {rawQueryContext, runSqliteSync} from '../core/adapter-errors.js';
+import type {MapError} from '../core/errors.js';
 import {bindSyncSql} from '../core/sql.js';
 import {rawSqlWithSqlSplittingSync} from '../core/sqlite.js';
 import type {ResultRow, SqlQuery, SyncClient} from '../core/types.js';
@@ -12,33 +14,53 @@ export interface DurableObjectSqlStorageLike {
   };
 }
 
+export interface DurableObjectClientOptions {
+  mapError?: MapError;
+}
+
 export function createDurableObjectClient(
   storage: DurableObjectSqlStorageLike,
+  options: DurableObjectClientOptions = {},
 ): SyncClient<DurableObjectSqlStorageLike> {
+  const {mapError} = options;
+  const system = 'sqlite';
   const client: Omit<SyncClient<DurableObjectSqlStorageLike>, 'sql'> & {
     sql: SyncClient<DurableObjectSqlStorageLike>['sql'];
   } = {
     driver: storage,
-    system: 'sqlite',
+    system,
     all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
-      return storage.exec<TRow>(query.sql, ...query.args).toArray();
+      return runSqliteSync(() => storage.exec<TRow>(query.sql, ...query.args).toArray(), {query, system, mapError});
     },
     run(query: SqlQuery) {
-      const cursor = storage.exec(query.sql, ...query.args);
-      return {
-        rowsAffected: cursor.rowsWritten,
-      };
+      return runSqliteSync(
+        () => {
+          const cursor = storage.exec(query.sql, ...query.args);
+          return {
+            rowsAffected: cursor.rowsWritten,
+          };
+        },
+        {query, system, mapError},
+      );
     },
     raw(sql: string) {
-      return rawSqlWithSqlSplittingSync((singleQuery) => {
-        const cursor = storage.exec(singleQuery.sql, ...singleQuery.args);
-        return {
-          rowsAffected: cursor.rowsWritten,
-        };
-      }, sql);
+      return runSqliteSync(
+        () =>
+          rawSqlWithSqlSplittingSync((singleQuery) => {
+            const cursor = storage.exec(singleQuery.sql, ...singleQuery.args);
+            return {
+              rowsAffected: cursor.rowsWritten,
+            };
+          }, sql),
+        {query: rawQueryContext(sql), system, mapError},
+      );
     },
     *iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
-      const rows = storage.exec<TRow>(query.sql, ...query.args).toArray();
+      const rows = runSqliteSync(() => storage.exec<TRow>(query.sql, ...query.args).toArray(), {
+        query,
+        system,
+        mapError,
+      });
       yield* rows;
     },
     transaction<TResult>(fn: (tx: SyncClient<DurableObjectSqlStorageLike>) => TResult | Promise<TResult>) {

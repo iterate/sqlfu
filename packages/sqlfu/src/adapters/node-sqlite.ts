@@ -1,3 +1,5 @@
+import {rawQueryContext, runSqliteSync} from '../core/adapter-errors.js';
+import type {MapError} from '../core/errors.js';
 import {bindSyncSql} from '../core/sql.js';
 import {rawSqlWithSqlSplittingSync, surroundWithBeginCommitRollbackSync} from '../core/sqlite.js';
 import type {ResultRow, SqlQuery, SyncClient} from '../core/types.js';
@@ -15,32 +17,61 @@ export interface NodeSqliteDatabaseLike {
   prepare(query: string): NodeSqliteStatementLike;
 }
 
-export function createNodeSqliteClient(database: NodeSqliteDatabaseLike): SyncClient<NodeSqliteDatabaseLike> {
+export interface NodeSqliteClientOptions {
+  mapError?: MapError;
+}
+
+export function createNodeSqliteClient(
+  database: NodeSqliteDatabaseLike,
+  options: NodeSqliteClientOptions = {},
+): SyncClient<NodeSqliteDatabaseLike> {
+  const {mapError} = options;
+  const system = 'sqlite';
   const client: Omit<SyncClient<NodeSqliteDatabaseLike>, 'sql'> & {sql: SyncClient<NodeSqliteDatabaseLike>['sql']} = {
     driver: database,
-    system: 'sqlite',
+    system,
     all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
-      return materializeRows(database.prepare(query.sql).all(...query.args)) as TRow[];
+      return runSqliteSync(() => materializeRows(database.prepare(query.sql).all(...query.args)) as TRow[], {
+        query,
+        system,
+        mapError,
+      });
     },
     run(query: SqlQuery) {
-      const result = database.prepare(query.sql).run(...query.args);
-      return {
-        rowsAffected: result.changes == null ? undefined : Number(result.changes),
-        lastInsertRowid: result.lastInsertRowid,
-      };
+      return runSqliteSync(
+        () => {
+          const result = database.prepare(query.sql).run(...query.args);
+          return {
+            rowsAffected: result.changes == null ? undefined : Number(result.changes),
+            lastInsertRowid: result.lastInsertRowid,
+          };
+        },
+        {query, system, mapError},
+      );
     },
     raw(sql: string) {
-      return rawSqlWithSqlSplittingSync((singleQuery) => {
-        const result = database.prepare(singleQuery.sql).run(...singleQuery.args);
-        return {
-          rowsAffected: result.changes == null ? undefined : Number(result.changes),
-          lastInsertRowid: result.lastInsertRowid,
-        };
-      }, sql);
+      return runSqliteSync(
+        () =>
+          rawSqlWithSqlSplittingSync((singleQuery) => {
+            const result = database.prepare(singleQuery.sql).run(...singleQuery.args);
+            return {
+              rowsAffected: result.changes == null ? undefined : Number(result.changes),
+              lastInsertRowid: result.lastInsertRowid,
+            };
+          }, sql),
+        {query: rawQueryContext(sql), system, mapError},
+      );
     },
     *iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
-      for (const row of database.prepare(query.sql).iterate(...query.args)) {
-        yield materializeRow(row) as TRow;
+      const iterator = runSqliteSync(() => database.prepare(query.sql).iterate(...query.args), {
+        query,
+        system,
+        mapError,
+      });
+      while (true) {
+        const next = runSqliteSync(() => iterator.next(), {query, system, mapError});
+        if (next.done) return;
+        yield materializeRow(next.value) as TRow;
       }
     },
     transaction<TResult>(fn: (tx: SyncClient<NodeSqliteDatabaseLike>) => TResult | Promise<TResult>) {

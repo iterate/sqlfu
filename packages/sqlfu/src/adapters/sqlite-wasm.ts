@@ -1,3 +1,5 @@
+import {rawQueryContext, runSqliteAsync} from '../core/adapter-errors.js';
+import type {MapError} from '../core/errors.js';
 import {bindAsyncSql} from '../core/sql.js';
 import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../core/sqlite.js';
 import type {AsyncClient, QueryArg, ResultRow, SqlQuery} from '../core/types.js';
@@ -17,33 +19,54 @@ export interface SqliteWasmDatabaseLike {
   changes(isTotal?: boolean, use64Bit?: boolean): number | bigint;
 }
 
-export function createSqliteWasmClient(database: SqliteWasmDatabaseLike): AsyncClient<SqliteWasmDatabaseLike> {
-  const all: AsyncClient<SqliteWasmDatabaseLike>['all'] = async <TRow extends ResultRow = ResultRow>(
-    query: SqlQuery,
-  ) => {
-    const rows = database.exec({
-      sql: query.sql,
-      bind: toPositionalBind(query.args),
-      rowMode: 'object',
-      returnValue: 'resultRows',
-    });
-    return (rows as TRow[] | undefined) ?? [];
+export interface SqliteWasmClientOptions {
+  mapError?: MapError;
+}
+
+export function createSqliteWasmClient(
+  database: SqliteWasmDatabaseLike,
+  options: SqliteWasmClientOptions = {},
+): AsyncClient<SqliteWasmDatabaseLike> {
+  const {mapError} = options;
+  const system = 'sqlite';
+  const all: AsyncClient<SqliteWasmDatabaseLike>['all'] = <TRow extends ResultRow = ResultRow>(query: SqlQuery) => {
+    return runSqliteAsync(
+      async () => {
+        const rows = database.exec({
+          sql: query.sql,
+          bind: toPositionalBind(query.args),
+          rowMode: 'object',
+          returnValue: 'resultRows',
+        });
+        return (rows as TRow[] | undefined) ?? [];
+      },
+      {query, system, mapError},
+    );
   };
-  const run: AsyncClient<SqliteWasmDatabaseLike>['run'] = async (query: SqlQuery) => {
-    database.exec({
-      sql: query.sql,
-      bind: toPositionalBind(query.args),
-    });
-    return captureRunResult(database);
+  const run: AsyncClient<SqliteWasmDatabaseLike>['run'] = (query: SqlQuery) => {
+    return runSqliteAsync(
+      async () => {
+        database.exec({
+          sql: query.sql,
+          bind: toPositionalBind(query.args),
+        });
+        return captureRunResult(database);
+      },
+      {query, system, mapError},
+    );
   };
-  const raw: AsyncClient<SqliteWasmDatabaseLike>['raw'] = async (sql: string) => {
-    return rawSqlWithSqlSplittingAsync(async (singleQuery) => {
-      database.exec({
-        sql: singleQuery.sql,
-        bind: toPositionalBind(singleQuery.args),
-      });
-      return captureRunResult(database);
-    }, sql);
+  const raw: AsyncClient<SqliteWasmDatabaseLike>['raw'] = (sql: string) => {
+    return runSqliteAsync(
+      () =>
+        rawSqlWithSqlSplittingAsync(async (singleQuery) => {
+          database.exec({
+            sql: singleQuery.sql,
+            bind: toPositionalBind(singleQuery.args),
+          });
+          return captureRunResult(database);
+        }, sql),
+      {query: rawQueryContext(sql), system, mapError},
+    );
   };
   const iterate: AsyncClient<SqliteWasmDatabaseLike>['iterate'] = async function* <TRow extends ResultRow = ResultRow>(
     query: SqlQuery,
@@ -55,7 +78,7 @@ export function createSqliteWasmClient(database: SqliteWasmDatabaseLike): AsyncC
   };
   const client: Omit<AsyncClient<SqliteWasmDatabaseLike>, 'sql'> & {sql: AsyncClient<SqliteWasmDatabaseLike>['sql']} = {
     driver: database,
-    system: 'sqlite',
+    system,
     all,
     run,
     raw,

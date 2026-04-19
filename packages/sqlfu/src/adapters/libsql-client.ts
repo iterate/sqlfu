@@ -1,3 +1,5 @@
+import {rawQueryContext, runSqliteAsync} from '../core/adapter-errors.js';
+import type {MapError} from '../core/errors.js';
 import {bindAsyncSql} from '../core/sql.js';
 import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../core/sqlite.js';
 import type {AsyncClient, ResultRow, SqlQuery} from '../core/types.js';
@@ -12,26 +14,46 @@ export interface LibsqlClientLike {
   }>;
 }
 
-export function createLibsqlClient(client: LibsqlClientLike): AsyncClient<LibsqlClientLike> {
-  const all: AsyncClient<LibsqlClientLike>['all'] = async <TRow extends ResultRow = ResultRow>(sqlQuery: SqlQuery) => {
-    const result = await client.execute<TRow>(toStatement(sqlQuery));
-    return result.rows.map(materializeRow);
+export interface LibsqlClientOptions {
+  mapError?: MapError;
+}
+
+export function createLibsqlClient(client: LibsqlClientLike, options: LibsqlClientOptions = {}): AsyncClient<LibsqlClientLike> {
+  const {mapError} = options;
+  const system = 'sqlite';
+  const all: AsyncClient<LibsqlClientLike>['all'] = <TRow extends ResultRow = ResultRow>(sqlQuery: SqlQuery) => {
+    return runSqliteAsync(
+      async () => {
+        const result = await client.execute<TRow>(toStatement(sqlQuery));
+        return result.rows.map(materializeRow);
+      },
+      {query: sqlQuery, system, mapError},
+    );
   };
-  const run: AsyncClient<LibsqlClientLike>['run'] = async (sqlQuery: SqlQuery) => {
-    const result = await client.execute(toStatement(sqlQuery));
-    return {
-      rowsAffected: result.rowsAffected,
-      lastInsertRowid: result.lastInsertRowid,
-    };
+  const run: AsyncClient<LibsqlClientLike>['run'] = (sqlQuery: SqlQuery) => {
+    return runSqliteAsync(
+      async () => {
+        const result = await client.execute(toStatement(sqlQuery));
+        return {
+          rowsAffected: result.rowsAffected,
+          lastInsertRowid: result.lastInsertRowid,
+        };
+      },
+      {query: sqlQuery, system, mapError},
+    );
   };
-  const raw: AsyncClient<LibsqlClientLike>['raw'] = async (sql: string) => {
-    return rawSqlWithSqlSplittingAsync(async (singleQuery) => {
-      const result = await client.execute(toStatement(singleQuery));
-      return {
-        rowsAffected: result.rowsAffected,
-        lastInsertRowid: result.lastInsertRowid,
-      };
-    }, sql);
+  const raw: AsyncClient<LibsqlClientLike>['raw'] = (sql: string) => {
+    return runSqliteAsync(
+      () =>
+        rawSqlWithSqlSplittingAsync(async (singleQuery) => {
+          const result = await client.execute(toStatement(singleQuery));
+          return {
+            rowsAffected: result.rowsAffected,
+            lastInsertRowid: result.lastInsertRowid,
+          };
+        }, sql),
+      {query: rawQueryContext(sql), system, mapError},
+    );
   };
   const iterate: AsyncClient<LibsqlClientLike>['iterate'] = async function* <TRow extends ResultRow = ResultRow>(
     sqlQuery: SqlQuery,
@@ -42,7 +64,7 @@ export function createLibsqlClient(client: LibsqlClientLike): AsyncClient<Libsql
   };
   const queryClient: Omit<AsyncClient<LibsqlClientLike>, 'sql'> & {sql: AsyncClient<LibsqlClientLike>['sql']} = {
     driver: client,
-    system: 'sqlite',
+    system,
     all,
     run,
     raw,
