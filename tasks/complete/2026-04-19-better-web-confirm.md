@@ -1,7 +1,11 @@
-status: ready
+status: done
 size: medium
 
 # Replace `confirm(...)` error-throw hack in the web UI
+
+## Status
+
+Done. `schema.command` is now a streaming procedure that yields `needsConfirmation` / `done` events; a new `schema.submitConfirmation` procedure carries the user's answer back. All of the plan below was implemented as specified; existing unit + Playwright tests still cover the flow.
 
 ## Context
 
