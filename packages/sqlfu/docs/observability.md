@@ -68,6 +68,8 @@ instrument.onError(({context, error}) => {
 });
 ```
 
+The `error` is a `SqlfuError` with a normalized `.kind` — see [errors.md](./errors.md). Reporters get first-class bucketing dimensions without string-matching driver messages.
+
 ## Recipes
 
 The test files under [`packages/sqlfu/test/observability/`](../test/observability/) are the authoritative copy-paste source for each integration. They exercise the real SDKs against captured transports and are kept passing in CI.

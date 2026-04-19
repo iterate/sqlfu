@@ -133,6 +133,25 @@ If you want to see or change that behavior, start here:
 - [test/formatter/sqlite.fixture.sql](packages/sqlfu/test/formatter/sqlite.fixture.sql)
 - [test/formatter.test.ts](packages/sqlfu/test/formatter.test.ts)
 
+### Typed errors
+
+Every sqlfu adapter throws `SqlfuError` with a normalized `.kind` discriminator (`'constraint:unique'`, `'missing_relation'`, `'syntax'`, and so on), so application code handles database errors by kind instead of by string-matching the driver's message. The original driver error is preserved on `.cause`, and the `.query` and `.system` fields carry the context an error reporter needs:
+
+```ts
+import {SqlfuError} from 'sqlfu';
+
+try {
+  await client.run(createUser);
+} catch (error) {
+  if (error instanceof SqlfuError && error.kind === 'constraint:unique') {
+    return {error: 'email already taken'};
+  }
+  throw error;
+}
+```
+
+Full list of kinds, how to override the mapping, and reporter recipes: [docs/errors.md](packages/sqlfu/docs/errors.md).
+
 ### Observability
 
 Generated queries carry their filename to runtime as a `name` field on the emitted `SqlQuery`. That name reaches OpenTelemetry spans, Sentry errors, PostHog events, and Datadog metrics through a single `instrument()` call:
