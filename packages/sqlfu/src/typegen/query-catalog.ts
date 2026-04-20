@@ -5,7 +5,7 @@ export type QueryCatalog = {
 
 export type AdHocQueryAnalysis = {
   readonly sql: string;
-  readonly queryType: 'Select' | 'Insert' | 'Update' | 'Delete' | 'Copy';
+  readonly queryType: 'Select' | 'Insert' | 'Update' | 'Delete' | 'Copy' | 'Ddl';
   readonly multipleRowsResult: boolean;
   readonly resultMode: 'many' | 'nullableOne' | 'one' | 'metadata';
   readonly args: readonly QueryCatalogArgument[];
