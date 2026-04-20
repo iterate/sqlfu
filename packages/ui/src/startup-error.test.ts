@@ -1,11 +1,10 @@
 import {expect, test} from 'vitest';
 
 import {
-  MINIMUM_SERVER_VERSION,
+  SUPPORTED_SERVER_RANGE,
   ServerVersionMismatchError,
   checkServerVersion,
   classifyStartupError,
-  compareSqlfuVersions,
 } from './startup-error.ts';
 
 test('classifies missing HTTP status as unreachable', () => {
@@ -44,22 +43,27 @@ test('classifies nested 5xx responses as server errors', () => {
 test('classifies ServerVersionMismatchError as version-mismatch with both versions', () => {
   const error = new ServerVersionMismatchError({
     serverVersion: '0.0.1',
-    minimumServerVersion: '0.0.2-3',
+    supportedRange: '>=0.0.2-3',
   });
   expect(classifyStartupError(error)).toMatchObject({
     kind: 'version-mismatch',
     status: null,
     serverVersion: '0.0.1',
-    minimumServerVersion: '0.0.2-3',
+    supportedRange: '>=0.0.2-3',
   });
 });
 
 test('checkServerVersion returns null when the server is at the floor', () => {
-  expect(checkServerVersion({serverVersion: MINIMUM_SERVER_VERSION})).toBeNull();
+  expect(checkServerVersion({serverVersion: '0.0.2-3'})).toBeNull();
 });
 
-test('checkServerVersion returns null when the server is newer than the floor', () => {
+test('checkServerVersion returns null when the server is a newer stable release than the floor', () => {
   expect(checkServerVersion({serverVersion: '999.0.0'})).toBeNull();
+});
+
+test('checkServerVersion returns null for prereleases of versions above the floor (includePrerelease)', () => {
+  expect(checkServerVersion({serverVersion: '0.1.0-0'})).toBeNull();
+  expect(checkServerVersion({serverVersion: '1.0.0-beta.2'})).toBeNull();
 });
 
 test('checkServerVersion returns a mismatch error when the server is below the floor', () => {
@@ -67,7 +71,16 @@ test('checkServerVersion returns a mismatch error when the server is below the f
   expect(result).toBeInstanceOf(ServerVersionMismatchError);
   expect(result).toMatchObject({
     serverVersion: '0.0.1',
-    minimumServerVersion: MINIMUM_SERVER_VERSION,
+    supportedRange: SUPPORTED_SERVER_RANGE,
+  });
+});
+
+test('checkServerVersion returns a mismatch error for an earlier prerelease of the floor version', () => {
+  const result = checkServerVersion({serverVersion: '0.0.2-2'});
+  expect(result).toBeInstanceOf(ServerVersionMismatchError);
+  expect(result).toMatchObject({
+    serverVersion: '0.0.2-2',
+    supportedRange: SUPPORTED_SERVER_RANGE,
   });
 });
 
@@ -76,30 +89,6 @@ test('checkServerVersion treats missing serverVersion as mismatch (old server)',
   expect(result).toBeInstanceOf(ServerVersionMismatchError);
   expect(result).toMatchObject({
     serverVersion: null,
-    minimumServerVersion: MINIMUM_SERVER_VERSION,
+    supportedRange: SUPPORTED_SERVER_RANGE,
   });
-});
-
-test('compareSqlfuVersions orders numeric segments correctly', () => {
-  expect(compareSqlfuVersions('0.0.1', '0.0.2')).toBeLessThan(0);
-  expect(compareSqlfuVersions('0.0.2', '0.0.1')).toBeGreaterThan(0);
-  expect(compareSqlfuVersions('1.2.3', '1.2.3')).toBe(0);
-  expect(compareSqlfuVersions('0.1.0', '0.0.99')).toBeGreaterThan(0);
-  expect(compareSqlfuVersions('2.0.0', '1.99.99')).toBeGreaterThan(0);
-});
-
-test('compareSqlfuVersions treats a prerelease as older than the released version', () => {
-  expect(compareSqlfuVersions('0.0.2-3', '0.0.2')).toBeLessThan(0);
-  expect(compareSqlfuVersions('0.0.2', '0.0.2-3')).toBeGreaterThan(0);
-});
-
-test('compareSqlfuVersions orders prerelease numbers', () => {
-  expect(compareSqlfuVersions('0.0.2-3', '0.0.2-4')).toBeLessThan(0);
-  expect(compareSqlfuVersions('0.0.2-4', '0.0.2-3')).toBeGreaterThan(0);
-  expect(compareSqlfuVersions('0.0.2-3', '0.0.2-3')).toBe(0);
-});
-
-test('compareSqlfuVersions throws on unsupported shapes', () => {
-  expect(() => compareSqlfuVersions('not-a-version', '0.0.1')).toThrow(/Unsupported sqlfu version shape/u);
-  expect(() => compareSqlfuVersions('0.0.1', '1.2.3-beta.4')).toThrow(/Unsupported sqlfu version shape/u);
 });

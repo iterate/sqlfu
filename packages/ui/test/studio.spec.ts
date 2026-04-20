@@ -55,6 +55,7 @@ test('shows the upgrade screen when the local backend does not report a version 
   await page.goto('/');
 
   await expect(page.getByRole('heading', {name: 'Please upgrade the local sqlfu server'})).toBeVisible();
+  await expect(page.getByText(/does not satisfy/u)).toContainText('>=0.0.2-3');
   await expect(page.getByText(/pre-dates the version-reporting RPC field/u)).toBeVisible();
 });
 

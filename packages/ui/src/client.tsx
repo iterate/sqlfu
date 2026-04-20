@@ -383,8 +383,8 @@ function StartupFailureScreen(input: {error: unknown}) {
                 <h2>Why am I seeing this?</h2>
                 <p>
                   The hosted UI on <code>local.sqlfu.dev</code> tracks the latest sqlfu release. When your local
-                  backend is older than <code>v{startupError.minimumServerVersion}</code>, the RPC contracts do not
-                  line up and the UI would otherwise surface cryptic 4xx or 5xx errors.
+                  backend falls outside <code>{startupError.supportedRange}</code>, the RPC contracts do not line up
+                  and the UI would otherwise surface cryptic 4xx or 5xx errors.
                 </p>
                 <p>
                   Upgrading the local backend is the fix. Your project data is untouched.
@@ -2461,15 +2461,15 @@ function renderVersionMismatchLede(startupError: Extract<StartupFailure, {kind: 
   if (startupError.serverVersion) {
     return (
       <>
-        Your local backend is running <code>sqlfu v{startupError.serverVersion}</code>, but this UI requires{' '}
-        <code>v{startupError.minimumServerVersion}</code> or newer.
+        Your local backend is running <code>sqlfu v{startupError.serverVersion}</code>, but this UI requires a version
+        satisfying <code>{startupError.supportedRange}</code>.
       </>
     );
   }
   return (
     <>
-      Your local backend is older than <code>v{startupError.minimumServerVersion}</code> (it pre-dates the
-      version-reporting RPC field). Upgrading will fix the mismatch.
+      Your local backend does not satisfy <code>{startupError.supportedRange}</code> (it pre-dates the version-reporting
+      RPC field). Upgrading will fix the mismatch.
     </>
   );
 }

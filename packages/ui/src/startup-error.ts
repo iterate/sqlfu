@@ -1,3 +1,5 @@
+import semver from 'semver';
+
 export type StartupFailureKind = 'unreachable' | 'client-error' | 'server-error' | 'version-mismatch';
 
 export type StartupFailure =
@@ -11,19 +13,18 @@ export type StartupFailure =
       message: string;
       status: null;
       serverVersion: string | null;
-      minimumServerVersion: string;
+      supportedRange: string;
     };
 
 /**
- * The oldest sqlfu server version that speaks today's oRPC contract.
- *
- * Bump whenever the hosted client relies on a new/changed RPC field, query
- * param, or event shape. The hosted client on local.sqlfu.dev is always the
- * tip of main; a user's local `npx sqlfu` is whatever they happened to
- * install. When the local server is older than this floor, we show an
+ * Semver range describing which sqlfu server versions speak today's oRPC
+ * contract. Tighten whenever the hosted client relies on a new/changed RPC
+ * field, query param, or event shape. The hosted client on local.sqlfu.dev is
+ * always the tip of main; a user's local `npx sqlfu` is whatever they happened
+ * to install. When the local server falls outside this range, we show an
  * upgrade screen instead of letting the mismatch surface as a cryptic 4xx.
  */
-export const MINIMUM_SERVER_VERSION = '0.0.2-3';
+export const SUPPORTED_SERVER_RANGE = '>=0.0.2-3';
 
 /**
  * Error type thrown from the bootstrap path when the local server is too old
@@ -32,14 +33,14 @@ export const MINIMUM_SERVER_VERSION = '0.0.2-3';
  */
 export class ServerVersionMismatchError extends Error {
   readonly serverVersion: string | null;
-  readonly minimumServerVersion: string;
+  readonly supportedRange: string;
 
-  constructor(input: {serverVersion: string | null; minimumServerVersion: string}) {
+  constructor(input: {serverVersion: string | null; supportedRange: string}) {
     const shown = input.serverVersion ?? 'unknown';
-    super(`Local sqlfu server is running v${shown}; this UI requires v${input.minimumServerVersion} or newer.`);
+    super(`Local sqlfu server is running v${shown}; this UI requires a version satisfying ${input.supportedRange}.`);
     this.name = 'ServerVersionMismatchError';
     this.serverVersion = input.serverVersion;
-    this.minimumServerVersion = input.minimumServerVersion;
+    this.supportedRange = input.supportedRange;
   }
 }
 
@@ -50,7 +51,7 @@ export function classifyStartupError(error: unknown): StartupFailure {
       message: error.message,
       status: null,
       serverVersion: error.serverVersion,
-      minimumServerVersion: error.minimumServerVersion,
+      supportedRange: error.supportedRange,
     };
   }
 
@@ -84,68 +85,27 @@ export function classifyStartupError(error: unknown): StartupFailure {
  * Returns the error the caller should throw, or `null` if the server is
  * compatible. `serverVersion` may be `undefined` for old servers that pre-date
  * the `project.status.serverVersion` field — treated as "definitely too old".
+ *
+ * `includePrerelease: true` is required because sqlfu ships prerelease-heavy
+ * versions (`0.0.2-3`); without it, `semver.satisfies` would reject any
+ * prerelease that shares a MAJOR.MINOR.PATCH not explicitly named in the range.
  */
 export function checkServerVersion(input: {serverVersion: string | undefined}): ServerVersionMismatchError | null {
   if (!input.serverVersion) {
     return new ServerVersionMismatchError({
       serverVersion: null,
-      minimumServerVersion: MINIMUM_SERVER_VERSION,
+      supportedRange: SUPPORTED_SERVER_RANGE,
     });
   }
 
-  if (compareSqlfuVersions(input.serverVersion, MINIMUM_SERVER_VERSION) < 0) {
+  if (!semver.satisfies(input.serverVersion, SUPPORTED_SERVER_RANGE, {includePrerelease: true})) {
     return new ServerVersionMismatchError({
       serverVersion: input.serverVersion,
-      minimumServerVersion: MINIMUM_SERVER_VERSION,
+      supportedRange: SUPPORTED_SERVER_RANGE,
     });
   }
 
   return null;
-}
-
-/**
- * Compare two sqlfu version strings. Returns < 0 if `a` is older than `b`,
- * > 0 if newer, 0 if equal.
- *
- * Supported shapes: `MAJOR.MINOR.PATCH` and `MAJOR.MINOR.PATCH-N` where `N`
- * is a non-negative integer prerelease number (matches the scheme in
- * `packages/sqlfu/package.json`). Anything outside that shape throws, on the
- * theory that silently mis-comparing a malformed version is worse than
- * failing loudly.
- */
-export function compareSqlfuVersions(a: string, b: string): number {
-  const parsedA = parseSqlfuVersion(a);
-  const parsedB = parseSqlfuVersion(b);
-
-  for (let index = 0; index < 3; index += 1) {
-    const diff = parsedA.segments[index]! - parsedB.segments[index]!;
-    if (diff !== 0) {
-      return diff;
-    }
-  }
-
-  // A non-prerelease version is newer than the same MAJOR.MINOR.PATCH with a prerelease.
-  if (parsedA.prerelease === null && parsedB.prerelease === null) {
-    return 0;
-  }
-  if (parsedA.prerelease === null) {
-    return 1;
-  }
-  if (parsedB.prerelease === null) {
-    return -1;
-  }
-  return parsedA.prerelease - parsedB.prerelease;
-}
-
-function parseSqlfuVersion(version: string): {segments: [number, number, number]; prerelease: number | null} {
-  const match = /^(\d+)\.(\d+)\.(\d+)(?:-(\d+))?$/u.exec(version);
-  if (!match) {
-    throw new Error(`Unsupported sqlfu version shape: ${version}`);
-  }
-  return {
-    segments: [Number(match[1]), Number(match[2]), Number(match[3])],
-    prerelease: match[4] === undefined ? null : Number(match[4]),
-  };
 }
 
 function readStatus(error: unknown): number | null {
