@@ -1,3 +1,7 @@
+// sqlfu: `describeNestedQuery` was a mysql-only test utility that pulled
+// `parse`/`extractQueryInfo` from mysql-query-analyzer/parse.ts. Those exports
+// were dropped to let the MySQLParser ATN tables tree-shake. Only the types
+// and `generateNestedInfo` are referenced at all (and only transitively).
 import {
 	type ExprContext,
 	type JoinedTableContext,
@@ -6,10 +10,8 @@ import {
 	type TableFactorContext,
 	type TableReferenceContext
 } from '../typesql-parser/mysql/MySQLParser.js';
-import { extractQueryInfo, parse } from './mysql-query-analyzer/parse.js';
 import { findColumnSchema, getSimpleExpressions, splitName } from './mysql-query-analyzer/select-columns.js';
 import type { ColumnInfo, ColumnSchema } from './mysql-query-analyzer/types.js';
-import { preprocessSql } from './describe-query.js';
 
 export type NestedResultInfo = {
 	relations: RelationInfo[];
@@ -44,15 +46,6 @@ export type TableName = {
 	asSymbol: boolean;
 	isJunctionTable: boolean;
 };
-
-//utility for tests
-export function describeNestedQuery(sql: string, dbSchema: ColumnSchema[]): NestedResultInfo {
-	const { sql: processedSql } = preprocessSql(sql, 'mysql');
-	const queryContext = parse(processedSql);
-	const queryInfo = extractQueryInfo(sql, dbSchema);
-	const columns = queryInfo.kind === 'Select' ? queryInfo.columns : [];
-	return generateNestedInfo(queryContext, dbSchema, columns);
-}
 
 export function generateNestedInfo(queryContext: QueryContext, dbSchema: ColumnSchema[], columns: ColumnInfo[]): NestedResultInfo {
 	const selectStatement = queryContext.simpleStatement()?.selectStatement();

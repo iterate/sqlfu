@@ -33,21 +33,11 @@ import {
 import type { ColumnSchema, FieldName, ColumnDef } from './types.js';
 import { findColumn, splitName, selectAllColumns } from './select-columns.js';
 import { getParentContext, inferParameterNotNull } from './infer-param-nullability.js';
-import { traverseQueryContext } from './traverse.js';
-import { parse } from './parse.js';
-import { preprocessSql } from '../describe-query.js';
 
-//TODO - COLUMN SCHEMA DEFAULT = []
-//utility for tests
-export function parseAndInferNotNull(sql: string, dbSchema: ColumnSchema[]) {
-	const { sql: processedSql, namedParameters } = preprocessSql(sql, 'mysql');
-	const tree = parse(processedSql);
-	const result = traverseQueryContext(tree, dbSchema, namedParameters.map(param => param.paramName));
-	if (result.type === 'Select') {
-		return result.columns.map((col) => col.notNull);
-	}
-	return [];
-}
+// sqlfu: removed the `parseAndInferNotNull` test helper (and its `parse` /
+// `preprocessSql` / `traverseQueryContext` imports) so the mysql parse tables
+// can tree-shake. Only `inferNotNull` / `possibleNull` below are reached from
+// the sqlite path, via mysql-query-analyzer/traverse.ts.
 
 export function inferNotNull(querySpec: QuerySpecificationContext, dbSchema: ColumnSchema[], fromColumns: ColumnDef[]) {
 	const notNullInference: boolean[] = [];
