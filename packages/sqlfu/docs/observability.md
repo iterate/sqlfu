@@ -1,34 +1,35 @@
 # Observability
 
-Generated queries carry their filename to runtime as a `name` field. That name reaches OpenTelemetry spans, Sentry errors, PostHog events, Datadog metrics, and anywhere else you want to see it — without extra configuration per destination.
+Generated queries carry their filename to runtime as a `name` field. That name reaches OpenTelemetry spans, Sentry errors, PostHog events, Datadog metrics, and anywhere else you want to see it, without extra configuration per destination.
 
-Observability in sqlfu is a consequence of naming, not a separate feature axis.
+sqlfu's observability story mostly falls out of making query naming a first-class concept. The instrumentation itself is small: one `instrument(client, ...hooks)` wrapper and a couple of reference hooks.
 
 ## The `name` field
 
 Every `.sql` file you check in becomes a generated wrapper whose emitted `SqlQuery` carries the filename (without extension) as `name`. For `sql/list-profiles.sql` you get:
 
 ```ts
-// sql/.generated/list-profiles.sql.ts  (generated — do not edit)
+// sql/.generated/list-profiles.sql.ts  (generated - do not edit)
 const query: SqlQuery = {sql: ListProfilesSql, args: [], name: 'list-profiles'};
 ```
 
 Nested directories become slash-separated names (`sql/users/list-profiles.sql` → `name: 'users/list-profiles'`) and the generated function name is the camelCased path (`usersListProfiles`). Function names can't collide because distinct file paths produce distinct names.
 
-Ad-hoc SQL (via `client.sql\`...\``) has no name, but you can pass one explicitly:
+Ad-hoc SQL (via `` client.sql`...` ``) has no name, but you can pass one explicitly:
 
 ```ts
 client.run({sql: 'select 1', args: [], name: 'health-check'});
 ```
 
-## `instrument` — a single export
+## `instrument` helper
 
 ```ts
 import {instrument} from 'sqlfu';
 
-const client = instrument(baseClient,
-  instrument.otel({tracer}),
-  instrument.onError(({context, error}) => reportError(error)),
+const client = instrument(
+  baseClient,
+  instrument.otel({tracer: myOtelTracer}),
+  instrument.onError(({context, error}) => myErrorReportingService.report(error)),
 );
 ```
 
@@ -44,19 +45,19 @@ type QueryExecutionHook = <TResult>(args: {
 
 `processResult(execute, onSuccess, onError?)` runs `execute` and dispatches to the right handler regardless of whether the underlying client is sync or async. Synchronous throws and promise rejections both go to `onError`; if `onError` is omitted, errors propagate.
 
-`instrument.otel` and `instrument.onError` are small reference implementations. Copy their bodies and edit them if your team has different conventions — `QueryExecutionHook` is the stable contract, not these helpers.
+`instrument.otel` and `instrument.onError` are reference implementations. `QueryExecutionHook` is the stable contract, not these helpers. Copy their bodies and edit them if your team has different conventions.
 
 ## `instrument.otel({tracer})`
 
 Emits one OTel span per query with:
 
-- `db.query.summary` — your `query.name`, when present
-- `db.query.text` — the parameterized SQL (values are in `args`, not interpolated into the text)
-- `db.system.name` — the adapter's system (e.g. `sqlite`)
+- `db.query.summary`: your `query.name`, when present
+- `db.query.text`: the parameterized SQL (values are in `args`, not interpolated into the text)
+- `db.system.name`: the adapter's system (e.g. `sqlite`)
 
 On throw: records the exception as a span event and sets span status to `ERROR`.
 
-The `tracer` parameter is typed structurally (`TracerLike`) — no peer dependency on `@opentelemetry/api`. Pass any object with a `startActiveSpan(name, fn)` method. The real OTel `Tracer` satisfies this by construction.
+The `tracer` parameter is typed structurally (`TracerLike`), so there's no peer dependency on `@opentelemetry/api`. Pass any object with a `startActiveSpan(name, fn)` method. The real OTel `Tracer` satisfies this by construction.
 
 ## `instrument.onError(report)`
 
@@ -82,7 +83,7 @@ const tracer = trace.getTracer('my-service');
 const client = instrument(baseClient, instrument.otel({tracer}));
 ```
 
-Every OTLP-over-HTTP backend works by swapping the exporter URL. For Datadog APM specifically, either point `@opentelemetry/exporter-trace-otlp-http` at Datadog's OTLP intake, or pass `dd-trace`'s OTel-compatible tracer directly — the `instrument.otel` line stays identical.
+Every OTLP-over-HTTP backend works by swapping the exporter URL. For Datadog APM specifically, either point `@opentelemetry/exporter-trace-otlp-http` at Datadog's OTLP intake, or pass `dd-trace`'s OTel-compatible tracer directly. Either way the `instrument.otel` line stays identical.
 
 Full recipe with failing-query + composed error reporter: [`opentelemetry.test.ts`](../test/observability/opentelemetry.test.ts).
 
@@ -113,7 +114,7 @@ Full recipe: [`sentry.test.ts`](../test/observability/sentry.test.ts).
 
 ### PostHog (events + error capture)
 
-PostHog handles product-analytics events and error tracking in the same SDK. One hook covers both — success emits `db_query` with timing, failure additionally calls `captureException`:
+PostHog handles product-analytics events and error tracking in the same SDK, so one hook covers both. Success emits `db_query` with timing; failure emits the same event and additionally calls `captureException`:
 
 ```ts
 import {PostHog} from 'posthog-node';
@@ -153,13 +154,13 @@ const client = instrument(baseClient,
 );
 ```
 
-PostHog doesn't have a separate "metrics" API — numeric properties on events are your metrics (`avg(duration_ms) WHERE event = 'db_query'`).
+PostHog doesn't have a separate "metrics" API. Numeric properties on events are your metrics (`avg(duration_ms) WHERE event = 'db_query'`).
 
 Full recipe: [`posthog.test.ts`](../test/observability/posthog.test.ts).
 
 ### Datadog (DogStatsD metrics)
 
-For Datadog APM traces, use the OpenTelemetry recipe above with Datadog's OTel-compatible tracer or OTLP intake. For **metrics** — query counts and timings grouped by `db.query.summary` — use DogStatsD:
+For Datadog APM traces, use the OpenTelemetry recipe above with Datadog's OTel-compatible tracer or OTLP intake. For **metrics** (query counts and timings grouped by `db.query.summary`), use DogStatsD:
 
 ```ts
 import {StatsD} from 'hot-shots';
@@ -167,7 +168,8 @@ import {instrument} from 'sqlfu';
 
 const statsd = new StatsD({host: 'localhost', port: 8125});
 
-const client = instrument(baseClient,
+const client = instrument(
+  baseClient,
   ({context, execute, processResult}) => {
     const start = Date.now();
     const tags = [
@@ -202,13 +204,17 @@ client.run({sql, args, name: 'my-query'});
 
 **`iterate` and `transaction` pass through unchanged.** Queries issued *inside* a transaction still fire hooks because the tx client is re-instrumented on entry. Transactions themselves don't get their own spans. If you want transaction-level spans, wrap `client.transaction(...)` calls yourself using your tracer.
 
-**Composition order is outer-to-inner.** `instrument(client, a, b, c)` means `a` wraps `b` wraps `c` wraps the underlying call. If you put `instrument.otel` first, the OTel span covers everything including any error-reporter work.
+**Composition order is outer-to-inner.** `instrument(client, a, b, c)` means `a` wraps `b` wraps `c` wraps the underlying call. If you put `instrument.otel` first, the OTel span covers everything including any error-reporter work. You can of course wrap yourself if you prefer:
+
+```ts
+const myClient = instrument(instrument(baseClient, innerHook), outerHook)
+```
 
 ## Types
 
 All available from `sqlfu`:
 
-- `instrument` — callable + `.otel` + `.onError`
+- `instrument`: callable, plus `.otel` and `.onError`
 - `QueryExecutionHook`, `QueryExecutionHookArgs`, `QueryExecutionContext`, `QueryOperation`
 - `ProcessResult`
 - `QueryErrorReport`

@@ -33,7 +33,9 @@ export function createLibsqlClient(client: LibsqlClientLike): AsyncClient<Libsql
       };
     }, sql);
   };
-  const iterate: AsyncClient<LibsqlClientLike>['iterate'] = async function* <TRow extends ResultRow = ResultRow>(sqlQuery: SqlQuery) {
+  const iterate: AsyncClient<LibsqlClientLike>['iterate'] = async function* <TRow extends ResultRow = ResultRow>(
+    sqlQuery: SqlQuery,
+  ) {
     for (const row of await all<TRow>(sqlQuery)) {
       yield row;
     }
@@ -41,6 +43,7 @@ export function createLibsqlClient(client: LibsqlClientLike): AsyncClient<Libsql
   const queryClient: Omit<AsyncClient<LibsqlClientLike>, 'sql'> & {sql: AsyncClient<LibsqlClientLike>['sql']} = {
     driver: client,
     system: 'sqlite',
+    sync: false,
     all,
     run,
     raw,

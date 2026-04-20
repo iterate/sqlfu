@@ -1,6 +1,11 @@
 /*
  * SQLite-specific schemadiff entrypoint.
  * This file wires together SQLite inspection, planning, and scratch-database execution, and is the main seam for future dialect entrypoints.
+ *
+ * Inspired by @pgkit/migra (https://github.com/mmkal/pgkit/tree/main/packages/migra), which is itself a TypeScript port of
+ * djrobstep's Python `migra` (https://github.com/djrobstep/migra). See ../CLAUDE.md for the full inspiration notes. This file
+ * does not copy code from those projects, but borrows the "materialize both schemas into scratch databases, inspect, diff the
+ * inspected models, emit ordered statements" shape.
  */
 import type {SqlfuHost} from '../../core/host.js';
 import {splitSqlStatements} from '../../core/sqlite.js';
@@ -43,10 +48,7 @@ export async function diffBaselineSqlToDesiredSql(
   });
 }
 
-export async function inspectSqliteSchemaSql(
-  host: SqlfuHost,
-  sql: string,
-): Promise<SqliteInspectedDatabase> {
+export async function inspectSqliteSchemaSql(host: SqlfuHost, sql: string): Promise<SqliteInspectedDatabase> {
   await using database = await host.openScratchDb('inspect');
   if (sql.trim()) {
     await applySchemaSql(database.client, sql);
@@ -63,7 +65,9 @@ export function schemasEqual(left: SqliteInspectedDatabase, right: SqliteInspect
 function assertNoUnsupportedSqlText(sql: string, source: 'baselineSql' | 'desiredSql'): void {
   const normalizedSql = sql.toLowerCase();
   if (/\bcreate\s+virtual\s+table\b/u.test(normalizedSql)) {
-    throw new Error(`sqlite virtual tables are not supported by the native schema diff engine yet: found virtual table sql in ${source}`);
+    throw new Error(
+      `sqlite virtual tables are not supported by the native schema diff engine yet: found virtual table sql in ${source}`,
+    );
   }
 }
 
@@ -75,9 +79,7 @@ async function applySchemaSql(client: AsyncClient, sql: string): Promise<void> {
     ...statements.filter((statement) => isCreateViewStatement(statement)),
     ...statements.filter(
       (statement) =>
-        !isCreateTableStatement(statement) &&
-        !isCreateIndexStatement(statement) &&
-        !isCreateViewStatement(statement),
+        !isCreateTableStatement(statement) && !isCreateIndexStatement(statement) && !isCreateViewStatement(statement),
     ),
   ];
 

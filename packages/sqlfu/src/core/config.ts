@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 
-import type {SqlfuConfig, SqlfuProjectConfig} from './types.js';
+import type {SqlfuConfig, SqlfuProjectConfig, SqlfuValidator} from './types.js';
 import {createDefaultInitPreview} from './init-preview.js';
 
 const defaultConfigFileNames = ['sqlfu.config.ts', 'sqlfu.config.mjs', 'sqlfu.config.js', 'sqlfu.config.cjs'] as const;
@@ -47,10 +47,7 @@ export async function loadProjectStateFrom(projectRoot: string): Promise<LoadedS
   };
 }
 
-export async function initializeProject(input: {
-  projectRoot: string;
-  configContents: string;
-}) {
+export async function initializeProject(input: {projectRoot: string; configContents: string}) {
   const preview = createDefaultInitPreview(input.projectRoot);
   const state = await loadProjectStateFrom(input.projectRoot);
   if (state.initialized) {
@@ -61,7 +58,10 @@ export async function initializeProject(input: {
   await fs.mkdir(path.join(input.projectRoot, 'migrations'), {recursive: true});
   await fs.mkdir(path.join(input.projectRoot, 'sql'), {recursive: true});
   await fs.writeFile(preview.configPath, withTrailingNewline(input.configContents));
-  await fs.writeFile(path.join(input.projectRoot, 'definitions.sql'), '-- create table yourtable(id int, body text);\n');
+  await fs.writeFile(
+    path.join(input.projectRoot, 'definitions.sql'),
+    '-- create table yourtable(id int, body text);\n',
+  );
   await fs.writeFile(path.join(input.projectRoot, 'migrations', '.gitkeep'), '');
   await fs.writeFile(path.join(input.projectRoot, 'sql', '.gitkeep'), '');
 }
@@ -80,8 +80,14 @@ export function resolveProjectConfig(
     definitions: resolveConfigPathValue(configDir, fileConfig.definitions),
     queries: resolveConfigPathValue(configDir, fileConfig.queries),
     generatedImportExtension: fileConfig.generatedImportExtension ?? inferGeneratedImportExtension(tsconfigPreferences),
+    generate: {
+      validator: fileConfig.generate?.validator ?? null,
+      prettyErrors: fileConfig.generate?.prettyErrors !== false,
+    },
   };
 }
+
+const validValidators: readonly SqlfuValidator[] = ['zod', 'valibot', 'zod-mini'];
 
 type TsconfigPreferences = {
   readonly prefersTsImportExtensions?: boolean;
@@ -135,7 +141,9 @@ async function loadTsconfigPreferences(cwd: string): Promise<TsconfigPreferences
   }
 
   return {
-    prefersTsImportExtensions: hasTrueFlag(compilerOptions, 'allowImportingTsExtensions') || hasTrueFlag(compilerOptions, 'rewriteRelativeImportExtensions'),
+    prefersTsImportExtensions:
+      hasTrueFlag(compilerOptions, 'allowImportingTsExtensions') ||
+      hasTrueFlag(compilerOptions, 'rewriteRelativeImportExtensions'),
   };
 }
 
@@ -164,7 +172,9 @@ async function findTsconfigPath(startDir: string): Promise<string | undefined> {
 
 function parseTsconfigCompilerOptions(contents: string): Record<string, unknown> | undefined {
   try {
-    const parsed = JSON.parse(stripJsonComments(stripTrailingCommas(contents))) as {compilerOptions?: Record<string, unknown>};
+    const parsed = JSON.parse(stripJsonComments(stripTrailingCommas(contents))) as {
+      compilerOptions?: Record<string, unknown>;
+    };
     return parsed.compilerOptions;
   } catch {
     return undefined;
@@ -176,9 +186,7 @@ function hasTrueFlag(value: Record<string, unknown>, key: string): boolean {
 }
 
 function stripJsonComments(value: string): string {
-  return value
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '');
+  return value.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
 function stripTrailingCommas(value: string): string {
@@ -189,6 +197,33 @@ function assertConfigShape(configPath: string, config: object): asserts config i
   for (const field of ['db', 'migrations', 'definitions', 'queries'] as const) {
     if (!(field in config) || typeof (config as Record<string, unknown>)[field] !== 'string') {
       throw new Error(`Invalid sqlfu config at ${configPath}: missing required string field "${field}".`);
+    }
+  }
+  const generate = (config as Record<string, unknown>).generate;
+  if (generate !== undefined) {
+    if (typeof generate !== 'object' || generate === null || Array.isArray(generate)) {
+      throw new Error(`Invalid sqlfu config at ${configPath}: "generate" must be an object.`);
+    }
+    const generateRecord = generate as Record<string, unknown>;
+
+    if ('zod' in generateRecord) {
+      throw new Error(
+        `Invalid sqlfu config at ${configPath}: "generate.zod" is no longer supported. ` +
+          `Use "generate.validator: 'zod' | 'valibot' | 'zod-mini' | null" instead.`,
+      );
+    }
+
+    const validator = generateRecord.validator;
+    if (validator !== undefined && validator !== null && !validValidators.includes(validator as SqlfuValidator)) {
+      throw new Error(
+        `Invalid sqlfu config at ${configPath}: "generate.validator" must be one of ` +
+          `${validValidators.map((v) => `'${v}'`).join(', ')}, null, or undefined. Got ${JSON.stringify(validator)}.`,
+      );
+    }
+
+    const prettyErrors = generateRecord.prettyErrors;
+    if (prettyErrors !== undefined && typeof prettyErrors !== 'boolean') {
+      throw new Error(`Invalid sqlfu config at ${configPath}: "generate.prettyErrors" must be a boolean.`);
     }
   }
 }

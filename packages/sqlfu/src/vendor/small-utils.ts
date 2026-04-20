@@ -1,5 +1,15 @@
-import {glob as fsGlob} from 'node:fs/promises';
-
+/*
+ * Support utilities for sqlfu's vendored tree.
+ *
+ * `Either`, `Result`, `Ok`, `Err`, and `ResultAsync` here are minimal, sqlfu-local
+ * reimplementations of the subset of [`neverthrow`](https://github.com/supermacro/neverthrow)
+ * (MIT) that the vendored TypeSQL code actually uses. They exist so the vendored
+ * `src/vendor/typesql` tree can keep its upstream control-flow shape without pulling
+ * neverthrow in as a runtime dependency.
+ *
+ * Everything else here (`uniqBy`, `camelCase`, `glob`, ISO literal checks,
+ * `unsupportedDependency`) is sqlfu-original support code for the vendored tree.
+ */
 export type Either<L, R> = {readonly _tag: 'Left'; readonly left: L} | {readonly _tag: 'Right'; readonly right: R};
 
 export function left<L, R = never>(value: L): Either<L, R> {
@@ -116,6 +126,9 @@ export function camelCase(value: string): string {
 }
 
 export async function glob(pattern: string, options?: {cwd?: string}): Promise<string[]> {
+  // Deferred so the vendored tree can be bundled for browsers that have no
+  // node:fs/promises — browser callers (demo mode) never invoke glob().
+  const {glob: fsGlob} = await import('node:fs/promises');
   const matches: string[] = [];
   for await (const match of fsGlob(pattern, options?.cwd ? {cwd: options?.cwd} : {})) {
     matches.push(String(match));

@@ -42,32 +42,36 @@ export async function getSchemaAuthorities(context: SqlfuContext) {
   const appliedByName = new Map(applied.map((migration) => [migration.name, migration]));
   const migrationByName = new Map(migrations.map((migration) => [migrationName(migration), migration]));
 
-  const migrationEntries = await Promise.all(migrations.map(async (migration) => {
-    const name = migrationName(migration);
-    const appliedEntry = appliedByName.get(name);
-    return {
-      id: name,
-      fileName: basename(migration.path),
-      content: migration.content,
-      applied: appliedByName.has(name),
-      appliedAt: appliedEntry?.appliedAt ?? null,
-      integrity: appliedEntry
-        ? await getMigrationIntegrity(context.host, migration.content, appliedEntry.checksum)
-        : null,
-    };
-  }));
+  const migrationEntries = await Promise.all(
+    migrations.map(async (migration) => {
+      const name = migrationName(migration);
+      const appliedEntry = appliedByName.get(name);
+      return {
+        id: name,
+        fileName: basename(migration.path),
+        content: migration.content,
+        applied: appliedByName.has(name),
+        appliedAt: appliedEntry?.appliedAt ?? null,
+        integrity: appliedEntry
+          ? await getMigrationIntegrity(context.host, migration.content, appliedEntry.checksum)
+          : null,
+      };
+    }),
+  );
 
-  const historyEntries = await Promise.all(applied.map(async (migration) => {
-    const current = migrationByName.get(migration.name);
-    return {
-      id: migration.name,
-      fileName: current ? basename(current.path) : null,
-      content: current?.content ?? '-- migration file missing from repo',
-      applied: true,
-      appliedAt: migration.appliedAt,
-      integrity: await getMigrationIntegrity(context.host, current?.content, migration.checksum),
-    };
-  }));
+  const historyEntries = await Promise.all(
+    applied.map(async (migration) => {
+      const current = migrationByName.get(migration.name);
+      return {
+        id: migration.name,
+        fileName: current ? basename(current.path) : null,
+        content: current?.content ?? '-- migration file missing from repo',
+        applied: true,
+        appliedAt: migration.appliedAt,
+        integrity: await getMigrationIntegrity(context.host, current?.content, migration.checksum),
+      };
+    }),
+  );
 
   return {
     desiredSchemaSql: definitionsSql,
@@ -119,9 +123,7 @@ export type SqlfuCommandConfirmParams = {
   readonly editable?: boolean;
 };
 
-export type SqlfuCommandConfirm = (
-  params: SqlfuCommandConfirmParams,
-) => Promise<string | null>;
+export type SqlfuCommandConfirm = (params: SqlfuCommandConfirmParams) => Promise<string | null>;
 
 export async function runSqlfuCommand(
   context: SqlfuCommandContext,
@@ -166,16 +168,24 @@ export async function runSqlfuCommand(
   }
 
   if (normalized.startsWith('sqlfu baseline ')) {
-    await applyBaselineSql(initializedContext, {
-      target: normalized.replace(/^sqlfu baseline /u, '').trim(),
-    }, confirm);
+    await applyBaselineSql(
+      initializedContext,
+      {
+        target: normalized.replace(/^sqlfu baseline /u, '').trim(),
+      },
+      confirm,
+    );
     return;
   }
 
   if (normalized.startsWith('sqlfu goto ')) {
-    await applyGotoSql(initializedContext, {
-      target: normalized.replace(/^sqlfu goto /u, '').trim(),
-    }, confirm);
+    await applyGotoSql(
+      initializedContext,
+      {
+        target: normalized.replace(/^sqlfu goto /u, '').trim(),
+      },
+      confirm,
+    );
     return;
   }
 
@@ -230,7 +240,8 @@ export async function applyDraftSql(
 ) {
   const migrations = await readMigrationsFromContext(context);
   const definitionsSql = await readDefinitionsSql(context.host, context.config.definitions);
-  const baselineSql = migrations.length === 0 ? '' : await materializeMigrationsSchemaForContext(context.host, migrations);
+  const baselineSql =
+    migrations.length === 0 ? '' : await materializeMigrationsSchemaForContext(context.host, migrations);
   const diffLines = await diffSchemaSql(context.host, {
     baselineSql,
     desiredSql: definitionsSql,
@@ -255,10 +266,7 @@ export async function applyDraftSql(
   await context.host.fs.writeFile(joinPath(context.config.migrations, fileName), `${body.trim()}\n`);
 }
 
-export async function applySyncSql(
-  context: SqlfuContext,
-  confirm: SqlfuCommandConfirm,
-) {
+export async function applySyncSql(context: SqlfuContext, confirm: SqlfuCommandConfirm) {
   const definitionsSql = await readDefinitionsSql(context.host, context.config.definitions);
   await using database = await context.host.openDb(context.config);
   const baselineSql = await extractSchema(database.client, 'main', {
@@ -300,10 +308,7 @@ export async function applySyncSql(
   }
 }
 
-export async function applyMigrateSql(
-  context: SqlfuContext,
-  confirm: SqlfuCommandConfirm,
-) {
+export async function applyMigrateSql(context: SqlfuContext, confirm: SqlfuCommandConfirm) {
   const migrations = await readMigrationsFromContext(context);
 
   // preflight: the database must be healthy enough to apply migrations from a trusted prefix.
@@ -320,10 +325,9 @@ export async function applyMigrateSql(
   if (pendingMigrations.length > 0) {
     const ok = await confirm({
       title: 'Apply pending migrations?',
-      body: pendingMigrations.map((migration) => [
-        `-- ${migrationName(migration)}`,
-        migration.content.trim(),
-      ].join('\n')).join('\n\n'),
+      body: pendingMigrations
+        .map((migration) => [`-- ${migrationName(migration)}`, migration.content.trim()].join('\n'))
+        .join('\n\n'),
       bodyType: 'sql',
     });
     if (!ok) {
@@ -333,7 +337,7 @@ export async function applyMigrateSql(
 
   try {
     // apply migrations even if there are zero pending, because this will validate migration history
-    await applyMigrations(context.host, database.client, {migrations});
+    await applyMigrations(database.client, {migrations});
   } catch (error) {
     // figure out which migration was the first one to not make it into history
     const appliedAfter = await readMigrationHistory(database.client);
@@ -346,18 +350,17 @@ export async function applyMigrateSql(
     // reuse the already-open client so we do not race a second connection against a database
     // that is still recovering from the failed migration.
     const postFailure = await analyzeMigrateHealth(context, database.client);
-    throw new Error(formatMigrateFailure({
-      failedName,
-      cause: summarizeSqlite3defError(error),
-      postFailure,
-    }));
+    throw new Error(
+      formatMigrateFailure({
+        failedName,
+        cause: summarizeSqlite3defError(error),
+        postFailure,
+      }),
+    );
   }
 }
 
-async function analyzeMigrateHealth(
-  context: SqlfuContext,
-  existingClient?: Client,
-): Promise<MigrateHealthAnalysis> {
+async function analyzeMigrateHealth(context: SqlfuContext, existingClient?: Client): Promise<MigrateHealthAnalysis> {
   // this is narrower than analyzeDatabase on purpose. it only checks the things that would make
   // it unsafe to apply more migrations:
   //   - history drift: the database claims migrations that no longer match the repo
@@ -390,11 +393,12 @@ async function analyzeMigrateHealthWithClient(
   const recommendations: CheckRecommendation[] = [];
 
   if (historyMismatch) {
-    const problemLine = historyMismatch.kind === 'deleted'
-      ? `Deleted applied migration: ${historyMismatch.name}`
-      : historyMismatch.kind === 'checksumMismatch'
-      ? `Applied migration checksum mismatch: ${historyMismatch.name}`
-      : `New migration sorts before applied migration: ${historyMismatch.name}`;
+    const problemLine =
+      historyMismatch.kind === 'deleted'
+        ? `Deleted applied migration: ${historyMismatch.name}`
+        : historyMismatch.kind === 'checksumMismatch'
+          ? `Applied migration checksum mismatch: ${historyMismatch.name}`
+          : `New migration sorts before applied migration: ${historyMismatch.name}`;
     blockers.push({
       kind: 'historyDrift',
       title: 'History Drift',
@@ -438,14 +442,15 @@ async function analyzeMigrateHealthWithClient(
     // prefer the latest applied migration as the goto target. its replay is known to work, and
     // it resets the database to a trusted recorded state. falling back to the latest migration
     // in the repo could recommend a broken pending migration.
-    const recommendedGotoTarget = applied.at(-1)?.name
-      || (migrations.length > 0 ? migrationName(migrations.at(-1)!) : null);
+    const recommendedGotoTarget =
+      applied.at(-1)?.name || (migrations.length > 0 ? migrationName(migrations.at(-1)!) : null);
     blockers.push({
       kind: 'schemaDrift',
       title: 'Schema Drift',
-      summary: applied.length === 0
-        ? 'Live Schema exists, but Migration History is empty.'
-        : 'Live Schema does not match Migration History.',
+      summary:
+        applied.length === 0
+          ? 'Live Schema exists, but Migration History is empty.'
+          : 'Live Schema does not match Migration History.',
       details: [],
     });
     if (recommendedBaselineTarget) {
@@ -472,40 +477,34 @@ function formatMigratePreflightFailure(analysis: MigrateHealthAnalysis) {
     sections.push([blocker.title, blocker.summary, ...blocker.details].join('\n'));
   }
   if (analysis.recommendations.length > 0) {
-    sections.push([
-      'Recommended next actions',
-      ...analysis.recommendations.map((recommendation) => `- ${formatRecommendationText(recommendation)}`),
-    ].join('\n'));
+    sections.push(
+      [
+        'Recommended next actions',
+        ...analysis.recommendations.map((recommendation) => `- ${formatRecommendationText(recommendation)}`),
+      ].join('\n'),
+    );
   }
   return sections.join('\n\n');
 }
 
-function formatMigrateFailure(params: {
-  failedName: string;
-  cause: string;
-  postFailure: MigrateHealthAnalysis;
-}) {
+function formatMigrateFailure(params: {failedName: string; cause: string; postFailure: MigrateHealthAnalysis}) {
   const header = `Migration ${params.failedName} failed: ${params.cause}`;
 
   if (params.postFailure.blockers.length === 0) {
-    return [
-      header,
-      'The database is still healthy for migrate. Fix the migration and retry.',
-    ].join('\n\n');
+    return [header, 'The database is still healthy for migrate. Fix the migration and retry.'].join('\n\n');
   }
 
-  const sections: string[] = [
-    header,
-    'The database is no longer healthy for migrate. Reconcile before retrying.',
-  ];
+  const sections: string[] = [header, 'The database is no longer healthy for migrate. Reconcile before retrying.'];
   for (const blocker of params.postFailure.blockers) {
     sections.push([blocker.title, blocker.summary, ...blocker.details].join('\n'));
   }
   if (params.postFailure.recommendations.length > 0) {
-    sections.push([
-      'Recommended next actions',
-      ...params.postFailure.recommendations.map((recommendation) => `- ${formatRecommendationText(recommendation)}`),
-    ].join('\n'));
+    sections.push(
+      [
+        'Recommended next actions',
+        ...params.postFailure.recommendations.map((recommendation) => `- ${formatRecommendationText(recommendation)}`),
+      ].join('\n'),
+    );
   }
   return sections.join('\n\n');
 }
@@ -515,11 +514,7 @@ type MigrateHealthAnalysis = {
   readonly recommendations: readonly CheckRecommendation[];
 };
 
-export async function applyBaselineSql(
-  context: SqlfuContext,
-  input: {target: string},
-  confirm: SqlfuCommandConfirm,
-) {
+export async function applyBaselineSql(context: SqlfuContext, input: {target: string}, confirm: SqlfuCommandConfirm) {
   const migrations = await readMigrationsFromContext(context);
   const targetMigrations = getMigrationsThroughTarget(migrations, input.target);
   const ok = await confirm({
@@ -535,14 +530,10 @@ export async function applyBaselineSql(
     return;
   }
   await using database = await context.host.openDb(context.config);
-  await baselineMigrationHistory(context.host, database.client, {migrations, target: input.target});
+  await baselineMigrationHistory(database.client, {migrations, target: input.target});
 }
 
-export async function applyGotoSql(
-  context: SqlfuContext,
-  input: {target: string},
-  confirm: SqlfuCommandConfirm,
-) {
+export async function applyGotoSql(context: SqlfuContext, input: {target: string}, confirm: SqlfuCommandConfirm) {
   const migrations = await readMigrationsFromContext(context);
   const targetMigrations = getMigrationsThroughTarget(migrations, input.target);
   const targetSchema = await materializeMigrationsSchemaForContext(context.host, targetMigrations);
@@ -570,7 +561,7 @@ export async function applyGotoSql(
     if (confirmedSql?.trim()) {
       await tx.raw(confirmedSql.trim());
     }
-    await replaceMigrationHistory(context.host, tx, targetMigrations);
+    await replaceMigrationHistory(tx, targetMigrations);
   });
 }
 
@@ -660,7 +651,7 @@ function trimStatementForDisplay(statement: string): string {
 
 export async function materializeMigrationsSchemaForContext(host: SqlfuHost, migrations: readonly Migration[]) {
   await using database = await host.openScratchDb('materialize-migrations');
-  await applyMigrations(host, database.client, {migrations});
+  await applyMigrations(database.client, {migrations});
   return await extractSchema(database.client, 'main', {
     excludedTables: schemaDriftExcludedTables,
   });
@@ -695,7 +686,8 @@ export async function analyzeDatabase(context: SqlfuContext) {
   const repoDrift = await compareSchemasForContext(host, desiredSchema, migrationsSchema);
   const spuriousDefinitionStatements = await findSpuriousDefinitionStatements(host, definitionsSql);
   const historyMismatch = await findHistoryMismatch(host, applied, migrations, migrationByName);
-  const hasPendingMigrations = !historyMismatch && migrations.some((migration) => !appliedNames.has(migrationName(migration)));
+  const hasPendingMigrations =
+    !historyMismatch && migrations.some((migration) => !appliedNames.has(migrationName(migration)));
 
   const historicalMigrations = applied
     .map((historical) => migrationByName.get(historical.name))
@@ -704,9 +696,8 @@ export async function analyzeDatabase(context: SqlfuContext) {
   const schemaDrift = await compareSchemasForContext(host, historicalSchema, liveSchema);
   const syncDrift = await compareSchemasForContext(host, desiredSchema, liveSchema);
   const recommendedBaselineTarget = await findRecommendedTarget(host, migrations, liveSchema);
-  const recommendedGotoTarget = !repoDrift.isDifferent && !historyMismatch && migrations.length > 0
-    ? migrationName(migrations.at(-1)!)
-    : null;
+  const recommendedGotoTarget =
+    !repoDrift.isDifferent && !historyMismatch && migrations.length > 0 ? migrationName(migrations.at(-1)!) : null;
   const mismatches: CheckMismatch[] = [];
   const recommendations: CheckRecommendation[] = [];
 
@@ -722,11 +713,12 @@ export async function analyzeDatabase(context: SqlfuContext) {
   }
 
   if (historyMismatch) {
-    const problemLine = historyMismatch.kind === 'deleted'
-      ? `Deleted applied migration: ${historyMismatch.name}`
-      : historyMismatch.kind === 'checksumMismatch'
-      ? `Applied migration checksum mismatch: ${historyMismatch.name}`
-      : `New migration sorts before applied migration: ${historyMismatch.name}`;
+    const problemLine =
+      historyMismatch.kind === 'deleted'
+        ? `Deleted applied migration: ${historyMismatch.name}`
+        : historyMismatch.kind === 'checksumMismatch'
+          ? `Applied migration checksum mismatch: ${historyMismatch.name}`
+          : `New migration sorts before applied migration: ${historyMismatch.name}`;
     mismatches.push({
       kind: 'historyDrift',
       title: 'History Drift',
@@ -814,8 +806,8 @@ export async function analyzeDatabase(context: SqlfuContext) {
       summary: !hasAppliedHistory
         ? 'Live Schema exists, but Migration History is empty.'
         : repoDriftWithLiveAlreadySynced
-        ? 'Live Schema matches Desired Schema, but not Migration History.'
-        : 'Live Schema does not match Migration History.',
+          ? 'Live Schema matches Desired Schema, but not Migration History.'
+          : 'Live Schema does not match Migration History.',
       details: [],
     });
 
@@ -840,8 +832,8 @@ export async function analyzeDatabase(context: SqlfuContext) {
   }
 
   if (syncDrift.isDifferent && syncDrift.isSyncable) {
-    const pendingMigrationsWouldResolveSyncDrift = mismatches.length === 1
-      && mismatches[0]?.kind === 'pendingMigrations';
+    const pendingMigrationsWouldResolveSyncDrift =
+      mismatches.length === 1 && mismatches[0]?.kind === 'pendingMigrations';
     mismatches.push({
       kind: 'syncDrift',
       title: 'Sync Drift',
@@ -883,7 +875,7 @@ async function findHistoryMismatch(
     if (!current) {
       return {kind: 'deleted' as const, name: historical.name};
     }
-    if (await host.digest(current.content) !== historical.checksum) {
+    if ((await host.digest(current.content)) !== historical.checksum) {
       return {kind: 'checksumMismatch' as const, name: historical.name};
     }
   }
@@ -945,21 +937,26 @@ export async function compareSchemasForContext(host: SqlfuHost, left: string, ri
   };
 }
 
-async function getMigrationIntegrity(host: SqlfuHost, currentContent: string | undefined, appliedChecksum: string | undefined) {
+async function getMigrationIntegrity(
+  host: SqlfuHost,
+  currentContent: string | undefined,
+  appliedChecksum: string | undefined,
+) {
   if (!currentContent || !appliedChecksum) {
     return 'checksum mismatch' as const;
   }
 
-  return await host.digest(currentContent) === appliedChecksum ? 'ok' as const : 'checksum mismatch' as const;
+  return (await host.digest(currentContent)) === appliedChecksum ? ('ok' as const) : ('checksum mismatch' as const);
 }
 
 function summarizeSqlite3defError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
-  const line = message
-    .split('\n')
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .at(-1) ?? message.trim();
+  const line =
+    message
+      .split('\n')
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .at(-1) ?? message.trim();
   return line.replace(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2} /u, '');
 }
 
@@ -1012,8 +1009,7 @@ export type CheckRecommendation = {
     | 'goto'
     | 'sync'
     | 'restoreMissingMigration'
-    | 'restoreOriginalMigration'
-    ;
+    | 'restoreOriginalMigration';
   readonly command?: readonly [string, ...string[]];
   readonly label: string;
   readonly rationale?: string;
@@ -1027,7 +1023,12 @@ export type CheckAnalysis = {
 function addRecommendation(target: CheckRecommendation[], recommendation: CheckRecommendation) {
   const commandKey = recommendation.command?.join('\0') ?? '';
   const key = `${recommendation.kind}|${commandKey}|${recommendation.label}|${recommendation.rationale ?? ''}`;
-  if (target.some((existing) => `${existing.kind}|${existing.command?.join('\0') ?? ''}|${existing.label}|${existing.rationale ?? ''}` === key)) {
+  if (
+    target.some(
+      (existing) =>
+        `${existing.kind}|${existing.command?.join('\0') ?? ''}|${existing.label}|${existing.rationale ?? ''}` === key,
+    )
+  ) {
     return;
   }
   target.push(recommendation);
@@ -1069,10 +1070,12 @@ export function formatCheckFailure(analysis: CheckAnalysis) {
   );
 
   if (analysis.recommendations.length > 0) {
-    sections.push([
-      'Recommended next actions',
-      ...analysis.recommendations.map((recommendation) => `- ${formatRecommendationText(recommendation)}`),
-    ].join('\n'));
+    sections.push(
+      [
+        'Recommended next actions',
+        ...analysis.recommendations.map((recommendation) => `- ${formatRecommendationText(recommendation)}`),
+      ].join('\n'),
+    );
   }
 
   return sections.join('\n\n');

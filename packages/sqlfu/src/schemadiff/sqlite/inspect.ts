@@ -1,6 +1,11 @@
 /*
  * SQLite-specific schema inspection.
  * This file owns reading SQLite catalogs and PRAGMA output into normalized inspected objects, and is the seam for future non-SQLite inspectors.
+ *
+ * Inspired by @pgkit/schemainspect (https://github.com/mmkal/pgkit/tree/main/packages/schemainspect), which is itself a
+ * TypeScript port of djrobstep's Python `schemainspect` (https://github.com/djrobstep/schemainspect). SQLite's catalog is
+ * very different from Postgres', so the queries and the inspected model shape are sqlfu-specific. What is borrowed is the
+ * idea of representing the database as a typed inspected object tree before diffing, rather than diffing SQL text directly.
  */
 import type {Client} from '../../core/types.js';
 import {quoteSqlString} from './identifiers.js';
@@ -231,16 +236,18 @@ function extractTableColumnCollations(createSql: string): Map<string, string> {
   return collations;
 }
 
-function groupForeignKeys(rows: readonly {
-  readonly id: number;
-  readonly seq: number;
-  readonly table: string;
-  readonly from: string;
-  readonly to: string | null;
-  readonly on_update: string;
-  readonly on_delete: string;
-  readonly match: string;
-}[]): readonly SqliteForeignKey[] {
+function groupForeignKeys(
+  rows: readonly {
+    readonly id: number;
+    readonly seq: number;
+    readonly table: string;
+    readonly from: string;
+    readonly to: string | null;
+    readonly on_update: string;
+    readonly on_delete: string;
+    readonly match: string;
+  }[],
+): readonly SqliteForeignKey[] {
   const grouped = new Map<number, SqliteForeignKey & {columns: string[]; referencedColumns: string[]}>();
 
   for (const row of rows) {
@@ -270,12 +277,19 @@ function groupForeignKeys(rows: readonly {
     .sort((left, right) => stableStringify(left).localeCompare(stableStringify(right)));
 }
 
-function sortUniqueConstraints(uniqueConstraints: readonly SqliteUniqueConstraint[]): readonly SqliteUniqueConstraint[] {
-  return [...uniqueConstraints].sort((left, right) => left.columns.join('\u0000').localeCompare(right.columns.join('\u0000')));
+function sortUniqueConstraints(
+  uniqueConstraints: readonly SqliteUniqueConstraint[],
+): readonly SqliteUniqueConstraint[] {
+  return [...uniqueConstraints].sort((left, right) =>
+    left.columns.join('\u0000').localeCompare(right.columns.join('\u0000')),
+  );
 }
 
 function normalizeDeclaredType(type: string | null | undefined): string {
-  return String(type || '').trim().replace(/\s+/gu, ' ').toLowerCase();
+  return String(type || '')
+    .trim()
+    .replace(/\s+/gu, ' ')
+    .toLowerCase();
 }
 
 function normalizeDefaultSql(value: string | null): string | null {

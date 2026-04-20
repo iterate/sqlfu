@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import * as esbuild from 'esbuild';
 import {Miniflare} from 'miniflare';
 import {expect, test} from 'vitest';
 import dedent from 'dedent';
@@ -79,25 +80,16 @@ test('applyMigrations can run inside a durable object using a migrations bundle'
       constructor(state: any) {
         this.client = createDurableObjectClient(state.storage.sql);
         const bundle = {
-          'migrations/2026-04-10T00.00.00.000Z_create_posts.sql': 'create table posts (id integer primary key, slug text not null);',
+          'migrations/2026-04-10T00.00.00.000Z_create_posts.sql':
+            'create table posts (id integer primary key, slug text not null);',
           'migrations/2026-04-10T01.00.00.000Z_add_body.sql': 'alter table posts add column body text;',
         };
-        // Hand-rolled host + `as any` cast because `applyMigrations` currently
-        // demands full `SqlfuHost` even though it only uses `digest` and `now`.
-        // Follow-up in tasks/migrations-sync-async.md will drop the host
-        // parameter entirely so this stub and cast go away.
-        const host = {
-          digest: async (content: string) => {
-            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
-            return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
-          },
-          now: () => new Date(),
-        };
-        // blockConcurrencyWhile gates incoming handlers until migrations finish,
-        // so getColumns / getApplied can use this.client directly — no per-handler
-        // await-ready dance.
-        state.blockConcurrencyWhile(() =>
-          applyMigrations(host as any, this.client, {
+        // transactionSync requires a synchronous callback and provides the real
+        // per-request atomicity boundary: any error thrown by applyMigrations
+        // rolls back every statement run inside. This only works because
+        // applyMigrations is overloaded to be sync for sync clients.
+        state.storage.transactionSync(() =>
+          applyMigrations(this.client, {
             migrations: migrationsFromBundle(bundle),
           }),
         );
@@ -117,11 +109,7 @@ test('applyMigrations can run inside a durable object using a migrations bundle'
     },
   );
 
-  expect(await fixture.stub.getColumns()).toMatchObject([
-    {name: 'id'},
-    {name: 'slug'},
-    {name: 'body'},
-  ]);
+  expect(await fixture.stub.getColumns()).toMatchObject([{name: 'id'}, {name: 'slug'}, {name: 'body'}]);
 
   expect(await fixture.stub.getApplied()).toMatchObject([
     {name: '2026-04-10T00.00.00.000Z_create_posts'},
@@ -167,16 +155,13 @@ test('createDurableObjectClient.raw runs multiple statements', async () => {
   ]);
 });
 
-async function createDOFixture<TInstance extends object>(
-  classDef: new (...args: any[]) => TInstance,
-) {
+async function createDOFixture<TInstance extends object>(classDef: new (...args: any[]) => TInstance) {
   await ensureBuilt();
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-do-fixture-'));
+  const workerSourcePath = path.join(tempDir, 'worker-source.js');
   const workerPath = path.join(tempDir, 'worker.js');
-  await Promise.all([
-    fs.cp(path.join(packageRoot, 'dist'), path.join(tempDir, 'runtime'), {recursive: true}),
-  ]);
+  await fs.cp(path.join(packageRoot, 'dist'), path.join(tempDir, 'runtime'), {recursive: true});
 
   const classDefString = classDef.toString().trim();
   const className = classDefString.match(/^class (\w+) \{/)?.[1];
@@ -185,37 +170,52 @@ async function createDOFixture<TInstance extends object>(
   }
 
   await fs.writeFile(
-    workerPath,
+    workerSourcePath,
     dedent`
       import {createDurableObjectClient} from './runtime/adapters/durable-object.js';
       import {sql} from './runtime/core/sql.js';
       import {applyMigrations, migrationsFromBundle} from './runtime/migrations/index.js';
 
       ${classDefString}
-      
+
       export class FixtureObject extends ${className} {
         async fetch(request) {
           const url = new URL(request.url);
           if (request.method !== 'POST' || url.pathname !== '/__rpc__') {
             return new Response('not found', {status: 404});
           }
-      
+
           const {method, args} = await request.json();
-      
+
           return this[method].apply(this, args).then(
             (value) => Response.json({ok: true, value}),
             (error) => Response.json({ok: false, error: {message: String(error)}}),
           );
         }
       }
-      
+
       export default {
         fetch() {
           return new Response('ok');
         },
       };
-    `
+    `,
   );
+
+  // bundle so miniflare (modules mode) sees only relative imports. the runtime
+  // transitively imports bare specifiers like `@noble/hashes/sha2.js`, which
+  // miniflare's module locator does not resolve on its own. we let esbuild
+  // resolve node_modules starting from the sqlfu package root.
+  await esbuild.build({
+    entryPoints: [workerSourcePath],
+    outfile: workerPath,
+    bundle: true,
+    format: 'esm',
+    platform: 'neutral',
+    target: 'es2022',
+    absWorkingDir: packageRoot,
+    nodePaths: [path.join(packageRoot, 'node_modules')],
+  });
 
   const miniflare = new Miniflare({
     rootPath: tempDir,
@@ -256,31 +256,26 @@ interface DurableObjectFetchStub {
 }
 
 function createRpcStub<TInstance extends object>(stub: DurableObjectFetchStub) {
-  return new Proxy(
-    {} as TInstance,
-    {
-      get(_target, propertyKey) {
-        if (typeof propertyKey !== 'string') {
-          return undefined;
+  return new Proxy({} as TInstance, {
+    get(_target, propertyKey) {
+      if (typeof propertyKey !== 'string') {
+        return undefined;
+      }
+
+      return async (...args: readonly unknown[]) => {
+        const response = await stub.fetch('http://do/__rpc__', {
+          method: 'POST',
+          headers: {'content-type': 'application/json'},
+          body: JSON.stringify({method: propertyKey, args}),
+        });
+        const payload = (await response.json()) as {ok: true; value: unknown} | {ok: false; error: {message: string}};
+
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.ok ? `RPC failed with status ${response.status}` : payload.error.message);
         }
 
-        return async (...args: readonly unknown[]) => {
-          const response = await stub.fetch('http://do/__rpc__', {
-            method: 'POST',
-            headers: {'content-type': 'application/json'},
-            body: JSON.stringify({method: propertyKey, args}),
-          });
-          const payload = (await response.json()) as
-            | {ok: true; value: unknown}
-            | {ok: false; error: {message: string}};
-
-          if (!response.ok || !payload.ok) {
-            throw new Error(payload.ok ? `RPC failed with status ${response.status}` : payload.error.message);
-          }
-
-          return payload.value;
-        };
-      },
+        return payload.value;
+      };
     },
-  );
+  });
 }

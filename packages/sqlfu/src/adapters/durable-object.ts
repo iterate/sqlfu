@@ -12,10 +12,15 @@ export interface DurableObjectSqlStorageLike {
   };
 }
 
-export function createDurableObjectClient(storage: DurableObjectSqlStorageLike): SyncClient<DurableObjectSqlStorageLike> {
-  const client: Omit<SyncClient<DurableObjectSqlStorageLike>, 'sql'> & {sql: SyncClient<DurableObjectSqlStorageLike>['sql']} = {
+export function createDurableObjectClient(
+  storage: DurableObjectSqlStorageLike,
+): SyncClient<DurableObjectSqlStorageLike> {
+  const client: Omit<SyncClient<DurableObjectSqlStorageLike>, 'sql'> & {
+    sql: SyncClient<DurableObjectSqlStorageLike>['sql'];
+  } = {
     driver: storage,
     system: 'sqlite',
+    sync: true,
     all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       return storage.exec<TRow>(query.sql, ...query.args).toArray();
     },

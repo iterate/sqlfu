@@ -1,6 +1,11 @@
 /*
  * SQLite-specific schemadiff planning and statement rendering.
  * This file owns deciding what operations are needed for SQLite schema changes and ordering them deterministically.
+ *
+ * Inspired by @pgkit/migra (https://github.com/mmkal/pgkit/tree/main/packages/migra), a TypeScript port of djrobstep's
+ * Python `migra` (https://github.com/djrobstep/migra). The table-rebuild strategy and the "drop and recreate dependents
+ * even when their text did not change" ordering are specific to SQLite and do not come from upstream. What is borrowed is
+ * the general approach of producing an ordered plan from compared inspected models rather than from raw SQL diffs.
  */
 import {graphSequencer} from '../graph-sequencer.js';
 import {
@@ -44,8 +49,9 @@ export function planSchemaDiff(input: {
   const removedTableNames = Object.keys(input.baseline.tables)
     .filter((name) => !(name in input.desired.tables))
     .sort((left, right) => left.localeCompare(right));
-  const addedTableNames = topologicallySortTables(input.desired.tables)
-    .filter((name) => !(name in input.baseline.tables));
+  const addedTableNames = topologicallySortTables(input.desired.tables).filter(
+    (name) => !(name in input.baseline.tables),
+  );
   const commonTableNames = Object.keys(input.desired.tables)
     .filter((name) => name in input.baseline.tables)
     .sort((left, right) => left.localeCompare(right));
@@ -106,8 +112,26 @@ export function planSchemaDiff(input: {
     }
   }
 
+  // Views whose baseline SQL directly references a rebuilt table are rewritten by SQLite during
+  // `alter table ... rename to ...` to point at the temporary name, so we must drop and recreate
+  // them around the rebuild. Transitive dependents must also be dropped (and recreated) because
+  // SQLite's rename does a validation pass that re-parses every dependent view.
+  const recreatedViewNames = transitiveViewDependents(
+    [...rebuiltTables],
+    baselineViewDependencyFacts,
+    input.baseline.views,
+  )
+    .filter((viewName) => viewName in input.desired.views)
+    .filter((viewName) => !modifiedViewNames.includes(viewName))
+    .sort((left, right) => left.localeCompare(right));
+
   const recreatedTriggerNames = Object.entries(input.desired.triggers)
-    .filter(([, trigger]) => rebuiltTables.has(trigger.onName) || modifiedViewNames.includes(trigger.onName))
+    .filter(
+      ([, trigger]) =>
+        rebuiltTables.has(trigger.onName) ||
+        modifiedViewNames.includes(trigger.onName) ||
+        recreatedViewNames.includes(trigger.onName),
+    )
     .map(([triggerName]) => triggerName)
     .sort((left, right) => left.localeCompare(right));
 
@@ -148,14 +172,20 @@ export function planSchemaDiff(input: {
 
   const prefixes: string[] = [];
 
-  for (const triggerName of new Set([...removedTriggerNames, ...modifiedTriggerNames, ...recreatedTriggerNames].sort((left, right) => left.localeCompare(right)))) {
+  for (const triggerName of new Set(
+    [...removedTriggerNames, ...modifiedTriggerNames, ...recreatedTriggerNames].sort((left, right) =>
+      left.localeCompare(right),
+    ),
+  )) {
     if (handledRemovedTriggerNames.has(triggerName)) {
       continue;
     }
     prefixes.push(`drop trigger ${maybeQuoteIdentifier(triggerName)};`);
   }
 
-  for (const viewName of [...removedViewNames, ...modifiedViewNames].sort((left, right) => left.localeCompare(right))) {
+  for (const viewName of [...new Set([...removedViewNames, ...modifiedViewNames, ...recreatedViewNames])].sort(
+    (left, right) => left.localeCompare(right),
+  )) {
     if (handledRemovedViewNames.has(viewName)) {
       continue;
     }
@@ -168,7 +198,9 @@ export function planSchemaDiff(input: {
 
   for (const tableName of addedTableNames) {
     statements.push(withSemicolon(input.desired.tables[tableName]!.createSql));
-    for (const index of Object.values(input.desired.tables[tableName]!.indexes).sort((left, right) => left.name.localeCompare(right.name))) {
+    for (const index of Object.values(input.desired.tables[tableName]!.indexes).sort((left, right) =>
+      left.name.localeCompare(right.name),
+    )) {
       explicitIndexCreates.push(withSemicolon(index.createSql));
     }
   }
@@ -181,14 +213,20 @@ export function planSchemaDiff(input: {
     statements.push(createIndex);
   }
 
-  for (const viewName of [...addedViewNames, ...modifiedViewNames].sort((left, right) => left.localeCompare(right))) {
+  for (const viewName of [...new Set([...addedViewNames, ...modifiedViewNames, ...recreatedViewNames])].sort(
+    (left, right) => left.localeCompare(right),
+  )) {
     if (handledCreatedViewNames.has(viewName)) {
       continue;
     }
     statements.push(withSemicolon(input.desired.views[viewName]!.createSql));
   }
 
-  for (const triggerName of new Set([...addedTriggerNames, ...modifiedTriggerNames, ...recreatedTriggerNames].sort((left, right) => left.localeCompare(right)))) {
+  for (const triggerName of new Set(
+    [...addedTriggerNames, ...modifiedTriggerNames, ...recreatedTriggerNames].sort((left, right) =>
+      left.localeCompare(right),
+    ),
+  )) {
     if (handledCreatedTriggerNames.has(triggerName)) {
       continue;
     }
@@ -307,15 +345,15 @@ function canUseDirectDropColumn(input: {
   const removedColumnNames = new Set(removedColumns.map((column) => column.name));
 
   if (
-    tableHasCheckConstraintReferencingColumns(baselineTable.createSql, removedColumnNames)
-    || tableHasCheckConstraintReferencingColumns(desiredTable.createSql, removedColumnNames)
+    tableHasCheckConstraintReferencingColumns(baselineTable.createSql, removedColumnNames) ||
+    tableHasCheckConstraintReferencingColumns(desiredTable.createSql, removedColumnNames)
   ) {
     return false;
   }
 
   if (
-    baselineTable.columns.some((column) => column.generated || column.hidden !== 0)
-    || desiredTable.columns.some((column) => column.generated || column.hidden !== 0)
+    baselineTable.columns.some((column) => column.generated || column.hidden !== 0) ||
+    desiredTable.columns.some((column) => column.generated || column.hidden !== 0)
   ) {
     return false;
   }
@@ -324,17 +362,25 @@ function canUseDirectDropColumn(input: {
     return false;
   }
 
-  if (baselineTable.uniqueConstraints.some((constraint) => constraint.columns.some((columnName) => removedColumnNames.has(columnName)))) {
-    return false;
-  }
-
-  if (baselineTable.foreignKeys.some((foreignKey) => foreignKey.columns.some((columnName) => removedColumnNames.has(columnName)))) {
+  if (
+    baselineTable.uniqueConstraints.some((constraint) =>
+      constraint.columns.some((columnName) => removedColumnNames.has(columnName)),
+    )
+  ) {
     return false;
   }
 
   if (
-    Object.values(baselineTable.indexes).some(
-      (index) => removedColumns.some((column) => index.where != null && sqlMentionsIdentifier(index.where, column.name)),
+    baselineTable.foreignKeys.some((foreignKey) =>
+      foreignKey.columns.some((columnName) => removedColumnNames.has(columnName)),
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    Object.values(baselineTable.indexes).some((index) =>
+      removedColumns.some((column) => index.where != null && sqlMentionsIdentifier(index.where, column.name)),
     )
   ) {
     return false;
@@ -389,12 +435,8 @@ function planDirectDropColumnOperations(input: {
     .filter(Boolean);
   const baselineAffectedViewNames = new Set(baselineAffectedViews.map((view) => view.name));
   const desiredAffectedViewNames = new Set(desiredAffectedViews.map((view) => view.name));
-  const baselineDropViewIds = new Map(
-    baselineAffectedViews.map((view) => [view.name, `drop-view:${view.name}`]),
-  );
-  const desiredCreateViewIds = new Map(
-    desiredAffectedViews.map((view) => [view.name, `create-view:${view.name}`]),
-  );
+  const baselineDropViewIds = new Map(baselineAffectedViews.map((view) => [view.name, `drop-view:${view.name}`]));
+  const desiredCreateViewIds = new Map(desiredAffectedViews.map((view) => [view.name, `create-view:${view.name}`]));
 
   for (const index of Object.values(baselineTable.indexes).sort((left, right) => left.name.localeCompare(right.name))) {
     if (!index.columns.some((columnName) => removedColumnNames.has(columnName))) {
@@ -467,7 +509,9 @@ function planDirectDropColumnOperations(input: {
     id: dropColumnId,
     kind: 'drop-column',
     sql: removedColumns
-      .map((column) => `alter table ${maybeQuoteIdentifier(tableName)} drop column ${maybeQuoteIdentifier(column.name)};`)
+      .map(
+        (column) => `alter table ${maybeQuoteIdentifier(tableName)} drop column ${maybeQuoteIdentifier(column.name)};`,
+      )
       .join('\n'),
     dependencies: blockerDropIds,
   });
@@ -504,13 +548,19 @@ function planDirectDropColumnOperations(input: {
     });
   }
 
-  const desiredTriggerNames = baselineAnalysis.affectedTriggerNames.filter((triggerName) => triggerName in desired.triggers);
+  const desiredTriggerNames = baselineAnalysis.affectedTriggerNames.filter(
+    (triggerName) => triggerName in desired.triggers,
+  );
   for (const trigger of desiredTriggerNames
     .map((triggerName) => desired.triggers[triggerName]!)
     .filter(Boolean)
     .sort((left, right) => left.name.localeCompare(right.name))) {
     const dependencies = [dropColumnId];
-    for (const selectableName of triggerSelectableNames(trigger.name, desiredAffectedViewNames, desiredTriggerDependencyFacts)) {
+    for (const selectableName of triggerSelectableNames(
+      trigger.name,
+      desiredAffectedViewNames,
+      desiredTriggerDependencyFacts,
+    )) {
       const viewDependency = desiredCreateViewIds.get(selectableName);
       if (viewDependency) {
         dependencies.push(viewDependency);
@@ -554,7 +604,37 @@ function orderOperations(operations: readonly SchemadiffOperation[]): string[] {
   return orderedIds.flatMap((id) => splitStatementForOutput(operationsById.get(id)!.sql));
 }
 
-function orderViewsForCreate(views: readonly SqliteInspectedView[], schema: SqliteInspectedDatabase): SqliteInspectedView[] {
+function transitiveViewDependents(
+  seedNames: readonly string[],
+  viewDependencyFacts: readonly SqliteDependencyFact[],
+  views: Record<string, SqliteInspectedView>,
+): string[] {
+  const seeds = new Set(seedNames);
+  const result = new Set<string>();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const view of Object.values(views)) {
+      if (result.has(view.name)) {
+        continue;
+      }
+      const fact = viewDependencyFacts.find((f) => f.ownerName === view.name);
+      if (!fact) {
+        continue;
+      }
+      if (fact.dependsOnNames.some((name) => seeds.has(name) || result.has(name))) {
+        result.add(view.name);
+        changed = true;
+      }
+    }
+  }
+  return [...result];
+}
+
+function orderViewsForCreate(
+  views: readonly SqliteInspectedView[],
+  schema: SqliteInspectedDatabase,
+): SqliteInspectedView[] {
   const viewNames = new Set(views.map((view) => view.name));
   const graph = new Map<string, string[]>();
   const dependencyFacts = analyzeViewDependencies(schema);
@@ -578,14 +658,18 @@ function orderViewsForCreate(views: readonly SqliteInspectedView[], schema: Sqli
     .filter(Boolean);
 }
 
-function orderViewsForDrop(views: readonly SqliteInspectedView[], schema: SqliteInspectedDatabase): SqliteInspectedView[] {
+function orderViewsForDrop(
+  views: readonly SqliteInspectedView[],
+  schema: SqliteInspectedDatabase,
+): SqliteInspectedView[] {
   return [...orderViewsForCreate(views, schema)].reverse();
 }
 
 function planTableRebuild(baseline: SqliteInspectedTable, desired: SqliteInspectedTable): string[] {
   const tempName = `__sqlfu_old_${desired.name}`;
   const introducedPrimaryKeyColumns = desired.primaryKey.filter(
-    (columnName) => !baseline.primaryKey.includes(columnName) && !baseline.columns.some((column) => column.name === columnName),
+    (columnName) =>
+      !baseline.primaryKey.includes(columnName) && !baseline.columns.some((column) => column.name === columnName),
   );
   if (introducedPrimaryKeyColumns.length > 0) {
     throw new Error(
@@ -597,7 +681,9 @@ function planTableRebuild(baseline: SqliteInspectedTable, desired: SqliteInspect
       return false;
     }
 
-    return baseline.columns.some((baselineColumn) => baselineColumn.name === desiredColumn.name && baselineColumn.hidden === 0);
+    return baseline.columns.some(
+      (baselineColumn) => baselineColumn.name === desiredColumn.name && baselineColumn.hidden === 0,
+    );
   });
 
   const statements = [`alter table ${renderTableName(baseline.name)} rename to ${renderTableName(tempName)};`];
@@ -634,19 +720,22 @@ function columnEquals(left: SqliteInspectedColumn, right: SqliteInspectedColumn)
 }
 
 function indexEquals(left: SqliteInspectedIndex, right: SqliteInspectedIndex): boolean {
-  return stableStringify({
-    createSql: normalizeComparableSql(left.createSql),
-    unique: left.unique,
-    origin: left.origin,
-    columns: left.columns,
-    where: left.where,
-  }) === stableStringify({
-    createSql: normalizeComparableSql(right.createSql),
-    unique: right.unique,
-    origin: right.origin,
-    columns: right.columns,
-    where: right.where,
-  });
+  return (
+    stableStringify({
+      createSql: normalizeComparableSql(left.createSql),
+      unique: left.unique,
+      origin: left.origin,
+      columns: left.columns,
+      where: left.where,
+    }) ===
+    stableStringify({
+      createSql: normalizeComparableSql(right.createSql),
+      unique: right.unique,
+      origin: right.origin,
+      columns: right.columns,
+      where: right.where,
+    })
+  );
 }
 
 function viewEquals(left: SqliteInspectedView, right: SqliteInspectedView): boolean {
@@ -736,11 +825,7 @@ function splitStatementForOutput(statement: string): string[] {
     .filter((line) => line.trim().length > 0);
 
   if (lines.length > 1 && /^create\s+table\b/iu.test(lines[0]!)) {
-    return [
-      lines[0]!,
-      ...lines.slice(1, -1).map((line) => `  ${line}`),
-      lines[lines.length - 1]!,
-    ];
+    return [lines[0]!, ...lines.slice(1, -1).map((line) => `  ${line}`), lines[lines.length - 1]!];
   }
 
   return lines;

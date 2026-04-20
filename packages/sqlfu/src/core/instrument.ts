@@ -29,9 +29,7 @@ export interface QueryExecutionHookArgs<TResult> {
   readonly processResult: ProcessResult;
 }
 
-export type QueryExecutionHook = <TResult>(
-  args: QueryExecutionHookArgs<TResult>,
-) => TResult;
+export type QueryExecutionHook = <TResult>(args: QueryExecutionHookArgs<TResult>) => TResult;
 
 const processResult: ProcessResult = <T>(
   execute: () => T,
@@ -48,9 +46,10 @@ const processResult: ProcessResult = <T>(
   if (isPromiseLike(result)) {
     return (result as unknown as Promise<Awaited<T>>).then(
       onSuccess,
-      onError ?? ((error: unknown) => {
-        throw error;
-      }),
+      onError ??
+        ((error: unknown) => {
+          throw error;
+        }),
     ) as T;
   }
   return onSuccess(result as Awaited<T>) as T;
@@ -62,9 +61,7 @@ const processResult: ProcessResult = <T>(
  * transaction still fire the hook because the tx client is re-instrumented.
  */
 export function instrumentClient<TClient extends Client>(client: TClient, hook: QueryExecutionHook): TClient {
-  return isAsyncClient(client)
-    ? (instrumentAsync(client, hook) as TClient)
-    : (instrumentSync(client as SyncClient, hook) as TClient);
+  return client.sync ? (instrumentSync(client, hook) as TClient) : (instrumentAsync(client, hook) as TClient);
 }
 
 /**
@@ -108,18 +105,20 @@ export interface QueryErrorReport {
  * Useful for Sentry-style capture without pulling Sentry into the library:
  * `createErrorReporterHook(({ context, error }) => Sentry.captureException(error, { tags: { 'db.query.summary': context.query.name ?? 'sql' } }))`.
  */
-export function createErrorReporterHook(
-  report: (params: QueryErrorReport) => unknown,
-): QueryExecutionHook {
+export function createErrorReporterHook(report: (params: QueryErrorReport) => unknown): QueryExecutionHook {
   return ({context, execute, processResult}) =>
-    processResult(execute, (value) => value, (error) => {
-      try {
-        report({context, error});
-      } catch {
-        // the error handler itself failing shouldn't mask the original error
-      }
-      throw error;
-    });
+    processResult(
+      execute,
+      (value) => value,
+      (error) => {
+        try {
+          report({context, error});
+        } catch {
+          // the error handler itself failing shouldn't mask the original error
+        }
+        throw error;
+      },
+    );
 }
 
 function buildHookArgs<TResult>(
@@ -133,6 +132,7 @@ function instrumentAsync<TDriver>(client: AsyncClient<TDriver>, hook: QueryExecu
   const wrapped: Omit<AsyncClient<TDriver>, 'sql'> & {sql: AsyncClient<TDriver>['sql']} = {
     driver: client.driver,
     system: client.system,
+    sync: false,
     all: (query) => hook(buildHookArgs({query, operation: 'all', system: client.system}, () => client.all(query))),
     run: (query) => hook(buildHookArgs({query, operation: 'run', system: client.system}, () => client.run(query))),
     raw: (sql) => client.raw(sql),
@@ -148,23 +148,19 @@ function instrumentSync<TDriver>(client: SyncClient<TDriver>, hook: QueryExecuti
   const wrapped: Omit<SyncClient<TDriver>, 'sql'> & {sql: SyncClient<TDriver>['sql']} = {
     driver: client.driver,
     system: client.system,
+    sync: true,
     all: (query) => hook(buildHookArgs({query, operation: 'all', system: client.system}, () => client.all(query))),
     run: (query) => hook(buildHookArgs({query, operation: 'run', system: client.system}, () => client.run(query))),
     raw: (sql) => client.raw(sql),
     iterate: (query) => client.iterate(query),
     transaction: (<TResult>(fn: (tx: SyncClient<TDriver>) => TResult) =>
-      client.transaction((tx: SyncClient<TDriver>) => fn(instrumentSync(tx, hook)))) as SyncClient<TDriver>['transaction'],
+      client.transaction((tx: SyncClient<TDriver>) =>
+        fn(instrumentSync(tx, hook)),
+      )) as SyncClient<TDriver>['transaction'],
     sql: undefined as unknown as SyncClient<TDriver>['sql'],
   };
   wrapped.sql = bindSyncSql(wrapped);
   return wrapped;
-}
-
-function isAsyncClient<TDriver>(client: Client<TDriver>): client is AsyncClient<TDriver> {
-  // Adapters declare `all` as either a regular function (sync clients) or an
-  // `async` function (async clients). The Function constructor name is the
-  // cleanest side-effect-free discriminator.
-  return client.all.constructor.name === 'AsyncFunction';
 }
 
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {

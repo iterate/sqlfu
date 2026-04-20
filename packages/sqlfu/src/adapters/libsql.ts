@@ -37,12 +37,15 @@ export function createLibsqlSyncClient(database: LibsqlSyncDatabaseLike): SyncCl
       };
     }, sql);
   };
-  const iterate: SyncClient<LibsqlSyncDatabaseLike>['iterate'] = function* <TRow extends ResultRow = ResultRow>(query: SqlQuery) {
+  const iterate: SyncClient<LibsqlSyncDatabaseLike>['iterate'] = function* <TRow extends ResultRow = ResultRow>(
+    query: SqlQuery,
+  ) {
     yield* all<TRow>(query);
   };
   const client: Omit<SyncClient<LibsqlSyncDatabaseLike>, 'sql'> & {sql: SyncClient<LibsqlSyncDatabaseLike>['sql']} = {
     driver: database,
     system: 'sqlite',
+    sync: true,
     all,
     run,
     raw,

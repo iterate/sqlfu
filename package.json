@@ -1,7 +1,6 @@
 {
   "name": "sqlfu-workspace",
   "private": true,
-  "packageManager": "pnpm@10.30.1",
   "scripts": {
     "dev": "pnpm --filter sqlfu-ui dev",
     "demo": "pnpm --filter sqlfu-ui demo",
@@ -11,23 +10,30 @@
     "local.sqlfu.dev": "pnpm --filter sqlfu-ui build && pnpm --filter sqlfu-ui local.sqlfu.dev -- --skip-build",
     "sqlfu": "cd packages/sqlfu && pnpm",
     "ui": "cd packages/ui && pnpm",
-    "website": "cd website && node build.mjs && pnpx serve dist",
+    "website": "pnpm --filter sqlfu-website dev",
     "infra": "pnpm exec alchemy run alchemy.run.mts",
     "deploy": "pnpm build && pnpm exec alchemy deploy alchemy.run.mts",
     "destroy": "pnpm exec alchemy destroy alchemy.run.mts",
-    "build": "pnpm --filter sqlfu build && pnpm --filter sqlfu-ui build && cd website && node build.mjs",
-    "build:website": "cd website && node build.mjs",
+    "build": "pnpm --filter sqlfu build && pnpm --filter sqlfu-ui build && pnpm --filter sqlfu-website build",
+    "build:website": "pnpm --filter sqlfu-website build",
     "test": "pnpm --filter sqlfu test && pnpm --filter sqlfu-ui test",
     "typecheck": "pnpm --filter sqlfu typecheck && pnpm --filter sqlfu-ui typecheck",
     "generate": "pnpm --filter sqlfu generate",
-    "cli": "pnpm --filter sqlfu cli"
+    "cli": "pnpm --filter sqlfu cli",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check ."
+  },
+  "devDependencies": {
+    "alchemy": "^0.91.2",
+    "oxfmt": "^0.45.0",
+    "oxlint": "^1.60.0",
+    "simple-git-hooks": "^2.13.1",
+    "tsx": "^4.21.0"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm sync:root-readme:pre-commit"
   },
-  "devDependencies": {
-    "alchemy": "^0.91.2",
-    "simple-git-hooks": "^2.13.1",
-    "tsx": "^4.21.0"
-  }
+  "packageManager": "pnpm@10.30.1"
 }
