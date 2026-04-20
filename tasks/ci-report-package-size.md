@@ -5,7 +5,7 @@ size: small
 
 # Report published-package size on PRs
 
-**Status:** mostly done; awaiting first CI run on PR #31 to confirm the sticky comment renders correctly on a real PR. The script is implemented, the workflow is wired up, and the output has been spot-checked locally with fabricated inputs.
+**Status:** done pending review. First run on PR #31 succeeded (47s total), sticky comment posted with zero deltas as predicted (this PR only adds CI files, none of which ship in the tarball). Ready to move to `complete/` once merged.
 
 After the slim-package work (PR #29) got the tarball from 1.5 MB / 18.8 MB down to 217 kB / 965 kB, we should surface any regression in a PR comment before it lands on main. `npm pack --dry-run --json` has everything we need (packed size, unpacked size, file count, per-file sizes).
 
@@ -26,7 +26,7 @@ After the slim-package work (PR #29) got the tarball from 1.5 MB / 18.8 MB down 
 - [x] create `scripts/compare-package-size.ts` _implemented; groups `dist/vendor/*/*.js` by subdir, handles single-file vendor entries like `sha256.js` directly, warns at ≥10% packed bump_
 - [x] create `.github/workflows/pr-package-size.yml` _PR-only, dual-checkout (head + main baseline), posts via `marocchino/sticky-pull-request-comment@v2`_
 - [x] dogfood the output locally _ran against /tmp/sqlfu-pack-main.json as both base and head (zero deltas as expected) and against a fabricated +12% head to confirm warning renders_
-- [ ] sanity-check the workflow in the PR itself _pending — will be visible on the PR once it runs_
+- [x] sanity-check the workflow in the PR itself _ran on PR #31; job completed in 47s; sticky comment posted with zero deltas (packed 215.2 kB, unpacked 946.7 kB, 143 files, all four vendor-bundle rows at 0%) confirming the workflow compares against main correctly_
 
 ## Design notes
 
