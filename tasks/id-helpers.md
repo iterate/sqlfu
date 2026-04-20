@@ -1,11 +1,20 @@
 ---
-status: ready
+status: done
 size: small
 ---
 
 # Id-generator recipes (sqlite, pure SQL)
 
 Ship a small set of copy-pasteable pure-SQL id generators (KSUID, ULID, nanoid, cuid2-ish) as **recipes**, not as library code. They drop straight into a project's `definitions.sql` and become column defaults.
+
+## Status summary
+
+- Shipped all four recipes: `sqlfu_nanoid`, `sqlfu_cuid2`, `sqlfu_ulid`, `sqlfu_ksuid` (sqlite-friendly 32-char base32 variant of ksuid).
+- New docs page at `packages/sqlfu/docs/id-helpers.md`, wired into `website/scripts/sync-docs.mjs`.
+- One-line pointer added to the README's Core Concepts `definitions.sql` bullet.
+- Test file covers length, alphabet, uniqueness, and time-prefix monotonicity per generator.
+- Open question — `definitions.sql` has no `@include`/import mechanism for big external SQL bundles — captured on the docs page and at the bottom of this task file. Not in scope here.
+- Caveats landed plainly: cuid2 is surface-only (no sha3 in sqlite); ksuid is base32, not base62 (no 160-bit divmod in pure SQL); bulk INSERT...SELECT with scalar-subquery may cache, so the docs push the trigger pattern.
 
 ## Framing (sqlfu's voice)
 
@@ -81,17 +90,17 @@ Where a gist URL is unknown, cite the upstream spec/repo by name; future agents 
 
 ## Checklist
 
-- [ ] Flesh out spec (this file) and commit in isolation; open PR with `gh pr create`.
-- [ ] Failing test: `packages/sqlfu/test/recipes/id-helpers.test.ts` with one assertion per generator (length, charset, ordering where applicable). No generators implemented yet — test should fail with "file not found".
-- [ ] `recipes/id-helpers/ulid.sql`.
-- [ ] `recipes/id-helpers/ksuid.sql`.
-- [ ] `recipes/id-helpers/nanoid.sql`.
-- [ ] `recipes/id-helpers/cuid2.sql` (or dropped candidly if pure-SQL doesn't allow it).
-- [ ] `docs/id-helpers.md` with comparison table + copy-paste blocks + "future: `@include` syntax" open-question section.
-- [ ] Wire into `website/scripts/sync-docs.mjs`.
-- [ ] Pointer from `docs/schema-diff-model.md` (one line).
-- [ ] `pnpm --filter sqlfu test` green.
-- [ ] `pnpm --filter sqlfu typecheck` green.
+- [x] Flesh out spec (this file) and commit in isolation; open PR with `gh pr create`. _PR #25, first commit is the spec._
+- [x] Failing test: `packages/sqlfu/test/recipes/id-helpers.test.ts` with one assertion per generator (length, charset, ordering where applicable). _Committed red, then made green with the recipe files._
+- [x] `recipes/id-helpers/ulid.sql`. _Canonical 26-char Crockford base32, 48-bit ms + 80 bits random._
+- [x] `recipes/id-helpers/ksuid.sql`. _Base32 variant (32 chars, not 27-char base62) — KSUID payload layout preserved, encoding changed. Deviation documented in the header and the docs page._
+- [x] `recipes/id-helpers/nanoid.sql`. _Canonical 21-char URL-safe._
+- [x] `recipes/id-helpers/cuid2.sql`. _Surface-only (cuid2 shape, not algorithm). Header says so plainly._
+- [x] `docs/id-helpers.md` with comparison table + copy-paste blocks + "future: `@include` syntax" open-question section.
+- [x] Wire into `website/scripts/sync-docs.mjs`.
+- [x] Pointer from `docs/schema-diff-model.md` (one line). _Went with README Core Concepts instead — the README's `definitions.sql` bullet is the more natural, higher-traffic entrypoint. Schema-diff-model is about the diff mechanism, not about what belongs in definitions.sql._
+- [x] `pnpm --filter sqlfu test` green. _1684 passed, 6 skipped._
+- [x] `pnpm --filter sqlfu typecheck` green.
 
 ## Open question — "what about bigger SQL bundles?"
 
