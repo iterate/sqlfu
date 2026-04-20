@@ -83,8 +83,6 @@ The recipes here are tiny (tens of lines). Copy-paste is the whole distribution.
 
 If you try to do this with a bigger bundle — a vendored full-text-search layer, a 1000-line audit-log schema, a postgres-style FDB you're porting — `definitions.sql` starts to creak. It has no import directive and no way to say "this 400 lines comes from somewhere else".
 
-We do not plan to add an import mechanism until a real case is in front of us. Candidates are sketched in the [id-helpers task](https://github.com/mmkal/sqlfu/blob/main/tasks/id-helpers.md#open-question--what-about-bigger-sql-bundles). If you hit this limit, open an issue and describe the bundle; that's the clearest way to make us pick one of the candidates (or invent a better one).
-
 ## Further reading
 
 - [Schema diff model](./schema-diff-model.md) — how `definitions.sql` becomes a diff against live schema.
