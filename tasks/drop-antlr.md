@@ -7,14 +7,14 @@ size: large
 
 ## Status (high-level, human-skim)
 
-Multi-night task. **Night 2 complete.** The parser now covers ~all of the SQL shapes that show up in the real test corpus (measured at 100% pass rate, see "Night 2 status" below). Next pick-up is still phase 3 (consumer swap).
+Multi-night task. **Night 3 complete — phase 3 is DONE.** The analyzer now runs entirely on the new hand-rolled parser through a thin ANTLR-compatibility shim. All 1216 tests pass (1200 pre-existing + 16 new shim tests). Phase 4 (fixture tail) is likely small — coverage measurements at end of night 2 put us at 100% in-scope parse coverage. Phase 5 (ANTLR deletion) can now begin whenever we want a soak period to prove stability first.
 
 - [x] Phase 0: plan refinement + per-phase acceptance criteria
 - [x] Phase 1: surface-area analysis — `types.ts` enumerates every ANTLR node shape the analyzer reads (24 node types, one file).
 - [x] Phase 2: tokenizer + substantially full recursive-descent parser — `tokenizer.ts`, `select_stmt.ts`, `dml_stmt.ts` ship with tests. All additive, zero analyzer changes. Covers SELECT (+ JOIN, CTE, compound, group/order/limit), the full SQLite expression grammar with precedence, INSERT/UPDATE/DELETE + RETURNING + ON CONFLICT.
-- [ ] Phase 3: per-file analyzer swap (next session) — details under "Next steps" below.
-- [ ] Phase 4: fixture tail (future session) — likely quite small given the current coverage measurement.
-- [ ] Phase 5: delete ANTLR + `typesql-parser/sqlite/` + `antlr4/` (future session)
+- [x] Phase 3: per-file analyzer swap — shim + enum-parser + parser.ts migrated. traverse.ts DID NOT need changes (shim preserves ANTLR runtime surface via subclassing). See "Night 3 status" below.
+- [ ] Phase 4: fixture tail (future session) — only worth doing if anything breaks in practice; coverage already 100% on real test corpus.
+- [ ] Phase 5: delete ANTLR + `typesql-parser/sqlite/` + `antlr4/` (future session, after a soak period).
 
 ### Next steps for phase 3 (resumption guide)
 
@@ -199,3 +199,53 @@ What this means: the parser likely covers ~all of the SQL shapes that the real t
 #### Next steps (for night 3 or future resumption)
 
 Phase 3 consumer swap, starting with `enum-parser.ts` (smallest surface), then `traverse.ts` (the big one), then `parser.ts` (the orchestrator). Each file swap keeps ANTLR alive so the system remains green throughout. See night-1 "Next steps" above — unchanged.
+
+### 2026-04-20 (night 3, bedtime session)
+
+Goal: land phase 3 (consumer swap). Ship.
+
+#### Shipped
+
+1. **Shim layer.** New `vendor/typesql/sqlite-query-analyzer/antlr-shim.ts` (~1500 lines). Each shim class `extends` the corresponding real ANTLR `*Context` class so analyzer `instanceof` checks (`child instanceof ParserRuleContext`, `stmt instanceof Sql_stmtContext`, `parent instanceof ExprContext`, `child instanceof Select_coreContext`) keep working unchanged. Shim nodes lazily translate the plain-data AST produced by `sqlfu-sqlite-parser/` into ANTLR-compatible accessor calls:
+   - `.getText()` slices original source using node `start`/`stop` offsets.
+   - `.start.start` / `.stop?.stop` / `.start.getInputStream().getText(s, t)` implemented via duck-typed `ShimToken` + `SourceInputStream` stubs — the exact surface `extractOriginalSql` and the `WHERE_().symbol.start` comparisons read.
+   - `.getChildCount()` / `.getChild(i)` walks `_immediateChildren` so `getExpressions(ctx, ExprContext)` (the select-columns tree walk) produces the same result set as under ANTLR.
+   - Expression shim maps 30+ alternates to the right accessor-terminal presence checks (arithmetic, bitwise, comparison, IS, IN, BETWEEN, LIKE, CASE, EXISTS, etc.). The IN-list shape correctly exposes the ANTLR nested `expr_list()[1].expr_list()` layout that enum-parser depends on.
+   - One subtlety handled explicitly: `IsNull` AST nodes expose `IS_()` truthy with a synthetic NULL literal on the RHS so the analyzer's `if (expr.IS_()) { exprL = expr(0); exprR = expr(1); ... }` branch works for `x IS NULL` / `x IS NOT NULL` alike. The `NOT_()` slot stays null in that case to match ANTLR's behaviour (verified empirically before writing the shim).
+
+2. **Shim tests.** `test/sqlfu-sqlite-parser/antlr-shim.test.ts` — 16 tests covering instanceof compatibility with real ANTLR classes, accessor-shape parity on representative queries (comparison, IS NULL, IN list, BETWEEN, function call, INSERT/UPDATE/DELETE), and `getChildCount`/`getChild` walks.
+   - Testing this alongside real ANTLR runtime required escaping TS's transitive type resolution: `typesql-parser/sqlite/*.ts` has upstream type errors when checked strictly. The test uses `await import(new URL(...).href)` with a non-literal specifier so TS can't follow the module graph into the problematic files. Clean, small, no workspace-level config changes.
+
+3. **CREATE TABLE parser + enum-parser migration.** New `sqlfu-sqlite-parser/ddl_stmt.ts` (~275 lines): parses `CREATE [TEMP] TABLE [IF NOT EXISTS] [schema.]name ( col_def, ... )`, column-level constraints (focuses on CHECK; skips the rest with a brace-matcher), tolerates table-level constraints and non-CREATE-TABLE top-level statements in the input (e.g. CREATE VIEW / CREATE INDEX — skipped). `enum-parser.ts` rewritten to walk the plain-data AST directly rather than the ANTLR shim — enum-parser only reads CREATE TABLE shape, which is simple enough that a plain-data API is cleaner than forcing it through the shim.
+
+4. **parser.ts migration.** Replaces `parseSqlite(processedSql).sql_stmt()` with `parseSqlToShim(processedSql)`. New dispatcher in the shim reads the first keyword (SELECT / WITH / INSERT / REPLACE / UPDATE / DELETE) and delegates to the matching hand-rolled sub-parser. Returns a fully shimmed `Sql_stmtContext`. **traverse.ts did NOT need to change** — because the shim preserves the ANTLR runtime shape (subclass-based `instanceof`, identical accessor signatures), traverse.ts's imports and body keep working verbatim.
+
+#### Test count
+
+- Before night 3: 1200 passing / 6 skipped / 1206 total.
+- After night 3: 1216 passing / 6 skipped / 1222 total. The 16 new passing tests are all from the new shim test file. Zero pre-existing tests broke.
+- Typecheck clean. Build clean.
+
+#### Didn't do (deferred to phase 4/5)
+
+- ANTLR itself is still in the tree. Per the ground rules, phase 5 (deletion) is deliberately held back until we've proved stability on the new parser path for a night's worth of fixture churn. Nothing blocks removal now; it's a judgment call about when.
+- `WITH ... INSERT/UPDATE/DELETE` at the top level still not supported. None of the test corpus uses this; if a real user SQL does, the dispatcher will throw a clear error.
+- The shim's `column_name()` / `table_name()` offset calculation on ExprContext uses `lastIndexOf` / `indexOf` heuristics. The analyzer only calls `getText()` on these, so the offsets aren't load-bearing — but if a future consumer reads `start.start` on them precisely, those need to thread through from the tokenizer. Flagged in the shim code.
+- Shim `children` population for Select_core is populated eagerly in the constructor so the `getExpressions` tree walk finds ExprContexts in every sub-clause. This is functional but allocates more than it needs to. Fine for a first pass; re-check if profiling flags it.
+
+#### Risks / what to watch during soak
+
+- The shim's offset model uses inclusive `stop` (ANTLR convention). `SourceInputStream.getText(start, stop)` slices `sql.slice(start, stop + 1)`. Any future consumer that computes `stop - start` lengths needs to add 1 to match the raw source range — no known callsites do this today, but flagging it because offsets from the hand-rolled parser matched ANTLR's semantics on purpose.
+- CREATE TABLE parser is intentionally narrow. If a user's schema uses DDL we haven't seen (generated columns, virtual tables, esoteric defaults), the enum detector falls back to "no enums" via a try/catch in `enumParser()`. Users would silently lose enum detection rather than see a hard error. If that shows up, replace the catch with a log line or re-throw — but not by default, to preserve the upstream behaviour of "enum-detection is best-effort".
+
+#### Next steps (for night 4 or future resumption)
+
+- Phase 5 (delete ANTLR). Straightforward once you're comfortable the new path is stable:
+  1. Remove the shim's runtime dependency on ANTLR classes: swap `class Foo extends (ContextX as any)` to either stand-alone shim classes with `Symbol.hasInstance` overrides, or just stop needing `instanceof` checks in `select-columns.ts:162` and `enum-parser.ts:8` (the only site post-migration). The latter is lower-risk.
+  2. Delete `src/vendor/typesql-parser/sqlite/SQLiteParser.ts` + `SQLiteLexer.ts` + `.interp` / `.tokens` files.
+  3. Delete `src/vendor/antlr4/`.
+  4. Remove re-exports in `typesql-parser/index.ts`.
+  5. Drop from `scripts/bundle-vendor.ts` delete list.
+  6. Update `packages/sqlfu/tsconfig.typecheck.json` excludes (can drop `typesql-parser/**/*` once the tree is gone).
+  7. Measure: tarball before/after, confirm ~−320 kB minified per the estimate in this task file.
+- Fixture tail (phase 4): only if anything fails under real usage. Coverage is already 100%.
