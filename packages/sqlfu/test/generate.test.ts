@@ -15,6 +15,164 @@ const generatedTsDump = {
   includeGlobs: ['sql/.generated/*.ts'],
 } as const;
 
+test('generate emits a trivial wrapper for DDL-only queries', async () => {
+  await using project = await createGenerateFixture({
+    definitionsSql: dedent`
+      create table sqlfu_migrations (name text primary key, checksum text not null, applied_at text not null);
+    `,
+    files: {
+      'sql/ensure-migration-table.sql': dedent`
+        create table if not exists sqlfu_migrations(
+          name text primary key check(name not like '%.sql'),
+          checksum text not null,
+          applied_at text not null
+        );
+      `,
+    },
+  });
+
+  await project.generate();
+
+  expect(await project.readFile('sql/.generated/ensure-migration-table.sql.ts')).toMatchInlineSnapshot(`
+    "import type {Client, SqlQuery} from 'sqlfu';
+
+    const EnsureMigrationTableSql = \`
+    create table if not exists sqlfu_migrations(
+      name text primary key check(name not like '%.sql'),
+      checksum text not null,
+      applied_at text not null
+    );
+    \`
+
+    export async function ensureMigrationTable(client: Client): Promise<void> {
+    	const query: SqlQuery = { sql: EnsureMigrationTableSql, args: [], name: "ensure-migration-table" };
+    	await client.run(query);
+    }
+    "
+  `);
+
+  // DDL wrappers have no params or result columns, so they shouldn't clutter the form-driven
+  // query catalog — leave them out entirely.
+  expect(await project.readJson('.sqlfu/query-catalog.json')).toMatchObject({queries: []});
+  await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
+});
+
+test('generate omits the migrations bundle when migrations is not configured', async () => {
+  await using project = await createGenerateFixture({
+    definitionsSql: dedent`
+      create table posts (id integer primary key, slug text not null);
+    `,
+    files: {
+      'sql/list-posts.sql': `select id, slug from posts;`,
+    },
+    omitMigrations: true,
+  });
+
+  await project.generate();
+
+  expect(await project.fileExists('migrations/.generated/migrations.ts')).toBe(false);
+  expect(await project.fileExists('sql/.generated/index.ts')).toBe(true);
+});
+
+test('generate with sync: true emits SyncClient wrappers without async/await', async () => {
+  await using project = await createGenerateFixture({
+    definitionsSql: dedent`
+      create table posts (id integer primary key, slug text not null, title text);
+    `,
+    files: {
+      'sql/list-posts.sql': `select id, slug, title from posts;`,
+      'sql/find-post.sql': `select id, slug, title from posts where slug = :slug limit 1;`,
+      'sql/insert-post.sql': `insert into posts (slug, title) values (:slug, :title);`,
+    },
+    config: {
+      generate: {sync: true},
+    },
+  });
+
+  await project.generate();
+
+  expect(await project.readFile('sql/.generated/list-posts.sql.ts')).toMatchInlineSnapshot(`
+    "import type {SyncClient, SqlQuery} from 'sqlfu';
+
+    export type ListPostsResult = {
+    	id: number;
+    	slug: string;
+    	title?: string;
+    }
+
+    const ListPostsSql = \`
+    select id, slug, title from posts;
+    \`
+
+    export function listPosts(client: SyncClient): ListPostsResult[] {
+    	const query: SqlQuery = { sql: ListPostsSql, args: [], name: "list-posts" };
+    	return client.all<ListPostsResult>(query);
+    }
+    "
+  `);
+
+  expect(await project.readFile('sql/.generated/find-post.sql.ts')).toMatchInlineSnapshot(`
+    "import type {SyncClient, SqlQuery} from 'sqlfu';
+
+    export type FindPostParams = {
+    	slug: string;
+    }
+
+    export type FindPostResult = {
+    	id: number;
+    	slug: string;
+    	title?: string;
+    }
+
+    const FindPostSql = \`
+    select id, slug, title from posts where slug = ? limit 1;
+    \`
+
+    export function findPost(client: SyncClient, params: FindPostParams): FindPostResult | null {
+    	const query: SqlQuery = { sql: FindPostSql, args: [params.slug], name: "find-post" };
+    	const rows = client.all<FindPostResult>(query);
+    	return rows.length > 0 ? rows[0] : null;
+    }
+    "
+  `);
+
+  expect(await project.readFile('sql/.generated/insert-post.sql.ts')).toMatchInlineSnapshot(`
+    "import type {SyncClient, SqlQuery} from 'sqlfu';
+
+    export type InsertPostParams = {
+    	slug: string;
+    	title: string | null;
+    }
+
+    export type InsertPostResult = {
+    	rowsAffected: number;
+    	lastInsertRowid: number;
+    }
+
+    const InsertPostSql = \`
+    insert into posts (slug, title) values (?, ?);
+    \`
+
+    export function insertPost(client: SyncClient, params: InsertPostParams): InsertPostResult {
+    	const query: SqlQuery = { sql: InsertPostSql, args: [params.slug, params.title], name: "insert-post" };
+    	const result = client.run(query);
+    	if (result.rowsAffected === undefined) {
+    		throw new Error('Expected rowsAffected to be present on query result');
+    	}
+    	if (result.lastInsertRowid === undefined || result.lastInsertRowid === null) {
+    		throw new Error('Expected lastInsertRowid to be present on query result');
+    	}
+    	return {
+    		rowsAffected: result.rowsAffected,
+    		lastInsertRowid: Number(result.lastInsertRowid),
+    	};
+    }
+    "
+  `);
+
+  await expect(project.getCompileDiagnostics()).resolves.toEqual([]);
+});
+
 test('generate emits a tables file with a row type per table and view', async () => {
   await using project = await createGenerateFixture({
     definitionsSql: dedent`
@@ -1537,16 +1695,18 @@ async function createGenerateFixture(input: {
   files: Record<string, string>;
   config?: {
     generatedImportExtension?: '.js' | '.ts';
-    generate?: {validator?: 'zod' | 'valibot' | 'zod-mini' | null; prettyErrors?: boolean};
+    generate?: {validator?: 'zod' | 'valibot' | 'zod-mini' | null; prettyErrors?: boolean; sync?: boolean};
   };
   /** Raw override for the generate block in the emitted `sqlfu.config.ts`. Useful for failure-case tests. */
   rawGenerate?: string;
+  /** When true, the emitted sqlfu.config.ts omits the `migrations` field entirely. */
+  omitMigrations?: boolean;
 }) {
   const root = await createTempFixtureRoot('generate');
   const dbPath = path.join(root, 'app.db');
   const configBodyLines = [
     `db: './app.db',`,
-    `migrations: './migrations',`,
+    ...(input.omitMigrations ? [] : [`migrations: './migrations',`]),
     `definitions: './definitions.sql',`,
     `queries: './sql',`,
     ...(input.config?.generatedImportExtension
@@ -1588,6 +1748,14 @@ async function createGenerateFixture(input: {
     },
     async readFile(relativePath: string) {
       return fs.readFile(path.join(root, relativePath), 'utf8');
+    },
+    async fileExists(relativePath: string): Promise<boolean> {
+      try {
+        await fs.access(path.join(root, relativePath));
+        return true;
+      } catch {
+        return false;
+      }
     },
     async readJson(relativePath: string) {
       return JSON.parse(await fs.readFile(path.join(root, relativePath), 'utf8'));

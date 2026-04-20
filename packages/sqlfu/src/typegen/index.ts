@@ -35,9 +35,16 @@ export async function generateQueryTypesForConfig(config: SqlfuProjectConfig): P
   const databasePath = await materializeTypegenDatabase(config);
   const schema = await loadSchema(databasePath);
   const queryFiles = await loadQueryFiles(config.queries);
+
+  // Partition into DDL (analyzed as a parameterless command) vs queries that go through typesql.
+  // DDL like `create table if not exists` has no params and no returned columns, so typesql
+  // can't make sense of it; we emit a trivial `client.run(sql)` wrapper for it instead of the
+  // `//Invalid SQL` placeholder.
+  const ddlFiles = queryFiles.filter((file) => isDdlStatement(file.sqlContent));
+  const nonDdlFiles = queryFiles.filter((file) => !ddlFiles.includes(file));
   const queryAnalyses = await analyzeVendoredTypesqlQueries(
     databasePath,
-    queryFiles.map((query) => ({
+    nonDdlFiles.map((query) => ({
       sqlPath: query.sqlPath,
       sqlContent: query.sqlContent,
     })),
@@ -48,19 +55,32 @@ export async function generateQueryTypesForConfig(config: SqlfuProjectConfig): P
 
   await Promise.all(
     queryFiles.map(async (queryFile) => {
+      const wrapperPath = path.join(generatedDir, `${queryFile.relativePath}.sql.ts`);
+      await fs.mkdir(path.dirname(wrapperPath), {recursive: true});
+
+      if (ddlFiles.includes(queryFile)) {
+        await fs.writeFile(
+          wrapperPath,
+          renderDdlWrapper({
+            relativePath: queryFile.relativePath,
+            sql: queryFile.sqlContent,
+            sync: config.generate.sync,
+          }),
+        );
+        return;
+      }
+
       const analysis = queryAnalyses.find((query) => query.sqlPath === queryFile.sqlPath);
       if (!analysis) {
         throw new Error(`Missing vendored TypeSQL analysis for ${queryFile.sqlPath}`);
       }
-
-      const wrapperPath = path.join(generatedDir, `${queryFile.relativePath}.sql.ts`);
-      await fs.mkdir(path.dirname(wrapperPath), {recursive: true});
       const contents = analysis.ok
         ? renderQueryWrapper({
             relativePath: queryFile.relativePath,
             descriptor: refineDescriptor(analysis.descriptor, queryFile.sqlContent, schema),
             validator: config.generate.validator,
             prettyErrors: config.generate.prettyErrors,
+            sync: config.generate.sync,
           })
         : `//Invalid SQL\nexport {};\n`;
       await fs.writeFile(wrapperPath, contents);
@@ -69,8 +89,55 @@ export async function generateQueryTypesForConfig(config: SqlfuProjectConfig): P
 
   await writeTablesFile(generatedDir, schema);
   await writeGeneratedBarrel(generatedDir, queryFiles, config.generatedImportExtension);
-  await writeQueryCatalog(config, queryFiles, queryAnalyses, schema);
-  await writeMigrationsBundle(config);
+  await writeQueryCatalog(config, queryFiles, queryAnalyses, ddlFiles, schema);
+  if (config.migrations) {
+    await writeMigrationsBundle(config);
+  }
+}
+
+/**
+ * True for files whose SQL is a top-level DDL / connection-control statement that typesql can't
+ * meaningfully analyze for params or result columns. We generate a dead-simple `client.run(sql)`
+ * wrapper for these instead of falling back to `//Invalid SQL`.
+ *
+ * The match is intentionally conservative — queries that *look* like DDL but return rows
+ * (e.g. `create table ... returning`) aren't really SQLite; sticking to the leading keyword
+ * keeps this simple and predictable.
+ */
+function isDdlStatement(sqlContent: string): boolean {
+  const stripped = sqlContent
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/--.*$/gm, '')
+    .trim();
+  return /^(create|drop|alter|pragma|vacuum|reindex|analyze|attach|detach|begin|commit|rollback|savepoint|release)\b/i.test(
+    stripped,
+  );
+}
+
+function renderDdlWrapper(input: {relativePath: string; sql: string; sync: boolean}): string {
+  const queryName = input.relativePath;
+  const functionName = toCamelCase(queryName);
+  const capitalizedName = functionName[0]!.toUpperCase() + functionName.slice(1);
+  const sqlConstantName = `${capitalizedName}Sql`;
+  const clientType = input.sync ? 'SyncClient' : 'Client';
+  const functionSignature = input.sync
+    ? `export function ${functionName}(client: ${clientType}): void`
+    : `export async function ${functionName}(client: ${clientType}): Promise<void>`;
+  const runCall = input.sync ? `\tclient.run(query);` : `\tawait client.run(query);`;
+
+  return [
+    `import type {${clientType}, SqlQuery} from 'sqlfu';`,
+    ``,
+    `const ${sqlConstantName} = \``,
+    normalizeSqlForTemplate(input.sql).join('\n').trim(),
+    `\``,
+    ``,
+    `${functionSignature} {`,
+    `\tconst query: SqlQuery = { sql: ${sqlConstantName}, args: [], name: ${JSON.stringify(queryName)} };`,
+    runCall,
+    `}`,
+    ``,
+  ].join('\n');
 }
 
 export async function analyzeAdHocSqlForConfig(config: SqlfuProjectConfig, sql: string): Promise<AdHocQueryAnalysis> {
@@ -286,9 +353,12 @@ function relationTypeName(relationName: string): string {
 }
 
 async function writeMigrationsBundle(config: SqlfuProjectConfig): Promise<void> {
+  if (!config.migrations) return;
+  const migrationsDir = config.migrations;
+
   let fileNames: string[];
   try {
-    fileNames = (await fs.readdir(config.migrations))
+    fileNames = (await fs.readdir(migrationsDir))
       .filter((fileName) => fileName.endsWith('.sql'))
       .sort((left, right) => left.localeCompare(right));
   } catch (error) {
@@ -301,17 +371,17 @@ async function writeMigrationsBundle(config: SqlfuProjectConfig): Promise<void> 
 
   const entries: {key: string; content: string}[] = [];
   for (const fileName of fileNames) {
-    const filePath = path.join(config.migrations, fileName);
+    const filePath = path.join(migrationsDir, fileName);
     const content = await fs.readFile(filePath, 'utf8');
     const key = path.relative(config.projectRoot, filePath).split(path.sep).join('/');
     entries.push({key, content});
   }
 
-  const bundleDir = path.join(config.migrations, '.generated');
+  const bundleDir = path.join(migrationsDir, '.generated');
   await fs.mkdir(bundleDir, {recursive: true});
   const bundleLines = [
     `// Generated by \`sqlfu generate\`. Do not edit.`,
-    `// A bundle of every migration in ${path.relative(config.projectRoot, config.migrations).split(path.sep).join('/')}/,`,
+    `// A bundle of every migration in ${path.relative(config.projectRoot, migrationsDir).split(path.sep).join('/')}/,`,
     `// importable from runtimes without filesystem access (durable objects, edge workers, browsers).`,
     `// Pair with \`migrationsFromBundle\` + \`applyMigrations\` from 'sqlfu'.`,
     ``,
@@ -331,9 +401,15 @@ async function writeQueryCatalog(
   config: SqlfuProjectConfig,
   queryFiles: readonly QueryFile[],
   queryAnalyses: Awaited<ReturnType<typeof analyzeVendoredTypesqlQueries>>,
+  ddlFiles: readonly QueryFile[],
   schema: ReadonlyMap<string, RelationInfo>,
 ): Promise<void> {
-  const entries: QueryCatalogEntry[] = queryFiles.map((queryFile) => {
+  // DDL statements (e.g. `create table if not exists`) get trivial wrappers but have no
+  // params / result columns / json schema — nothing to populate a form with. Leaving them out
+  // of the catalog keeps UI consumers from rendering a meaningless "run" button for each one.
+  const entries: QueryCatalogEntry[] = queryFiles
+    .filter((queryFile) => !ddlFiles.includes(queryFile))
+    .map((queryFile) => {
     const analysis = queryAnalyses.find((query) => query.sqlPath === queryFile.sqlPath);
     if (!analysis) {
       throw new Error(`Missing vendored TypeSQL analysis for ${queryFile.sqlPath}`);
@@ -414,6 +490,7 @@ function renderQueryWrapper(input: {
   descriptor: GeneratedQueryDescriptor;
   validator: SqlfuValidator | null;
   prettyErrors: boolean;
+  sync: boolean;
 }): string {
   if (input.validator !== null) {
     return renderValidatorQueryWrapper({
@@ -421,6 +498,7 @@ function renderQueryWrapper(input: {
       descriptor: input.descriptor,
       emitter: getValidatorEmitter(input.validator),
       prettyErrors: input.prettyErrors,
+      sync: input.sync,
     });
   }
 
@@ -443,8 +521,13 @@ function renderQueryWrapper(input: {
     paramsTypeName,
   });
 
+  const clientType = input.sync ? 'SyncClient' : 'Client';
+  const functionHeader = input.sync
+    ? `export function ${functionName}(client: ${clientType}${restParameters ? `, ${restParameters}` : ''}): ${returnType} {`
+    : `export async function ${functionName}(client: ${clientType}${restParameters ? `, ${restParameters}` : ''}): Promise<${returnType}> {`;
+
   return [
-    `import type {Client, SqlQuery} from 'sqlfu';`,
+    `import type {${clientType}, SqlQuery} from 'sqlfu';`,
     ``,
     ...typeBlocks,
     ``,
@@ -452,12 +535,13 @@ function renderQueryWrapper(input: {
     normalizeSqlForTemplate(input.descriptor.sql).join('\n').trim(),
     `\``,
     ``,
-    `export async function ${functionName}(client: Client${restParameters ? `, ${restParameters}` : ''}): Promise<${returnType}> {`,
+    functionHeader,
     `\tconst query: SqlQuery = { sql: ${sqlConstantName}, args: ${queryArgs}, name: ${JSON.stringify(queryName)} };`,
     ...buildGeneratedImplementation({
       resultMode: getResultMode(input.descriptor),
       resultType: resultTypeName,
       resultProperties: getResultProperties(input.descriptor),
+      sync: input.sync,
     }),
     `}`,
     ``,
@@ -548,10 +632,12 @@ function renderValidatorQueryWrapper(input: {
   descriptor: GeneratedQueryDescriptor;
   emitter: ValidatorEmitter;
   prettyErrors: boolean;
+  sync: boolean;
 }): string {
   const queryName = input.relativePath;
   const functionName = toCamelCase(queryName);
-  const {descriptor, emitter, prettyErrors} = input;
+  const {descriptor, emitter, prettyErrors, sync} = input;
+  const clientType = sync ? 'SyncClient' : 'Client';
   const resultMode = getResultMode(descriptor);
   const resultFields = getResultFields(descriptor);
   const hasData = (descriptor.data?.length ?? 0) > 0;
@@ -572,7 +658,7 @@ function renderValidatorQueryWrapper(input: {
 
   const sqlLines = [`const sql = \``, normalizeSqlForTemplate(descriptor.sql).join('\n').trim(), `\`;`];
 
-  const functionSignatureArgs: string[] = [`client: Client`];
+  const functionSignatureArgs: string[] = [`client: ${clientType}`];
   if (hasData) functionSignatureArgs.push(`rawData: ${emitter.inferExpression('Data')}`);
   if (hasParams) functionSignatureArgs.push(`rawParams: ${emitter.inferExpression('Params')}`);
 
@@ -596,6 +682,7 @@ function renderValidatorQueryWrapper(input: {
     resultFields,
     emitter,
     prettyErrors,
+    sync,
   });
 
   const attachedProperties: string[] = [];
@@ -612,7 +699,11 @@ function renderValidatorQueryWrapper(input: {
   }
   namespaceLines.push(`\texport type Result = ${emitter.inferExpression(`${functionName}.Result`)};`);
 
-  const runtimeImports = buildRuntimeImports(emitter, prettyErrors);
+  const runtimeImports = buildRuntimeImports(emitter, prettyErrors, clientType);
+
+  const functionDeclaration = sync
+    ? `\tfunction ${functionName}(${functionSignatureArgs.join(', ')}): ${returnType} {`
+    : `\tasync function ${functionName}(${functionSignatureArgs.join(', ')}): Promise<${returnType}> {`;
 
   return [
     emitter.importLine,
@@ -622,7 +713,7 @@ function renderValidatorQueryWrapper(input: {
     ...sqlLines,
     ``,
     `export const ${functionName} = Object.assign(`,
-    `\tasync function ${functionName}(${functionSignatureArgs.join(', ')}): Promise<${returnType}> {`,
+    functionDeclaration,
     ...validationLines,
     `\t\tconst query: SqlQuery = { sql, args: ${argsExpression}, name: ${JSON.stringify(queryName)} };`,
     ...implementationLines,
@@ -645,11 +736,11 @@ function renderValidatorQueryWrapper(input: {
  *  - with pretty errors off, no runtime value is imported from sqlfu in either path — the
  *    generated file is fully self-contained apart from its validator library.
  */
-function buildRuntimeImports(emitter: ValidatorEmitter, prettyErrors: boolean): string {
+function buildRuntimeImports(emitter: ValidatorEmitter, prettyErrors: boolean, clientType: string): string {
   if (emitter.parseFlavour === 'standard' && prettyErrors) {
-    return `import {prettifyStandardSchemaError, type Client, type SqlQuery} from 'sqlfu';`;
+    return `import {prettifyStandardSchemaError, type ${clientType}, type SqlQuery} from 'sqlfu';`;
   }
-  return `import type {Client, SqlQuery} from 'sqlfu';`;
+  return `import type {${clientType}, SqlQuery} from 'sqlfu';`;
 }
 
 function renderObjectSchemaDeclaration(
@@ -826,8 +917,10 @@ function buildValidatorImplementation(input: {
   resultFields: readonly GeneratedField[];
   emitter: ValidatorEmitter;
   prettyErrors: boolean;
+  sync: boolean;
 }): string[] {
-  const {emitter, prettyErrors} = input;
+  const {emitter, prettyErrors, sync} = input;
+  const await_ = sync ? '' : 'await ';
   const rowExpr = (rowExpression: string) => rowParseExpressionOrNull(emitter, rowExpression, prettyErrors);
   const rowBlock = (rowExpression: string, indent: string) =>
     rowParseStatements(emitter, rowExpression, prettyErrors, indent);
@@ -836,12 +929,12 @@ function buildValidatorImplementation(input: {
     const expr = rowExpr('row');
     if (expr) {
       return [
-        `\t\tconst rows = await client.all(query);`,
+        `\t\tconst rows = ${await_}client.all(query);`,
         `\t\treturn rows.map((row) => ${expr});`,
       ];
     }
     return [
-      `\t\tconst rows = await client.all(query);`,
+      `\t\tconst rows = ${await_}client.all(query);`,
       `\t\treturn rows.map((row) => {`,
       ...rowBlock('row', '\t\t\t'),
       `\t\t});`,
@@ -852,12 +945,12 @@ function buildValidatorImplementation(input: {
     const expr = rowExpr('rows[0]');
     if (expr) {
       return [
-        `\t\tconst rows = await client.all(query);`,
+        `\t\tconst rows = ${await_}client.all(query);`,
         `\t\treturn rows.length > 0 ? ${expr} : null;`,
       ];
     }
     return [
-      `\t\tconst rows = await client.all(query);`,
+      `\t\tconst rows = ${await_}client.all(query);`,
       `\t\tif (rows.length === 0) return null;`,
       ...rowBlock('rows[0]', '\t\t'),
     ];
@@ -867,12 +960,12 @@ function buildValidatorImplementation(input: {
     const expr = rowExpr('rows[0]');
     if (expr) {
       return [
-        `\t\tconst rows = await client.all(query);`,
+        `\t\tconst rows = ${await_}client.all(query);`,
         `\t\treturn ${expr};`,
       ];
     }
     return [
-      `\t\tconst rows = await client.all(query);`,
+      `\t\tconst rows = ${await_}client.all(query);`,
       ...rowBlock('rows[0]', '\t\t'),
     ];
   }
@@ -907,7 +1000,7 @@ function buildValidatorImplementation(input: {
   const resultReturnLines = metadataExpr ? [`\t\treturn ${metadataExpr};`] : rowBlock('rawResult', '\t\t');
 
   return [
-    `\t\tconst result = await client.run(query);`,
+    `\t\tconst result = ${await_}client.run(query);`,
     ...guards,
     ...rawResultLines,
     ...resultReturnLines,
@@ -1215,20 +1308,25 @@ function buildGeneratedImplementation(input: {
     readonly name: string;
     readonly optional: boolean;
   }>;
+  sync: boolean;
 }): string[] {
+  const await_ = input.sync ? '' : 'await ';
+
   if (input.resultMode === 'many') {
+    // `many` returns the client's result directly — the outer function's Promise<T[]> / T[] return
+    // type already matches client.all's return type, so there's no need to await and re-wrap.
     return [`\treturn client.all<${input.resultType}>(query);`];
   }
 
   if (input.resultMode === 'nullableOne') {
     return [
-      `\tconst rows = await client.all<${input.resultType}>(query);`,
+      `\tconst rows = ${await_}client.all<${input.resultType}>(query);`,
       `\treturn rows.length > 0 ? rows[0] : null;`,
     ];
   }
 
   if (input.resultMode === 'one') {
-    return [`\tconst rows = await client.all<${input.resultType}>(query);`, `\treturn rows[0];`];
+    return [`\tconst rows = ${await_}client.all<${input.resultType}>(query);`, `\treturn rows[0];`];
   }
 
   const guards = input.resultProperties.flatMap((property) => {
@@ -1249,7 +1347,7 @@ function buildGeneratedImplementation(input: {
 
     return `\t\t${property.name}: result.${property.name},`;
   });
-  return [`\tconst result = await client.run(query);`, ...guards, `\treturn {`, ...resultAssignments, `\t};`];
+  return [`\tconst result = ${await_}client.run(query);`, ...guards, `\treturn {`, ...resultAssignments, `\t};`];
 }
 
 async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, RelationInfo>> {

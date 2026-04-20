@@ -76,13 +76,15 @@ export function resolveProjectConfig(
   return {
     projectRoot: configDir,
     db: resolveConfigPathValue(configDir, fileConfig.db),
-    migrations: resolveConfigPathValue(configDir, fileConfig.migrations),
+    migrations:
+      fileConfig.migrations === undefined ? undefined : resolveConfigPathValue(configDir, fileConfig.migrations),
     definitions: resolveConfigPathValue(configDir, fileConfig.definitions),
     queries: resolveConfigPathValue(configDir, fileConfig.queries),
     generatedImportExtension: fileConfig.generatedImportExtension ?? inferGeneratedImportExtension(tsconfigPreferences),
     generate: {
       validator: fileConfig.generate?.validator ?? null,
       prettyErrors: fileConfig.generate?.prettyErrors !== false,
+      sync: fileConfig.generate?.sync === true,
     },
   };
 }
@@ -194,10 +196,14 @@ function stripTrailingCommas(value: string): string {
 }
 
 function assertConfigShape(configPath: string, config: object): asserts config is SqlfuConfig {
-  for (const field of ['db', 'migrations', 'definitions', 'queries'] as const) {
+  for (const field of ['db', 'definitions', 'queries'] as const) {
     if (!(field in config) || typeof (config as Record<string, unknown>)[field] !== 'string') {
       throw new Error(`Invalid sqlfu config at ${configPath}: missing required string field "${field}".`);
     }
+  }
+  const migrations = (config as Record<string, unknown>).migrations;
+  if (migrations !== undefined && typeof migrations !== 'string') {
+    throw new Error(`Invalid sqlfu config at ${configPath}: "migrations" must be a string if provided.`);
   }
   const generate = (config as Record<string, unknown>).generate;
   if (generate !== undefined) {
@@ -224,6 +230,11 @@ function assertConfigShape(configPath: string, config: object): asserts config i
     const prettyErrors = generateRecord.prettyErrors;
     if (prettyErrors !== undefined && typeof prettyErrors !== 'boolean') {
       throw new Error(`Invalid sqlfu config at ${configPath}: "generate.prettyErrors" must be a boolean.`);
+    }
+
+    const sync = generateRecord.sync;
+    if (sync !== undefined && typeof sync !== 'boolean') {
+      throw new Error(`Invalid sqlfu config at ${configPath}: "generate.sync" must be a boolean.`);
     }
   }
 }
