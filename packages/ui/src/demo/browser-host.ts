@@ -26,7 +26,7 @@ export function buildDemoConfig(): SqlfuProjectConfig {
     migrations: `${DEMO_PROJECT_ROOT}/migrations`,
     queries: `${DEMO_PROJECT_ROOT}/sql`,
     generatedImportExtension: '.js',
-    generate: {zod: false},
+    generate: {validator: null, prettyErrors: true},
   };
 }
 

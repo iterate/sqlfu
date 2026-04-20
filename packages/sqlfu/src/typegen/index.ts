@@ -12,7 +12,7 @@ import type {
   QueryCatalogField,
 } from './query-catalog.js';
 import {loadProjectConfig} from '../core/config.js';
-import type {Client, SqlfuProjectConfig} from '../core/types.js';
+import type {Client, SqlfuProjectConfig, SqlfuValidator} from '../core/types.js';
 import {extractSchema} from '../core/sqlite.js';
 import {createBunClient, createNodeSqliteClient} from '../client.js';
 
@@ -59,7 +59,8 @@ export async function generateQueryTypesForConfig(config: SqlfuProjectConfig): P
         ? renderQueryWrapper({
             relativePath: queryFile.relativePath,
             descriptor: refineDescriptor(analysis.descriptor, queryFile.sqlContent, schema),
-            zod: config.generate.zod,
+            validator: config.generate.validator,
+            prettyErrors: config.generate.prettyErrors,
           })
         : `//Invalid SQL\nexport {};\n`;
       await fs.writeFile(wrapperPath, contents);
@@ -362,10 +363,16 @@ function toAdHocQueryAnalysis(descriptor: GeneratedQueryDescriptor): AdHocQueryA
 function renderQueryWrapper(input: {
   relativePath: string;
   descriptor: GeneratedQueryDescriptor;
-  zod: boolean;
+  validator: SqlfuValidator | null;
+  prettyErrors: boolean;
 }): string {
-  if (input.zod) {
-    return renderZodQueryWrapper(input);
+  if (input.validator !== null) {
+    return renderValidatorQueryWrapper({
+      relativePath: input.relativePath,
+      descriptor: input.descriptor,
+      emitter: getValidatorEmitter(input.validator),
+      prettyErrors: input.prettyErrors,
+    });
   }
 
   const queryName = input.relativePath;
@@ -408,46 +415,137 @@ function renderQueryWrapper(input: {
   ].join('\n');
 }
 
-function renderZodQueryWrapper(input: {relativePath: string; descriptor: GeneratedQueryDescriptor}): string {
+/**
+ * Abstracts the validator-library-specific concerns of emission so the wrapper renderer
+ * itself is library-agnostic. Each validator has its own module spec to import, expression
+ * vocabulary for field types, object-schema construction, inference helper, and parse-call
+ * shape — but the overall file layout (schemas as module-scoped consts, namespace merging,
+ * Object.assign) is identical across all three.
+ */
+type ValidatorEmitter = {
+  readonly importLine: string;
+  /** Called to render a single field expression for a TS type (e.g. `string` → `z.string()`). */
+  readonly expressionForTsType: (tsType: string) => string;
+  /** Wrap a base expression with nullable (column may be null) and optional (param may be absent). */
+  readonly nullable: (expression: string) => string;
+  readonly optional: (expression: string) => string;
+  /** Build the `const Foo = object({...})` declaration lines. */
+  readonly objectSchemaDeclaration: (input: {schemaName: string; fieldLines: string[]}) => string[];
+  /** The call used in function signatures and return types to infer a TS type from a schema. */
+  readonly inferExpression: (schemaName: string) => string;
+  /** `Foo.parse(value)` in zod / `v.parse(Foo, value)` in valibot / `z.parse(Foo, value)` in zod-mini. */
+  readonly parseCall: (schemaName: string, valueExpression: string) => string;
+};
+
+const zodEmitter: ValidatorEmitter = {
+  importLine: `import {z} from 'zod';`,
+  expressionForTsType: (tsType) => zodExpressionForTsType(tsType, 'z'),
+  nullable: (expression) => `${expression}.nullable()`,
+  optional: (expression) => `${expression}.optional()`,
+  objectSchemaDeclaration: ({schemaName, fieldLines}) => [
+    `const ${schemaName} = z.object({`,
+    ...fieldLines,
+    `});`,
+  ],
+  inferExpression: (schemaName) => `z.infer<typeof ${schemaName}>`,
+  parseCall: (schemaName, valueExpression) => `${schemaName}.parse(${valueExpression})`,
+};
+
+const zodMiniEmitter: ValidatorEmitter = {
+  importLine: `import * as z from 'zod/mini';`,
+  expressionForTsType: (tsType) => zodExpressionForTsType(tsType, 'z'),
+  // zod-mini keeps the same nullable/optional wrapper calls as standard zod — the same schema
+  // object, a smaller bundle path.
+  nullable: (expression) => `z.nullable(${expression})`,
+  optional: (expression) => `z.optional(${expression})`,
+  objectSchemaDeclaration: ({schemaName, fieldLines}) => [
+    `const ${schemaName} = z.object({`,
+    ...fieldLines,
+    `});`,
+  ],
+  inferExpression: (schemaName) => `z.infer<typeof ${schemaName}>`,
+  parseCall: (schemaName, valueExpression) => `z.parse(${schemaName}, ${valueExpression})`,
+};
+
+const valibotEmitter: ValidatorEmitter = {
+  importLine: `import * as v from 'valibot';`,
+  expressionForTsType: (tsType) => valibotExpressionForTsType(tsType),
+  nullable: (expression) => `v.nullable(${expression})`,
+  optional: (expression) => `v.optional(${expression})`,
+  objectSchemaDeclaration: ({schemaName, fieldLines}) => [
+    `const ${schemaName} = v.object({`,
+    ...fieldLines,
+    `});`,
+  ],
+  inferExpression: (schemaName) => `v.InferOutput<typeof ${schemaName}>`,
+  parseCall: (schemaName, valueExpression) => `v.parse(${schemaName}, ${valueExpression})`,
+};
+
+function getValidatorEmitter(validator: SqlfuValidator): ValidatorEmitter {
+  if (validator === 'zod') return zodEmitter;
+  if (validator === 'zod-mini') return zodMiniEmitter;
+  return valibotEmitter;
+}
+
+function renderValidatorQueryWrapper(input: {
+  relativePath: string;
+  descriptor: GeneratedQueryDescriptor;
+  emitter: ValidatorEmitter;
+  prettyErrors: boolean;
+}): string {
   const queryName = input.relativePath;
   const functionName = toCamelCase(queryName);
-  const descriptor = input.descriptor;
+  const {descriptor, emitter, prettyErrors} = input;
   const resultMode = getResultMode(descriptor);
   const resultFields = getResultFields(descriptor);
   const hasData = (descriptor.data?.length ?? 0) > 0;
   const hasParams = descriptor.parameters.length > 0;
 
   // Local schemas declared as module-scoped consts, so the function signature
-  // can reference their z.infer without a circular dependency on the
+  // can reference the inferred type without a circular dependency on the
   // namespace-merged `${functionName}.Params` type. The namespace types below
   // point at the same schemas through the merged export.
   const schemaDeclarations: string[] = [];
   if (hasData) {
-    schemaDeclarations.push(...renderTopLevelZodSchema('Data', descriptor.data!, 'parameter'));
+    schemaDeclarations.push(...renderObjectSchemaDeclaration(emitter, 'Data', descriptor.data!, 'parameter'));
   }
   if (hasParams) {
-    schemaDeclarations.push(...renderTopLevelZodSchema('Params', descriptor.parameters, 'parameter'));
+    schemaDeclarations.push(...renderObjectSchemaDeclaration(emitter, 'Params', descriptor.parameters, 'parameter'));
   }
-  schemaDeclarations.push(...renderTopLevelZodSchema('Result', resultFields, 'result'));
+  schemaDeclarations.push(...renderObjectSchemaDeclaration(emitter, 'Result', resultFields, 'result'));
 
   const sqlLines = [`const sql = \``, normalizeSqlForTemplate(descriptor.sql).join('\n').trim(), `\`;`];
 
   const functionSignatureArgs: string[] = [`client: Client`];
-  if (hasData) functionSignatureArgs.push(`data: z.infer<typeof Data>`);
-  if (hasParams) functionSignatureArgs.push(`params: z.infer<typeof Params>`);
+  if (hasData) functionSignatureArgs.push(`data: ${emitter.inferExpression('Data')}`);
+  if (hasParams) functionSignatureArgs.push(`params: ${emitter.inferExpression('Params')}`);
 
-  const returnType = getReturnType(descriptor, `z.infer<typeof Result>`);
+  const returnType = getReturnType(descriptor, emitter.inferExpression('Result'));
 
   const validationLines: string[] = [];
-  if (hasData) validationLines.push(`\t\tconst validatedData = Data.parse(data);`);
-  if (hasParams) validationLines.push(`\t\tconst validatedParams = Params.parse(params);`);
+  if (hasData) {
+    validationLines.push(
+      `\t\tconst validatedData = ${wrapParseCall(emitter, 'Data', 'data', prettyErrors, `${functionName} data`)};`,
+    );
+  }
+  if (hasParams) {
+    validationLines.push(
+      `\t\tconst validatedParams = ${wrapParseCall(emitter, 'Params', 'params', prettyErrors, `${functionName} params`)};`,
+    );
+  }
 
-  const argsExpression = buildZodQueryArgs(descriptor, {
+  const argsExpression = buildValidatorQueryArgs(descriptor, {
     dataVariable: hasData ? 'validatedData' : null,
     paramsVariable: hasParams ? 'validatedParams' : null,
   });
 
-  const implementationLines = buildZodImplementation({resultMode, resultFields});
+  const implementationLines = buildValidatorImplementation({
+    resultMode,
+    resultFields,
+    emitter,
+    prettyErrors,
+    label: `${functionName} result`,
+  });
 
   const attachedProperties: string[] = [];
   if (hasData) attachedProperties.push('Data');
@@ -455,13 +553,21 @@ function renderZodQueryWrapper(input: {relativePath: string; descriptor: Generat
   attachedProperties.push('Result', 'sql');
 
   const namespaceLines: string[] = [];
-  if (hasData) namespaceLines.push(`\texport type Data = z.infer<typeof ${functionName}.Data>;`);
-  if (hasParams) namespaceLines.push(`\texport type Params = z.infer<typeof ${functionName}.Params>;`);
-  namespaceLines.push(`\texport type Result = z.infer<typeof ${functionName}.Result>;`);
+  if (hasData) {
+    namespaceLines.push(`\texport type Data = ${emitter.inferExpression(`${functionName}.Data`)};`);
+  }
+  if (hasParams) {
+    namespaceLines.push(`\texport type Params = ${emitter.inferExpression(`${functionName}.Params`)};`);
+  }
+  namespaceLines.push(`\texport type Result = ${emitter.inferExpression(`${functionName}.Result`)};`);
+
+  const runtimeImports = prettyErrors
+    ? `import {runWithPrettyErrors, type Client, type SqlQuery} from 'sqlfu';`
+    : `import type {Client, SqlQuery} from 'sqlfu';`;
 
   return [
-    `import {z} from 'zod';`,
-    `import type {Client, SqlQuery} from 'sqlfu';`,
+    emitter.importLine,
+    runtimeImports,
     ``,
     ...schemaDeclarations,
     ...sqlLines,
@@ -482,50 +588,83 @@ function renderZodQueryWrapper(input: {relativePath: string; descriptor: Generat
   ].join('\n');
 }
 
-function renderTopLevelZodSchema(
-  name: 'Data' | 'Params' | 'Result',
+function renderObjectSchemaDeclaration(
+  emitter: ValidatorEmitter,
+  schemaName: 'Data' | 'Params' | 'Result',
   fields: readonly GeneratedField[],
   fieldKind: 'parameter' | 'result',
 ): string[] {
-  const lines: string[] = [`const ${name} = z.object({`];
-  for (const field of fields) {
-    lines.push(`\t${field.name}: ${zodExpressionForField(field, fieldKind)},`);
-  }
-  lines.push(`});`);
-  return lines;
+  const fieldLines = fields.map((field) => `\t${field.name}: ${expressionForField(emitter, field, fieldKind)},`);
+  return emitter.objectSchemaDeclaration({schemaName, fieldLines});
 }
 
-function zodExpressionForField(field: GeneratedField, fieldKind: 'parameter' | 'result'): string {
-  let expression = zodForTsType(field.tsType);
+function expressionForField(
+  emitter: ValidatorEmitter,
+  field: GeneratedField,
+  fieldKind: 'parameter' | 'result',
+): string {
+  // see tasks/typegen-extensibility.md — future user-provided validator plugins and per-column overrides would hook in here.
+  let expression = emitter.expressionForTsType(field.tsType);
   if (!field.notNull) {
-    expression = `${expression}.nullable()`;
+    expression = emitter.nullable(expression);
   }
   if (fieldKind === 'parameter' && Boolean(field.optional)) {
-    expression = `${expression}.optional()`;
+    expression = emitter.optional(expression);
   }
   return expression;
 }
 
-function zodForTsType(tsType: string): string {
-  if (tsType === 'string') return 'z.string()';
-  if (tsType === 'number') return 'z.number()';
-  if (tsType === 'boolean') return 'z.boolean()';
-  if (tsType === 'Date') return 'z.date()';
-  if (tsType === 'Uint8Array' || tsType === 'ArrayBuffer') return 'z.instanceof(Uint8Array)';
-  if (tsType === 'any') return 'z.unknown()';
+function zodExpressionForTsType(tsType: string, namespace: 'z'): string {
+  if (tsType === 'string') return `${namespace}.string()`;
+  if (tsType === 'number') return `${namespace}.number()`;
+  if (tsType === 'boolean') return `${namespace}.boolean()`;
+  if (tsType === 'Date') return `${namespace}.date()`;
+  if (tsType === 'Uint8Array' || tsType === 'ArrayBuffer') return `${namespace}.instanceof(Uint8Array)`;
+  if (tsType === 'any') return `${namespace}.unknown()`;
   if (tsType.endsWith('[]')) {
-    return `z.array(${zodForTsType(tsType.slice(0, -2))})`;
+    return `${namespace}.array(${zodExpressionForTsType(tsType.slice(0, -2), namespace)})`;
   }
 
   const enumValues = parseStringLiteralUnion(tsType);
   if (enumValues) {
-    return `z.enum([${enumValues.map((value) => JSON.stringify(value)).join(', ')}])`;
+    return `${namespace}.enum([${enumValues.map((value) => JSON.stringify(value)).join(', ')}])`;
   }
 
-  return 'z.unknown()';
+  return `${namespace}.unknown()`;
 }
 
-function buildZodQueryArgs(
+function valibotExpressionForTsType(tsType: string): string {
+  if (tsType === 'string') return 'v.string()';
+  if (tsType === 'number') return 'v.number()';
+  if (tsType === 'boolean') return 'v.boolean()';
+  if (tsType === 'Date') return 'v.date()';
+  if (tsType === 'Uint8Array' || tsType === 'ArrayBuffer') return 'v.instance(Uint8Array)';
+  if (tsType === 'any') return 'v.unknown()';
+  if (tsType.endsWith('[]')) {
+    return `v.array(${valibotExpressionForTsType(tsType.slice(0, -2))})`;
+  }
+
+  const enumValues = parseStringLiteralUnion(tsType);
+  if (enumValues) {
+    return `v.picklist([${enumValues.map((value) => JSON.stringify(value)).join(', ')}])`;
+  }
+
+  return 'v.unknown()';
+}
+
+function wrapParseCall(
+  emitter: ValidatorEmitter,
+  schemaName: string,
+  valueExpression: string,
+  prettyErrors: boolean,
+  label: string,
+): string {
+  const raw = emitter.parseCall(schemaName, valueExpression);
+  if (!prettyErrors) return raw;
+  return `runWithPrettyErrors(${JSON.stringify(label)}, () => ${raw})`;
+}
+
+function buildValidatorQueryArgs(
   descriptor: GeneratedQueryDescriptor,
   variables: {dataVariable: string | null; paramsVariable: string | null},
 ): string {
@@ -539,28 +678,34 @@ function buildZodQueryArgs(
   return args.length > 0 ? `[${args.join(', ')}]` : '[]';
 }
 
-function buildZodImplementation(input: {
+function buildValidatorImplementation(input: {
   resultMode: 'many' | 'nullableOne' | 'one' | 'metadata';
   resultFields: readonly GeneratedField[];
+  emitter: ValidatorEmitter;
+  prettyErrors: boolean;
+  label: string;
 }): string[] {
+  const parseRow = (valueExpression: string) =>
+    wrapParseCall(input.emitter, 'Result', valueExpression, input.prettyErrors, input.label);
+
   if (input.resultMode === 'many') {
     return [
       `\t\tconst rows = await client.all(query);`,
-      `\t\treturn rows.map((row) => Result.parse(row));`,
+      `\t\treturn rows.map((row) => ${parseRow('row')});`,
     ];
   }
 
   if (input.resultMode === 'nullableOne') {
     return [
       `\t\tconst rows = await client.all(query);`,
-      `\t\treturn rows.length > 0 ? Result.parse(rows[0]) : null;`,
+      `\t\treturn rows.length > 0 ? ${parseRow('rows[0]')} : null;`,
     ];
   }
 
   if (input.resultMode === 'one') {
     return [
       `\t\tconst rows = await client.all(query);`,
-      `\t\treturn Result.parse(rows[0]);`,
+      `\t\treturn ${parseRow('rows[0]')};`,
     ];
   }
 
@@ -584,12 +729,11 @@ function buildZodImplementation(input: {
       `\t\t}`,
     ];
   });
+  const metadataObjectExpression = ['{', ...metadataObjectLines, `\t\t}`].join('\n');
   return [
     `\t\tconst result = await client.run(query);`,
     ...guards,
-    `\t\treturn Result.parse({`,
-    ...metadataObjectLines,
-    `\t\t});`,
+    `\t\treturn ${parseRow(metadataObjectExpression)};`,
   ];
 }
 

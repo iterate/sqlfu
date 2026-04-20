@@ -74,6 +74,7 @@
     "@orpc/server": "^1.13.13",
     "nearley": "^2.20.1",
     "trpc-cli": "^0.14.0",
+    "valibot": "^1.3.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
