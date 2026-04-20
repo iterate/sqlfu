@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 size: small
 ---
 
@@ -7,7 +7,7 @@ size: small
 
 ## Status summary
 
-Not started. Goal is a single mechanical change: move the ~560-line nearley runtime into `packages/sqlfu/src/vendor/sql-formatter/parser/`, rewire the one import, drop `nearley` from `package.json`. No behavior change.
+Done. Nearley runtime is vendored as `packages/sqlfu/src/vendor/sql-formatter/parser/nearley-runtime.ts` (ESM, `@ts-nocheck`), `createParser.ts` imports it instead of `'nearley'`, and the `nearley` dependency is gone from `packages/sqlfu/package.json`. Verified with the formatter test suite (1457 passing), typecheck, and build.
 
 ## Motivation
 
@@ -23,15 +23,15 @@ The grammar file (`grammar.ts`) is already committed — it was pre-generated fr
 
 ## Checklist
 
-- [ ] Copy `nearley/lib/nearley.js` into `packages/sqlfu/src/vendor/sql-formatter/parser/nearley-runtime.js` (keep the file as-is, UMD shape and all; add a banner pointing back at upstream + version `2.20.1`)
-- [ ] Add a short `.d.ts` (or inline type) covering just `Parser` and `Grammar.fromCompiled` — the two symbols `createParser.ts` uses. Rest can stay untyped; `createParser.ts` is already `@ts-nocheck`.
-- [ ] Update `createParser.ts` to import from the vendored file instead of `'nearley'`
-- [ ] Remove `"nearley"` from `packages/sqlfu/package.json` dependencies
-- [ ] Run `pnpm install` to refresh the lockfile
-- [ ] Update `packages/sqlfu/src/vendor/sql-formatter/CLAUDE.md` to mention the vendored runtime and that `grammar.ne` regeneration still needs `nearleyc` (not a runtime need)
-- [ ] Verify: `pnpm --filter sqlfu test --run test/formatter.test.ts`
-- [ ] Verify: `pnpm --filter sqlfu typecheck`
-- [ ] Verify: `pnpm --filter sqlfu build`
+- [x] Copy `nearley/lib/nearley.js` into `packages/sqlfu/src/vendor/sql-formatter/parser/nearley-runtime.ts` _ended up as `.ts` not `.js` — main build (`tsc -p tsconfig.build.json`) only emits `.ts` files from `src/`, so a raw `.js` would not reach `dist/`. UMD wrapper stripped in favor of ESM `export { Parser, Grammar, Rule }` (+ default export matching the shape the factory used to return). File header has `@ts-nocheck` + attribution banner._
+- [x] ~~Add a short `.d.ts` covering `Parser` and `Grammar.fromCompiled`~~ _not needed; `createParser.ts` is `@ts-nocheck` so the untyped `@ts-nocheck` runtime file is fine as-is._
+- [x] Update `createParser.ts` to import from the vendored file instead of `'nearley'` _one-line swap: `import nearley from './nearley-runtime.js';`_
+- [x] Remove `"nearley"` from `packages/sqlfu/package.json` dependencies
+- [x] Run `pnpm install` to refresh the lockfile
+- [x] Update `packages/sqlfu/src/vendor/sql-formatter/CLAUDE.md` with a note about the vendored runtime and how to regenerate `grammar.ne` via `pnpm dlx nearleyc`
+- [x] Verify: `pnpm --filter sqlfu test --run test/formatter.test.ts` _1457 passed_
+- [x] Verify: `pnpm --filter sqlfu typecheck`
+- [x] Verify: `pnpm --filter sqlfu build`
 
 ## Non-goals
 
@@ -41,4 +41,6 @@ The grammar file (`grammar.ts`) is already committed — it was pre-generated fr
 
 ## Implementation notes
 
-(to be filled in during implementation)
+- The `.js` → `.ts` rename is worth flagging: the sqlfu vendor tree has a precedent for vendored `.js` files (see `src/vendor/antlr4/index.js`), but antlr4 is only consumed by the typesql subtree which is excluded from the main build and compiled by a separate `tsconfig.json` with `allowJs: true`. sql-formatter is part of the main build, which does not enable `allowJs`, so a `.js` file here would be silently dropped from `dist/`.
+- Stripping the UMD wrapper is the only non-mechanical transformation. `(function(root, factory) { ... }(this, function() { body; return { Parser, Grammar, Rule }; }))` becomes `body; export { Parser, Grammar, Rule }; export default { Parser, Grammar, Rule };`. The body is byte-for-byte identical to upstream `nearley@2.20.1`. Anyone wanting to resync from upstream can diff the body regions.
+- Independent pre-existing issue spotted but **not fixed here**: `packages/sqlfu/package.json`'s build runs `build:runtime` (which emits `dist/vendor/sql-formatter/**`) and then `build:vendor-typesql` (which starts with `rm -rf dist/vendor && tsc -p src/vendor/typesql/tsconfig.json`). The typesql tsconfig doesn't include sql-formatter, so the sql-formatter output is destroyed and not regenerated. Published `dist/` is missing `vendor/sql-formatter/`, which means `formatter.ts`'s `import ... from './vendor/sql-formatter/sqlFormatter.js'` is broken at runtime for consumers of the built package. Source-mode test runs (vitest) don't exercise `dist/` so this has gone unnoticed. Out of scope for this task; file a follow-up.
