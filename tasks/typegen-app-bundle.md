@@ -1,7 +1,22 @@
-status: ready
+status: in-progress
 size: medium
 
 # Typegen emits everything your app needs to talk to your db
+
+## Implementation status (2026-04-20)
+
+Primary piece (row-type emission) is landed and tested. Tertiary piece (dogfood refactor of `migrations/index.ts`) is deferred — see "Implementation log" below for why.
+
+**Shipped in this PR:**
+
+- Typegen emits a `tables.ts` in `.generated/` with one row type per table and view in the live schema. `<RelationName in PascalCase>Row`, e.g. `posts` → `PostsRow`, `post_summaries` → `PostSummariesRow`.
+- Nullable columns are typed `T | null` (not `T?`) — every column is always present on a row; a null-valued column is distinct from an absent key.
+- Barrel (`.generated/index.ts`) re-exports `tables.ts` so `import {PostsRow} from './.generated'` works.
+- 20 existing snapshot tests updated to reflect the new output; one focused new test asserts the convention end-to-end with a mix of tables, views, nullable, and not-null columns.
+
+**Deferred (see Implementation log):**
+
+- The dogfood refactor of `migrations/index.ts` onto the new generated wrappers. Needs small typegen cleanups first (query catalog and migrations-bundle side effects; DDL support or a "definitions-only config" carve-out).
 
 ## One-line summary
 
@@ -75,3 +90,22 @@ Small ones that should be resolved during implementation, not before starting:
 ## Breadcrumb
 
 Original motivation + PR #15 review comment is at <https://github.com/mmkal/sqlfu/pull/15#discussion_r3110098823>.
+
+## Implementation log
+
+### 2026-04-20 — row-type emission
+
+- Added `writeTablesFile(generatedDir, schema)` in `packages/sqlfu/src/typegen/index.ts`. Reuses the same `RelationInfo` map that `loadSchema` already builds for query-column analysis, so there's no parallel type mapping.
+- Convention: `relationTypeName(name)` is a PascalCase of the snake/kebab relation name, then a `Row` suffix. Alphabetically sorted in the file.
+- Nullability policy for row types: required key, `| null` suffix. This deliberately differs from the convention query-result types use (`foo?: string` for nullable select columns), because a table row always has every column — a null-valued column is distinct from an absent key. Both conventions live side-by-side in the generated output now. Documented in a module-level JSDoc on `writeTablesFile`.
+- `writeGeneratedBarrel` unconditionally re-exports `./tables.${ext}`. Even when the schema is empty, `tables.ts` is written with `export {};` so the barrel import resolves.
+
+### 2026-04-20 — dogfood refactor deferred
+
+Started scoping the refactor of `packages/sqlfu/src/migrations/index.ts` onto generated wrappers. Hit three design rocks worth flagging before implementing:
+
+1. **DDL isn't expressible as a typegen query.** `CREATE TABLE IF NOT EXISTS sqlfu_migrations(...)` can't be moved into `queries/ensure-migration-table.sql` and get a typed wrapper — typesql analysis switches on `queryType: 'Select'|'Insert'|'Update'|'Delete'|'Copy'`. Options: (a) keep the DDL inline as a string and put only the dynamic queries through typegen, (b) move the DDL to `definitions.sql` and emit a companion constant that bundles its content, (c) add DDL support to typegen. (a) is the smallest step and still gets us table-shape single source of truth via the generated row type.
+2. **`generateQueryTypesForConfig` has side effects that don't fit a library-author use case.** It also writes `.sqlfu/query-catalog.json` and a migrations bundle to `${migrations}/.generated/`. For sqlfu-internal we want neither. Either refactor the entry point so the caller can opt out, or live with the stray files under `.sqlfu/` and an empty `src/migrations/zero-migrations/.generated/migrations.ts`.
+3. **Dual-dispatch vs generated wrappers.** Generated wrappers are async-only (`Promise<...>`). `migrations/index.ts` uses a sync+async dual-dispatch generator pattern so one code path services both sync and async clients. Two ways to reconcile: (a) keep the generators, and only import the *SQL string constants + row types* from the generated output (still dogfoods SQL-in-file + typegen analysis, keeps dual-dispatch untouched), (b) extend typegen to emit sync+async pairs. (a) is the right scope for this PR; (b) belongs to its own task.
+
+The path of least resistance for the dogfood piece is: add `packages/sqlfu/src/migrations/queries/*.sql` for SELECT/INSERT/DELETE, a small `scripts/generate-migrations-types.ts` that programmatically runs typegen on them (accepting the side-effect files in `.sqlfu/` and an empty migrations bundle), commit the generated output, import the SQL constants + row types in `migrations/index.ts`, keep the `CREATE TABLE` DDL inline, delete the content→checksum rename shim. That's a coherent follow-up PR; stacking it here muddies review of the row-type change.
