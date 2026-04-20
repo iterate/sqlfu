@@ -1,5 +1,12 @@
 ---
 import '../styles/landing.css';
+
+// Where the "Try the demo" / "Demo" CTAs point. Defaults to the hosted
+// studio at local.sqlfu.dev; the website -> studio end-to-end spec
+// overrides this via PUBLIC_LOCAL_STUDIO_URL at build time so it can
+// simulate the topology on localhost.
+const localStudioUrl =
+  import.meta.env.PUBLIC_LOCAL_STUDIO_URL || 'https://local.sqlfu.dev/?demo=1';
 ---
 
 <!doctype html>
@@ -32,7 +39,7 @@ import '../styles/landing.css';
         <a class="brand" href="/">sqlfu</a>
         <nav class="nav">
           <a href="/docs/sqlfu/">Docs</a>
-          <a href="https://local.sqlfu.dev/?demo=1">Demo</a>
+          <a href={localStudioUrl}>Demo</a>
           <a href="https://github.com/mmkal/sqlfu" target="_blank" rel="noreferrer">GitHub</a>
           <button
             type="button"
@@ -55,7 +62,7 @@ import '../styles/landing.css';
           </p>
           <div class="cta-row">
             <a class="button primary" href="/docs/sqlfu/">Read the docs</a>
-            <a class="button" href="https://local.sqlfu.dev/?demo=1">Try the demo</a>
+            <a class="button" href={localStudioUrl}>Try the demo</a>
           </div>
         </article>
       </section>
