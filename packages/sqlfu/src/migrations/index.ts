@@ -1,4 +1,4 @@
-import {sha256} from '@noble/hashes/sha2.js';
+import {sha256} from '../vendor/sha256.js';
 
 import type {AsyncClient, Client, SyncClient} from '../core/types.js';
 import {basename} from '../core/paths.js';
@@ -182,11 +182,8 @@ function* replaceMigrationHistoryGen(client: Client, migrations: readonly Migrat
 }
 
 function digest(content: string): string {
-  // @noble/hashes is synchronous and portable (pure JS, zero deps), so both
-  // sync and async clients hash the same way. keeping a single sync impl
-  // avoids shimming node:crypto into Workers runtimes (which otherwise would
-  // require the nodejs_compat flag) and means checksums are byte-identical
-  // regardless of where migrations run.
+  // Pure-JS sha256 (vendored from @noble/hashes in src/vendor/sha256.ts).
+  // Sync, portable, and avoids shimming node:crypto into Workers runtimes.
   const bytes = sha256(new TextEncoder().encode(content));
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
