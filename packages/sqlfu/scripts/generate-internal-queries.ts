@@ -14,10 +14,11 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 
-import {createNodeSqliteClient} from '../src/client.js';
+import BetterSqlite3 from 'better-sqlite3';
+
+import {createBetterSqlite3Client} from '../src/adapters/better-sqlite3.js';
 import {generateQueryTypesForConfig} from '../src/typegen/index.js';
 import type {SqlfuProjectConfig} from '../src/core/types.js';
 
@@ -35,8 +36,11 @@ async function main() {
 
   const definitionsSql = await fs.readFile(definitionsPath, 'utf8');
   {
-    const database = new DatabaseSync(devDbPath);
-    const client = createNodeSqliteClient(database);
+    // Use better-sqlite3 (not `node:sqlite`) because this script runs in CI's build job under
+    // Node 20, and `node:sqlite` landed in Node 22. typegen's runtime path in openMainDevDatabase
+    // dynamic-imports node:sqlite and is fine; only the build-time script needs the older driver.
+    const database = new BetterSqlite3(devDbPath);
+    const client = createBetterSqlite3Client(database);
     try {
       await client.raw(definitionsSql);
     } finally {
