@@ -33,6 +33,7 @@ export function createBetterSqlite3Client(
   } = {
     driver: database,
     system,
+    sync: true,
     all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       return runSqliteSync(() => database.prepare<TRow>(query.sql).all(...query.args), {query, system, mapError});
     },

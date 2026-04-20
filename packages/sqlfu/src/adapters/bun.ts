@@ -33,6 +33,7 @@ export function createBunClient(
   const client: Omit<SyncClient<BunSqliteDatabaseLike>, 'sql'> & {sql: SyncClient<BunSqliteDatabaseLike>['sql']} = {
     driver: database,
     system,
+    sync: true,
     all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       return runSqliteSync(() => database.query<TRow>(query.sql).all(...query.args), {query, system, mapError});
     },

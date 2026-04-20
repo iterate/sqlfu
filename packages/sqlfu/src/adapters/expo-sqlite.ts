@@ -69,6 +69,7 @@ export function createExpoSqliteClient(
   const client: Omit<AsyncClient<ExpoSqliteDatabaseLike>, 'sql'> & {sql: AsyncClient<ExpoSqliteDatabaseLike>['sql']} = {
     driver: database,
     system,
+    sync: false,
     all,
     run,
     raw,

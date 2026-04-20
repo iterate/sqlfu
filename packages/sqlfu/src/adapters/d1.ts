@@ -77,6 +77,7 @@ export function createD1Client(database: D1DatabaseLike, options: D1ClientOption
   const d1Client: Omit<AsyncClient<D1DatabaseLike>, 'sql'> & {sql: AsyncClient<D1DatabaseLike>['sql']} = {
     driver: database,
     system,
+    sync: false,
     all,
     run,
     raw,
