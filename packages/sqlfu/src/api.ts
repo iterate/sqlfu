@@ -51,7 +51,7 @@ export async function getSchemaAuthorities(context: SqlfuContext) {
         fileName: basename(migration.path),
         content: migration.content,
         applied: appliedByName.has(name),
-        appliedAt: appliedEntry?.appliedAt ?? null,
+        applied_at: appliedEntry?.applied_at ?? null,
         integrity: appliedEntry
           ? await getMigrationIntegrity(context.host, migration.content, appliedEntry.checksum)
           : null,
@@ -67,7 +67,7 @@ export async function getSchemaAuthorities(context: SqlfuContext) {
         fileName: current ? basename(current.path) : null,
         content: current?.content ?? '-- migration file missing from repo',
         applied: true,
-        appliedAt: migration.appliedAt,
+        applied_at: migration.applied_at,
         integrity: await getMigrationIntegrity(context.host, current?.content, migration.checksum),
       };
     }),

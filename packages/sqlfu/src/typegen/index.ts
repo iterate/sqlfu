@@ -74,6 +74,22 @@ export async function generateQueryTypesForConfig(config: SqlfuProjectConfig): P
       if (!analysis) {
         throw new Error(`Missing vendored TypeSQL analysis for ${queryFile.sqlPath}`);
       }
+
+      // Typesql trips on a few trivially valid SQLite shapes (notably `delete from <table>;`
+      // with no where clause). When analysis fails AND the SQL has no placeholders, the
+      // user's statement is side-effect-only — emit the same trivial wrapper we use for DDL.
+      if (!analysis.ok && !hasPlaceholders(queryFile.sqlContent)) {
+        await fs.writeFile(
+          wrapperPath,
+          renderDdlWrapper({
+            relativePath: queryFile.relativePath,
+            sql: queryFile.sqlContent,
+            sync: config.generate.sync,
+          }),
+        );
+        return;
+      }
+
       const contents = analysis.ok
         ? renderQueryWrapper({
             relativePath: queryFile.relativePath,
@@ -105,13 +121,22 @@ export async function generateQueryTypesForConfig(config: SqlfuProjectConfig): P
  * keeps this simple and predictable.
  */
 function isDdlStatement(sqlContent: string): boolean {
-  const stripped = sqlContent
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/--.*$/gm, '')
-    .trim();
+  const stripped = stripSqlComments(sqlContent).trim();
   return /^(create|drop|alter|pragma|vacuum|reindex|analyze|attach|detach|begin|commit|rollback|savepoint|release)\b/i.test(
     stripped,
   );
+}
+
+function hasPlaceholders(sqlContent: string): boolean {
+  const stripped = stripSqlComments(sqlContent);
+  // `:ident`, `$ident`, `@ident` — all three are sqlite bound-param shapes. Also match standalone `?`.
+  if (/[:$@][A-Za-z_][A-Za-z0-9_]*/.test(stripped)) return true;
+  if (/(?<![A-Za-z0-9_])\?(?:\d+)?/.test(stripped)) return true;
+  return false;
+}
+
+function stripSqlComments(sqlContent: string): string {
+  return sqlContent.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--.*$/gm, '');
 }
 
 function renderDdlWrapper(input: {relativePath: string; sql: string; sync: boolean}): string {
@@ -128,7 +153,7 @@ function renderDdlWrapper(input: {relativePath: string; sql: string; sync: boole
   return [
     `import type {${clientType}, SqlQuery} from 'sqlfu';`,
     ``,
-    `const ${sqlConstantName} = \``,
+    `export const ${sqlConstantName} = \``,
     normalizeSqlForTemplate(input.sql).join('\n').trim(),
     `\``,
     ``,
@@ -531,7 +556,7 @@ function renderQueryWrapper(input: {
     ``,
     ...typeBlocks,
     ``,
-    `const ${sqlConstantName} = \``,
+    `export const ${sqlConstantName} = \``,
     normalizeSqlForTemplate(input.descriptor.sql).join('\n').trim(),
     `\``,
     ``,
