@@ -421,9 +421,16 @@ function renderQueryWrapper(input: {
  * vocabulary for field types, object-schema construction, inference helper, and parse-call
  * shape — but the overall file layout (schemas as module-scoped consts, namespace merging,
  * Object.assign) is identical across all three.
+ *
+ * The emission split between `'zod'` and `'standard'` flavours mirrors the real divide:
+ * zod has a first-class `safeParse` + `z.prettifyError`, so it doesn't need sqlfu's runtime
+ * helper; valibot and zod-mini share the Standard Schema `~standard.validate` entry point
+ * and route through `getValueOrThrowPrettyError` (or an inline throw when pretty errors are off).
  */
 type ValidatorEmitter = {
   readonly importLine: string;
+  /** `'zod'` uses safeParse/z.prettifyError; `'standard'` uses `~standard.validate` + sqlfu helper. */
+  readonly parseFlavour: 'zod' | 'standard';
   /** Called to render a single field expression for a TS type (e.g. `string` → `z.string()`). */
   readonly expressionForTsType: (tsType: string) => string;
   /** Wrap a base expression with nullable (column may be null) and optional (param may be absent). */
@@ -433,12 +440,11 @@ type ValidatorEmitter = {
   readonly objectSchemaDeclaration: (input: {schemaName: string; fieldLines: string[]}) => string[];
   /** The call used in function signatures and return types to infer a TS type from a schema. */
   readonly inferExpression: (schemaName: string) => string;
-  /** `Foo.parse(value)` in zod / `v.parse(Foo, value)` in valibot / `z.parse(Foo, value)` in zod-mini. */
-  readonly parseCall: (schemaName: string, valueExpression: string) => string;
 };
 
 const zodEmitter: ValidatorEmitter = {
   importLine: `import {z} from 'zod';`,
+  parseFlavour: 'zod',
   expressionForTsType: (tsType) => zodExpressionForTsType(tsType, 'z'),
   nullable: (expression) => `${expression}.nullable()`,
   optional: (expression) => `${expression}.optional()`,
@@ -448,11 +454,11 @@ const zodEmitter: ValidatorEmitter = {
     `});`,
   ],
   inferExpression: (schemaName) => `z.infer<typeof ${schemaName}>`,
-  parseCall: (schemaName, valueExpression) => `${schemaName}.parse(${valueExpression})`,
 };
 
 const zodMiniEmitter: ValidatorEmitter = {
   importLine: `import * as z from 'zod/mini';`,
+  parseFlavour: 'standard',
   expressionForTsType: (tsType) => zodExpressionForTsType(tsType, 'z'),
   // zod-mini keeps the same nullable/optional wrapper calls as standard zod — the same schema
   // object, a smaller bundle path.
@@ -464,11 +470,11 @@ const zodMiniEmitter: ValidatorEmitter = {
     `});`,
   ],
   inferExpression: (schemaName) => `z.infer<typeof ${schemaName}>`,
-  parseCall: (schemaName, valueExpression) => `z.parse(${schemaName}, ${valueExpression})`,
 };
 
 const valibotEmitter: ValidatorEmitter = {
   importLine: `import * as v from 'valibot';`,
+  parseFlavour: 'standard',
   expressionForTsType: (tsType) => valibotExpressionForTsType(tsType),
   nullable: (expression) => `v.nullable(${expression})`,
   optional: (expression) => `v.optional(${expression})`,
@@ -478,7 +484,6 @@ const valibotEmitter: ValidatorEmitter = {
     `});`,
   ],
   inferExpression: (schemaName) => `v.InferOutput<typeof ${schemaName}>`,
-  parseCall: (schemaName, valueExpression) => `v.parse(${schemaName}, ${valueExpression})`,
 };
 
 function getValidatorEmitter(validator: SqlfuValidator): ValidatorEmitter {
@@ -517,26 +522,22 @@ function renderValidatorQueryWrapper(input: {
   const sqlLines = [`const sql = \``, normalizeSqlForTemplate(descriptor.sql).join('\n').trim(), `\`;`];
 
   const functionSignatureArgs: string[] = [`client: Client`];
-  if (hasData) functionSignatureArgs.push(`data: ${emitter.inferExpression('Data')}`);
-  if (hasParams) functionSignatureArgs.push(`params: ${emitter.inferExpression('Params')}`);
+  if (hasData) functionSignatureArgs.push(`rawData: ${emitter.inferExpression('Data')}`);
+  if (hasParams) functionSignatureArgs.push(`rawParams: ${emitter.inferExpression('Params')}`);
 
   const returnType = getReturnType(descriptor, emitter.inferExpression('Result'));
 
   const validationLines: string[] = [];
   if (hasData) {
-    validationLines.push(
-      `\t\tconst validatedData = ${wrapParseCall(emitter, 'Data', 'data', prettyErrors, `${functionName} data`)};`,
-    );
+    validationLines.push(...buildInputValidationStatements(emitter, 'Data', 'rawData', 'data', prettyErrors));
   }
   if (hasParams) {
-    validationLines.push(
-      `\t\tconst validatedParams = ${wrapParseCall(emitter, 'Params', 'params', prettyErrors, `${functionName} params`)};`,
-    );
+    validationLines.push(...buildInputValidationStatements(emitter, 'Params', 'rawParams', 'params', prettyErrors));
   }
 
   const argsExpression = buildValidatorQueryArgs(descriptor, {
-    dataVariable: hasData ? 'validatedData' : null,
-    paramsVariable: hasParams ? 'validatedParams' : null,
+    dataVariable: hasData ? 'data' : null,
+    paramsVariable: hasParams ? 'params' : null,
   });
 
   const implementationLines = buildValidatorImplementation({
@@ -544,7 +545,6 @@ function renderValidatorQueryWrapper(input: {
     resultFields,
     emitter,
     prettyErrors,
-    label: `${functionName} result`,
   });
 
   const attachedProperties: string[] = [];
@@ -561,9 +561,7 @@ function renderValidatorQueryWrapper(input: {
   }
   namespaceLines.push(`\texport type Result = ${emitter.inferExpression(`${functionName}.Result`)};`);
 
-  const runtimeImports = prettyErrors
-    ? `import {runWithPrettyErrors, type Client, type SqlQuery} from 'sqlfu';`
-    : `import type {Client, SqlQuery} from 'sqlfu';`;
+  const runtimeImports = buildRuntimeImports(emitter, prettyErrors);
 
   return [
     emitter.importLine,
@@ -586,6 +584,19 @@ function renderValidatorQueryWrapper(input: {
     `}`,
     ``,
   ].join('\n');
+}
+
+/**
+ * What to import from `'sqlfu'` in the generated wrapper:
+ *  - zod path never needs a runtime helper (uses `z.prettifyError` directly).
+ *  - standard-schema path pulls in `getValueOrThrowPrettyError` when pretty errors are on.
+ *  - with pretty errors off, no runtime helper is imported in either path.
+ */
+function buildRuntimeImports(emitter: ValidatorEmitter, prettyErrors: boolean): string {
+  if (emitter.parseFlavour === 'standard' && prettyErrors) {
+    return `import {getValueOrThrowPrettyError, type Client, type SqlQuery} from 'sqlfu';`;
+  }
+  return `import type {Client, SqlQuery} from 'sqlfu';`;
 }
 
 function renderObjectSchemaDeclaration(
@@ -652,16 +663,91 @@ function valibotExpressionForTsType(tsType: string): string {
   return 'v.unknown()';
 }
 
-function wrapParseCall(
+/**
+ * Build the statements that take a raw input (`rawParams`, `rawData`) and produce a
+ * validated local (`params`, `data`). Shape depends on the validator flavour and whether
+ * pretty errors are on.
+ *
+ * `indent` is the prefix for each emitted line (two tabs inside the wrapper body).
+ */
+function buildInputValidationStatements(
   emitter: ValidatorEmitter,
-  schemaName: string,
-  valueExpression: string,
+  schemaName: 'Data' | 'Params',
+  rawVariable: string,
+  validatedVariable: string,
   prettyErrors: boolean,
-  label: string,
-): string {
-  const raw = emitter.parseCall(schemaName, valueExpression);
-  if (!prettyErrors) return raw;
-  return `runWithPrettyErrors(${JSON.stringify(label)}, () => ${raw})`;
+  indent: string = '\t\t',
+): string[] {
+  if (emitter.parseFlavour === 'zod') {
+    if (!prettyErrors) {
+      return [`${indent}const ${validatedVariable} = ${schemaName}.parse(${rawVariable});`];
+    }
+    return [
+      `${indent}const parsed${schemaName} = ${schemaName}.safeParse(${rawVariable});`,
+      `${indent}if (!parsed${schemaName}.success) throw new Error(z.prettifyError(parsed${schemaName}.error));`,
+      `${indent}const ${validatedVariable} = parsed${schemaName}.data;`,
+    ];
+  }
+
+  // Standard Schema flavour (valibot, zod-mini).
+  if (prettyErrors) {
+    return [
+      `${indent}const ${validatedVariable} = getValueOrThrowPrettyError(${schemaName}['~standard'].validate(${rawVariable}));`,
+    ];
+  }
+  return [
+    `${indent}const ${validatedVariable}Result = ${schemaName}['~standard'].validate(${rawVariable});`,
+    `${indent}if (${validatedVariable}Result instanceof Promise) throw new Error('Unexpected async validation from ${schemaName}.');`,
+    `${indent}if (${validatedVariable}Result.issues) throw Object.assign(new Error('Validation failed'), {issues: ${validatedVariable}Result.issues});`,
+    `${indent}const ${validatedVariable} = ${validatedVariable}Result.value;`,
+  ];
+}
+
+/**
+ * The row-parsing expression for validator flavours where a single-expression form exists
+ * (valibot/zod-mini + pretty errors, and zod + no pretty errors). Returns `null` when the
+ * flavour needs a multi-statement form instead.
+ */
+function rowParseExpressionOrNull(
+  emitter: ValidatorEmitter,
+  rowExpression: string,
+  prettyErrors: boolean,
+): string | null {
+  if (emitter.parseFlavour === 'zod' && !prettyErrors) {
+    return `Result.parse(${rowExpression})`;
+  }
+  if (emitter.parseFlavour === 'standard' && prettyErrors) {
+    return `getValueOrThrowPrettyError(Result['~standard'].validate(${rowExpression}))`;
+  }
+  return null;
+}
+
+/**
+ * Multi-statement body for parsing a row into its validated form. Used when a single
+ * expression isn't available — zod + pretty (safeParse/prettifyError) and standard + no-pretty
+ * (validate() with inline issue-throw). The last statement is `return <value>;`.
+ */
+function rowParseStatements(
+  emitter: ValidatorEmitter,
+  rowExpression: string,
+  prettyErrors: boolean,
+  indent: string,
+): string[] {
+  if (emitter.parseFlavour === 'zod') {
+    // zod + pretty.
+    return [
+      `${indent}const parsed = Result.safeParse(${rowExpression});`,
+      `${indent}if (!parsed.success) throw new Error(z.prettifyError(parsed.error));`,
+      `${indent}return parsed.data;`,
+    ];
+  }
+  // standard + !pretty.
+  return [
+    `${indent}const parsed = Result['~standard'].validate(${rowExpression});`,
+    `${indent}if (parsed instanceof Promise) throw new Error('Unexpected async validation from Result.');`,
+    `${indent}if (parsed.issues) throw Object.assign(new Error('Validation failed'), {issues: parsed.issues});`,
+    `${indent}return parsed.value;`,
+  ];
 }
 
 function buildValidatorQueryArgs(
@@ -683,38 +769,58 @@ function buildValidatorImplementation(input: {
   resultFields: readonly GeneratedField[];
   emitter: ValidatorEmitter;
   prettyErrors: boolean;
-  label: string;
 }): string[] {
-  const parseRow = (valueExpression: string) =>
-    wrapParseCall(input.emitter, 'Result', valueExpression, input.prettyErrors, input.label);
+  const {emitter, prettyErrors} = input;
+  const rowExpr = (rowExpression: string) => rowParseExpressionOrNull(emitter, rowExpression, prettyErrors);
+  const rowBlock = (rowExpression: string, indent: string) =>
+    rowParseStatements(emitter, rowExpression, prettyErrors, indent);
 
   if (input.resultMode === 'many') {
+    const expr = rowExpr('row');
+    if (expr) {
+      return [
+        `\t\tconst rows = await client.all(query);`,
+        `\t\treturn rows.map((row) => ${expr});`,
+      ];
+    }
     return [
       `\t\tconst rows = await client.all(query);`,
-      `\t\treturn rows.map((row) => ${parseRow('row')});`,
+      `\t\treturn rows.map((row) => {`,
+      ...rowBlock('row', '\t\t\t'),
+      `\t\t});`,
     ];
   }
 
   if (input.resultMode === 'nullableOne') {
+    const expr = rowExpr('rows[0]');
+    if (expr) {
+      return [
+        `\t\tconst rows = await client.all(query);`,
+        `\t\treturn rows.length > 0 ? ${expr} : null;`,
+      ];
+    }
     return [
       `\t\tconst rows = await client.all(query);`,
-      `\t\treturn rows.length > 0 ? ${parseRow('rows[0]')} : null;`,
+      `\t\tif (rows.length === 0) return null;`,
+      ...rowBlock('rows[0]', '\t\t'),
     ];
   }
 
   if (input.resultMode === 'one') {
+    const expr = rowExpr('rows[0]');
+    if (expr) {
+      return [
+        `\t\tconst rows = await client.all(query);`,
+        `\t\treturn ${expr};`,
+      ];
+    }
     return [
       `\t\tconst rows = await client.all(query);`,
-      `\t\treturn ${parseRow('rows[0]')};`,
+      ...rowBlock('rows[0]', '\t\t'),
     ];
   }
 
-  const metadataObjectLines = input.resultFields.map((field) => {
-    if (field.name === 'lastInsertRowid') {
-      return `\t\t\tlastInsertRowid: Number(result.lastInsertRowid),`;
-    }
-    return `\t\t\t${field.name}: result.${field.name},`;
-  });
+  // metadata mode: call client.run(), guard expected keys, then parse the assembled object.
   const guards = input.resultFields.flatMap((field) => {
     if (field.name === 'lastInsertRowid') {
       return [
@@ -729,11 +835,25 @@ function buildValidatorImplementation(input: {
       `\t\t}`,
     ];
   });
-  const metadataObjectExpression = ['{', ...metadataObjectLines, `\t\t}`].join('\n');
+  const rawResultLines = [
+    `\t\tconst rawResult = {`,
+    ...input.resultFields.map((field) => {
+      if (field.name === 'lastInsertRowid') {
+        return `\t\t\tlastInsertRowid: Number(result.lastInsertRowid),`;
+      }
+      return `\t\t\t${field.name}: result.${field.name},`;
+    }),
+    `\t\t};`,
+  ];
+
+  const metadataExpr = rowExpr('rawResult');
+  const resultReturnLines = metadataExpr ? [`\t\treturn ${metadataExpr};`] : rowBlock('rawResult', '\t\t');
+
   return [
     `\t\tconst result = await client.run(query);`,
     ...guards,
-    `\t\treturn ${parseRow(metadataObjectExpression)};`,
+    ...rawResultLines,
+    ...resultReturnLines,
   ];
 }
 

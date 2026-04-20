@@ -51,7 +51,7 @@ With `generate.validator: 'zod'` you get:
 ```ts
 // sql/.generated/find-post-by-slug.sql.ts  (generated - do not edit)
 import {z} from 'zod';
-import {runWithPrettyErrors, type Client, type SqlQuery} from 'sqlfu';
+import type {Client, SqlQuery} from 'sqlfu';
 
 const Params = z.object({slug: z.string()});
 const Result = z.object({
@@ -67,12 +67,17 @@ select id, slug, title, status from posts where slug = ? limit 1;
 export const findPostBySlug = Object.assign(
   async function findPostBySlug(
     client: Client,
-    params: z.infer<typeof Params>,
+    rawParams: z.infer<typeof Params>,
   ): Promise<z.infer<typeof Result> | null> {
-    const validatedParams = runWithPrettyErrors('findPostBySlug params', () => Params.parse(params));
-    const query: SqlQuery = {sql, args: [validatedParams.slug], name: 'find-post-by-slug'};
+    const parsedParams = Params.safeParse(rawParams);
+    if (!parsedParams.success) throw new Error(z.prettifyError(parsedParams.error));
+    const params = parsedParams.data;
+    const query: SqlQuery = {sql, args: [params.slug], name: 'find-post-by-slug'};
     const rows = await client.all(query);
-    return rows.length > 0 ? runWithPrettyErrors('findPostBySlug result', () => Result.parse(rows[0])) : null;
+    if (rows.length === 0) return null;
+    const parsed = Result.safeParse(rows[0]);
+    if (!parsed.success) throw new Error(z.prettifyError(parsed.error));
+    return parsed.data;
   },
   {Params, Result, sql},
 );
@@ -83,20 +88,50 @@ export namespace findPostBySlug {
 }
 ```
 
-Swap `validator: 'valibot'` and the same file uses `v.object` / `v.parse(Schema, value)` / `v.InferOutput`. Swap `validator: 'zod-mini'` and it uses `import * as z from 'zod/mini'` + `z.parse(Schema, value)`. The public shape — one callable, `.Params`, `.Result`, `.sql` — is identical across all three.
+With `validator: 'valibot'` the wrapper routes through Standard Schema's `~standard.validate` entry point (shared by valibot and zod-mini) and a runtime helper sqlfu exports, `getValueOrThrowPrettyError`:
+
+```ts
+// sql/.generated/find-post-by-slug.sql.ts  (generated - do not edit)
+import * as v from 'valibot';
+import {getValueOrThrowPrettyError, type Client, type SqlQuery} from 'sqlfu';
+
+// ...Params, Result, sql as above, using v.object/v.picklist/v.nullable...
+
+export const findPostBySlug = Object.assign(
+  async function findPostBySlug(
+    client: Client,
+    rawParams: v.InferOutput<typeof Params>,
+  ): Promise<v.InferOutput<typeof Result> | null> {
+    const params = getValueOrThrowPrettyError(Params['~standard'].validate(rawParams));
+    const query: SqlQuery = {sql, args: [params.slug], name: 'find-post-by-slug'};
+    const rows = await client.all(query);
+    return rows.length > 0 ? getValueOrThrowPrettyError(Result['~standard'].validate(rows[0])) : null;
+  },
+  {Params, Result, sql},
+);
+```
+
+Swap `validator: 'zod-mini'` and it uses the same `~standard.validate` + `getValueOrThrowPrettyError` flow, with `import * as z from 'zod/mini'`. The public shape — one callable, `.Params`, `.Result`, `.sql` — is identical across all three.
 
 ## Pretty errors
 
-By default (`generate.prettyErrors: true`), the generated wrapper catches validation errors and re-throws them with a readable, indented message built from the Standard Schema issues list:
+By default (`generate.prettyErrors: true`), validation failures throw an `Error` whose message is a readable, indented issues list — one line per issue with the dotted path:
 
 ```
-findPostBySlug params validation failed:
 ✖ Expected string, received number → at slug
 ```
 
-This works uniformly across zod, valibot, and zod-mini because all three expose `issues` on their thrown errors — the shape [Standard Schema](https://standardschema.dev) mandates.
+- **Zod** uses zod's native pretty-printer: `z.prettifyError(zodError)`. The generated wrapper calls `Params.safeParse(rawParams)` and throws `new Error(z.prettifyError(error))` on failure. No runtime helper is imported from sqlfu.
+- **Valibot / zod-mini** share the [Standard Schema](https://standardschema.dev) `~standard.validate(input)` entry point. The generated wrapper calls `Params['~standard'].validate(rawParams)` and hands the result to sqlfu's `getValueOrThrowPrettyError`, which returns `result.value` on success or throws an `Error` built from `result.issues` on failure.
 
-Set `prettyErrors: false` to let the raw error from the underlying validator library pass through untouched. Choose this if you have error-handling middleware that already introspects zod's `ZodError` / valibot's `ValiError` structurally.
+`getValueOrThrowPrettyError` is exported from `sqlfu` as a reference implementation — it's a small helper you're welcome to copy and adapt. The stable contract is the Standard Schema `Result` shape, not the helper.
+
+### `prettyErrors: false`
+
+Set `prettyErrors: false` to let the raw error from the underlying validator library pass through untouched. Choose this if you have error-handling middleware that already introspects zod's `ZodError` / valibot's issues list structurally.
+
+- **Zod** emits `Params.parse(rawParams)` directly — a `ZodError` propagates unchanged with `.issues` on it.
+- **Valibot / zod-mini** emit an inline check on the Standard Schema result — on failure, `throw Object.assign(new Error('Validation failed'), {issues: result.issues})`. You still get the issues array on `error.issues`, without running it through the prettifier.
 
 ```ts
 generate: {

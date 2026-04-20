@@ -852,7 +852,7 @@ test('generate with validator: zod emits zod schemas as the source of truth with
       .generated/
         find-post-by-slug.sql.ts
           import {z} from 'zod';
-          import {runWithPrettyErrors, type Client, type SqlQuery} from 'sqlfu';
+          import type {Client, SqlQuery} from 'sqlfu';
           
           const Params = z.object({
           	slug: z.string(),
@@ -868,11 +868,16 @@ test('generate with validator: zod emits zod schemas as the source of truth with
           \`;
           
           export const findPostBySlug = Object.assign(
-          	async function findPostBySlug(client: Client, params: z.infer<typeof Params>): Promise<z.infer<typeof Result> | null> {
-          		const validatedParams = runWithPrettyErrors("findPostBySlug params", () => Params.parse(params));
-          		const query: SqlQuery = { sql, args: [validatedParams.slug], name: "find-post-by-slug" };
+          	async function findPostBySlug(client: Client, rawParams: z.infer<typeof Params>): Promise<z.infer<typeof Result> | null> {
+          		const parsedParams = Params.safeParse(rawParams);
+          		if (!parsedParams.success) throw new Error(z.prettifyError(parsedParams.error));
+          		const params = parsedParams.data;
+          		const query: SqlQuery = { sql, args: [params.slug], name: "find-post-by-slug" };
           		const rows = await client.all(query);
-          		return rows.length > 0 ? runWithPrettyErrors("findPostBySlug result", () => Result.parse(rows[0])) : null;
+          		if (rows.length === 0) return null;
+          		const parsed = Result.safeParse(rows[0]);
+          		if (!parsed.success) throw new Error(z.prettifyError(parsed.error));
+          		return parsed.data;
           	},
           	{ Params, Result, sql },
           );
@@ -940,9 +945,10 @@ test('generate with validator: zod validates params and rows at runtime', async 
     title: 'Hello',
   });
 
-  // Pretty-errors wraps the raw ZodError, so the message surfaces the label + path.
+  // Pretty-errors uses zod's native z.prettifyError, so the message is the prettified
+  // issues list — one line per issue, with the dotted path.
   await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(
-    /findPostBySlug params validation failed[\s\S]+slug/,
+    /Invalid input[\s\S]+slug/,
   );
 
   const badClient = {
@@ -950,7 +956,7 @@ test('generate with validator: zod validates params and rows at runtime', async 
     all: async () => [{id: 'not-a-number', slug: 'oops', title: null}],
   };
   await expect(mod.findPostBySlug(badClient as never, {slug: 'x'})).rejects.toThrow(
-    /findPostBySlug result validation failed[\s\S]+id/,
+    /Invalid input[\s\S]+id/,
   );
 
   expect(typeof mod.findPostBySlug.sql).toBe('string');
@@ -981,7 +987,7 @@ test('generate with validator: valibot emits valibot schemas and validates at ru
       .generated/
         find-post-by-slug.sql.ts
           import * as v from 'valibot';
-          import {runWithPrettyErrors, type Client, type SqlQuery} from 'sqlfu';
+          import {getValueOrThrowPrettyError, type Client, type SqlQuery} from 'sqlfu';
           
           const Params = v.object({
           	slug: v.string(),
@@ -997,11 +1003,11 @@ test('generate with validator: valibot emits valibot schemas and validates at ru
           \`;
           
           export const findPostBySlug = Object.assign(
-          	async function findPostBySlug(client: Client, params: v.InferOutput<typeof Params>): Promise<v.InferOutput<typeof Result> | null> {
-          		const validatedParams = runWithPrettyErrors("findPostBySlug params", () => v.parse(Params, params));
-          		const query: SqlQuery = { sql, args: [validatedParams.slug], name: "find-post-by-slug" };
+          	async function findPostBySlug(client: Client, rawParams: v.InferOutput<typeof Params>): Promise<v.InferOutput<typeof Result> | null> {
+          		const params = getValueOrThrowPrettyError(Params['~standard'].validate(rawParams));
+          		const query: SqlQuery = { sql, args: [params.slug], name: "find-post-by-slug" };
           		const rows = await client.all(query);
-          		return rows.length > 0 ? runWithPrettyErrors("findPostBySlug result", () => v.parse(Result, rows[0])) : null;
+          		return rows.length > 0 ? getValueOrThrowPrettyError(Result['~standard'].validate(rows[0])) : null;
           	},
           	{ Params, Result, sql },
           );
@@ -1028,8 +1034,10 @@ test('generate with validator: valibot emits valibot schemas and validates at ru
     slug: 'hello',
     status: 'draft',
   });
+  // Valibot's pretty-errors path runs through sqlfu's getValueOrThrowPrettyError — the
+  // resulting message is the Standard Schema prettified issues list (one line per issue).
   await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(
-    /findPostBySlug params validation failed[\s\S]+slug/,
+    /Invalid type[\s\S]+slug/,
   );
 });
 
@@ -1052,7 +1060,7 @@ test('generate with validator: zod-mini emits zod/mini schemas and validates at 
       .generated/
         find-post-by-slug.sql.ts
           import * as z from 'zod/mini';
-          import {runWithPrettyErrors, type Client, type SqlQuery} from 'sqlfu';
+          import {getValueOrThrowPrettyError, type Client, type SqlQuery} from 'sqlfu';
           
           const Params = z.object({
           	slug: z.string(),
@@ -1067,11 +1075,11 @@ test('generate with validator: zod-mini emits zod/mini schemas and validates at 
           \`;
           
           export const findPostBySlug = Object.assign(
-          	async function findPostBySlug(client: Client, params: z.infer<typeof Params>): Promise<z.infer<typeof Result> | null> {
-          		const validatedParams = runWithPrettyErrors("findPostBySlug params", () => z.parse(Params, params));
-          		const query: SqlQuery = { sql, args: [validatedParams.slug], name: "find-post-by-slug" };
+          	async function findPostBySlug(client: Client, rawParams: z.infer<typeof Params>): Promise<z.infer<typeof Result> | null> {
+          		const params = getValueOrThrowPrettyError(Params['~standard'].validate(rawParams));
+          		const query: SqlQuery = { sql, args: [params.slug], name: "find-post-by-slug" };
           		const rows = await client.all(query);
-          		return rows.length > 0 ? runWithPrettyErrors("findPostBySlug result", () => z.parse(Result, rows[0])) : null;
+          		return rows.length > 0 ? getValueOrThrowPrettyError(Result['~standard'].validate(rows[0])) : null;
           	},
           	{ Params, Result, sql },
           );
@@ -1099,12 +1107,13 @@ test('generate with validator: zod-mini emits zod/mini schemas and validates at 
     slug: 'hello',
     title: 'Hello',
   });
+  // zod-mini also routes through sqlfu's getValueOrThrowPrettyError.
   await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(
-    /findPostBySlug params validation failed[\s\S]+slug/,
+    /Invalid input[\s\S]+slug/,
   );
 });
 
-test('generate with prettyErrors: false passes raw validator errors through', async () => {
+test('generate with prettyErrors: false + validator: zod lets the raw ZodError propagate', async () => {
   await using project = await createGenerateFixture({
     definitionsSql: dedent`
       create table posts (id integer primary key, slug text not null);
@@ -1118,7 +1127,11 @@ test('generate with prettyErrors: false passes raw validator errors through', as
   await project.generate();
 
   const generated = await project.readFile('sql/.generated/find-post-by-slug.sql.ts');
-  expect(generated).not.toContain('runWithPrettyErrors');
+  // No sqlfu runtime helpers imported, no safeParse wrapper — just Schema.parse directly.
+  expect(generated).not.toContain('getValueOrThrowPrettyError');
+  expect(generated).not.toContain('safeParse');
+  expect(generated).not.toContain('prettifyError');
+  expect(generated).toContain('Params.parse(rawParams)');
 
   const mod = await project.importTranspiledModule<{
     findPostBySlug: (client: unknown, params: {slug: string}) => Promise<unknown>;
@@ -1127,10 +1140,73 @@ test('generate with prettyErrors: false passes raw validator errors through', as
   using database = project.openDatabase();
   const client = createNodeSqliteClient(database.database);
 
-  // With prettyErrors off, the raw ZodError shape surfaces — no sqlfu "validation failed" wrapper.
+  // Raw ZodError — `.issues` is an array, no prettified "validation failed" wrapper string.
   await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toSatisfy((error: unknown) => {
     if (!(error instanceof Error)) return false;
-    if (error.message.includes('validation failed')) return false;
+    if (error.message.includes('Validation failed')) return false;
+    return Array.isArray((error as unknown as {issues?: unknown}).issues);
+  });
+});
+
+test('generate with prettyErrors: false + validator: valibot throws raw issues inline', async () => {
+  await using project = await createGenerateFixture({
+    definitionsSql: dedent`
+      create table posts (id integer primary key, slug text not null);
+    `,
+    files: {
+      'sql/find-post-by-slug.sql': `select id, slug from posts where slug = :slug limit 1;`,
+    },
+    config: {generate: {validator: 'valibot', prettyErrors: false}},
+  });
+
+  await project.generate();
+
+  const generated = await project.readFile('sql/.generated/find-post-by-slug.sql.ts');
+  // No sqlfu runtime helper import — just the Standard Schema validate() call with an inline issue-throw.
+  expect(generated).not.toContain('getValueOrThrowPrettyError');
+  expect(generated).toContain(`Params['~standard'].validate(rawParams)`);
+  expect(generated).toContain('throw Object.assign(new Error');
+
+  const mod = await project.importTranspiledModule<{
+    findPostBySlug: (client: unknown, params: {slug: string}) => Promise<unknown>;
+  }>('sql/.generated/find-post-by-slug.sql.ts');
+
+  using database = project.openDatabase();
+  const client = createNodeSqliteClient(database.database);
+
+  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toSatisfy((error: unknown) => {
+    if (!(error instanceof Error)) return false;
+    return Array.isArray((error as unknown as {issues?: unknown}).issues);
+  });
+});
+
+test('generate with prettyErrors: false + validator: zod-mini throws raw issues inline', async () => {
+  await using project = await createGenerateFixture({
+    definitionsSql: dedent`
+      create table posts (id integer primary key, slug text not null);
+    `,
+    files: {
+      'sql/find-post-by-slug.sql': `select id, slug from posts where slug = :slug limit 1;`,
+    },
+    config: {generate: {validator: 'zod-mini', prettyErrors: false}},
+  });
+
+  await project.generate();
+
+  const generated = await project.readFile('sql/.generated/find-post-by-slug.sql.ts');
+  expect(generated).not.toContain('getValueOrThrowPrettyError');
+  expect(generated).toContain(`Params['~standard'].validate(rawParams)`);
+  expect(generated).toContain('throw Object.assign(new Error');
+
+  const mod = await project.importTranspiledModule<{
+    findPostBySlug: (client: unknown, params: {slug: string}) => Promise<unknown>;
+  }>('sql/.generated/find-post-by-slug.sql.ts');
+
+  using database = project.openDatabase();
+  const client = createNodeSqliteClient(database.database);
+
+  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toSatisfy((error: unknown) => {
+    if (!(error instanceof Error)) return false;
     return Array.isArray((error as unknown as {issues?: unknown}).issues);
   });
 });
