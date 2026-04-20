@@ -7,13 +7,13 @@ size: large
 
 ## Status (high-level, human-skim)
 
-Multi-night task. **Night 1 complete.** Next pick-up is phase 3 (consumer swap), starting with the leaves under `sqlite-query-analyzer/`.
+Multi-night task. **Night 2 complete.** The parser now covers ~all of the SQL shapes that show up in the real test corpus (measured at 100% pass rate, see "Night 2 status" below). Next pick-up is still phase 3 (consumer swap).
 
 - [x] Phase 0: plan refinement + per-phase acceptance criteria
 - [x] Phase 1: surface-area analysis — `types.ts` enumerates every ANTLR node shape the analyzer reads (24 node types, one file).
-- [x] Phase 2: tokenizer + minimal `select_stmt` recursive-descent parser — `tokenizer.ts` + `select_stmt.ts` ship with tests, all additive, zero analyzer changes.
+- [x] Phase 2: tokenizer + substantially full recursive-descent parser — `tokenizer.ts`, `select_stmt.ts`, `dml_stmt.ts` ship with tests. All additive, zero analyzer changes. Covers SELECT (+ JOIN, CTE, compound, group/order/limit), the full SQLite expression grammar with precedence, INSERT/UPDATE/DELETE + RETURNING + ON CONFLICT.
 - [ ] Phase 3: per-file analyzer swap (next session) — details under "Next steps" below.
-- [ ] Phase 4: fixture tail (future session)
+- [ ] Phase 4: fixture tail (future session) — likely quite small given the current coverage measurement.
 - [ ] Phase 5: delete ANTLR + `typesql-parser/sqlite/` + `antlr4/` (future session)
 
 ### Next steps for phase 3 (resumption guide)
@@ -151,3 +151,51 @@ Depends on the `slim-package` branch landing first (PR #29). That branch sets up
 - Phase 2 shipped: tokenizer covers the full lexical surface, 16 tests. `select_stmt.ts` parser covers the simplest shapes with 14 tests; crucially it emits plain-data AST, not ANTLR-shaped nodes — that's a deliberate deferral to phase 3, which I added a shim layer to.
 - Where I stopped: the parser's grammar surface is intentionally tiny (no JOIN, no GROUP BY, no CASE, no IN/BETWEEN/LIKE, no function calls, no CTEs/UNION). That's phase 4 per fixture.
 - Test count over the session: 1071 → 1101 on the sqlfu filter. The 30 new tests are purely additive; no pre-existing behavior changed.
+
+### 2026-04-21 (night 2, bedtime session)
+
+Goal for the session: expand the phase-2 grammar to cover substantially more SQL shapes so that phase 3 (consumer swap) has a realistic shot at actually landing. Did not start phase 3.
+
+#### Shipped
+
+1. **SELECT, full grammar.** One commit (`drop-antlr night-2: full SELECT parser + expression precedence`). `select_stmt.ts` went from 420 → 1600 lines. Now covers:
+   - DISTINCT / ALL, multi-column result columns, star / `tbl.*` / expression-with-alias (AS or bare).
+   - FROM with all five explicit JOIN shapes (INNER / LEFT / RIGHT / FULL [OUTER] / CROSS / NATURAL) and both ON and USING constraints; comma-joined list; subquery in FROM; table-valued functions; nested joined `(a JOIN b ON ...)` shape.
+   - GROUP BY (multi-expr), HAVING, ORDER BY with ASC/DESC + NULLS FIRST/LAST, LIMIT with both OFFSET and legacy `LIMIT a, b` forms.
+   - Compound SELECT: UNION, UNION ALL, INTERSECT, EXCEPT, chainable. ORDER BY / LIMIT bind to the outer compound.
+   - WITH / CTE, RECURSIVE, column-alias lists, multiple CTEs.
+2. **Expressions, full precedence.** Implemented as a precedence-climbing recursive descent: OR, AND, NOT, equality (=, ==, !=, <>, IS [NOT] [DISTINCT FROM], IN, [NOT] LIKE/GLOB/MATCH/REGEXP, BETWEEN, ISNULL/NOTNULL), comparison, bit-and/or, shift, additive, multiplicative, ||, unary -/+/~, COLLATE, primary. Function calls including DISTINCT-arg, `*`-arg (count(*)), in-call ORDER BY (accepted & dropped), FILTER (WHERE ...), OVER (...) presence tracking. CAST(expr AS typename) with parameterized types. CASE (searched + simple). EXISTS / NOT EXISTS. Scalar subqueries. Parenthesized expression lists. BLOB literals `x'...'`. CURRENT_DATE / CURRENT_TIME / CURRENT_TIMESTAMP modeled as zero-arg function calls.
+3. **Tokenizer fixes.** BLOB literal scanning moved ahead of identifier scanning so `x'deadbeef'` doesn't tokenize as `x` + `'deadbeef'`. Window-function names (RANK / ROW_NUMBER / DENSE_RANK / CUME_DIST / FIRST_VALUE / LAST_VALUE / NTH_VALUE / NTILE / PERCENT_RANK / LEAD / LAG) pulled out of the reserved-keyword set so they parse as ordinary identifiers / function names. Several unused framing-keyword entries (`CURRENT`, `PARTITION`, `RANGE`, `ROWS`, `GROUPS`, `UNBOUNDED`, etc.) removed too, since they only appear inside OVER (...) which the parser brace-matches past rather than parsing.
+4. **`NOT EXISTS` collapses into `Exists(negated=true)`** rather than leaving `Unary(NOT, Exists(negated=false))` — saves consumers from having to unwrap.
+5. **INSERT / UPDATE / DELETE.** One commit (`drop-antlr night-2: INSERT / UPDATE / DELETE + RETURNING`). New `dml_stmt.ts` (~550 lines) reuses the SELECT parser's expression grammar via two new reentry helpers on `select_stmt.ts`: `parseSelectFrom` and `parseExprFromCursor`. Covers:
+   - INSERT: OR-action, schema-qualified table, column list, VALUES (multi-row) / SELECT / DEFAULT VALUES sources. `REPLACE INTO` shorthand tracked separately (`source_is_replace`).
+   - ON CONFLICT (target) [WHERE pred] DO NOTHING | DO UPDATE SET ... [WHERE ...].
+   - UPDATE: OR-action, optional alias, multi-assignment including tuple `(a, b) = (1, 2)`, WHERE, RETURNING. Records `where_offset` (byte offset of the WHERE keyword) so the analyzer can partition bind-parameter markers between SET and WHERE — this is the subtlety called out in `types.ts`.
+   - DELETE: FROM, optional alias, WHERE (+ offset), RETURNING.
+   - RETURNING: supports `*`, `tbl.*`, and `expr [AS alias]` with full expression grammar.
+
+#### Test count
+
+- Night 1: 30 parser tests, 1101 sqlfu-filter total.
+- Night 2: **129 parser tests** (joins: 14, clauses: 10, compound: 6, cte: 4, expressions: 40, dml: 25, select: 20; tokenizer: 16). Sqlfu-filter total **1206**. All additive.
+- Typecheck clean.
+
+#### Coverage measurement
+
+Built a scratch script (`test/sqlfu-sqlite-parser/coverage.ignoreme.ts`) that harvests every embedded SQL fixture from the test corpus (test files + loose `.sql` files, excluding the intentionally-malformed cross-dialect formatter fixtures) and attempts to parse each with the appropriate entry point.
+
+Results: **420 fixtures total → 55 in-scope DQL/DML queries → 55/55 pass (100%)**. 326 are skipped DDL (CREATE / DROP / PRAGMA / ATTACH / BEGIN / etc. — out of scope per plan), 39 are skipped unknown (non-executable string content).
+
+What this means: the parser likely covers ~all of the SQL shapes that the real test suite exercises at the analyzer level. Phase 3 (consumer swap) is now the bottleneck, not grammar coverage. Any remaining fixture-tail work (phase 4) is expected to be very small.
+
+#### Not shipped (deferred)
+
+- No analyzer consumer swap yet. Per the ground rules I kept ANTLR fully in place and changed no analyzer code. Phase 3 still needs an ANTLR-compatible shim wrapping the plain-data AST so `ExprContext.getText()`, `.PLUS()`, `.start.start`, etc. all work. That shim is where the real risk lives — once it's written, consumer migration should be largely mechanical file-by-file.
+- CREATE TABLE / column constraint parsing for `enum-parser.ts`. Listed in `types.ts` as consumed by the analyzer (CHECK `col IN (...)` detection); not implemented yet. Small scope; could go in the first phase-3 session.
+- Window function OVER (...) is brace-matched, not parsed — presence only. That matches what the analyzer needs per `types.ts` but will need real parsing if fixture-tail demands it.
+- Top-level `WITH ... INSERT` / `WITH ... UPDATE` / `WITH ... DELETE`. Embedded selects inside DML already handle WITH. Adding a DML-level WITH preamble is a small ask for phase 3/4.
+- ANTLR-shim layer for phase 3. Plan: a thin wrapper class per AST node type that implements the `*Context` interface documented in `types.ts`. Because the AST shape was deliberately designed (phase 1) to match what the analyzer reads, this should be mostly typing + simple accessor forwarding.
+
+#### Next steps (for night 3 or future resumption)
+
+Phase 3 consumer swap, starting with `enum-parser.ts` (smallest surface), then `traverse.ts` (the big one), then `parser.ts` (the orchestrator). Each file swap keeps ANTLR alive so the system remains green throughout. See night-1 "Next steps" above — unchanged.
