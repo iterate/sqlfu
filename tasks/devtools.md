@@ -5,9 +5,22 @@ size: large
 
 ## Status summary
 
-MVP sketch, picking the simplest-viable path for both halves. Original spec was two bullets; this is the AFK-fleshed-out plan the user asked for.
+MVP shipped: `sqlfu/no-unnamed-inline-sql` lint rule + vscode scaffold. Round 2 (this bedtime, 2026-04-20): **expand the lint plugin** to add two more rules — formatting and query validation — and rename the export from `./eslint` to `./lint-plugin` so the module's role is clear (it targets both oxlint and eslint).
 
-**Restructure (post PR #16 review):** the lint plugin was originally shipped as a separate `@sqlfu/eslint-plugin` package. The user rejected that shape — the rule is now bundled inside the main `sqlfu` package as a single-file export at `sqlfu/eslint`, with **zero runtime dependencies** (compiled output only imports `node:fs` and `node:path`). The old `packages/sqlfu-eslint-plugin/` directory was deleted. See the log at the bottom for the commit.
+**Restructure (post PR #16 review):** the lint plugin was originally shipped as a separate `@sqlfu/eslint-plugin` package. The user rejected that shape — the rule is now bundled inside the main `sqlfu` package as a single-file export. Originally at `sqlfu/eslint` with **zero runtime dependencies**; the round-2 changes introduce a runtime import of `sqlfu`'s formatter (~60 kB bundled), so the module is now more than a shim — hence the rename to `./lint-plugin`.
+
+## Round 2 (2026-04-20)
+
+Three asks from the user:
+
+1. **Export rename**: `sqlfu/eslint` → `sqlfu/lint-plugin`. Pre-alpha — break the export, don't keep a legacy alias.
+2. **Formatter rule** (`sqlfu/format-sql`): flag inline SQL template literals that don't match `formatSql(text, {style: 'sqlfu'})`. Offer autofix via the formatter's output. Targets the same `client.{all,run,iterate}` + `client.sql\`…\`` shape as `no-unnamed-inline-sql`.
+3. **Query-validation rule** (`sqlfu/valid-sql`, status: deferred tonight): flag inline SQL template literals whose content fails to parse. Requires loading the vendored ANTLR parser, which is itself on the chopping block (see `tasks/drop-antlr.md`). Deferring to the post-drop-antlr world, when the new hand-rolled parser gives us a cheap sync `validate(sql) → diagnostic[]` surface. Task file notes this as a follow-up; the lint plugin gets a stub rule name reserved for it.
+4. **Dogfood**: wire the plugin into this repo's `.oxlintrc.json` via `jsPlugins`. Both existing and new rules should run against the sqlfu monorepo's source.
+
+Why only two of three rules ship tonight:
+- The formatter rule is synchronous, zero-schema, and cheap. Perfect oxlint/eslint citizen.
+- The validation rule needs either the vendored ANTLR parser (which doubles the lint plugin's bundle size — a regression we're specifically trying to avoid with drop-antlr) or the full async `analyzeAdHocSqlForConfig` path (which doesn't fit oxlint's synchronous rule contract). Cleanest path is to wait for drop-antlr's hand-rolled parser: it'll have a small sync `parse()` returning a plain diagnostic list, which the lint plugin can consume at almost-zero extra cost.
 
 - **Lint plugin**: shipped as `sqlfu/eslint` (single file, zero runtime deps). oxlint supports JS plugins via an ESLint-compatible API (alpha, as of 2026-04), so the same export is loadable from `.oxlintrc.json` once the user opts in. MVP rule: `sqlfu/no-unnamed-inline-sql` — flags `client.all(\`...\`)` / `client.run(\`...\`)` / `client.iterate(\`...\`)` callsites where the inline SQL appears verbatim (modulo whitespace) inside a `.sql` file in the sqlfu project's `queries` glob. Suggests the named wrapper import. Scoped to the MVP; other candidate rules listed below but deferred.
 - **VS Code extension**: scaffolding only. Downscoping from "show hover types over `.sql` files" (would need an LSP) to **one command**: `sqlfu: open UI`, which runs `sqlfu ui` (or `sqlfu-ui` from the workspace's installed packages) for the current workspace root and opens the UI in a webview panel. This gets the user a real artifact they can load via F5 tonight. Further ambition (codelens over `.sql`, inline types) is sketched below, not built.
@@ -115,10 +128,18 @@ If the scaffolding turns into an afternoon of tsconfig wrangling or CSP headache
 ## Checklist
 
 - [x] flesh out this task file with concrete plan _(committed separately as the first commit on the `devtools` branch)_
-- [x] ~~create `packages/sqlfu-eslint-plugin/` with MVP rule + tests~~ _rejected — see next item. Package deleted; rule lives inside `packages/sqlfu/src/eslint.ts`._
-- [x] ship the ESLint rule inside `sqlfu` itself (`sqlfu/eslint` export) with zero runtime deps _implemented at `packages/sqlfu/src/eslint.ts`, tested at `packages/sqlfu/test/eslint.test.ts` (7 cases)_
+- [x] ~~create `packages/sqlfu-eslint-plugin/` with MVP rule + tests~~ _rejected — see next item. Package deleted; rule lives inside `packages/sqlfu/src/lint-plugin.ts`._
+- [x] ship the ESLint rule inside `sqlfu` itself with zero runtime deps _implemented at `packages/sqlfu/src/lint-plugin.ts` (originally `eslint.ts`, renamed round 2), tested at `packages/sqlfu/test/lint-plugin.test.ts`_
 - [x] create `packages/sqlfu-vscode/` with one-command extension _see implementation notes_
 - [x] open PR `devtools: lint plugin + vscode extension scaffolding` _see implementation log_
+
+### Round 2 (2026-04-20)
+
+- [ ] rename export `sqlfu/eslint` → `sqlfu/lint-plugin`. Rename `src/eslint.ts` → `src/lint-plugin.ts`; rename test. Update `packages/sqlfu/package.json` exports + `publishConfig.exports`. README updates.
+- [ ] add `sqlfu/format-sql` rule: flag inline SQL template literals that don't match `formatSql(text, {style: 'sqlfu'})`. Provide autofix. Targets `client.{all,run,iterate}` call arguments and `client.sql\`…\`` tagged templates. Skip templates with interpolations (consistent with `no-unnamed-inline-sql`).
+- [ ] dogfood: add `jsPlugins: ["./packages/sqlfu/src/lint-plugin.ts"]` to `.oxlintrc.json`. Enable both rules. Fix any hits.
+- [ ] update docs: the lint-rule section in `packages/sqlfu/README.md` grows a second rule + the new import path.
+- [ ] reserve rule name `sqlfu/valid-sql` in the task file as explicit future work; link to `tasks/drop-antlr.md` for the blocking item.
 
 ## Pre-existing flaws noticed (fix in-branch if trivial)
 
