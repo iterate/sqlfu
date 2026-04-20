@@ -10,7 +10,9 @@
     "sqlfu": "./dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.js.map",
+    "!dist/**/*.d.ts.map"
   ],
   "type": "module",
   "exports": {
