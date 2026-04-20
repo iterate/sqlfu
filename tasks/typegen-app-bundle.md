@@ -1,22 +1,19 @@
-status: in-progress
+status: complete
 size: medium
 
 # Typegen emits everything your app needs to talk to your db
 
 ## Implementation status (2026-04-20)
 
-Primary piece (row-type emission) is landed and tested. Tertiary piece (dogfood refactor of `migrations/index.ts`) is deferred — see "Implementation log" below for why.
+Complete. All five pieces shipped in this PR.
 
-**Shipped in this PR:**
+**Shipped:**
 
-- Typegen emits a `tables.ts` in `.generated/` with one row type per table and view in the live schema. `<RelationName in PascalCase>Row`, e.g. `posts` → `PostsRow`, `post_summaries` → `PostSummariesRow`.
-- Nullable columns are typed `T | null` (not `T?`) — every column is always present on a row; a null-valued column is distinct from an absent key.
-- Barrel (`.generated/index.ts`) re-exports `tables.ts` so `import {PostsRow} from './.generated'` works.
-- 20 existing snapshot tests updated to reflect the new output; one focused new test asserts the convention end-to-end with a mix of tables, views, nullable, and not-null columns.
-
-**Deferred (see Implementation log):**
-
-- The dogfood refactor of `migrations/index.ts` onto the new generated wrappers. Needs small typegen cleanups first (query catalog and migrations-bundle side effects; DDL support or a "definitions-only config" carve-out).
+1. Typegen emits a `tables.ts` in `.generated/` with one row type per table and view in the live schema — `<RelationName in PascalCase>Row`, e.g. `posts` → `PostsRow`. Nullable columns are typed `T | null` (not `T?`).
+2. DDL support in typegen: files whose SQL starts with a DDL keyword (`create`, `drop`, `alter`, …) or is a parameterless statement typesql can't analyze get a trivial `client.run(sql)` wrapper instead of the `//Invalid SQL` placeholder. These are kept out of the form-driven query catalog.
+3. `migrations` config field is now optional. If absent, typegen skips the migrations bundle; migration-specific CLI commands (`sqlfu draft`) throw a clear error.
+4. New `generate.sync?: boolean` config option. When true, generated wrappers take a `SyncClient` and return values synchronously — no async/await, no `Promise<…>` wrapping.
+5. `migrations/index.ts` now imports the `SqlfuMigrationsRow` row type and `InsertMigrationSql`/`SelectMigrationHistorySql`/etc. constants from a generated output at `src/migrations/queries/.generated/`. Built from `internal/definitions.sql` (table DDL) and `src/migrations/queries/*.sql` (the dynamic queries) via `pnpm run build:internal-queries`. The CREATE TABLE DDL lives in `queries/ensure-migration-table.sql` and flows through the same typegen path. Deleted: the `ensureMigrationTable` public function, the content→checksum rename alter-table shim, the `AppliedMigration` type alias. Renamed: the row's `appliedAt` field to `applied_at` everywhere (including the UI consumer types) so the column name and the TS shape agree.
 
 ## One-line summary
 
@@ -100,12 +97,19 @@ Original motivation + PR #15 review comment is at <https://github.com/mmkal/sqlf
 - Nullability policy for row types: required key, `| null` suffix. This deliberately differs from the convention query-result types use (`foo?: string` for nullable select columns), because a table row always has every column — a null-valued column is distinct from an absent key. Both conventions live side-by-side in the generated output now. Documented in a module-level JSDoc on `writeTablesFile`.
 - `writeGeneratedBarrel` unconditionally re-exports `./tables.${ext}`. Even when the schema is empty, `tables.ts` is written with `export {};` so the barrel import resolves.
 
-### 2026-04-20 — dogfood refactor deferred
+### 2026-04-20 — review comments solved the rocks
 
-Started scoping the refactor of `packages/sqlfu/src/migrations/index.ts` onto generated wrappers. Hit three design rocks worth flagging before implementing:
+After pushing the row-type commit, three review comments on the "deferred" section of the original log solved the three flagged rocks directly:
 
-1. **DDL isn't expressible as a typegen query.** `CREATE TABLE IF NOT EXISTS sqlfu_migrations(...)` can't be moved into `queries/ensure-migration-table.sql` and get a typed wrapper — typesql analysis switches on `queryType: 'Select'|'Insert'|'Update'|'Delete'|'Copy'`. Options: (a) keep the DDL inline as a string and put only the dynamic queries through typegen, (b) move the DDL to `definitions.sql` and emit a companion constant that bundles its content, (c) add DDL support to typegen. (a) is the smallest step and still gets us table-shape single source of truth via the generated row type.
-2. **`generateQueryTypesForConfig` has side effects that don't fit a library-author use case.** It also writes `.sqlfu/query-catalog.json` and a migrations bundle to `${migrations}/.generated/`. For sqlfu-internal we want neither. Either refactor the entry point so the caller can opt out, or live with the stray files under `.sqlfu/` and an empty `src/migrations/zero-migrations/.generated/migrations.ts`.
-3. **Dual-dispatch vs generated wrappers.** Generated wrappers are async-only (`Promise<...>`). `migrations/index.ts` uses a sync+async dual-dispatch generator pattern so one code path services both sync and async clients. Two ways to reconcile: (a) keep the generators, and only import the *SQL string constants + row types* from the generated output (still dogfoods SQL-in-file + typegen analysis, keeps dual-dispatch untouched), (b) extend typegen to emit sync+async pairs. (a) is the right scope for this PR; (b) belongs to its own task.
+1. **DDL as a query:** emit a trivial `client.run(sql)` wrapper for DDL statements (no params, no results) — detected by a leading-keyword regex. As a bonus fallback, failed typesql analyses with no placeholders also get the trivial wrapper, which covers `delete from <table>;` (typesql trips on this shape). DDL wrappers are left out of the form-driven query catalog.
+2. **Optional migrations:** make `migrations` optional in the config; when absent, `writeMigrationsBundle` is skipped entirely. Migration-specific CLI commands throw a clear error when they need it.
+3. **Sync generation:** add `generate.sync?: boolean`. When true, generated wrappers take `SyncClient` and return values synchronously. This is a general-purpose feature; sqlfu-internal doesn't use it (migrations/index.ts still uses dual-dispatch, importing the SQL constants + row types from async-mode generated wrappers).
 
-The path of least resistance for the dogfood piece is: add `packages/sqlfu/src/migrations/queries/*.sql` for SELECT/INSERT/DELETE, a small `scripts/generate-migrations-types.ts` that programmatically runs typegen on them (accepting the side-effect files in `.sqlfu/` and an empty migrations bundle), commit the generated output, import the SQL constants + row types in `migrations/index.ts`, keep the `CREATE TABLE` DDL inline, delete the content→checksum rename shim. That's a coherent follow-up PR; stacking it here muddies review of the row-type change.
+### 2026-04-20 — dogfood landed
+
+- `packages/sqlfu/internal/definitions.sql` is the source of truth for the `sqlfu_migrations` table shape.
+- `packages/sqlfu/src/migrations/queries/*.sql` holds the four dynamic queries (ensure/select/insert/delete). Generated output lands in the `.generated/` subdir, committed to source.
+- `packages/sqlfu/scripts/generate-internal-queries.ts` runs typegen programmatically, chained before `tsgo` in the `build` script.
+- `migrations/index.ts` imports the row type + SQL constants from the generated output. Dual-dispatch generator pattern is preserved; we just swapped inline template strings for imported constants.
+- `ensureMigrationTable` (the public function), the content→checksum rename shim, and the `AppliedMigration` type alias are deleted — the user flagged these as legacy baggage to remove.
+- Renamed the row field `appliedAt` → `applied_at` (including at every UI consumer) so the column name, the generated row type, and the TS shape all agree.
