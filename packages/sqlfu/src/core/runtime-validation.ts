@@ -25,7 +25,7 @@ export function getValueOrThrowPrettyError<T>(result: StandardSchemaV1.Result<T>
     );
   }
   if (result.issues) {
-    throw new Error(prettifyStandardSchemaError({issues: result.issues}) ?? 'Validation failed');
+    throw new Error(prettifyStandardSchemaError({issues: result.issues}) || 'Validation failed');
   }
   return result.value;
 }
