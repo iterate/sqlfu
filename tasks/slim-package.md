@@ -63,14 +63,14 @@ After bundling, the tarball contents are mostly sqlfu's own code:
 
 | Chunk | Size |
 |---|---|
-| `dist/vendor/typesql/sqlfu.js` (bundled) | 640 kB |
-| `dist/vendor/sql-formatter` (bundled + leftover `.d.ts`) | 96 kB |
+| `dist/vendor/typesql/sqlfu.js` (bundled) | 480 kB |
 | `dist/core` | 224 kB |
 | `dist/schemadiff` | 204 kB |
 | `dist/ui` | 188 kB |
 | `dist/typegen` | 132 kB |
 | `dist/adapters` | 108 kB |
 | `dist/migrations` | 104 kB |
+| `dist/vendor/sql-formatter` (bundled + leftover `.d.ts`) | 96 kB |
 | various public entries + small modules | ~100 kB |
 
 ## What's NOT being done (and why)
@@ -81,22 +81,24 @@ After bundling, the tarball contents are mostly sqlfu's own code:
 
 ## Implementation notes
 
-### The esbuild `onLoad` plugins in `scripts/bundle-vendor.ts`
+### The esbuild `onLoad` plugin in `scripts/bundle-vendor.ts`
 
-1. **`gut-antlr-parsers`** — rewrites `src/vendor/typesql-parser/mysql/MySQLParser.ts` and `MySQLLexer.ts` in-memory. Anchors on two text lines: `public get serializedATN()` marks the start of the removable region, `static DecisionsToDFA` marks the end. Everything between — including the 2 MB `_serializedATN` data literal, the constructor, thousands of parse methods, the `_ATN` getter, and the `DecisionsToDFA` initializer — is replaced with a stub `public static readonly _serializedATN: number[] = []`. Context classes and static token constants (above) and class close + context class definitions (below) are preserved. If upstream regenerates the parsers and those anchors shift, the plugin throws rather than silently producing broken output.
+`sqlite-only-dialects` rewrites `allDialects.ts` in-memory to only export `sqlite`. Paired with a stdin entry that re-exports only `formatDialect` (not upstream's `format`), this lets esbuild drop the 19 non-sqlite dialect modules. The on-disk `.ts` is untouched so upstream sql-formatter resyncs stay mechanical.
 
-2. **`sqlite-only-dialects`** — rewrites `allDialects.ts` to only export `sqlite`. Paired with a stdin entry that re-exports only `formatDialect` (not upstream's `format`), this lets esbuild drop the 19 non-sqlite dialect modules.
+(There used to be a second plugin here, `gut-antlr-parsers`, that rewrote the vendored MySQL parser at bundle time to strip its 2 MB of `_serializedATN` parse tables. It was deleted once the sqlite analyzer was untangled from MySQL's AST — with no MySQL parser in the tree anymore, nothing to gut.)
 
-### Vendor edits needed before the gut plugin could do its job
+### Vendor-source edits that enabled the untangle
 
-The `MySQLParser.ts` source was reachable from the sqlite path via a long import chain. The gut plugin alone wasn't enough — the sqlite analyzer was pulling `extractQueryInfo` from `mysql-query-analyzer/parse.ts` (which module-level-instantiates `new MySQLParser(...)`). Required vendor-source changes:
+Upstream typesql has the sqlite analyzer piggyback on MySQL's AST types via `instanceof *Context` checks. Breaking that entanglement required:
 
-- `describe-query.ts` — removed `describeSql` and `parseSql` (both mysql-only, unused from the sqlite path). File now exports only pure utilities (`preprocessSql`, `verifyNotInferred`, `hasAnnotation`).
-- `mysql-query-analyzer/parse.ts` — reduced to the 5 AST-walking helpers the sqlite analyzer actually needs (`extractOrderByParameters`, `extractLimitParameters`, `getAllQuerySpecificationsFromSelectStatement`, `getLimitOptions`, `isSumExpressContext`). Dropped the mysql-specific functions (`parse`, `parseAndInfer`, `parseAndInferParamNullability`, `extractQueryInfo`, `isMultipleRowResult`) and the top-level `new MySQLParser(...)`.
-- `describe-nested-query.ts` — dropped the unused test-only `describeNestedQuery` helper.
-- `mysql-query-analyzer/infer-column-nullability.ts` — dropped the unused test-only `parseAndInferNotNull` helper.
+- `describe-query.ts` — removed the mysql-specific `describeSql` and `parseSql` functions. File now exports only pure utilities (`preprocessSql`, `verifyNotInferred`, `hasAnnotation`).
+- Renamed `mysql-query-analyzer/` → `shared-analyzer/` and trimmed its files:
+  - `collect-constraints.ts` — dropped MySQL-specific functions (`getInsertIntoTable`, `getInsertColumns`, `getDeleteColumns`, `getFunctionName`, the `ExprOrDefault` type) that referenced `SimpleExprFunctionContext`, `InsertStatementContext`, `DeleteStatementContext`. Kept only the pure TypeVar/constraint utilities the sqlite path uses.
+  - `select-columns.ts` — dropped the MySQL-flavored `getColumnName`, `getTopLevelAndExpr`, `getSimpleExpressions`, `isSimpleExpression`, `extractFieldsFromUsingClause` (all `instanceof SimpleExpr*Context` walkers); kept only `filterColumns`, `findColumn`, `splitName`, `selectAllColumns`, `includeColumn`, `getExpressions` (simplified to use only SQLite's `Select_coreContext` for subquery detection).
+  - `traverse.ts` — replaced the 2 350-line MySQL AST traversal with just the result types (`TraverseResult2`, `SelectResult`, etc.) and `getOrderByColumns` (the one function the sqlite path actually imported from it).
+  - Deleted `parse.ts`, `infer-column-nullability.ts`, `infer-param-nullability.ts`, `verify-multiple-result.ts`, `util.ts` — all MySQL-specific.
+- `describe-nested-query.ts` — trimmed to types-only. The `describeNestedQuery` and `generateNestedInfo` helpers operated on MySQL's `QueryContext`; neither was reachable from the sqlite path.
 - `codegen/shared/codegen-util.ts` — moved `writeTypeBlock`, `hasDateColumn`, `replaceOrderByParam` here from `codegen/mysql2.ts` so `codegen/sqlite.ts` doesn't pull mysql2 into the bundle.
-
-### Why the vendor edits weren't moved into the plugin too
-
-Pure-utility splits (moving `hasDateColumn` etc.) are real product changes; they belong in source. Removing unused test helpers is also a real product change. Only the gutting of MySQLParser's 47 000-line class body is intrusive enough to warrant a build-time rewrite — keeping that edit as a plugin means upstream typesql-parser resyncs stay a mechanical directory copy.
+- Deleted the entire `typesql-parser/mysql/`, `typesql-parser/postgres/`, and `typesql-parser/grammar/` subtrees (~1000 kB of source previously kept alive by the gut plugin).
+- Deleted dead typesql-root files: `cli.ts`, `sql-generator.ts`, `queryExectutor.ts`, `load-config.ts`, `codegen/pg.ts`, `codegen/mysql2.ts`, `dialects/`, `drivers/{libsql,postgres,types}.ts`, `postgres-query-analyzer/`.
+- Simplified `src/vendor/typesql/tsconfig.json` — the exclude list was papering over all those dead files and isn't needed anymore.
