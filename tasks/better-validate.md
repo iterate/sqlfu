@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 size: medium
 ---
 
@@ -9,12 +9,11 @@ Rebalance the runtime-validation story so no single validator is "the default re
 
 ## Status summary
 
-Spec only. Implementation to follow in subsequent commits:
+Shipped in three commits on the `better-validate` branch:
 
-- add `'arktype'` to `SqlfuValidator` and plumb it through config + typegen (reusing the Standard Schema codepath already shared by `valibot` and `zod-mini`)
-- expand `test/generate.test.ts` with arktype coverage matching the existing zod/valibot/zod-mini shape
-- rebalance `packages/sqlfu/docs/runtime-validation.md` — drop the "default recommendation" framing on zod, present zod/valibot/zod-mini/arktype on equal footing, and collapse the example-per-validator section into a tabbed block
-- tweak `website/scripts/sync-docs.mjs` to carry `.mdx` through (so Starlight's `<Tabs>` component works) and swap the doc source file to `.mdx` if needed
+1. fleshed-out spec (this file)
+2. arktype added as a fourth validator — reuses the existing Standard Schema codepath; the emitter interface collapses the old `expressionForTsType` + `nullable` + `optional` trio into a single `renderFieldLine` so arktype can own key-suffix optionality (`'title?'`).
+3. docs rebalance — `.md` → `.mdx`, alphabetical ordering, Starlight `<Tabs>` for both the generated-output example and the safe-parse snippets.
 
 ## Why
 
@@ -100,18 +99,18 @@ Fallback if MDX-in-sync-docs turns out to be more work than expected: do H3 per-
 
 ## Checklist
 
-- [ ] Flesh out this spec file and commit in isolation.
-- [ ] Add `'arktype'` to `SqlfuValidator` union in `core/types.ts` and `validValidators` in `core/config.ts`; update JSDoc.
-- [ ] Install `arktype` as a `packages/sqlfu` dependency.
-- [ ] Add `arktypeEmitter` in `typegen/index.ts` and wire it into `getValidatorEmitter`.
-- [ ] Figure out the right optional/nullable rendering for arktype (key-suffix `?` for optional, `| null` for nullable) and adjust `renderObjectSchemaDeclaration` if needed.
-- [ ] Failing → passing integration tests: `validator: 'arktype'` snapshot + runtime; `prettyErrors: false + arktype` snapshot + runtime; unknown-validator error message includes `'arktype'`.
-- [ ] Update fixture `paths` + `rewriteBareImports` to resolve `arktype`.
-- [ ] `pnpm --filter sqlfu test --run` green.
-- [ ] `pnpm --filter sqlfu typecheck` green.
-- [ ] Rewrite `docs/runtime-validation.md` → `.mdx`: drop "default recommendation", alphabetical ordering, honest per-validator tradeoffs, tabbed code samples.
-- [ ] Tweak `website/scripts/sync-docs.mjs` so `.mdx` sources round-trip as `.mdx` outputs; update the docs-array entry + the README link.
-- [ ] `pnpm --filter sqlfu-website build` green (or `dev` if build is slow).
+- [x] Flesh out this spec file and commit in isolation.
+- [x] Add `'arktype'` to `SqlfuValidator` union in `core/types.ts` and `validValidators` in `core/config.ts`; update JSDoc.
+- [x] Install `arktype` as a `packages/sqlfu` dependency.
+- [x] Add `arktypeEmitter` in `typegen/index.ts` and wire it into `getValidatorEmitter`. _turned the three-function interface (`expressionForTsType` + `nullable` + `optional`) into a single `renderFieldLine` so arktype can own key-rendering_
+- [x] Figure out the right optional/nullable rendering for arktype (key-suffix `?` for optional, `| null` for nullable) and adjust `renderObjectSchemaDeclaration` if needed. _key-suffix via `JSON.stringify('name?')`, `| null` inlined into the arktype string form for string-expressible types, `type.instanceOf(Uint8Array)` as an escape hatch_
+- [x] Failing → passing integration tests: `validator: 'arktype'` snapshot + runtime; `prettyErrors: false + arktype` snapshot + runtime; unknown-validator error message includes `'arktype'`.
+- [x] Update fixture `paths` + `rewriteBareImports` to resolve `arktype`.
+- [x] `pnpm --filter sqlfu test --run` green. _32/32 generate tests pass; 2 unrelated test files (better-sqlite3 native module not rebuilt, packages/ui vite config) fail on main too_
+- [x] `pnpm --filter sqlfu typecheck` green.
+- [x] Rewrite `docs/runtime-validation.md` → `.mdx`: drop "default recommendation", alphabetical ordering, honest per-validator tradeoffs, tabbed code samples.
+- [x] Tweak `website/scripts/sync-docs.mjs` so `.mdx` sources round-trip as `.mdx` outputs; update the docs-array entry + the README link.
+- [x] `pnpm --filter sqlfu-website build` green.
 
 ## Decisions made-up-on-user's-behalf (bedtime task)
 
@@ -127,4 +126,8 @@ Fallback if MDX-in-sync-docs turns out to be more work than expected: do H3 per-
 
 ## Implementation log
 
-(Populated during implementation.)
+- **Emitter interface refactor.** The original `ValidatorEmitter` had three tiny methods (`expressionForTsType`, `nullable`, `optional`) that the shared renderer composed into a field line. Arktype wants to control the *key* (suffix `?` for optional) and express nullable *inside* the arktype string. Collapsed to a single `renderFieldLine(field, fieldKind)`, with a `valueWrappedFieldLine` helper for the zod/valibot/zod-mini emitters that keeps their value-wrapping logic intact. Easy to read, and arktype slots in without spreading special-cases through the renderer.
+- **Arktype types that can't be strings.** `Uint8Array` isn't an arktype keyword. Handled by escape-hatching to `type.instanceOf(Uint8Array)` (arktype accepts a Type value as an object-literal field). Arrays of instance-of types use `.array()`; everything else stays in the string grammar.
+- **MDX-through-sync.** `sync-docs.mjs` used to hardcode `.md` on the destination. One-line change to preserve `path.extname(sourcePath)` so `.mdx` → `.mdx`, `.md` → `.md`. Verified by running `pnpm --filter sqlfu-website build` — `arktype` appears 11 times in the rendered HTML, Starlight's `<Tabs>` component builds correctly.
+- **Source frontmatter.** First pass at the `.mdx` doc had a `---\ntitle: …\n---` frontmatter block above the content; `sync-docs.mjs` prepends its own generated frontmatter, so the output had doubled frontmatter. Dropped the source frontmatter — the sync pipeline is the source of truth for Starlight frontmatter.
+- **Unrelated test failures (not from this branch).** `test/adapters/better-sqlite3.test.ts` needs a native-module rebuild in this worktree; `test/ui-server.test.ts` fails because packages/ui's vite.config.ts can't be loaded. Both reproduce on `main` without my changes. Left for follow-up.
