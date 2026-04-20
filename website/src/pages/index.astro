@@ -1,0 +1,223 @@
+---
+import '../styles/landing.css';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>sqlfu</title>
+    <meta
+      name="description"
+      content="All you need is sql. sqlfu lets you (or your agent) write schema, migrations, and queries as .sql files, and generates typed TypeScript wrappers next to them."
+    />
+    {/* Mirror Starlight's theme bootstrap: read localStorage 'starlight-theme' key
+        and apply data-theme to <html> before first paint to avoid FOUC. Also picks
+        up OS preference when no explicit choice is stored. */}
+    <script is:inline>
+      (() => {
+        const stored =
+          typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
+        const theme =
+          stored ||
+          (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="topbar">
+        <a class="brand" href="/">sqlfu</a>
+        <nav class="nav">
+          <a href="/docs/sqlfu/">Docs</a>
+          <a href="https://local.sqlfu.dev/?demo=1">Demo</a>
+          <a href="https://github.com/mmkal/sqlfu" target="_blank" rel="noreferrer">GitHub</a>
+          <button
+            type="button"
+            class="theme-toggle"
+            id="landing-theme-toggle"
+            aria-label="Toggle colour theme"
+            title="Toggle colour theme"
+          >
+            <span class="toggle-glyph" aria-hidden="true"></span>
+          </button>
+        </nav>
+      </header>
+
+      <section class="hero hero-solo">
+        <article class="hero-main">
+          <div class="eyebrow lowercase">npm install sqlfu</div>
+          <h1>all you need is sql.</h1>
+          <p class="lede">
+            sqlfu lets you (or your agent) write schema, migrations, and queries as <code>.sql</code> files, and generates typed TypeScript wrappers next to them. Not the abstraction of the month.
+          </p>
+          <div class="cta-row">
+            <a class="button primary" href="/docs/sqlfu/">Read the docs</a>
+            <a class="button" href="https://local.sqlfu.dev/?demo=1">Try the demo</a>
+          </div>
+        </article>
+      </section>
+
+      <figure class="showreel">
+        <img src="/docs/assets/packages/sqlfu/docs/i-know-sqlfu.webp" alt="I know sqlfu" />
+      </figure>
+
+      <h2 class="section-title">SQL first. TypeScript second.</h2>
+      <section class="section-grid" id="value-panels">
+        <article class="panel value-panel">
+          <div class="eyebrow">source of truth</div>
+          <div class="value-media" data-animation-key="schema">
+            <video
+              class="value-video"
+              autoplay
+              loop
+              muted
+              playsinline
+              preload="metadata"
+              poster="/assets/animations/anim-1-schema.poster.jpg"
+            >
+              <source src="/assets/animations/anim-1-schema.webm" type="video/webm" />
+              <source src="/assets/animations/anim-1-schema.mp4" type="video/mp4" />
+            </video>
+            <img
+              class="value-video-fallback"
+              src="/assets/animations/anim-1-schema.poster.jpg"
+              alt="Schema lives in SQL."
+              loading="lazy"
+            />
+          </div>
+          <h3>Schema lives in SQL.</h3>
+          <p>Your schema is a single <code>definitions.sql</code> file. Edit it like code &mdash; no DSL, no runtime builder to fight.</p>
+        </article>
+        <article class="panel value-panel">
+          <div class="eyebrow">types, generated</div>
+          <div class="value-media" data-animation-key="generate">
+            <video
+              class="value-video"
+              autoplay
+              loop
+              muted
+              playsinline
+              preload="metadata"
+              poster="/assets/animations/anim-2-generate.poster.jpg"
+            >
+              <source src="/assets/animations/anim-2-generate.webm" type="video/webm" />
+              <source src="/assets/animations/anim-2-generate.mp4" type="video/mp4" />
+            </video>
+            <img
+              class="value-video-fallback"
+              src="/assets/animations/anim-2-generate.poster.jpg"
+              alt="Types follow SQL."
+              loading="lazy"
+            />
+          </div>
+          <h3>Types follow SQL.</h3>
+          <p><code>sqlfu generate</code> reads your <code>.sql</code> files and emits typed wrappers next to them. Call sites get typed params, typed rows, and autocomplete &mdash; you still wrote plain SQL. Query names travel to <a href="/docs/observability/">OpenTelemetry, Sentry, Datadog, PostHog</a>.</p>
+        </article>
+        <article class="panel value-panel">
+          <div class="eyebrow">diff-driven migrations</div>
+          <div class="value-media" data-animation-key="draft">
+            <video
+              class="value-video"
+              autoplay
+              loop
+              muted
+              playsinline
+              preload="metadata"
+              poster="/assets/animations/anim-3-draft.poster.jpg"
+            >
+              <source src="/assets/animations/anim-3-draft.webm" type="video/webm" />
+              <source src="/assets/animations/anim-3-draft.mp4" type="video/mp4" />
+            </video>
+            <img
+              class="value-video-fallback"
+              src="/assets/animations/anim-3-draft.poster.jpg"
+              alt="Migrations draft themselves."
+              loading="lazy"
+            />
+          </div>
+          <h3>Migrations draft themselves.</h3>
+          <p>The native SQLite diff engine compares replayed migration history against <code>definitions.sql</code> and writes the next migration for you. You review, edit for renames or backfills, and commit.</p>
+        </article>
+      </section>
+
+      {/* ?animation_alternative=a|b|c|d swaps each panel's <video> sources + poster
+          to the corresponding alt-<letter>-<key> composition. Base URL is derived
+          from the rendered <source> src so alternatives work under base-path-
+          prefixed previews (artifact.ci URLs etc.) too. */}
+      <script is:inline>
+        (() => {
+          const params = new URLSearchParams(window.location.search);
+          const raw = params.get('animation_alternative');
+          if (!raw) return;
+          const letter = raw.trim().toLowerCase();
+          if (!['a', 'b', 'c', 'd'].includes(letter)) return;
+          const root = document.getElementById('value-panels');
+          if (!root) return;
+          for (const media of root.querySelectorAll('.value-media')) {
+            const key = media.dataset.animationKey;
+            const slug = 'alt-' + letter + '-' + key;
+            const video = media.querySelector('video');
+            const img = media.querySelector('img');
+            const sources = video.querySelectorAll('source');
+            const firstSrc = sources[0].getAttribute('src') || '';
+            const base = firstSrc.replace(/[^/]+\.webm$/, '');
+            sources[0].src = base + slug + '.webm';
+            sources[1].src = base + slug + '.mp4';
+            video.poster = base + slug + '.poster.jpg';
+            img.src = video.poster;
+            video.load();
+          }
+        })();
+      </script>
+
+      <footer class="footer">
+        Static docs site for sqlfu. Local studio backend lives at <code>local.sqlfu.dev</code> when <code>npx sqlfu</code> is running.
+      </footer>
+    </div>
+
+    {/* Landing-page theme toggle. Uses the same 'starlight-theme' localStorage key
+        Starlight owns, so docs and landing stay in sync. Cycles light → dark → auto. */}
+    <script is:inline>
+      (() => {
+        const key = 'starlight-theme';
+        const button = document.getElementById('landing-theme-toggle');
+        if (!button) return;
+
+        const prefersLight = () => window.matchMedia('(prefers-color-scheme: light)').matches;
+
+        const applyTheme = mode => {
+          const resolved = mode === 'auto' ? (prefersLight() ? 'light' : 'dark') : mode;
+          document.documentElement.dataset.theme = resolved;
+          button.dataset.themeMode = mode;
+        };
+
+        const readMode = () => {
+          const stored = localStorage.getItem(key);
+          return stored === 'light' || stored === 'dark' ? stored : 'auto';
+        };
+
+        const writeMode = mode => {
+          if (mode === 'auto') localStorage.setItem(key, '');
+          else localStorage.setItem(key, mode);
+        };
+
+        applyTheme(readMode());
+
+        button.addEventListener('click', () => {
+          const current = readMode();
+          const next = current === 'light' ? 'dark' : current === 'dark' ? 'auto' : 'light';
+          writeMode(next);
+          applyTheme(next);
+        });
+
+        // Keep landing in sync if the OS flips while we're on 'auto'.
+        window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+          if (readMode() === 'auto') applyTheme('auto');
+        });
+      })();
+    </script>
+  </body>
+</html>

@@ -1,6 +1,7 @@
 /**
  * Render every composition declared in src/Root.tsx to webm + mp4 + a poster
- * jpg, into website/src/assets/animations/.
+ * jpg, into website/public/assets/animations/ (served at /assets/animations/
+ * by astro at build time).
  *
  * Usage:
  *   pnpm -C website/animations render [compId1 compId2 ...]
@@ -17,7 +18,7 @@ import {compositionIds} from '../src/Root';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const animationsRoot = path.resolve(here, '..');
-const outputRoot = path.resolve(animationsRoot, '..', 'src', 'assets', 'animations');
+const outputRoot = path.resolve(animationsRoot, '..', 'public', 'assets', 'animations');
 
 const requested = process.argv.slice(2);
 const targets = requested.length ? requested : [...compositionIds];

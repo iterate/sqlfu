@@ -21,13 +21,13 @@ Alternatives (for A/B testing via `?animation_alternative=<letter>`):
 # Live-edit compositions
 pnpm studio
 
-# Render every composition to website/src/assets/animations/
+# Render every composition to website/public/assets/animations/
 pnpm render
 ```
 
-Rendered outputs land in `website/src/assets/animations/<name>.webm`,
-`<name>.mp4`, `<name>.poster.jpg`. The landing-page build at
-`website/build.mjs` copies them into the `dist/` output.
+Rendered outputs land in `website/public/assets/animations/<name>.webm`,
+`<name>.mp4`, `<name>.poster.jpg`. Astro serves `public/` at the site root,
+so the landing page loads them from `/assets/animations/` at build time.
 
 ## Fixtures
 
