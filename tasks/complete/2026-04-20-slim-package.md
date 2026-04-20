@@ -1,7 +1,5 @@
 ---
-status: in-progress
 size: medium
-branch: slimmer-package
 ---
 
 # Shrink the published sqlfu package
