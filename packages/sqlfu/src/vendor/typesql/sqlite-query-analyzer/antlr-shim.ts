@@ -1,70 +1,30 @@
-// sqlfu SQLite parser — ANTLR-compatible shim layer.
+// sqlfu SQLite parser — shim layer over the hand-rolled AST.
 //
-// Phase 3 of `tasks/drop-antlr.md`. Wraps the plain-data AST produced by
-// `select_stmt.ts` / `dml_stmt.ts` in classes that mimic the ANTLR-generated
-// `*Context` surface consumed by `sqlite-query-analyzer/` and
-// `shared-analyzer/`.
+// Phase 3 of `tasks/drop-antlr.md` introduced this layer as a compat shim
+// over ANTLR `*Context` subclasses. Phase 5 (night 4) severed the ANTLR
+// dependency: shim classes are now stand-alone. `instanceof` discrimination
+// still works — two dedicated base classes carry the identities the analyzer
+// actually checks for:
+//   - `ShimParserRuleContext`      — every rule-level node (the bar for
+//     `collectExpr`'s tree walk in `shared-analyzer/select-columns.ts`).
+//   - `ShimExprContextBase`        — stands in for `ExprContext` identity.
+//   - `ShimSelect_coreContextBase` — stands in for `Select_coreContext`.
 //
-// Design:
-//   - Each shim class extends the corresponding ANTLR `*Context` so
-//     `instanceof Select_stmtContext` etc. keep working for analyzer code
-//     (see `select-columns.ts:162` — `child instanceof ParserRuleContext`).
-//   - We do NOT invoke any real ANTLR runtime state. We call
-//     `super(undefined, 0)` — then assign our own `.start` / `.stop` /
-//     `.parentCtx` / `.children` fields. Every accessor the analyzer calls
-//     is overridden to read from the wrapped AST node instead of ANTLR's
-//     internal `children` array.
+// The shim wraps plain-data AST nodes produced by `select_stmt.ts` /
+// `dml_stmt.ts` / `ddl_stmt.ts` and exposes exactly the accessor surface that
+// `sqlite-query-analyzer/` and `shared-analyzer/` read. Every presence terminal
+// (`PLUS()`, `IS_()`, `LIKE_()`, …) maps to a kind check on the wrapped AST
+// node; every sub-rule (`expr(i)`, `expr_list()`, `select_core_list()`, …)
+// lazily constructs a child shim.
+//
+// Semantic contract:
 //   - `start` is a duck-typed Token with `.start` (offset) and
 //     `.getInputStream()` returning a stream that can slice the source.
-//     `.stop` is `{stop: number}`. These are the only token properties
-//     `extractOriginalSql` and `traverse.ts:2119` ever read.
-//   - `getChildCount()` / `getChild(i)` walk an `_immediateChildren` array
-//     we build from the AST. Only non-terminal (rule) children appear —
-//     the analyzer only descends into `ParserRuleContext` subclasses.
-//
-// Why not just return plain objects? The analyzer checks
-// `instanceof ExprContext`, `instanceof Sql_stmtContext`, etc. Subclassing is
-// the cleanest way to make those pass without monkey-patching `Symbol.hasInstance`
-// on each ANTLR class.
-
-import {
-	ExprContext,
-	Column_defContext,
-	Column_nameContext,
-	Column_aliasContext,
-	Column_constraintContext,
-	Common_table_stmtContext,
-	Common_table_expressionContext,
-	Create_table_stmtContext,
-	Delete_stmtContext,
-	Function_nameContext,
-	Insert_stmtContext,
-	Join_clauseContext,
-	Join_constraintContext,
-	Join_operatorContext,
-	Limit_stmtContext,
-	Literal_valueContext,
-	Order_by_stmtContext,
-	Ordering_termContext,
-	Qualified_table_nameContext,
-	Result_columnContext,
-	Returning_clauseContext,
-	Schema_nameContext,
-	Select_coreContext,
-	Select_stmtContext,
-	Sql_stmtContext,
-	Sql_stmt_listContext,
-	Table_aliasContext,
-	Table_function_nameContext,
-	Table_nameContext,
-	Table_or_subqueryContext,
-	Unary_operatorContext,
-	Update_stmtContext,
-	Upsert_clauseContext,
-	Values_clauseContext,
-	Value_rowContext,
-	Any_nameContext,
-} from '../../typesql-parser/sqlite/index.js';
+//   - `.stop` is `{stop: number}`. These are the only token properties
+//     `extractOriginalSql` and `traverse.ts`'s WHERE-offset comparison read.
+//   - `getChildCount()` / `getChild(i)` walks an `_immediateChildren` array
+//     built from the AST. Only other `ShimParserRuleContext` children appear —
+//     the analyzer only descends into rule-level nodes.
 
 import type {
 	ParsedSelectStmt,
@@ -182,14 +142,44 @@ function shimGetChild(this: ShimBaseFields, i: number): any {
 }
 
 // -----------------------------------------------------------------------------
+// Shim base classes — carry the `instanceof` identities the analyzer reads.
+// -----------------------------------------------------------------------------
+
+/**
+ * Base class for every rule-level shim node. Analyzer code in
+ * `shared-analyzer/select-columns.ts:collectExpr` uses `instanceof` against
+ * this base to decide whether a child is worth descending into during the
+ * expression tree walk.
+ */
+export class ShimParserRuleContext {
+	// These fields are populated by `wireBase` after super() returns.
+	_sql!: string;
+	_input!: SourceInputStream;
+	_nodeStart!: number;
+	_nodeStop!: number;
+	_immediateChildren: any[] = [];
+	parentCtx: any = null;
+	start!: ShimToken;
+	stop!: ShimToken;
+}
+
+/** Identity base for the `ExprContext` `instanceof` checks in
+ *  `traverse.ts` (parent-is-expression guards). */
+export class ShimExprContextBase extends ShimParserRuleContext {}
+
+/** Identity base for the `Select_coreContext` `instanceof` check in
+ *  `select-columns.ts:collectExpr` (subquery-depth flag). */
+export class ShimSelect_coreContextBase extends ShimParserRuleContext {}
+
+// -----------------------------------------------------------------------------
 // Identifier-leaf shims — these are unquoted-string wrappers.
 // -----------------------------------------------------------------------------
 
-class ShimAny_nameContext extends (Any_nameContext as any) {
+class ShimAny_nameContext extends ShimParserRuleContext {
 	private _text: string;
 	constructor(text: string, sql: string, input: SourceInputStream, start: number, stop: number, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, start, stop, parent);
+		super();
+		wireBase(this,sql, input, start, stop, parent);
 		this._text = text;
 	}
 	getText(): string {
@@ -202,12 +192,12 @@ class ShimAny_nameContext extends (Any_nameContext as any) {
 	getChild = shimGetChild;
 }
 
-class ShimTable_nameContext extends (Table_nameContext as any) {
+class ShimTable_nameContext extends ShimParserRuleContext {
 	private _text: string;
 	private _rawText: string;
 	constructor(rawText: string, unquotedText: string, sql: string, input: SourceInputStream, start: number, stop: number, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, start, stop, parent);
+		super();
+		wireBase(this,sql, input, start, stop, parent);
 		this._text = unquotedText;
 		this._rawText = rawText;
 	}
@@ -230,11 +220,11 @@ class ShimTable_nameContext extends (Table_nameContext as any) {
 	getChild = shimGetChild;
 }
 
-class ShimSchema_nameContext extends (Schema_nameContext as any) {
+class ShimSchema_nameContext extends ShimParserRuleContext {
 	private _text: string;
 	constructor(text: string, sql: string, input: SourceInputStream, start: number, stop: number, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, start, stop, parent);
+		super();
+		wireBase(this,sql, input, start, stop, parent);
 		this._text = text;
 	}
 	getText(): string { return this._text; }
@@ -242,11 +232,11 @@ class ShimSchema_nameContext extends (Schema_nameContext as any) {
 	getChild = shimGetChild;
 }
 
-class ShimTable_aliasContext extends (Table_aliasContext as any) {
+class ShimTable_aliasContext extends ShimParserRuleContext {
 	private _text: string;
 	constructor(text: string, sql: string, input: SourceInputStream, start: number, stop: number, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, start, stop, parent);
+		super();
+		wireBase(this,sql, input, start, stop, parent);
 		this._text = text;
 	}
 	getText(): string { return this._text; }
@@ -254,11 +244,11 @@ class ShimTable_aliasContext extends (Table_aliasContext as any) {
 	getChild = shimGetChild;
 }
 
-class ShimColumn_aliasContext extends (Column_aliasContext as any) {
+class ShimColumn_aliasContext extends ShimParserRuleContext {
 	private _text: string;
 	constructor(text: string, sql: string, input: SourceInputStream, start: number, stop: number, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, start, stop, parent);
+		super();
+		wireBase(this,sql, input, start, stop, parent);
 		this._text = text;
 	}
 	getText(): string { return this._text; }
@@ -266,11 +256,11 @@ class ShimColumn_aliasContext extends (Column_aliasContext as any) {
 	getChild = shimGetChild;
 }
 
-class ShimColumn_nameContext extends (Column_nameContext as any) {
+class ShimColumn_nameContext extends ShimParserRuleContext {
 	private _text: string;
 	constructor(text: string, sql: string, input: SourceInputStream, start: number, stop: number, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, start, stop, parent);
+		super();
+		wireBase(this,sql, input, start, stop, parent);
 		this._text = text;
 	}
 	getText(): string { return this._text; }
@@ -278,11 +268,11 @@ class ShimColumn_nameContext extends (Column_nameContext as any) {
 	getChild = shimGetChild;
 }
 
-class ShimFunction_nameContext extends (Function_nameContext as any) {
+class ShimFunction_nameContext extends ShimParserRuleContext {
 	private _text: string;
 	constructor(text: string, sql: string, input: SourceInputStream, start: number, stop: number, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, start, stop, parent);
+		super();
+		wireBase(this,sql, input, start, stop, parent);
 		this._text = text;
 	}
 	getText(): string { return this._text; }
@@ -290,11 +280,11 @@ class ShimFunction_nameContext extends (Function_nameContext as any) {
 	getChild = shimGetChild;
 }
 
-class ShimTable_function_nameContext extends (Table_function_nameContext as any) {
+class ShimTable_function_nameContext extends ShimParserRuleContext {
 	private _text: string;
 	constructor(text: string, sql: string, input: SourceInputStream, start: number, stop: number, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, start, stop, parent);
+		super();
+		wireBase(this,sql, input, start, stop, parent);
 		this._text = text;
 	}
 	getText(): string { return this._text; }
@@ -302,10 +292,10 @@ class ShimTable_function_nameContext extends (Table_function_nameContext as any)
 	getChild = shimGetChild;
 }
 
-class ShimQualified_table_nameContext extends (Qualified_table_nameContext as any) {
+class ShimQualified_table_nameContext extends ShimParserRuleContext {
 	constructor(sql: string, input: SourceInputStream, start: number, stop: number, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, start, stop, parent);
+		super();
+		wireBase(this,sql, input, start, stop, parent);
 	}
 	getText(): string {
 		return shimGetText.call(this as any);
@@ -320,12 +310,12 @@ class ShimQualified_table_nameContext extends (Qualified_table_nameContext as an
 
 type LiteralKind = 'STRING' | 'NUMERIC' | 'BLOB' | 'NULL' | 'TRUE' | 'FALSE';
 
-class ShimLiteral_valueContext extends (Literal_valueContext as any) {
+class ShimLiteral_valueContext extends ShimParserRuleContext {
 	private _kind: LiteralKind;
 	private _offset: number;
 	constructor(kind: LiteralKind, sql: string, input: SourceInputStream, start: number, stop: number, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, start, stop, parent);
+		super();
+		wireBase(this,sql, input, start, stop, parent);
 		this._kind = kind;
 		this._offset = start;
 	}
@@ -343,10 +333,10 @@ class ShimLiteral_valueContext extends (Literal_valueContext as any) {
 	getChild = shimGetChild;
 }
 
-class ShimUnary_operatorContext extends (Unary_operatorContext as any) {
+class ShimUnary_operatorContext extends ShimParserRuleContext {
 	constructor(sql: string, input: SourceInputStream, start: number, stop: number, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, start, stop, parent);
+		super();
+		wireBase(this,sql, input, start, stop, parent);
 	}
 	getText(): string {
 		return shimGetText.call(this as any);
@@ -383,11 +373,11 @@ function buildSchemaName(name: string, sql: string, input: SourceInputStream, st
  * The `_parsed` field is the plain-data ParsedExpr — we keep it so that
  * sub-expressions (`expr(0)`, `expr_list()`) can be lazily wrapped on demand.
  */
-class ShimExprContext extends (ExprContext as any) {
+class ShimExprContext extends ShimExprContextBase {
 	_parsed: ParsedExpr;
 	constructor(parsed: ParsedExpr, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, parsed.start, parsed.stop, parent);
+		super();
+		wireBase(this,sql, input, parsed.start, parsed.stop, parent);
 		this._parsed = parsed;
 	}
 
@@ -715,7 +705,7 @@ class ShimExprContext extends (ExprContext as any) {
 // SELECT_CORE shim
 // -----------------------------------------------------------------------------
 
-class ShimSelect_coreContext extends (Select_coreContext as any) {
+class ShimSelect_coreContext extends ShimSelect_coreContextBase {
 	_parsed: ParsedSelectCore;
 	_whereExpr?: ShimExprContext;
 	_groupByExpr?: ShimExprContext[];
@@ -725,8 +715,8 @@ class ShimSelect_coreContext extends (Select_coreContext as any) {
 	private _joinClauseCache: ShimJoin_clauseContext | null | undefined;
 
 	constructor(parsed: ParsedSelectCore, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, parsed.start, parsed.stop, parent);
+		super();
+		wireBase(this,sql, input, parsed.start, parsed.stop, parent);
 		this._parsed = parsed;
 		if (parsed.where) this._whereExpr = new ShimExprContext(parsed.where, sql, input, this);
 		if (parsed.group_by.length > 0) this._groupByExpr = parsed.group_by.map(e => new ShimExprContext(e, sql, input, this));
@@ -807,12 +797,12 @@ class ShimSelect_coreContext extends (Select_coreContext as any) {
 // Result column
 // -----------------------------------------------------------------------------
 
-class ShimResult_columnContext extends (Result_columnContext as any) {
+class ShimResult_columnContext extends ShimParserRuleContext {
 	_parsed: ParsedResultColumn;
 	private _exprCache: ShimExprContext | null | undefined;
 	constructor(parsed: ParsedResultColumn, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, parsed.start, parsed.stop, parent);
+		super();
+		wireBase(this,sql, input, parsed.start, parsed.stop, parent);
 		this._parsed = parsed;
 		const kids: any[] = [];
 		if (parsed.kind === 'Expr') {
@@ -850,11 +840,11 @@ class ShimResult_columnContext extends (Result_columnContext as any) {
 // Table_or_subquery
 // -----------------------------------------------------------------------------
 
-class ShimTable_or_subqueryContext extends (Table_or_subqueryContext as any) {
+class ShimTable_or_subqueryContext extends ShimParserRuleContext {
 	_parsed: ParsedTableOrSubquery;
 	constructor(parsed: ParsedTableOrSubquery, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, parsed.start, parsed.stop, parent);
+		super();
+		wireBase(this,sql, input, parsed.start, parsed.stop, parent);
 		this._parsed = parsed;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -910,11 +900,11 @@ class ShimTable_or_subqueryContext extends (Table_or_subqueryContext as any) {
 // Join clause / operator / constraint
 // -----------------------------------------------------------------------------
 
-class ShimJoin_clauseContext extends (Join_clauseContext as any) {
+class ShimJoin_clauseContext extends ShimParserRuleContext {
 	_chain: ParsedJoinChain;
 	constructor(chain: ParsedJoinChain, start: number, stop: number, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, start, stop, parent);
+		super();
+		wireBase(this,sql, input, start, stop, parent);
 		this._chain = chain;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -949,11 +939,11 @@ class ShimJoin_clauseContext extends (Join_clauseContext as any) {
 	}
 }
 
-class ShimJoin_operatorContext extends (Join_operatorContext as any) {
+class ShimJoin_operatorContext extends ShimParserRuleContext {
 	_op: ParsedJoinOperator;
 	constructor(op: ParsedJoinOperator, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, op.start, op.stop, parent);
+		super();
+		wireBase(this,sql, input, op.start, op.stop, parent);
 		this._op = op;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -962,11 +952,11 @@ class ShimJoin_operatorContext extends (Join_operatorContext as any) {
 	LEFT_(): any { return this._op.kind === 'LEFT' ? terminal(this._op.start, this._input) : null; }
 }
 
-class ShimJoin_constraintContext extends (Join_constraintContext as any) {
+class ShimJoin_constraintContext extends ShimParserRuleContext {
 	_c: ParsedJoinConstraint;
 	constructor(c: ParsedJoinConstraint, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, c.start, c.stop, parent);
+		super();
+		wireBase(this,sql, input, c.start, c.stop, parent);
 		this._c = c;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -988,11 +978,11 @@ class ShimJoin_constraintContext extends (Join_constraintContext as any) {
 // Order by / Limit / Common table
 // -----------------------------------------------------------------------------
 
-class ShimOrder_by_stmtContext extends (Order_by_stmtContext as any) {
+class ShimOrder_by_stmtContext extends ShimParserRuleContext {
 	_o: ParsedOrderBy;
 	constructor(o: ParsedOrderBy, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, o.start, o.stop, parent);
+		super();
+		wireBase(this,sql, input, o.start, o.stop, parent);
 		this._o = o;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1003,11 +993,11 @@ class ShimOrder_by_stmtContext extends (Order_by_stmtContext as any) {
 	}
 }
 
-class ShimOrdering_termContext extends (Ordering_termContext as any) {
+class ShimOrdering_termContext extends ShimParserRuleContext {
 	_t: ParsedOrderingTerm;
 	constructor(t: ParsedOrderingTerm, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, t.start, t.stop, parent);
+		super();
+		wireBase(this,sql, input, t.start, t.stop, parent);
 		this._t = t;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1016,11 +1006,11 @@ class ShimOrdering_termContext extends (Ordering_termContext as any) {
 	expr(): any { return new ShimExprContext(this._t.expr, this._sql, this._input, this); }
 }
 
-class ShimLimit_stmtContext extends (Limit_stmtContext as any) {
+class ShimLimit_stmtContext extends ShimParserRuleContext {
 	_l: ParsedLimit;
 	constructor(l: ParsedLimit, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, l.start, l.stop, parent);
+		super();
+		wireBase(this,sql, input, l.start, l.stop, parent);
 		this._l = l;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1034,11 +1024,11 @@ class ShimLimit_stmtContext extends (Limit_stmtContext as any) {
 	expr(i: number): any { return this.expr_list()[i]; }
 }
 
-class ShimCommon_table_stmtContext extends (Common_table_stmtContext as any) {
+class ShimCommon_table_stmtContext extends ShimParserRuleContext {
 	_w: ParsedWithClause;
 	constructor(w: ParsedWithClause, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, w.start, w.stop, parent);
+		super();
+		wireBase(this,sql, input, w.start, w.stop, parent);
 		this._w = w;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1050,11 +1040,11 @@ class ShimCommon_table_stmtContext extends (Common_table_stmtContext as any) {
 	}
 }
 
-class ShimCommon_table_expressionContext extends (Common_table_expressionContext as any) {
+class ShimCommon_table_expressionContext extends ShimParserRuleContext {
 	_c: ParsedCTE;
 	constructor(c: ParsedCTE, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, c.start, c.stop, parent);
+		super();
+		wireBase(this,sql, input, c.start, c.stop, parent);
 		this._c = c;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1073,12 +1063,12 @@ class ShimCommon_table_expressionContext extends (Common_table_expressionContext
 // SELECT_STMT
 // -----------------------------------------------------------------------------
 
-class ShimSelect_stmtContext extends (Select_stmtContext as any) {
+class ShimSelect_stmtContext extends ShimParserRuleContext {
 	_parsed: ParsedSelectStmt;
 	private _coresCache?: ShimSelect_coreContext[];
 	constructor(parsed: ParsedSelectStmt, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, parsed.start, parsed.stop, parent);
+		super();
+		wireBase(this,sql, input, parsed.start, parsed.stop, parent);
 		this._parsed = parsed;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1112,11 +1102,11 @@ class ShimSelect_stmtContext extends (Select_stmtContext as any) {
 // Returning / Values / Insert / Update / Delete
 // -----------------------------------------------------------------------------
 
-class ShimReturning_clauseContext extends (Returning_clauseContext as any) {
+class ShimReturning_clauseContext extends ShimParserRuleContext {
 	_r: ParsedReturningClause;
 	constructor(r: ParsedReturningClause, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, r.start, r.stop, parent);
+		super();
+		wireBase(this,sql, input, r.start, r.stop, parent);
 		this._r = r;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1127,13 +1117,13 @@ class ShimReturning_clauseContext extends (Returning_clauseContext as any) {
 	}
 }
 
-class ShimValues_clauseContext extends (Values_clauseContext as any) {
+class ShimValues_clauseContext extends ShimParserRuleContext {
 	_rows: ParsedExpr[][];
 	_rowStarts: number[];
 	_rowStops: number[];
 	constructor(rows: ParsedExpr[][], rowStarts: number[], rowStops: number[], start: number, stop: number, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, start, stop, parent);
+		super();
+		wireBase(this,sql, input, start, stop, parent);
 		this._rows = rows;
 		this._rowStarts = rowStarts;
 		this._rowStops = rowStops;
@@ -1146,11 +1136,11 @@ class ShimValues_clauseContext extends (Values_clauseContext as any) {
 	}
 }
 
-class ShimValue_rowContext extends (Value_rowContext as any) {
+class ShimValue_rowContext extends ShimParserRuleContext {
 	_row: ParsedExpr[];
 	constructor(row: ParsedExpr[], start: number, stop: number, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, start, stop, parent);
+		super();
+		wireBase(this,sql, input, start, stop, parent);
 		this._row = row;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1159,11 +1149,11 @@ class ShimValue_rowContext extends (Value_rowContext as any) {
 	expr_list(): any[] { return this._row.map(e => new ShimExprContext(e, this._sql, this._input, this)); }
 }
 
-class ShimUpsert_clauseContext extends (Upsert_clauseContext as any) {
+class ShimUpsert_clauseContext extends ShimParserRuleContext {
 	_u: ParsedUpsertClause;
 	constructor(u: ParsedUpsertClause, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, u.start, u.stop, parent);
+		super();
+		wireBase(this,sql, input, u.start, u.stop, parent);
 		this._u = u;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1191,11 +1181,11 @@ class ShimUpsert_clauseContext extends (Upsert_clauseContext as any) {
 	}
 }
 
-class ShimInsert_stmtContext extends (Insert_stmtContext as any) {
+class ShimInsert_stmtContext extends ShimParserRuleContext {
 	_parsed: ParsedInsertStmt;
 	constructor(parsed: ParsedInsertStmt, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, parsed.start, parsed.stop, parent);
+		super();
+		wireBase(this,sql, input, parsed.start, parsed.stop, parent);
 		this._parsed = parsed;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1231,11 +1221,11 @@ class ShimInsert_stmtContext extends (Insert_stmtContext as any) {
 	}
 }
 
-class ShimUpdate_stmtContext extends (Update_stmtContext as any) {
+class ShimUpdate_stmtContext extends ShimParserRuleContext {
 	_parsed: ParsedUpdateStmt;
 	constructor(parsed: ParsedUpdateStmt, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, parsed.start, parsed.stop, parent);
+		super();
+		wireBase(this,sql, input, parsed.start, parsed.stop, parent);
 		this._parsed = parsed;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1283,11 +1273,11 @@ class ShimUpdate_stmtContext extends (Update_stmtContext as any) {
 	}
 }
 
-class ShimDelete_stmtContext extends (Delete_stmtContext as any) {
+class ShimDelete_stmtContext extends ShimParserRuleContext {
 	_parsed: ParsedDeleteStmt;
 	constructor(parsed: ParsedDeleteStmt, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, parsed.start, parsed.stop, parent);
+		super();
+		wireBase(this,sql, input, parsed.start, parsed.stop, parent);
 		this._parsed = parsed;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1340,11 +1330,11 @@ export interface ParsedColumnConstraint {
 	stop: number;
 }
 
-class ShimCreate_table_stmtContext extends (Create_table_stmtContext as any) {
+class ShimCreate_table_stmtContext extends ShimParserRuleContext {
 	_parsed: ParsedCreateTable;
 	constructor(parsed: ParsedCreateTable, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, parsed.start, parsed.stop, parent);
+		super();
+		wireBase(this,sql, input, parsed.start, parsed.stop, parent);
 		this._parsed = parsed;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1363,11 +1353,11 @@ class ShimCreate_table_stmtContext extends (Create_table_stmtContext as any) {
 	}
 }
 
-class ShimColumn_defContext extends (Column_defContext as any) {
+class ShimColumn_defContext extends ShimParserRuleContext {
 	_parsed: ParsedColumnDef;
 	constructor(parsed: ParsedColumnDef, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, parsed.start, parsed.stop, parent);
+		super();
+		wireBase(this,sql, input, parsed.start, parsed.stop, parent);
 		this._parsed = parsed;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1384,11 +1374,11 @@ class ShimColumn_defContext extends (Column_defContext as any) {
 	}
 }
 
-class ShimColumn_constraintContext extends (Column_constraintContext as any) {
+class ShimColumn_constraintContext extends ShimParserRuleContext {
 	_parsed: ParsedColumnConstraint;
 	constructor(parsed: ParsedColumnConstraint, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
-		wireBase(this, sql, input, parsed.start, parsed.stop, parent);
+		super();
+		wireBase(this,sql, input, parsed.start, parsed.stop, parent);
 		this._parsed = parsed;
 	}
 	getText(): string { return shimGetText.call(this as any); }
@@ -1412,10 +1402,10 @@ export type ParsedTopStmt =
 	| { kind: 'delete'; stmt: ParsedDeleteStmt }
 	| { kind: 'create_table'; stmt: ParsedCreateTable };
 
-class ShimSql_stmtContext extends (Sql_stmtContext as any) {
+class ShimSql_stmtContext extends ShimParserRuleContext {
 	_parsed: ParsedTopStmt;
 	constructor(parsed: ParsedTopStmt, sql: string, input: SourceInputStream, parent: any) {
-		super(undefined, undefined, 0);
+		super();
 		const range = getStmtRange(parsed);
 		wireBase(this, sql, input, range.start, range.stop, parent);
 		this._parsed = parsed;
@@ -1445,10 +1435,10 @@ class ShimSql_stmtContext extends (Sql_stmtContext as any) {
 	}
 }
 
-class ShimSql_stmt_listContext extends (Sql_stmt_listContext as any) {
+class ShimSql_stmt_listContext extends ShimParserRuleContext {
 	children: any[];
 	constructor(sql: string, input: SourceInputStream, children: any[]) {
-		super(undefined, undefined, 0);
+		super();
 		const last = children[children.length - 1];
 		const first = children[0];
 		const start = first ? first._nodeStart : 0;
@@ -1557,5 +1547,12 @@ import {tokenize as tokenizeForDispatch} from '../../sqlfu-sqlite-parser/tokeniz
 import {parseSelectStmt as _parseSelectStmt} from '../../sqlfu-sqlite-parser/select_stmt.js';
 import {parseInsertStmt as _parseInsertStmt, parseUpdateStmt as _parseUpdateStmt, parseDeleteStmt as _parseDeleteStmt} from '../../sqlfu-sqlite-parser/dml_stmt.js';
 
-/** Exposed for enum-parser and tests. */
-export { ShimExprContext, ShimSql_stmtContext, ShimSelect_stmtContext, ShimSelect_coreContext };
+/** Exposed for enum-parser, traverse.ts's `getExpressions(expr, ClassCtor)`
+ *  calls, and tests. */
+export {
+	ShimExprContext,
+	ShimSql_stmtContext,
+	ShimSelect_stmtContext,
+	ShimSelect_coreContext,
+	ShimColumn_nameContext,
+};

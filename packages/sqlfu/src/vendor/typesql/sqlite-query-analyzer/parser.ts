@@ -1,6 +1,9 @@
 import { type Either, isLeft, left, right } from '../../small-utils.js';
 import type { ParameterNameAndPosition, ParameterDef, SchemaDef, TypeSqlError } from '../types.js';
-import { type Sql_stmtContext } from '../../typesql-parser/sqlite/index.js';
+// `Sql_stmtContext` used to refer to the ANTLR-generated class; post-phase-5
+// (see `tasks/drop-antlr.md`) the shim returns a `ShimSql_stmtContext`. The
+// analyzer only reads duck-typed accessors, so `any` is enough here.
+type Sql_stmtContext = any;
 import { parseSqlToShim } from './antlr-shim.js';
 import { tryTraverse_Sql_stmtContext } from './traverse.js';
 import {
