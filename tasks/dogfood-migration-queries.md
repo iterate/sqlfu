@@ -40,6 +40,26 @@ Reviewer's full description is in PR #15 review comment [#3110098823](https://gi
 - Should `ensureMigrationTable` go away entirely once `definitions.sql` is the source of truth for the table shape? Or does it stay for backwards-compat with DBs that predate the switch?
 - The dual-dispatch generator plumbing in `migrations/index.ts` is fairly specific to that file. If we split this into `schema.ts` + generated query wrappers, does the generator layer stay, or does each generated wrapper expose a sync + async pair directly?
 
+## Filtered Schema Authorities (critical pre-req)
+
+Moving sqlfu's own migration runtime onto sqlfu typegen means our migration code ends up "owning" a project that has *one* table: `sqlfu_migrations`. If the Desired Schema / Live Schema diff engine treats that project like any other, it will happily recommend dropping every user table in the DB it's pointed at, because they aren't in its definitions. That is obviously catastrophic.
+
+So before this task is viable, we need a story for **scope-filtered schema authorities**. Rough shape:
+
+- Both Desired Schema and Live Schema need a notion of "the set of objects this project is authoritative for".
+- For sqlfu-internal: authority = exactly `sqlfu_migrations` (and whatever else `definitions.sql` declares).
+- For a normal user project: authority = everything under the project's `definitions.sql` (today's behavior — the filter is "all").
+- The filter should probably be declared in config (`authorityPattern` / `authorityScope` / whatever). Needs to cover tables *and* views *and* indexes. Probably a glob-ish matcher.
+- Diff engine must respect it on *both* sides: objects outside the scope are invisible, so they're never flagged for create/drop/alter.
+
+Open design questions:
+
+- Is "authority" a single pattern, or does each object type get its own? (E.g. "we own `sqlfu_%` tables but no views" vs. "we own everything named `sqlfu_%`".)
+- How does this interact with baselining — does baselining of a sub-scope leave other scopes' histories intact? Probably yes, and that implies `sqlfu_migrations` rows may want a scope/namespace column eventually.
+- Do we need a concept of multiple co-existing sqlfu projects in one DB (one for app, one for sqlfu-internal bookkeeping)? If yes, the `sqlfu_migrations` table itself needs a scope/namespace column so each project's history is distinguishable. This is a potential future-proofing ask worth sketching before landing the dogfood change.
+
+This is a hard prerequisite: until the diff engine can be scoped, sqlfu's own migration runtime can't safely run against any real database.
+
 ## Not in scope
 
 - Changing the on-disk checksum format (sha256 stays).
