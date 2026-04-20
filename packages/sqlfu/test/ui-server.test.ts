@@ -26,6 +26,13 @@ test('sqlfu server serves a local backend page and the ui rpc contract from pack
   expect(homeResponse.status).toBe(200);
   expect(await homeResponse.text()).toContain('Local project server is running.');
 
+  const status = await fixture.client.project.status();
+  expect(status).toMatchObject({
+    initialized: true,
+    projectRoot: fixture.root,
+    serverVersion: expect.stringMatching(/^\d+\.\d+\.\d+(-\S+)?$/u) as unknown as string,
+  });
+
   const schema = await fixture.client.schema.get();
   expect(schema).toMatchObject({
     projectName: path.basename(fixture.root),
