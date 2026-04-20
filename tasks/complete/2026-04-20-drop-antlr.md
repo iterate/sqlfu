@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 size: large
 ---
 
@@ -7,14 +7,14 @@ size: large
 
 ## Status (high-level, human-skim)
 
-Multi-night task. **Night 3 complete — phase 3 is DONE.** The analyzer now runs entirely on the new hand-rolled parser through a thin ANTLR-compatibility shim. All 1216 tests pass (1200 pre-existing + 16 new shim tests). Phase 4 (fixture tail) is likely small — coverage measurements at end of night 2 put us at 100% in-scope parse coverage. Phase 5 (ANTLR deletion) can now begin whenever we want a soak period to prove stability first.
+**Done.** Four nights; all five phases shipped. Tarball dropped 267.7 kB → 146.4 kB packed (−45%) and 1.2 MB → 616.4 kB unpacked. All 1216 tests passing throughout; zero regressions. ANTLR is gone from the tree.
 
 - [x] Phase 0: plan refinement + per-phase acceptance criteria
 - [x] Phase 1: surface-area analysis — `types.ts` enumerates every ANTLR node shape the analyzer reads (24 node types, one file).
 - [x] Phase 2: tokenizer + substantially full recursive-descent parser — `tokenizer.ts`, `select_stmt.ts`, `dml_stmt.ts` ship with tests. All additive, zero analyzer changes. Covers SELECT (+ JOIN, CTE, compound, group/order/limit), the full SQLite expression grammar with precedence, INSERT/UPDATE/DELETE + RETURNING + ON CONFLICT.
-- [x] Phase 3: per-file analyzer swap — shim + enum-parser + parser.ts migrated. traverse.ts DID NOT need changes (shim preserves ANTLR runtime surface via subclassing). See "Night 3 status" below.
-- [ ] Phase 4: fixture tail (future session) — only worth doing if anything breaks in practice; coverage already 100% on real test corpus.
-- [ ] Phase 5: delete ANTLR + `typesql-parser/sqlite/` + `antlr4/` (future session, after a soak period).
+- [x] Phase 3: per-file analyzer swap — shim + enum-parser + parser.ts migrated. traverse.ts DID NOT need changes (shim preserved ANTLR runtime surface via subclassing). See "Night 3 status" below.
+- [x] Phase 4: fixture tail — _not needed in practice. Coverage stayed at 100% on the real test corpus through the migration; no fixture broke once phase 5 landed, so this phase was never triggered._
+- [x] Phase 5: delete ANTLR + `typesql-parser/` + `antlr4/`. See "Night 4 status" below.
 
 ### Next steps for phase 3 (resumption guide)
 
@@ -249,3 +249,65 @@ Goal: land phase 3 (consumer swap). Ship.
   6. Update `packages/sqlfu/tsconfig.typecheck.json` excludes (can drop `typesql-parser/**/*` once the tree is gone).
   7. Measure: tarball before/after, confirm ~−320 kB minified per the estimate in this task file.
 - Fixture tail (phase 4): only if anything fails under real usage. Coverage is already 100%.
+
+### 2026-04-20 (night 4, bedtime session) — SHIPPED
+
+Goal: phase 5 — delete ANTLR. Everything landed.
+
+#### What shipped
+
+Two commits on top of night 3:
+
+1. **`drop-antlr phase 5 — sever shim's ANTLR inheritance`** (399785b). The night-3 resumption note called out two options for this step; we took the lower-risk one (stand-alone shim classes, no `Symbol.hasInstance` hacks). The shim file no longer imports from `typesql-parser/`:
+   - Replaced every `class Shim* extends (SomeContext as any)` with `extends ShimParserRuleContext` (for rule-level shims), `extends ShimExprContextBase`, or `extends ShimSelect_coreContextBase` depending on which `instanceof` the analyzer expects to pass. Three identity bases cover every check site.
+   - Stripped `super(undefined, undefined, 0)` calls (were initializing ANTLR's `ParserRuleContext(parent, invokingState)` shape) — the shim bases are plain classes now.
+   - Updated the three `instanceof` consumer sites: `shared-analyzer/select-columns.ts:collectExpr` checks `ShimParserRuleContext` / `ShimSelect_coreContextBase`; `traverse.ts`'s two `parent instanceof ExprContext` guards plus `traverse.ts:extractRelationsAndParams`'s two `getExpressions(expr, ClassCtor)` calls (passing `ExprContext` or `Column_nameContext`) — re-aliased locally to `ShimExprContextBase` / `ShimColumn_nameContext`. No behavioral changes; just which class object carries the identity.
+   - Rewrote `test/sqlfu-sqlite-parser/antlr-shim.test.ts` to assert against the shim identity classes (no more `await import(new URL(...))` hack for the real ANTLR parser, since we don't need parity-testing against it anymore).
+
+2. **`drop-antlr phase 5 — delete ANTLR + typesql-parser`** (7e583dc). With the shim decoupled, deletion was mechanical:
+   - `rm -rf src/vendor/antlr4/ src/vendor/typesql-parser/` — 19,303 lines gone. `SQLiteParser.ts` alone was 456 kB. The `.g4` grammar sources, `.interp` / `.tokens` tables, and the generated `SQLiteLexer.ts` / `SQLiteParser.ts` went with them.
+   - `scripts/bundle-vendor.ts` — dropped `typesql-parser` + `antlr4` from `typesqlToDelete`, added `sqlfu-sqlite-parser` (see "gotcha" below).
+   - `package.json` `build:vendor-typesql` — swapped the `rm -rf` preamble from `antlr4 typesql-parser` entries to `sqlfu-sqlite-parser`.
+   - `src/vendor/typesql/tsconfig.json` — removed the `typesql-parser/**/*.ts` + `antlr4/**/*.js` includes; added `sqlfu-sqlite-parser/**/*.ts` so the vendor compile can see it.
+   - `tsconfig.build.json` — excluded `sqlfu-sqlite-parser/**/*` from the runtime compile (it ships via the bundle, not per-file).
+   - `tsconfig.json` / `tsconfig.typecheck.json` — dropped the now-vestigial `typesql-parser/**/*` excludes.
+   - `src/vendor/CLAUDE.md` — removed the `antlr4/` + `typesql-parser/` rows; added a `sqlfu-sqlite-parser/` row pointing at this task.
+   - `packages/sqlfu/CLAUDE.md` — updated the "three-step build" notes: the pre-step `rm -rf` list, the explanation of what the vendor tsconfig compiles, and the per-step-what-is-it-for paragraph all needed refreshing.
+
+#### Measurements
+
+All measured with `pnpm build && npm pack --dry-run`:
+
+|                  | Before (night 3) | After (night 4) | Delta      |
+|------------------|------------------|-----------------|------------|
+| Tarball packed   | 267.7 kB         | **146.4 kB**    | **−45%**   |
+| Tarball unpacked | 1.2 MB           | **616.4 kB**    | **−49%**   |
+| File count       | 153              | 143             | −10        |
+| `typesql/sqlfu.js` (minified bundle) | 550.4 kB | **134.9 kB** | **−75%** |
+
+Tests: 1216 / 6 skipped both before and after. Typecheck + build clean.
+
+The 134.9 kB bundled-typesql figure matches the task's estimate pretty closely — the original plan predicted a ~320 kB minified cut on the bundle, actual was 415 kB. The rest of the slightly-different packed numbers come from the per-file `sql-formatter` `.d.ts` tail, which is unrelated to this task.
+
+#### Gotchas hit
+
+1. **`sqlfu-sqlite-parser` was double-shipping.** After deletion, the first re-pack showed the tarball went *up* (267 → 303 kB) despite the bundle shrinking by 415 kB. Reason: `tsconfig.build.json` included `src/vendor/sqlfu-sqlite-parser/**/*.ts`, so `build:runtime` emitted 160 kB of unbundled per-file output to `dist/vendor/sqlfu-sqlite-parser/**/*.{js,d.ts}` — while the same source was also getting bundled into `dist/vendor/typesql/sqlfu.js` by esbuild. Fix: exclude the parser from `tsconfig.build.json`, include it in the vendor typesql tsconfig (where it compiles under `noCheck: true`), and add it to `bundle-vendor.ts`'s post-bundle delete list. The parser now ships *only* inlined in the typesql bundle, which is how it was always intended to work.
+
+2. **`tsconfig.json` had a stale `typesql-parser` exclude.** Easy to miss; the top-level vendor tsconfig isn't the one `typecheck` or `build` uses, but it does configure `tsgo`'s defaults elsewhere. Removed it for hygiene.
+
+3. **Shim test file was asserting against real ANTLR classes.** The night-3 test file dynamically imported `typesql-parser/sqlite/index.js` so TS wouldn't chase into the upstream type errors. After deletion, the tests would have failed at import-time. Rewrote the file to assert against the shim's own identity bases (`ShimParserRuleContext`, `ShimExprContextBase`, `ShimSelect_coreContextBase`). That's the contract the analyzer code actually reads anyway — we were overly specifying parity against ANTLR as a proxy.
+
+#### What didn't change
+
+- `enum-parser.ts` — never read the ANTLR shim; night 3 switched it to the plain-data AST directly. No change needed.
+- `traverse.ts`'s expression traversal, DML handling, or nullability inference — the shim keeps the same accessor surface, so nothing downstream had to move.
+- CLI, migrator, diff engine, codegen, public API — all untouched.
+- UI package — untouched; typecheck still clean.
+
+#### Post-mortem on the estimate
+
+Original plan (in this file, above): "2-3 focused nights" — actual: 4. Night 1 was half task-planning / half parser skeleton, which retroactively was correct for an unbounded task like this. The "long tail of fixture edge cases" (phase 4) that was feared never materialized — the hand-rolled parser's coverage was already 100% at the end of night 2, so night 3 was pure consumer swap and night 4 was pure deletion. The only real risk that panned out was the shim's `instanceof` contract, which night 3 addressed correctly and night 4 swapped out transparently.
+
+#### Ready to merge?
+
+Yes. PR #32 contains all 4 nights on the `drop-antlr` branch. Every push runs the full 1216-test suite green. No soak period was observed between night 3 (landing the shim) and night 4 (deleting ANTLR) — but nothing changed in the analyzer's semantics during night 4, so a soak would only re-prove night 3's stability. If you want a checkpoint merge before pulling night 4's deletion, the branch point is commit `f89d64d` (the night-3 status commit).
