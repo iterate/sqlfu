@@ -3,13 +3,7 @@ schema, aliases, view columns, `is not null` narrowing, expression aliases, and 
 single-row shape.
 
 <details>
-<summary>emits named param types and a nullable single-row result for limit 1 queries</summary>
-
-### input
-
-```sql (definitions.sql)
-create table posts (id integer primary key, slug text not null, title text);
-```
+<summary>default config</summary>
 
 ```ts (sqlfu.config.ts)
 export default {
@@ -20,10 +14,25 @@ export default {
 };
 ```
 
+</details>
+
+## emits named param types and a nullable single-row result for limit 1 queries
+
+<details>
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table posts (id integer primary key, slug text not null, title text);
+```
+
 ```sql (sql/find-post-by-slug.sql)
 select id, slug, title from posts where slug = :slug limit 1;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/find-post-by-slug.sql.ts)
 import type {Client} from 'sqlfu';
@@ -61,30 +70,26 @@ export type PostsRow = {
 	title: string | null;
 };
 ```
+
 </details>
 
-<details>
-<summary>uses schema types for aliased selected columns instead of leaving any behind</summary>
+## uses schema types for aliased selected columns instead of leaving any behind
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, body text not null);
 ```
 
-```ts (sqlfu.config.ts)
-export default {
-  db: './app.db',
-  migrations: './migrations',
-  definitions: './definitions.sql',
-  queries: './sql',
-};
-```
-
 ```sql (sql/find-post-preview.sql)
 select id, body as excerpt from posts limit 5;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/find-post-preview.sql.ts)
 import type {Client} from 'sqlfu';
@@ -106,30 +111,26 @@ export namespace findPostPreview {
 	};
 }
 ```
+
 </details>
 
-<details>
-<summary>treats selected columns as required when the query narrows them with is not null</summary>
+## treats selected columns as required when the query narrows them with is not null
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, published_at text);
 ```
 
-```ts (sqlfu.config.ts)
-export default {
-  db: './app.db',
-  migrations: './migrations',
-  definitions: './definitions.sql',
-  queries: './sql',
-};
-```
-
 ```sql (sql/find-published-post-by-slug.sql)
 select id, published_at from posts where published_at is not null limit 1;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/find-published-post-by-slug.sql.ts)
 import type {Client} from 'sqlfu';
@@ -154,31 +155,27 @@ export namespace findPublishedPostBySlug {
 	};
 }
 ```
+
 </details>
 
-<details>
-<summary>preserves useful result types for queries that read through views</summary>
+## preserves useful result types for queries that read through views
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, body text not null);
 create view post_summaries as select id, body as excerpt from posts;
 ```
 
-```ts (sqlfu.config.ts)
-export default {
-  db: './app.db',
-  migrations: './migrations',
-  definitions: './definitions.sql',
-  queries: './sql',
-};
-```
-
 ```sql (sql/list-post-summaries.sql)
 select id, excerpt from post_summaries;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/list-post-summaries.sql.ts)
 import type {Client} from 'sqlfu';
@@ -200,33 +197,30 @@ export namespace listPostSummaries {
 	};
 }
 ```
+
 </details>
 
-<details>
-<summary>falls back to an invalid-sql wrapper when simple expression aliases can't be typed</summary>
+## falls back to an invalid-sql wrapper when simple expression aliases can't be typed
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (body text not null);
 ```
 
-```ts (sqlfu.config.ts)
-export default {
-  db: './app.db',
-  migrations: './migrations',
-  definitions: './definitions.sql',
-  queries: './sql',
-};
-```
-
 ```sql (sql/list-post-cards.sql)
 select substr(body, 1, 20) as excerpt from posts;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/list-post-cards.sql.ts)
 //Invalid SQL
 export {};
 ```
+
 </details>

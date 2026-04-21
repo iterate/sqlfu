@@ -4,10 +4,27 @@ fixtures here just pin the emitted source shape. We also cover `prettyErrors: fa
 which changes the emitted file significantly (inline issue-throwing instead of the shared
 runtime helper), and the plain-TS default when no validator is configured.
 
-<details>
-<summary>validator: zod emits zod schemas with namespace-merged exports</summary>
+Most tests on this page override `sqlfu.config.ts` to set the `generate.validator` they care
+about; the default below is just the plain-TS baseline used by the last test.
 
-### input
+<details>
+<summary>default config</summary>
+
+```ts (sqlfu.config.ts)
+export default {
+  db: './app.db',
+  migrations: './migrations',
+  definitions: './definitions.sql',
+  queries: './sql',
+};
+```
+
+</details>
+
+## validator: zod emits zod schemas with namespace-merged exports
+
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (
@@ -31,7 +48,11 @@ export default {
 ```sql (sql/find-post-by-slug.sql)
 select id, slug, title, status from posts where slug = :slug limit 1;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/find-post-by-slug.sql.ts)
 import type {Client, SqlQuery} from 'sqlfu';
@@ -70,12 +91,13 @@ export namespace findPostBySlug {
 	export type Result = z.infer<typeof findPostBySlug.Result>;
 }
 ```
+
 </details>
 
-<details>
-<summary>validator: valibot emits valibot schemas</summary>
+## validator: valibot emits valibot schemas
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (
@@ -99,7 +121,11 @@ export default {
 ```sql (sql/find-post-by-slug.sql)
 select id, slug, title, status from posts where slug = :slug limit 1;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/find-post-by-slug.sql.ts)
 import {prettifyStandardSchemaError, type Client, type SqlQuery} from 'sqlfu';
@@ -140,12 +166,13 @@ export namespace findPostBySlug {
 	export type Result = v.InferOutput<typeof findPostBySlug.Result>;
 }
 ```
+
 </details>
 
-<details>
-<summary>validator: zod-mini emits zod/mini schemas</summary>
+## validator: zod-mini emits zod/mini schemas
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null, title text);
@@ -164,7 +191,11 @@ export default {
 ```sql (sql/find-post-by-slug.sql)
 select id, slug, title from posts where slug = :slug limit 1;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/find-post-by-slug.sql.ts)
 import {prettifyStandardSchemaError, type Client, type SqlQuery} from 'sqlfu';
@@ -204,12 +235,13 @@ export namespace findPostBySlug {
 	export type Result = z.infer<typeof findPostBySlug.Result>;
 }
 ```
+
 </details>
 
-<details>
-<summary>validator: zod + prettyErrors: false drops the prettify helper and safeParse wrapper</summary>
+## validator: zod + prettyErrors: false drops the prettify helper and safeParse wrapper
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
@@ -228,7 +260,11 @@ export default {
 ```sql (sql/find-post-by-slug.sql)
 select id, slug from posts where slug = :slug limit 1;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/find-post-by-slug.sql.ts)
 import type {Client, SqlQuery} from 'sqlfu';
@@ -260,12 +296,13 @@ export namespace findPostBySlug {
 	export type Result = z.infer<typeof findPostBySlug.Result>;
 }
 ```
+
 </details>
 
-<details>
-<summary>validator: valibot + prettyErrors: false throws raw issues inline</summary>
+## validator: valibot + prettyErrors: false throws raw issues inline
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
@@ -284,7 +321,11 @@ export default {
 ```sql (sql/find-post-by-slug.sql)
 select id, slug from posts where slug = :slug limit 1;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/find-post-by-slug.sql.ts)
 import type {Client, SqlQuery} from 'sqlfu';
@@ -323,12 +364,13 @@ export namespace findPostBySlug {
 	export type Result = v.InferOutput<typeof findPostBySlug.Result>;
 }
 ```
+
 </details>
 
-<details>
-<summary>validator: zod-mini + prettyErrors: false throws raw issues inline</summary>
+## validator: zod-mini + prettyErrors: false throws raw issues inline
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
@@ -347,7 +389,11 @@ export default {
 ```sql (sql/find-post-by-slug.sql)
 select id, slug from posts where slug = :slug limit 1;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/find-post-by-slug.sql.ts)
 import type {Client, SqlQuery} from 'sqlfu';
@@ -386,12 +432,13 @@ export namespace findPostBySlug {
 	export type Result = z.infer<typeof findPostBySlug.Result>;
 }
 ```
+
 </details>
 
-<details>
-<summary>validator: arktype emits arktype schemas</summary>
+## validator: arktype emits arktype schemas
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (
@@ -415,7 +462,11 @@ export default {
 ```sql (sql/find-post-by-slug.sql)
 select id, slug, title, status from posts where slug = :slug limit 1;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/find-post-by-slug.sql.ts)
 import {prettifyStandardSchemaError, type Client, type SqlQuery} from 'sqlfu';
@@ -456,12 +507,13 @@ export namespace findPostBySlug {
 	export type Result = typeof findPostBySlug.Result.infer;
 }
 ```
+
 </details>
 
-<details>
-<summary>validator: arktype + prettyErrors: false throws raw issues inline</summary>
+## validator: arktype + prettyErrors: false throws raw issues inline
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
@@ -480,7 +532,11 @@ export default {
 ```sql (sql/find-post-by-slug.sql)
 select id, slug from posts where slug = :slug limit 1;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/find-post-by-slug.sql.ts)
 import type {Client, SqlQuery} from 'sqlfu';
@@ -519,12 +575,13 @@ export namespace findPostBySlug {
 	export type Result = typeof findPostBySlug.Result.infer;
 }
 ```
+
 </details>
 
-<details>
-<summary>validator: zod + insert metadata skips result validation but keeps Params</summary>
+## validator: zod + insert metadata skips result validation but keeps Params
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
@@ -543,7 +600,11 @@ export default {
 ```sql (sql/insert-post.sql)
 insert into posts (slug) values (:slug);
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/insert-post.sql.ts)
 import type {Client, SqlQuery} from 'sqlfu';
@@ -571,30 +632,26 @@ export namespace insertPost {
 	export type Params = z.infer<typeof insertPost.Params>;
 }
 ```
+
 </details>
 
-<details>
-<summary>no validator: plain-TS output matches the default wrapper shape</summary>
+## no validator: plain-TS output matches the default wrapper shape
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
 ```
 
-```ts (sqlfu.config.ts)
-export default {
-  db: './app.db',
-  migrations: './migrations',
-  definitions: './definitions.sql',
-  queries: './sql',
-};
-```
-
 ```sql (sql/list-posts.sql)
 select id, slug from posts;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/list-posts.sql.ts)
 import type {Client} from 'sqlfu';
@@ -616,4 +673,5 @@ export namespace listPosts {
 	};
 }
 ```
+
 </details>

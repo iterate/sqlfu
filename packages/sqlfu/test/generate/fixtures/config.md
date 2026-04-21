@@ -2,10 +2,13 @@ Fixtures for configuration knobs that shape what `sqlfu generate` emits: `sync`,
 `importExtension`, tsconfig-driven `.ts`-import detection, nested query directories, and the
 runtime query catalog that drives the form UI.
 
-<details>
-<summary>sync: true emits SyncClient wrappers without async/await</summary>
+No `default config` block on this page — every test here exercises a different
+`sqlfu.config.ts`, so each one spells its config out in full.
 
-### input
+## sync: true emits SyncClient wrappers without async/await
+
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null, title text);
@@ -32,7 +35,11 @@ select id, slug, title from posts where slug = :slug limit 1;
 ```sql (sql/insert-post.sql)
 insert into posts (slug, title) values (:slug, :title);
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/list-posts.sql.ts)
 import type {SyncClient} from 'sqlfu';
@@ -102,12 +109,13 @@ export namespace insertPost {
 	};
 }
 ```
+
 </details>
 
-<details>
-<summary>importExtension: '.ts' emits .ts-suffixed barrel imports</summary>
+## importExtension: '.ts' emits .ts-suffixed barrel imports
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
@@ -126,7 +134,11 @@ export default {
 ```sql (sql/list-posts.sql)
 select id, slug from posts;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/index.ts)
 export * from "./tables.ts";
@@ -153,12 +165,13 @@ export namespace listPosts {
 	};
 }
 ```
+
 </details>
 
-<details>
-<summary>tsconfig allowImportingTsExtensions switches the barrel to .ts by default</summary>
+## tsconfig allowImportingTsExtensions switches the barrel to .ts by default
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
@@ -180,18 +193,23 @@ export default {
 ```sql (sql/list-posts.sql)
 select id, slug from posts;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/index.ts)
 export * from "./tables.ts";
 export * from "./list-posts.sql.ts";
 ```
+
 </details>
 
-<details>
-<summary>explicit generate.importExtension overrides tsconfig detection</summary>
+## explicit generate.importExtension overrides tsconfig detection
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
@@ -214,18 +232,23 @@ export default {
 ```sql (sql/list-posts.sql)
 select id, slug from posts;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/index.ts)
 export * from "./tables.js";
 export * from "./list-posts.sql.js";
 ```
+
 </details>
 
-<details>
-<summary>preserves nested query directories in output, name, and functionName</summary>
+## preserves nested query directories in output, name, and functionName
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table profiles (id integer primary key, name text not null);
@@ -248,7 +271,11 @@ select id, name from profiles;
 ```sql (sql/orders/list-orders.sql)
 select id, total from orders;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/index.ts)
 export * from "./tables.js";
@@ -297,12 +324,13 @@ export namespace ordersListOrders {
 	};
 }
 ```
+
 </details>
 
-<details>
-<summary>DDL wrappers: drop / alter / pragma / multi-statement / comments</summary>
+## DDL wrappers: drop / alter / pragma / multi-statement / comments
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
@@ -340,7 +368,11 @@ create table posts (id integer primary key, slug text not null);
    comment */
 create table if not exists drafts (id integer primary key, body text not null);
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/drop-posts.sql.ts)
 import type {Client} from 'sqlfu';
@@ -425,12 +457,13 @@ export const commentedCreate = Object.assign(
   "queries": []
 }
 ```
+
 </details>
 
-<details>
-<summary>writes a runtime query catalog with json schema for forms</summary>
+## writes a runtime query catalog with json schema for forms
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (
@@ -457,7 +490,11 @@ from posts
 where status = :status and is_published = :is_published
 limit 10;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```json (.sqlfu/query-catalog.json)
 {
@@ -510,12 +547,13 @@ limit 10;
   ]
 }
 ```
+
 </details>
 
-<details>
-<summary>includes invalid queries in the runtime query catalog</summary>
+## includes invalid queries in the runtime query catalog
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
@@ -533,7 +571,11 @@ export default {
 ```sql (sql/broken.sql)
 select nope from missing_table;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```json (.sqlfu/query-catalog.json)
 {
@@ -550,4 +592,5 @@ select nope from missing_table;
   ]
 }
 ```
+
 </details>

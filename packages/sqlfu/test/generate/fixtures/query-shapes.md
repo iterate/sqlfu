@@ -3,13 +3,7 @@ aggregate, user-defined function, and CTE. Shapes the analyzer can't type fall t
 `//Invalid SQL` wrapper — those are here too so we see them diff when the analyzer improves.
 
 <details>
-<summary>snapshots insert queries</summary>
-
-### input
-
-```sql (definitions.sql)
-create table posts (id integer primary key, slug text not null);
-```
+<summary>default config</summary>
 
 ```ts (sqlfu.config.ts)
 export default {
@@ -20,10 +14,25 @@ export default {
 };
 ```
 
+</details>
+
+## snapshots insert queries
+
+<details>
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table posts (id integer primary key, slug text not null);
+```
+
 ```sql (sql/insert-post.sql)
 insert into posts (slug) values (:slug);
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/insert-post.sql.ts)
 import type {Client} from 'sqlfu';
@@ -44,30 +53,26 @@ export namespace insertPost {
 	};
 }
 ```
+
 </details>
 
-<details>
-<summary>treats insert returning queries as single-row results</summary>
+## treats insert returning queries as single-row results
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table users (id integer primary key, name text not null, email text not null);
 ```
 
-```ts (sqlfu.config.ts)
-export default {
-  db: './app.db',
-  migrations: './migrations',
-  definitions: './definitions.sql',
-  queries: './sql',
-};
-```
-
 ```sql (sql/add-user.sql)
 insert into users (name, email) values (:fullName, :emailAddress) returning *;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/add-user.sql.ts)
 import type {Client} from 'sqlfu';
@@ -95,30 +100,26 @@ export namespace addUser {
 	};
 }
 ```
+
 </details>
 
-<details>
-<summary>snapshots update queries</summary>
+## snapshots update queries
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
 ```
 
-```ts (sqlfu.config.ts)
-export default {
-  db: './app.db',
-  migrations: './migrations',
-  definitions: './definitions.sql',
-  queries: './sql',
-};
-```
-
 ```sql (sql/update-post.sql)
 update posts set slug = :slug where id = :id;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/update-post.sql.ts)
 import type {Client} from 'sqlfu';
@@ -142,30 +143,26 @@ export namespace updatePost {
 	};
 }
 ```
+
 </details>
 
-<details>
-<summary>snapshots delete queries</summary>
+## snapshots delete queries
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
 ```
 
-```ts (sqlfu.config.ts)
-export default {
-  db: './app.db',
-  migrations: './migrations',
-  definitions: './definitions.sql',
-  queries: './sql',
-};
-```
-
 ```sql (sql/delete-post.sql)
 delete from posts where id = :id;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/delete-post.sql.ts)
 import type {Client} from 'sqlfu';
@@ -186,30 +183,26 @@ export namespace deletePost {
 	};
 }
 ```
+
 </details>
 
-<details>
-<summary>snapshots aggregate function queries (count)</summary>
+## snapshots aggregate function queries (count)
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
 ```
 
-```ts (sqlfu.config.ts)
-export default {
-  db: './app.db',
-  migrations: './migrations',
-  definitions: './definitions.sql',
-  queries: './sql',
-};
-```
-
 ```sql (sql/count-posts.sql)
 select count(*) as total from posts;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/count-posts.sql.ts)
 import type {Client} from 'sqlfu';
@@ -231,53 +224,41 @@ export namespace countPosts {
 	};
 }
 ```
+
 </details>
 
-<details>
-<summary>falls back to invalid-sql for user-defined function queries</summary>
+## falls back to invalid-sql for user-defined function queries
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (slug text not null);
 ```
 
-```ts (sqlfu.config.ts)
-export default {
-  db: './app.db',
-  migrations: './migrations',
-  definitions: './definitions.sql',
-  queries: './sql',
-};
-```
-
 ```sql (sql/list-normalized-slugs.sql)
 select my_slugify(slug) as normalized_slug from posts;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/list-normalized-slugs.sql.ts)
 //Invalid SQL
 export {};
 ```
+
 </details>
 
-<details>
-<summary>falls back to invalid-sql for CTE queries with the works in one query</summary>
+## falls back to invalid-sql for CTE queries with the works in one query
 
-### input
+<details>
+<summary>input</summary>
 
 ```sql (definitions.sql)
 create table posts (id integer primary key, slug text not null);
-```
-
-```ts (sqlfu.config.ts)
-export default {
-  db: './app.db',
-  migrations: './migrations',
-  definitions: './definitions.sql',
-  queries: './sql',
-};
 ```
 
 ```sql (sql/sync-post-from-cte.sql)
@@ -298,10 +279,15 @@ select id, slug from updated
 union all
 select id, slug from inserted;
 ```
-### output
+
+</details>
+
+<details>
+<summary>output</summary>
 
 ```ts (sql/.generated/sync-post-from-cte.sql.ts)
 //Invalid SQL
 export {};
 ```
+
 </details>

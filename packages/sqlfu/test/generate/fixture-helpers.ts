@@ -68,56 +68,94 @@ export async function runFixtureCase(fixtureCase: FixtureCase): Promise<FixtureR
 }
 
 /**
- * A fixture case is one `<details>` block in the markdown. The `<summary>` carries the test
- * name; the body carries `### input`, `### output`, and optionally `### error` sections, each
- * populated by fenced code blocks of the form:
+ * A fixture file looks like:
  *
- * ```ts (path/inside/fixture.ts)
- * ...content...
- * ```
+ *     intro paragraph...
+ *
+ *     <details>
+ *     <summary>default config</summary>
+ *
+ *     ```ts (sqlfu.config.ts)
+ *     ...
+ *     ```
+ *
+ *     </details>
+ *
+ *     ## test name
+ *
+ *     <details>
+ *     <summary>input</summary>
+ *     ...
+ *     </details>
+ *
+ *     <details>
+ *     <summary>output</summary>
+ *     ...
+ *     </details>
+ *
+ * Each `##` heading is one test; its input/output (and optional error) live in nested
+ * `<details>` blocks. The optional `default config` block at the top of the file supplies a
+ * `sqlfu.config.ts` used by any test that doesn't declare its own.
  */
 export function parseGenerateFixture(contents: string): FixtureCase[] {
   const cases: FixtureCase[] = [];
-  const detailsPattern = /<details>\s*\n<summary>(?<name>[\s\S]+?)<\/summary>(?<body>[\s\S]*?)<\/details>/g;
+  const {defaultConfig, testArea} = extractDefaultConfig(contents);
 
-  for (const match of contents.matchAll(detailsPattern)) {
-    const {name, body} = match.groups!;
-    const sections = splitBodyIntoSections(body);
+  const headingPattern = /^##\s+(?<name>.+)$/gm;
+  const headings = [...testArea.matchAll(headingPattern)];
 
-    const inputFiles = sections.input ? parseFileBlocks(sections.input) : [];
-    const outputFiles = sections.output ? parseFileBlocks(sections.output) : [];
-    const expectedError = sections.error?.trim() || undefined;
+  for (let i = 0; i < headings.length; i++) {
+    const heading = headings[i];
+    const next = headings[i + 1];
+    const start = heading.index! + heading[0].length;
+    const end = next ? next.index! : testArea.length;
+    const body = testArea.slice(start, end);
+    const name = heading.groups!.name.trim();
 
-    if (inputFiles.length === 0) {
-      throw new Error(`Fixture "${name.trim()}" has no input files`);
+    const inputFiles = parseFileBlocks(extractDetailsBody(body, 'input') || '');
+    const outputFiles = parseFileBlocks(extractDetailsBody(body, 'output') || '');
+    const expectedError = extractDetailsBody(body, 'error')?.trim() || undefined;
+
+    if (defaultConfig && !inputFiles.some((file) => file.path === 'sqlfu.config.ts')) {
+      inputFiles.unshift(defaultConfig);
     }
 
-    cases.push({
-      name: name.trim(),
-      inputFiles,
-      outputFiles,
-      expectedError,
-    });
+    if (inputFiles.length === 0) {
+      throw new Error(`Fixture "${name}" has no input files`);
+    }
+
+    cases.push({name, inputFiles, outputFiles, expectedError});
   }
 
   return cases;
 }
 
-function splitBodyIntoSections(body: string): {input?: string; output?: string; error?: string} {
-  const sectionPattern = /^###\s+(?<title>input|output|error)\s*$/gim;
-  const matches = [...body.matchAll(sectionPattern)];
-  const sections: {input?: string; output?: string; error?: string} = {};
+function extractDefaultConfig(contents: string): {defaultConfig?: FixtureFile; testArea: string} {
+  const firstHeading = contents.search(/^##\s+/m);
+  const headArea = firstHeading >= 0 ? contents.slice(0, firstHeading) : contents;
+  const testArea = firstHeading >= 0 ? contents.slice(firstHeading) : '';
 
-  for (let i = 0; i < matches.length; i++) {
-    const current = matches[i];
-    const next = matches[i + 1];
-    const start = current.index! + current[0].length;
-    const end = next ? next.index! : body.length;
-    const title = current.groups!.title.toLowerCase() as 'input' | 'output' | 'error';
-    sections[title] = body.slice(start, end);
+  const body = extractDetailsBody(headArea, 'default config');
+  if (!body) {
+    return {testArea};
   }
 
-  return sections;
+  const files = parseFileBlocks(body);
+  const configFile = files.find((file) => file.path === 'sqlfu.config.ts');
+  if (!configFile) {
+    throw new Error(`"default config" block must contain a sqlfu.config.ts fence`);
+  }
+  return {defaultConfig: configFile, testArea};
+}
+
+function extractDetailsBody(container: string, summary: string): string | undefined {
+  const escaped = summary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(
+    `<details>\\s*<summary>${escaped}</summary>([\\s\\S]*?)</details>`,
+    'i',
+  );
+  const match = container.match(pattern);
+  return match ? match[1] : undefined;
 }
 
 function parseFileBlocks(section: string): FixtureFile[] {
