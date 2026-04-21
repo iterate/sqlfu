@@ -19,9 +19,11 @@ jobs:
 
       - run: corepack enable
 
+      # Node 22+ is required at runtime (sqlfu uses node:sqlite; see
+      # packages/sqlfu/src/core/node-host.ts).
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
