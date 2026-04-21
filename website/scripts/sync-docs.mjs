@@ -103,6 +103,8 @@ async function syncGenerateFixtures() {
     .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  const overviewEntries = [];
+
   for (const entry of entries) {
     const sourcePath = path.join(fixturesSourceDir, entry.name);
     const raw = await fs.readFile(sourcePath, 'utf8');
@@ -111,10 +113,12 @@ async function syncGenerateFixtures() {
     const transformed = transformFixtureBody(body);
 
     const relativeSource = path.relative(repoRoot, sourcePath).split(path.sep).join('/');
+    const title = titleForFixture(slug);
+    const description = descriptionForIntro(intro, slug);
     const frontmatter = [
       '---',
-      `title: ${yamlString(titleForFixture(slug))}`,
-      `description: ${yamlString(descriptionForIntro(intro, slug))}`,
+      `title: ${yamlString(title)}`,
+      `description: ${yamlString(description)}`,
       `sourcePath: ${yamlString(relativeSource)}`,
       `sourceUrl: ${yamlString(`${repositoryBaseUrl}/blob/${gitSha}/${relativeSource}`)}`,
       '---',
@@ -124,9 +128,51 @@ async function syncGenerateFixtures() {
     const destPath = path.join(examplesDir, `${slug}.md`);
     const intoDoc = intro ? `${intro}\n\n${transformed}` : transformed;
     await fs.writeFile(destPath, frontmatter + intoDoc);
+
+    overviewEntries.push({slug, title, description});
   }
 
+  await writeExamplesOverview(overviewEntries);
   return entries.length;
+}
+
+async function writeExamplesOverview(overviewEntries) {
+  const relativeSource = path
+    .relative(repoRoot, fixturesSourceDir)
+    .split(path.sep)
+    .join('/');
+
+  const frontmatter = [
+    '---',
+    `title: ${yamlString('Generate examples')}`,
+    `description: ${yamlString(
+      'Executable snapshot fixtures for the `sqlfu generate` command. Each example below is a live test.',
+    )}`,
+    `sourcePath: ${yamlString(relativeSource)}`,
+    `sourceUrl: ${yamlString(`${repositoryBaseUrl}/tree/${gitSha}/${relativeSource}`)}`,
+    '---',
+    '',
+  ].join('\n');
+
+  const body = [
+    'These pages are snapshot fixtures from `packages/sqlfu/test/generate/fixtures/`. Each `##`',
+    'heading you\'ll find inside is a real test: the test harness parses the same markdown,',
+    'runs `sqlfu generate` against the declared inputs, and asserts the outputs match what\'s',
+    'shown. That means every TypeScript file under an **output** block on these pages is',
+    'exactly what you\'d find in your checkout after running the CLI — there is no drift.',
+    '',
+    'Start here if you want to see what `sqlfu generate` produces for a given schema shape,',
+    'query style, or config knob, before you try it in your own project.',
+    '',
+    '## Pages',
+    '',
+    ...overviewEntries.map(
+      ({slug, title, description}) => `- **[${title}](/docs/examples/${slug})** — ${description}`,
+    ),
+    '',
+  ].join('\n');
+
+  await fs.writeFile(path.join(contentDocsDir, 'examples.md'), frontmatter + body);
 }
 
 function splitIntroAndBody(markdown) {
@@ -148,9 +194,10 @@ function descriptionForIntro(intro, slug) {
   }
 
   // Collapse newlines so YAML on a single line isn't forced to wrap, and trim to one sentence
-  // for the page's `<meta name="description">`.
+  // for the page's `<meta name="description">`. The sentence terminator must be followed by
+  // whitespace or end-of-string so internal dots (`.ts`, `U.K.`) don't split the sentence.
   const flat = intro.replace(/\s+/g, ' ').trim();
-  const firstSentence = flat.match(/^[^.!?]+[.!?]/);
+  const firstSentence = flat.match(/^[\s\S]*?[.!?](?=\s|$)/);
   return firstSentence ? firstSentence[0].trim() : flat.slice(0, 180);
 }
 
@@ -163,10 +210,9 @@ function transformFixtureBody(body) {
 }
 
 function titleForFixture(slug) {
-  return slug
-    .split('-')
-    .map((segment) => (segment.length === 0 ? segment : segment[0].toUpperCase() + segment.slice(1)))
-    .join(' ');
+  // Sentence case ("Query shapes"), matching the sidebar labels in astro.config.mjs.
+  const prose = slug.replace(/-/g, ' ');
+  return prose[0].toUpperCase() + prose.slice(1);
 }
 
 async function transformMarkdown(markdown, currentDoc) {

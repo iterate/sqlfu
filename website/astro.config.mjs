@@ -32,6 +32,7 @@ export default defineConfig({
         {
           label: 'Generate examples',
           items: [
+            {label: 'Overview', slug: 'docs/examples'},
             {label: 'Basics', slug: 'docs/examples/basics'},
             {label: 'Config', slug: 'docs/examples/config'},
             {label: 'Errors', slug: 'docs/examples/errors'},
