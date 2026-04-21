@@ -47,7 +47,7 @@ import {
 import {AppToaster} from './components/ui/toaster.js';
 import {resolveApiOrigin, resolveApiRpcUrl} from './runtime.js';
 import {checkServerVersion, classifyStartupError, type StartupFailure} from './startup-error.js';
-import {DEMO_URL, LOCAL_URL, createDemoClient, isDemoMode} from './demo/index.js';
+import {DEMO_URL, HOSTED_URL, createDemoClient, isDemoMode} from './demo/index.js';
 import {initThemeOnLoad, useThemePreference} from './theme.js';
 import './styles.css';
 
@@ -387,7 +387,7 @@ function StartupFailureScreen(input: {error: unknown}) {
               <>
                 <h2>Why am I seeing this?</h2>
                 <p>
-                  The hosted UI on <code>local.sqlfu.dev</code> tracks the latest sqlfu release. When your local
+                  The hosted UI on <code>sqlfu.dev/ui</code> tracks the latest sqlfu release. When your local
                   backend falls outside <code>{startupError.supportedRange}</code>, the RPC contracts do not line up
                   and the UI would otherwise surface cryptic 4xx or 5xx errors.
                 </p>
@@ -2087,8 +2087,8 @@ function ModeBanner() {
     <div className="mode-banner demo">
       <strong>Demo mode</strong>
       <span>In-browser SQLite. Nothing is saved. Refresh to reset.</span>
-      <a className="mode-banner-link" href={LOCAL_URL}>
-        Back to local.sqlfu.dev
+      <a className="mode-banner-link" href={HOSTED_URL}>
+        Back to sqlfu.dev/ui
       </a>
     </div>
   );

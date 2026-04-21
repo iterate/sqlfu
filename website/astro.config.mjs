@@ -2,7 +2,7 @@ import {defineConfig} from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
-  site: 'https://www.sqlfu.dev',
+  site: 'https://sqlfu.dev',
   // build.format: 'file' emits `docs/runtime-validation.html` (not
   // `docs/runtime-validation/index.html`) so artifact.ci's "strip trailing slash"
   // 308 redirect doesn't change how the browser resolves relative asset URLs —
