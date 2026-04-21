@@ -52,6 +52,9 @@ const docs = [
 
 const docBySourcePath = new Map(docs.map((doc) => [normalizePath(doc.sourcePath), doc]));
 
+const fixturesSourceDir = path.join(repoRoot, 'packages', 'sqlfu', 'test', 'generate', 'fixtures');
+const fixturesSubdir = 'examples';
+
 await fs.rm(contentDocsDir, {recursive: true, force: true});
 await fs.mkdir(contentDocsDir, {recursive: true});
 await fs.rm(publicAssetsRoot, {recursive: true, force: true});
@@ -86,7 +89,85 @@ for (const doc of docs) {
   }
 }
 
-console.log(`synced ${docs.length} docs into ${path.relative(websiteRoot, contentDocsDir)}`);
+const fixtureCount = await syncGenerateFixtures();
+
+console.log(
+  `synced ${docs.length} docs and ${fixtureCount} generate fixtures into ${path.relative(websiteRoot, contentDocsDir)}`,
+);
+
+async function syncGenerateFixtures() {
+  const examplesDir = path.join(contentDocsDir, fixturesSubdir);
+  await fs.mkdir(examplesDir, {recursive: true});
+
+  const entries = (await fs.readdir(fixturesSourceDir, {withFileTypes: true}))
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const entry of entries) {
+    const sourcePath = path.join(fixturesSourceDir, entry.name);
+    const raw = await fs.readFile(sourcePath, 'utf8');
+    const slug = entry.name.replace(/\.md$/, '');
+    const {intro, body} = splitIntroAndBody(raw);
+    const transformed = transformFixtureBody(body);
+
+    const relativeSource = path.relative(repoRoot, sourcePath).split(path.sep).join('/');
+    const frontmatter = [
+      '---',
+      `title: ${yamlString(titleForFixture(slug))}`,
+      `description: ${yamlString(descriptionForIntro(intro, slug))}`,
+      `sourcePath: ${yamlString(relativeSource)}`,
+      `sourceUrl: ${yamlString(`${repositoryBaseUrl}/blob/${gitSha}/${relativeSource}`)}`,
+      '---',
+      '',
+    ].join('\n');
+
+    const destPath = path.join(examplesDir, `${slug}.md`);
+    const intoDoc = intro ? `${intro}\n\n${transformed}` : transformed;
+    await fs.writeFile(destPath, frontmatter + intoDoc);
+  }
+
+  return entries.length;
+}
+
+function splitIntroAndBody(markdown) {
+  // The fixture intro is a free-floating paragraph at the top of the file, ending at the first
+  // line that begins with `<details>`. Anchoring to start-of-line avoids triggering on the word
+  // "<details>" used in the prose itself.
+  const match = markdown.match(/^<details[\s>]/m);
+  if (!match) {
+    return {intro: markdown.trim(), body: ''};
+  }
+
+  const detailsStart = match.index;
+  return {intro: markdown.slice(0, detailsStart).trim(), body: markdown.slice(detailsStart)};
+}
+
+function descriptionForIntro(intro, slug) {
+  if (!intro) {
+    return `Generate fixtures — ${slug}`;
+  }
+
+  // Collapse newlines so YAML on a single line isn't forced to wrap, and trim to one sentence
+  // for the page's `<meta name="description">`.
+  const flat = intro.replace(/\s+/g, ' ').trim();
+  const firstSentence = flat.match(/^[^.!?]+[.!?]/);
+  return firstSentence ? firstSentence[0].trim() : flat.slice(0, 180);
+}
+
+function transformFixtureBody(body) {
+  // Rewrite ```ts (sql/foo.ts) into ```ts title="sql/foo.ts" so Starlight's expressive-code
+  // renders the filename as a caption above each code block.
+  return body.replace(/^(```[\w-]+)\s*\(([^)]+)\)\s*$/gm, (_match, fence, filePath) => {
+    return `${fence} title="${filePath.trim()}"`;
+  });
+}
+
+function titleForFixture(slug) {
+  return slug
+    .split('-')
+    .map((segment) => (segment.length === 0 ? segment : segment[0].toUpperCase() + segment.slice(1)))
+    .join(' ');
+}
 
 async function transformMarkdown(markdown, currentDoc) {
   const assetPaths = [];
