@@ -53,11 +53,7 @@ export function SqlCodeMirror(input: {
     Prec.highest(
       keymap.of([
         {
-          key: 'Cmd-Enter',
-          run: executeKeymapHandler,
-        },
-        {
-          win: 'Ctrl-Enter',
+          key: 'Mod-Enter',
           run: executeKeymapHandler,
         },
         {
