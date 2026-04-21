@@ -29,6 +29,18 @@ export default defineConfig({
         {label: 'Observability', slug: 'docs/observability'},
         {label: 'Runtime validation', slug: 'docs/runtime-validation'},
         {label: 'UI', slug: 'docs/ui'},
+        {
+          label: 'Generate examples',
+          items: [
+            {label: 'Overview', slug: 'docs/examples'},
+            {label: 'Basics', slug: 'docs/examples/basics'},
+            {label: 'Config', slug: 'docs/examples/config'},
+            {label: 'Errors', slug: 'docs/examples/errors'},
+            {label: 'Query shapes', slug: 'docs/examples/query-shapes'},
+            {label: 'Result types', slug: 'docs/examples/result-types'},
+            {label: 'Validators', slug: 'docs/examples/validators'},
+          ],
+        },
       ],
       social: [{icon: 'github', label: 'GitHub', href: 'https://github.com/mmkal/sqlfu'}],
     }),
