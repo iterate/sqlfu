@@ -89,14 +89,17 @@ a {
   text-transform: uppercase;
   color: var(--accent);
   text-decoration: none;
+  line-height: 1;
 }
 
 .nav {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 0.8rem;
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-size: 0.95rem;
+  line-height: 1;
 }
 
 .nav a {
