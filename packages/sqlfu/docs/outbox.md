@@ -72,7 +72,7 @@ defineConsumer<Payload, AppEvents>({
 });
 ```
 
-Time periods use `Ns`, `Nm`, `Nh`, `Nd` — the same shape as iterate's outbox.
+Time periods use `Ns`, `Nm`, `Nh`, `Nd` — seconds, minutes, hours, days.
 
 ## Causation is explicit, not ambient
 
@@ -94,8 +94,4 @@ That's the right behaviour: it wasn't caused by another job.
 
 - oRPC / HTTP-server integration. Wire-up is straightforward: the consumer objects are plain data, and `outbox.tick()` returns quickly; wrap it in whatever scheduler you like.
 - Opentelemetry spans per job. Use the existing `instrument()` hook on the sqlfu client — handlers run against the same client.
-- Posthog/Sentry DLQ reporting. iterate's `outbox-evlog.ts` is the reference implementation; port it when needed.
-
-## Acknowledgements
-
-Ported conceptually from the iterate repo's pgmq-backed outbox (`apps/os/backend/outbox/`). The consumer shape and retry/delay/causation concepts carry over; everything pgmq-specific is replaced with vanilla SQLite tables.
+- Posthog/Sentry DLQ reporting. The `onBookkeepingError` hook + the `status = 'failed'` terminal state are the building blocks; wiring those into your telemetry pipeline is a downstream concern.

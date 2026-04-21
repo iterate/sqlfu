@@ -7,7 +7,7 @@ size: medium
 
 ## Motivation
 
-The iterate repo has a mature transactional-outbox implementation (`apps/os/backend/outbox/`) built on Postgres + pgmq. It handles:
+The transactional-outbox pattern (typically implemented in production on Postgres + pgmq or equivalent) handles:
 
 - transactional event emission (write the event in the same tx as the domain write, so "either both happen or neither does")
 - per-consumer job fan-out (one event can be handled by N consumers)
@@ -16,7 +16,7 @@ The iterate repo has a mature transactional-outbox implementation (`apps/os/back
 - visibility timeout / work leasing (no double-processing)
 - causation chain (event A emitted *because of* job J in response to event E)
 
-The iterate version is ~2000 lines and depends on Postgres + pgmq + drizzle + oRPC. For sqlfu we want a ~few hundred-line SQLite equivalent that trades pgmq's multi-worker concurrency for SQLite's single-writer model — which actually makes a lot of the queue correctness story trivially true.
+For sqlfu we want a ~few hundred-line SQLite equivalent that trades pgmq's multi-worker concurrency for SQLite's single-writer model — which actually makes a lot of the queue correctness story trivially true.
 
 Scope for this PR: ship a first-pass, feature-complete-enough-to-be-useful outbox as a new entry point `sqlfu/outbox` (source at `packages/sqlfu/src/outbox/`), driven by a realistic integration test.
 
@@ -29,7 +29,7 @@ Scope for this PR: ship a first-pass, feature-complete-enough-to-be-useful outbo
   - `emit(client, {name, payload})` inserts one event row + one job row per registered consumer whose `when({payload})` returns truthy, all in the same transaction.
   - Inside a consumer handler, `emit` reaches the ambient consumer context (AsyncLocalStorage) so the new event's `context.causedBy` is set automatically.
 - Consumer API:
-  - `defineConsumer({name, when?, delay?, retry?, visibilityTimeout?, handler})`. Mirrors iterate's shape but everything but `name` and `handler` is optional.
+  - `defineConsumer({name, when?, delay?, retry?, visibilityTimeout?, handler})`. Familiar pgmq-style consumer shape; everything but `name` and `handler` is optional.
 - Worker API:
   - `runWorker({client, consumers, signal})` — a polling loop:
     1. `begin immediate` (SQLite's "exclusive writer" semantics — we rely on this; no pgmq-style row-lock dance needed)
@@ -74,7 +74,7 @@ The integration test drives the worker via `tick()`, virtual clock, and asserts:
 - DLQ as a separate queue (today: `status = 'failed'` is the DLQ).
 - Multi-process worker coordination (today: each process runs its own loop; fine for the sqlfu-scale app).
 - Schema-migration story for the two outbox tables (today: idempotent `create table if not exists` on worker startup; revisit when we tie it into sqlfu's migration model).
-- Posthog/DLQ observability hooks from iterate's `outbox-evlog.ts`.
+- Posthog/Sentry DLQ observability hooks (sketch: wrap each handler in an evlog-style request context and forward `status='failed'` rows to your error tracker).
 
 ## Checklist
 
@@ -91,5 +91,4 @@ The integration test drives the worker via `tick()`, virtual clock, and asserts:
 
 ## Notes
 
-- Reference code lives at `~/src/iterate/apps/os/backend/outbox/`. Drawing inspiration from it, with attribution in the top of the outbox module.
-- The iterate version uses `pgmq` for the queue itself; our version uses vanilla tables. Transactional-emit semantics, consumer shape, retry/delay/causation concepts carry over; everything pgmq-specific (exclusive-read sessions, archive tables, etc.) is replaced with SQLite tables.
+- The common production shape for this pattern is Postgres + pgmq (per-consumer queue tables, exclusive-read sessions, archive tables). Our version uses vanilla SQLite tables: transactional-emit semantics, consumer shape, retry/delay/causation concepts all carry over; the pgmq-specific machinery doesn't, because SQLite serialises writers for us.

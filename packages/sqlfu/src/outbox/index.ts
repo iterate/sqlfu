@@ -1,15 +1,11 @@
 /**
  * sqlfu/outbox — a small transactional-outbox / job-queue built on any sqlfu
  * `Client` (sync or async; `tick()` is async regardless, since handlers are).
- * Ported conceptually from the iterate repo's pgmq-backed outbox
- * (see `~/src/iterate/apps/os/backend/outbox/`), minus everything that was a
- * workaround for Postgres' multi-writer reality: SQLite serialises writers for
- * us, so "claim pending rows, mark them running, release the writer" can be
- * a single `BEGIN; update; commit` instead of `SELECT ... FOR UPDATE SKIP LOCKED`.
  *
- * The public API intentionally mirrors iterate's consumer shape (name / when /
- * delay / retry / visibilityTimeout / handler) so a migration from one to the
- * other is a type-level swap rather than a rewrite.
+ * The usual Postgres-flavoured outbox machinery (`SELECT ... FOR UPDATE SKIP
+ * LOCKED`, exclusive-read sessions, pgmq) is replaced here with plain tables:
+ * SQLite serialises writers for us, so "claim pending rows, mark them running,
+ * release the writer" is a single `BEGIN; update; commit`.
  *
  * Zero Node-only dependencies: causation propagation is explicit (the handler
  * receives an `emit` helper already bound to its own job context) rather than
