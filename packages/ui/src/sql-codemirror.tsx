@@ -22,12 +22,18 @@ export function SqlCodeMirror(input: {
   relations: readonly StudioRelation[];
   diagnostics?: readonly SqlEditorDiagnostic[];
   onExecute?: (sql: string) => void;
+  onSave?: (sql: string) => void;
   readOnly?: boolean;
 }) {
   const theme = useResolvedTheme();
   const schema = buildSqlSchema(input.relations);
   const executeKeymapHandler = (view: EditorView) => {
     input.onExecute?.(view.state.doc.toString());
+    return true;
+  };
+  const saveKeymapHandler = (view: EditorView) => {
+    if (!input.onSave) return false;
+    input.onSave(view.state.doc.toString());
     return true;
   };
   const extensions: Extension[] = [
@@ -55,6 +61,11 @@ export function SqlCodeMirror(input: {
         {
           key: 'Mod-Enter',
           run: executeKeymapHandler,
+        },
+        {
+          key: 'Mod-s',
+          run: saveKeymapHandler,
+          preventDefault: true,
         },
         {
           key: 'Tab',
