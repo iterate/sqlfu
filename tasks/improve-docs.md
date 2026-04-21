@@ -40,3 +40,29 @@ For the next pass:
 - `docs/migration-model.md` references `Sync Drift` (three times in the Recommendations / failure sections) but the `Authority Mismatches` table only defines `Schema Drift`. `Sync Drift` is a real thing in `src/api.ts` (it's one of the `MismatchCard.title` values and appears in test snapshots) but the migration-model doc never defines what it is or how it differs from `Schema Drift`. Worth adding a row to the Authority Mismatches table or otherwise naming it.
 - The `Capabilities` section headers in `README.md` (Client / Migrator / Diff Engine / Type Generator / Formatter / Observability / UI / Agent skill) mix capitalization (Title Case vs lowercase-first like "Agent skill"). Pick one.
 - Cross-reference in `README.md#observability` points at `docs/observability.md` but the `Capabilities` TOC up top doesn't list Observability. Add it to the TOC, or accept the asymmetry deliberately.
+
+## 2026-04-20 pass #2
+
+Status: plan landing now, edits to follow.
+
+Findings after the first pass:
+
+- **`runtime-validation.mdx` em-dashes regressed.** The earlier pass cleaned em-dashes out of `runtime-validation.md`, then the better-validate task rewrote the file as `.mdx` (alphabetised validators, tabbed samples) and reintroduced 14 of them. Same cleanup as pass #1, redone against the new structure.
+- **`Capabilities` TOC in README still doesn't list Observability** — flagged in pass #1's "for next pass" list. One-line fix.
+- **`Capabilities` section headings in README are case-inconsistent.** "Agent skill" (lowercase s) alongside "Client", "Migrator", "Diff Engine", "Type Generator", "Formatter", "Observability", "UI". Pick Title Case (the majority) for "Agent Skill" as well.
+- **`migration-model.md` names the Desired Schema <> Live Schema mismatch "Schema Not Current".** The product code calls the same mismatch "Sync Drift" (`src/api.ts:770`, `src/ui/router.ts:603`, CLI output) and the doc itself uses "Sync Drift" three times in the Recommendations / Preflight sections without ever defining it. So the vocabulary the doc introduces is not the vocabulary a user sees in the UI or the `sqlfu check` output. Going with a doc-side rename (shipped product name wins) — swap the "Schema Not Current" row label and the matching subsection heading to "Sync Drift". This actually shrinks the glossary the doc introduces, rather than adding a new term.
+
+### Plan for this pass
+
+- [x] Land this plan as the first commit so the PR shows the updated thinking before any edits. _this commit_
+- [ ] `packages/sqlfu/docs/runtime-validation.mdx`: replace the 14 em-dashes with periods / commas / colons depending on what the sentence is doing. Keep the tabbed structure and validator vocabulary.
+- [ ] `packages/sqlfu/README.md`: add `Observability` to the Capabilities TOC; rename `Agent skill` → `Agent Skill` in both the TOC and the section heading.
+- [ ] `packages/sqlfu/docs/migration-model.md`: rename the "Schema Not Current" row in the Authority Mismatches table to "Sync Drift", update the dedicated subsection heading, and tweak the lede so the comparison text still reads naturally.
+- [ ] Verify docs build: `pnpm --filter sqlfu-website build`.
+- [ ] Update this sub-section with breadcrumb italics as items land.
+
+Not in scope this pass:
+
+- Authority Mismatches table restructure for the shared-comparison `Pending Migrations` vs `History Drift` rows. Still deferred.
+- `src/vendor/*/CLAUDE.md` em-dashes. Agent-facing vendor notes.
+- Any new docs pages.
