@@ -30,7 +30,7 @@ function buildCatalogEntry(fileName: string, rawSql: string): QueryCatalogEntry 
     sqlFile: `sql/${fileName}`,
     functionName: toCamelCase(id),
     sql,
-    sqlContent: rawSql,
+    sqlFileContent: rawSql,
     queryType,
     multipleRowsResult,
     resultMode,

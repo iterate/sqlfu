@@ -1276,7 +1276,7 @@ function QueryPanel(input: {entry: QueryCatalogEntry; relations: readonly Studio
     defaultValue: entry.id,
   });
   const [sqlDraft, setSqlDraft] = useLocalStorageState(`sqlfu-ui/query-sql/${entry.id}`, {
-    defaultValue: entry.sqlContent,
+    defaultValue: entry.sqlFileContent,
   });
   const [renameMode, setRenameMode] = useLocalStorageState(`sqlfu-ui/query-rename-mode/${entry.id}`, {
     defaultValue: false,
@@ -1362,7 +1362,7 @@ function QueryPanel(input: {entry: QueryCatalogEntry; relations: readonly Studio
           </>
         ) : undefined
       }
-      sql={sqlEditMode ? sqlDraft : entry.sqlContent}
+      sql={sqlEditMode ? sqlDraft : entry.sqlFileContent}
       paramsSchema={entry.kind === 'query' ? buildExecutionSchema(entry) : undefined}
       paramsData={undefined}
       sqlEditorRelations={input.relations}
@@ -1395,7 +1395,7 @@ function QueryPanel(input: {entry: QueryCatalogEntry; relations: readonly Studio
               className="button"
               type="button"
               onClick={() => {
-                setSqlDraft(entry.sqlContent);
+                setSqlDraft(entry.sqlFileContent);
                 setSqlEditMode(false);
               }}
             >

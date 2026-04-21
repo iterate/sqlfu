@@ -439,7 +439,7 @@ async function writeQueryCatalog(
         sqlFile,
         functionName,
         sql: queryFile.sqlContent,
-        sqlContent: queryFile.sqlContent,
+        sqlFileContent: queryFile.sqlContent,
         error: analysis.error,
       };
       return [errorEntry];
@@ -462,7 +462,7 @@ async function writeQueryCatalog(
       sqlFile,
       functionName,
       sql: descriptor.sql,
-      sqlContent: queryFile.sqlContent,
+      sqlFileContent: queryFile.sqlContent,
       queryType: descriptor.queryType as Exclude<GeneratedQueryDescriptor['queryType'], 'Ddl'>,
       multipleRowsResult: descriptor.multipleRowsResult,
       resultMode: getResultMode(descriptor),
