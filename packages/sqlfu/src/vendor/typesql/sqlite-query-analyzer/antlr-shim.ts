@@ -1304,103 +1304,41 @@ class ShimDelete_stmtContext extends ShimParserRuleContext {
 }
 
 // -----------------------------------------------------------------------------
-// CREATE TABLE — consumed only by enum-parser.ts
+// SQL_STMT envelope — discriminates select / insert / update / delete / ddl
 // -----------------------------------------------------------------------------
 
-export interface ParsedCreateTable {
-	kind: 'Create_table_stmt';
-	table: string;
-	columns: ParsedColumnDef[];
-	start: number;
-	stop: number;
-}
-
-export interface ParsedColumnDef {
-	name: string;
-	constraints: ParsedColumnConstraint[];
-	start: number;
-	stop: number;
-}
-
-export interface ParsedColumnConstraint {
-	/** Only CHECK constraints have an expr the analyzer reads. */
-	check: boolean;
-	expr: ParsedExpr | null;
-	start: number;
-	stop: number;
-}
-
-class ShimCreate_table_stmtContext extends ShimParserRuleContext {
-	_parsed: ParsedCreateTable;
-	constructor(parsed: ParsedCreateTable, sql: string, input: SourceInputStream, parent: any) {
-		super();
-		wireBase(this,sql, input, parsed.start, parsed.stop, parent);
-		this._parsed = parsed;
-	}
-	getText(): string { return shimGetText.call(this as any); }
-	getChildCount = shimGetChildCount;
-	getChild = shimGetChild;
-
-	table_name(): any {
-		const p = this._parsed;
-		// Best-effort offset.
-		const idx = this._sql.indexOf(p.table, p.start);
-		const start = idx >= 0 ? idx : p.start;
-		return new ShimTable_nameContext(p.table, p.table, this._sql, this._input, start, start + p.table.length - 1, this);
-	}
-	column_def_list(): any[] {
-		return this._parsed.columns.map(c => new ShimColumn_defContext(c, this._sql, this._input, this));
-	}
-}
-
-class ShimColumn_defContext extends ShimParserRuleContext {
-	_parsed: ParsedColumnDef;
-	constructor(parsed: ParsedColumnDef, sql: string, input: SourceInputStream, parent: any) {
-		super();
-		wireBase(this,sql, input, parsed.start, parsed.stop, parent);
-		this._parsed = parsed;
-	}
-	getText(): string { return shimGetText.call(this as any); }
-	getChildCount = shimGetChildCount;
-	getChild = shimGetChild;
-	column_name(): any {
-		const p = this._parsed;
-		const idx = this._sql.indexOf(p.name, p.start);
-		const start = idx >= 0 ? idx : p.start;
-		return new ShimColumn_nameContext(p.name, this._sql, this._input, start, start + p.name.length - 1, this);
-	}
-	column_constraint_list(): any[] {
-		return this._parsed.constraints.map(c => new ShimColumn_constraintContext(c, this._sql, this._input, this));
-	}
-}
-
-class ShimColumn_constraintContext extends ShimParserRuleContext {
-	_parsed: ParsedColumnConstraint;
-	constructor(parsed: ParsedColumnConstraint, sql: string, input: SourceInputStream, parent: any) {
-		super();
-		wireBase(this,sql, input, parsed.start, parsed.stop, parent);
-		this._parsed = parsed;
-	}
-	getText(): string { return shimGetText.call(this as any); }
-	getChildCount = shimGetChildCount;
-	getChild = shimGetChild;
-	CHECK_(): any { return this._parsed.check ? terminal(this._parsed.start, this._input) : null; }
-	expr(): any {
-		if (!this._parsed.expr) return null;
-		return new ShimExprContext(this._parsed.expr, this._sql, this._input, this);
-	}
-}
-
-// -----------------------------------------------------------------------------
-// SQL_STMT envelope — discriminates select / insert / update / delete / create
-// -----------------------------------------------------------------------------
+/**
+ * The specific DDL / connection-control statement kinds the analyzer checks
+ * for. We only classify to the granularity `traverse.ts` reads — any further
+ * structure (table name, column list, etc.) is unused at the analyzer layer
+ * because DDL descriptors carry no params and no result columns.
+ */
+export type DdlKind =
+	| 'create_table_stmt'
+	| 'create_index_stmt'
+	| 'create_view_stmt'
+	| 'create_trigger_stmt'
+	| 'create_virtual_table_stmt'
+	| 'alter_table_stmt'
+	| 'drop_stmt'
+	| 'pragma_stmt'
+	| 'vacuum_stmt'
+	| 'reindex_stmt'
+	| 'analyze_stmt'
+	| 'attach_stmt'
+	| 'detach_stmt'
+	| 'begin_stmt'
+	| 'commit_stmt'
+	| 'rollback_stmt'
+	| 'savepoint_stmt'
+	| 'release_stmt';
 
 export type ParsedTopStmt =
 	| { kind: 'select'; stmt: ParsedSelectStmt }
 	| { kind: 'insert'; stmt: ParsedInsertStmt }
 	| { kind: 'update'; stmt: ParsedUpdateStmt }
 	| { kind: 'delete'; stmt: ParsedDeleteStmt }
-	| { kind: 'create_table'; stmt: ParsedCreateTable };
+	| { kind: 'ddl'; ddl_kind: DdlKind; sql: string; start: number; stop: number };
 
 class ShimSql_stmtContext extends ShimParserRuleContext {
 	_parsed: ParsedTopStmt;
@@ -1429,9 +1367,34 @@ class ShimSql_stmtContext extends ShimParserRuleContext {
 		if (this._parsed.kind !== 'delete') return null;
 		return new ShimDelete_stmtContext(this._parsed.stmt, this._sql, this._input, this);
 	}
-	create_table_stmt(): any {
-		if (this._parsed.kind !== 'create_table') return null;
-		return new ShimCreate_table_stmtContext(this._parsed.stmt, this._sql, this._input, this);
+	// DDL / connection-control accessors. Each returns an opaque truthy
+	// marker (ANTLR's accessors return a ParserRuleContext; the analyzer
+	// only reads presence for DDL — it never walks the structure), or null
+	// if the statement isn't that kind. The marker carries the parent ref
+	// so `getText()` / range-based helpers continue to work.
+	create_table_stmt(): any { return this._ddlMarker('create_table_stmt'); }
+	create_index_stmt(): any { return this._ddlMarker('create_index_stmt'); }
+	create_view_stmt(): any { return this._ddlMarker('create_view_stmt'); }
+	create_trigger_stmt(): any { return this._ddlMarker('create_trigger_stmt'); }
+	create_virtual_table_stmt(): any { return this._ddlMarker('create_virtual_table_stmt'); }
+	alter_table_stmt(): any { return this._ddlMarker('alter_table_stmt'); }
+	drop_stmt(): any { return this._ddlMarker('drop_stmt'); }
+	pragma_stmt(): any { return this._ddlMarker('pragma_stmt'); }
+	vacuum_stmt(): any { return this._ddlMarker('vacuum_stmt'); }
+	reindex_stmt(): any { return this._ddlMarker('reindex_stmt'); }
+	analyze_stmt(): any { return this._ddlMarker('analyze_stmt'); }
+	attach_stmt(): any { return this._ddlMarker('attach_stmt'); }
+	detach_stmt(): any { return this._ddlMarker('detach_stmt'); }
+	begin_stmt(): any { return this._ddlMarker('begin_stmt'); }
+	commit_stmt(): any { return this._ddlMarker('commit_stmt'); }
+	rollback_stmt(): any { return this._ddlMarker('rollback_stmt'); }
+	savepoint_stmt(): any { return this._ddlMarker('savepoint_stmt'); }
+	release_stmt(): any { return this._ddlMarker('release_stmt'); }
+	private _ddlMarker(kind: DdlKind): any {
+		if (this._parsed.kind !== 'ddl' || this._parsed.ddl_kind !== kind) return null;
+		const marker = new ShimParserRuleContext();
+		wireBase(marker, this._sql, this._input, this._parsed.start, this._parsed.stop, this);
+		return marker;
 	}
 }
 
@@ -1452,6 +1415,7 @@ class ShimSql_stmt_listContext extends ShimParserRuleContext {
 }
 
 function getStmtRange(p: ParsedTopStmt): { start: number; stop: number } {
+	if (p.kind === 'ddl') return { start: p.start, stop: p.stop };
 	return { start: p.stmt.start, stop: p.stmt.stop };
 }
 
@@ -1509,10 +1473,11 @@ export function parseSqlToShim(sql: string): any {
 	// Dispatch on the first keyword (after optional whitespace/comments).
 	// `tokenize` is the canonical source of "first non-trivia token".
 	const tokens = tokenizeForDispatch(sql);
-	const first = tokens.find(t => t.kind === 'KEYWORD');
-	if (!first) {
+	const firstIdx = tokens.findIndex(t => t.kind === 'KEYWORD');
+	if (firstIdx < 0) {
 		throw new Error(`parseSqlToShim: no keyword found in SQL: ${JSON.stringify(sql.slice(0, 80))}`);
 	}
+	const first = tokens[firstIdx];
 	const kw = first.value;
 	// Recognise top-level statements the analyzer can handle. WITH is
 	// prefix to SELECT / INSERT / UPDATE / DELETE — only SELECT is
@@ -1534,7 +1499,54 @@ export function parseSqlToShim(sql: string): any {
 		const stmt = _parseDeleteStmt(sql);
 		return wrapSqlStmt(sql, {kind: 'delete', stmt});
 	}
+	// DDL / connection-control statements. The analyzer returns an empty
+	// descriptor for any of these; we classify just finely enough that
+	// `sql_stmt.<specific>_stmt()` accessors in traverse.ts read non-null
+	// for the matching kind (equivalent to the ANTLR parse tree shape).
+	const ddlKind = classifyDdlKeyword(tokens, firstIdx);
+	if (ddlKind) {
+		return wrapSqlStmt(sql, {kind: 'ddl', ddl_kind: ddlKind, sql, start: first.start, stop: tokens[tokens.length - 1]?.stop ?? first.stop});
+	}
 	throw new Error(`parseSqlToShim: unsupported top-level keyword '${kw}'`);
+}
+
+/**
+ * Classify a DDL / connection-control keyword to the specific kind traverse.ts
+ * looks for. Returns null if the keyword isn't a DDL kind we recognise — the
+ * caller then produces the "unsupported" error.
+ *
+ * For CREATE we peek past optional modifiers (UNIQUE / TEMP / TEMPORARY /
+ * VIRTUAL) to find the noun (TABLE / INDEX / VIEW / TRIGGER) so DROP vs
+ * CREATE INDEX etc. classify correctly.
+ */
+function classifyDdlKeyword(tokens: {kind: string; value: string}[], firstIdx: number): DdlKind | null {
+	const kw = tokens[firstIdx].value;
+	const peek = (offset: number) => tokens[firstIdx + offset]?.value;
+	if (kw === 'CREATE') {
+		let i = 1;
+		while (['UNIQUE', 'TEMP', 'TEMPORARY'].includes(peek(i) || '')) i++;
+		const noun = peek(i);
+		if (noun === 'VIRTUAL') return 'create_virtual_table_stmt';
+		if (noun === 'TABLE') return 'create_table_stmt';
+		if (noun === 'INDEX') return 'create_index_stmt';
+		if (noun === 'VIEW') return 'create_view_stmt';
+		if (noun === 'TRIGGER') return 'create_trigger_stmt';
+		return 'create_table_stmt'; // unreachable in valid SQL; fall back to table
+	}
+	if (kw === 'DROP') return 'drop_stmt';
+	if (kw === 'ALTER') return 'alter_table_stmt';
+	if (kw === 'PRAGMA') return 'pragma_stmt';
+	if (kw === 'VACUUM') return 'vacuum_stmt';
+	if (kw === 'REINDEX') return 'reindex_stmt';
+	if (kw === 'ANALYZE') return 'analyze_stmt';
+	if (kw === 'ATTACH') return 'attach_stmt';
+	if (kw === 'DETACH') return 'detach_stmt';
+	if (kw === 'BEGIN') return 'begin_stmt';
+	if (kw === 'COMMIT' || kw === 'END') return 'commit_stmt';
+	if (kw === 'ROLLBACK') return 'rollback_stmt';
+	if (kw === 'SAVEPOINT') return 'savepoint_stmt';
+	if (kw === 'RELEASE') return 'release_stmt';
+	return null;
 }
 
 // -----------------------------------------------------------------------------

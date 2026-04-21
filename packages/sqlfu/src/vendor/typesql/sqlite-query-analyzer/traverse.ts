@@ -68,6 +68,36 @@ function traverse_Sql_stmtContext(sql_stmt: Sql_stmtContext, traverseContext: Tr
 		const deleteResult = traverse_delete_stmt(delete_stmt, traverseContext);
 		return deleteResult;
 	}
+	// sqlfu divergence: DDL and connection-control statements. Upstream throws here.
+	// We return a trivial descriptor so the caller can emit a `client.run(sql)` wrapper.
+	const ddl_contexts = [
+		sql_stmt.create_table_stmt(),
+		sql_stmt.create_index_stmt(),
+		sql_stmt.create_view_stmt(),
+		sql_stmt.create_trigger_stmt(),
+		sql_stmt.create_virtual_table_stmt(),
+		sql_stmt.alter_table_stmt(),
+		sql_stmt.drop_stmt(),
+		sql_stmt.pragma_stmt(),
+		sql_stmt.vacuum_stmt(),
+		sql_stmt.reindex_stmt(),
+		sql_stmt.analyze_stmt(),
+		sql_stmt.attach_stmt(),
+		sql_stmt.detach_stmt(),
+		sql_stmt.begin_stmt(),
+		sql_stmt.commit_stmt(),
+		sql_stmt.rollback_stmt(),
+		sql_stmt.savepoint_stmt(),
+		sql_stmt.release_stmt(),
+	];
+	if (ddl_contexts.some((ctx) => ctx != null)) {
+		return {
+			queryType: 'Ddl',
+			constraints: [],
+			parameters: [],
+			returningColumns: []
+		};
+	}
 	throw Error('traverse_Sql_stmtContext');
 }
 

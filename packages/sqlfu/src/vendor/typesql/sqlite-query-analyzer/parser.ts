@@ -263,6 +263,18 @@ function createSchemaDefinition(
 
 		return right(schemaDef);
 	}
+	if (queryResult.queryType === 'Ddl') {
+		// sqlfu divergence: DDL statements (create/drop/alter/pragma/etc.) don't have params
+		// or result columns; the wrapper layer just emits `client.run(sql)`.
+		const schemaDef: SchemaDef = {
+			sql,
+			queryType: 'Ddl',
+			multipleRowsResult: false,
+			columns: [],
+			parameters: []
+		};
+		return right(schemaDef);
+	}
 	if (queryResult.queryType === 'Delete') {
 		const whereParams = queryResult.parameters.map((param, index) => {
 			const columnType = getVarType(substitutions, param.type);
