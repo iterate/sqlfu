@@ -19,6 +19,13 @@ const docs = [
     description: 'Overview, quick start, CLI model, and core concepts.',
   },
   {
+    slug: 'adapters',
+    title: 'Adapters',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'adapters.md'),
+    description:
+      'Drivers sqlfu supports out of the box: better-sqlite3, libsql, Turso Cloud, Cloudflare D1, Durable Objects, Expo, sqlite-wasm, and more.',
+  },
+  {
     slug: 'schema-diff-model',
     title: 'Schema Diff Model',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'schema-diff-model.md'),

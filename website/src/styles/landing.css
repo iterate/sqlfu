@@ -312,6 +312,20 @@ a {
   font-size: 0.95rem;
 }
 
+.works-with {
+  margin: 2rem auto 0;
+  max-width: 58rem;
+  text-align: center;
+  color: var(--muted);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.works-with code {
+  font-size: 0.85em;
+}
+
 @media (max-width: 900px) {
   .hero,
   .section-grid {
