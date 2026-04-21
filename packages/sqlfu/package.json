@@ -19,6 +19,7 @@
     "./client": "./src/client.ts",
     "./api": "./src/api.ts",
     "./cli": "./src/cli.ts",
+    "./outbox": "./src/outbox/index.ts",
     "./ui": {
       "browser": "./src/ui/browser.ts",
       "default": "./src/ui/index.ts"
@@ -46,6 +47,10 @@
       "./cli": {
         "types": "./dist/cli.d.ts",
         "default": "./dist/cli.js"
+      },
+      "./outbox": {
+        "types": "./dist/outbox/index.d.ts",
+        "default": "./dist/outbox/index.js"
       },
       "./ui": {
         "types": "./dist/ui/index.d.ts",

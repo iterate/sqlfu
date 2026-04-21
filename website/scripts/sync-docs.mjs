@@ -44,6 +44,13 @@ const docs = [
     description: 'Named queries reach OpenTelemetry, Sentry, PostHog, Datadog via a single instrument() hook.',
   },
   {
+    slug: 'outbox',
+    title: 'Outbox',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'outbox.md'),
+    description:
+      'Transactional-outbox / job-queue built on sqlfu. Fan-out, retry, delayed dispatch, crash recovery, causation chains.',
+  },
+  {
     slug: 'runtime-validation',
     title: 'Runtime validation',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'runtime-validation.mdx'),

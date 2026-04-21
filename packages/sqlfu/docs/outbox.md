@@ -1,0 +1,81 @@
+# Outbox
+
+`sqlfu/outbox` is a small transactional-outbox / job-queue built on top of the same sqlfu client you already use. It's a single-file implementation (~300 lines) that gives you:
+
+- **Transactional emit**: the event row is inserted in the same transaction as your domain write, so "either both happen or neither does".
+- **Per-consumer fan-out**: one emitted event spawns one job per registered consumer.
+- **Retry + DLQ**: failed jobs get rescheduled according to a retry policy; once a hard cap is hit, they transition to `status = 'failed'`.
+- **Delayed dispatch**: a consumer can schedule its job to run `24h` later.
+- **Visibility-timeout crash recovery**: if a worker dies holding a claimed job, after the VT expires the job is re-claimable by a future worker.
+- **Causation chains**: an event emitted inside a handler automatically records which job/consumer caused it.
+
+The whole thing is built on the observation that SQLite serialises writers, so you don't need `SELECT ... FOR UPDATE SKIP LOCKED` or pgmq-style session locks — a plain `begin; select pending; update to running; commit` is enough.
+
+## Shape
+
+```ts
+import {createOutbox, defineConsumer} from 'sqlfu/outbox';
+
+type AppEvents = {
+  'user:signed_up': {userId: number; email: string};
+};
+
+const welcomeEmail = defineConsumer<AppEvents['user:signed_up']>({
+  name: 'welcome-email',
+  handler: async ({payload}) => {
+    await sendEmail(payload.email, 'Welcome!');
+  },
+});
+
+const outbox = createOutbox<AppEvents>({
+  client,                                 // AsyncClient from sqlfu/client
+  consumers: {
+    'user:signed_up': [welcomeEmail, /* ...more consumers */],
+  },
+  defaults: {
+    visibilityTimeout: '30s',
+    maxAttempts: 5,
+  },
+});
+
+await outbox.setup();                      // idempotent; creates sqlfu_outbox_{events,jobs}
+
+// Producer: emit inside the same transaction as the domain write
+await client.transaction(async (tx) => {
+  await tx.run({sql: 'insert into users (email) values (?)', args: [email]});
+  await outbox.emit({name: 'user:signed_up', payload: {userId: 1, email}}, {client: tx});
+});
+
+// Worker: drain pending jobs in a loop somewhere
+while (!signal.aborted) {
+  const result = await outbox.tick();
+  if (result.claimed === 0) await sleep(500);
+}
+```
+
+## Consumer options
+
+Every field except `name` and `handler` is optional:
+
+```ts
+defineConsumer<Payload>({
+  name: 'my-consumer',
+  when: ({payload}) => payload.shouldDispatch,        // truthy → fan-out includes this consumer
+  delay: ({payload}) => '24h',                         // job's run_after
+  retry: (job, error) => ({retry: true, delay: '30s', reason: String(error)}),
+  visibilityTimeout: '2m',                             // how long after claim before reclaim allowed
+  handler: async ({payload, eventId, job}) => { /* ... */ },
+});
+```
+
+Time periods use `Ns`, `Nm`, `Nh`, `Nd` — the same shape as iterate's outbox.
+
+## Out of scope for now
+
+- oRPC / HTTP-server integration. Wire-up is straightforward: the consumer objects are plain data, and `outbox.tick()` returns quickly; wrap it in whatever scheduler you like.
+- Opentelemetry spans per job. Use the existing `instrument()` hook on the sqlfu client — handlers run against the same client.
+- Posthog/Sentry DLQ reporting. iterate's `outbox-evlog.ts` is the reference implementation; port it when needed.
+
+## Acknowledgements
+
+Ported conceptually from the iterate repo's pgmq-backed outbox (`apps/os/backend/outbox/`). The consumer shape and retry/delay/causation concepts carry over; everything pgmq-specific is replaced with vanilla SQLite tables.

@@ -18,6 +18,7 @@ It is built around a simple idea: SQL should be the source language for schema, 
   - [Type Generator](#type-generator)
   - [Formatter](#formatter)
   - [Observability](#observability)
+  - [Outbox](#outbox)
   - [UI](#ui)
   - [Agent Skill](#agent-skill)
 - [Quick Start](#quick-start)
@@ -160,6 +161,10 @@ const client = instrument(baseClient,
 ```
 
 No peer dependencies on OpenTelemetry or Sentry. `TracerLike` is structural; hook consumers bring their own SDK. Copy-pasteable recipes for OpenTelemetry, Sentry, PostHog, and Datadog (DogStatsD metrics) live in [docs/observability.md](packages/sqlfu/docs/observability.md).
+
+### Outbox
+
+A small transactional-outbox / job-queue sits at `sqlfu/outbox`. Emit events in the same transaction as your domain writes; register consumers with retry, delay, `when` filter, and visibility timeout; drive a worker loop with `tick()` or `run()`. Fan-out, crash recovery, and causation chains all work the way you'd expect, built on the fact that SQLite serialises writers so the queue doesn't need row-locks. See [docs/outbox.md](packages/sqlfu/docs/outbox.md).
 
 ### UI
 

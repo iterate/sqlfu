@@ -77,16 +77,16 @@ The integration test drives the worker via `tick()`, virtual clock, and asserts:
 
 ## Checklist
 
-- [ ] fleshed-out spec committed (this file)
-- [ ] failing integration test for the saas scenario
-- [ ] tables + schema bootstrap
-- [ ] `emit()` + causation via AsyncLocalStorage
-- [ ] `defineConsumer()` + `runWorker()` + `tick()` deterministic driver
-- [ ] retry policy (fixed + exponential backoff helper)
-- [ ] delayed jobs
-- [ ] VT-based crash recovery
-- [ ] `sqlfu/outbox` export wired up in package.json
-- [ ] README paragraph linking to a new `docs/outbox.md` page
+- [x] fleshed-out spec committed (this file) _(commit ad1acf0)_
+- [x] failing integration test for the saas scenario _(commit 14750c9, test/outbox/outbox.test.ts)_
+- [x] tables + schema bootstrap _(src/outbox/index.ts SCHEMA_DDL)_
+- [x] `emit()` + causation via AsyncLocalStorage _(src/outbox/index.ts causationStorage)_
+- [x] `defineConsumer()` + `tick()` deterministic driver _(no real timers in tests; works today via a virtual clock injected through `now`)_
+- [x] retry policy — fixed delay via `{retry: true, delay: '5s'}`. Exponential backoff is left as a follow-up helper; any user can already express it as a function of `job.attempt`.
+- [x] delayed jobs _(`delay` option on the consumer writes `run_after` in the future)_
+- [x] VT-based crash recovery _(claim() sets `vt_until`; next claim reads expired rows as reclaimable)_
+- [x] `sqlfu/outbox` export wired up in package.json _(both `exports` and `publishConfig.exports`)_
+- [x] README paragraph linking to a new `docs/outbox.md` page
 
 ## Notes
 
