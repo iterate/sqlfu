@@ -58,17 +58,37 @@ while (!signal.aborted) {
 Every field except `name` and `handler` is optional:
 
 ```ts
-defineConsumer<Payload>({
+defineConsumer<Payload, AppEvents>({
   name: 'my-consumer',
   when: ({payload}) => payload.shouldDispatch,        // truthy → fan-out includes this consumer
   delay: ({payload}) => '24h',                         // job's run_after
   retry: (job, error) => ({retry: true, delay: '30s', reason: String(error)}),
   visibilityTimeout: '2m',                             // how long after claim before reclaim allowed
-  handler: async ({payload, eventId, job}) => { /* ... */ },
+  handler: async ({payload, eventId, job, emit}) => {
+    // `emit` is pre-bound to this job's causation — any events emitted from
+    // here will have `context.causedBy` pointing back to this job/consumer.
+    await emit({name: 'my-consumer:did-a-thing', payload: {/* … */}});
+  },
 });
 ```
 
 Time periods use `Ns`, `Nm`, `Nh`, `Nd` — the same shape as iterate's outbox.
+
+## Causation is explicit, not ambient
+
+Handlers receive an `emit` helper that already knows its own job context. Events
+emitted through that helper automatically get `context.causedBy = {eventId,
+consumerName, jobId}` pointing back to the originating job.
+
+This is by design: sqlfu runs in browsers, edge workers, and mobile (see
+[adapters](./adapters.md)), so the outbox avoids any `node:` imports.
+`AsyncLocalStorage` would have made causation "magic" for Node users but broken
+everywhere else; threading `emit` through the handler input keeps the module
+dep-free at the cost of one extra argument.
+
+If you call `outbox.emit(...)` from outside a handler — e.g. in response to a
+user action — the event is still emitted, just without a `causedBy` entry.
+That's the right behaviour: it wasn't caused by another job.
 
 ## Out of scope for now
 

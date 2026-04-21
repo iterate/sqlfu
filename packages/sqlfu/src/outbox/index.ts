@@ -4,15 +4,17 @@
  * (see `~/src/iterate/apps/os/backend/outbox/`), minus everything that was a
  * workaround for Postgres' multi-writer reality: SQLite serialises writers for
  * us, so "claim pending rows, mark them running, release the writer" can be
- * a single `BEGIN IMMEDIATE; update; commit` instead of `SELECT ... FOR UPDATE
- * SKIP LOCKED`.
+ * a single `BEGIN; update; commit` instead of `SELECT ... FOR UPDATE SKIP LOCKED`.
  *
  * The public API intentionally mirrors iterate's consumer shape (name / when /
  * delay / retry / visibilityTimeout / handler) so a migration from one to the
  * other is a type-level swap rather than a rewrite.
+ *
+ * Zero Node-only dependencies: causation propagation is explicit (the handler
+ * receives an `emit` helper already bound to its own job context) rather than
+ * via `AsyncLocalStorage`, which keeps this module runnable in browsers, edge
+ * workers, and anywhere else sqlfu already runs.
  */
-
-import {AsyncLocalStorage} from 'node:async_hooks';
 
 import type {AsyncClient} from '../core/types.js';
 
@@ -41,20 +43,46 @@ export type RetryOutcome =
 
 export type RetryFn = (job: JobContext, error: unknown) => RetryOutcome;
 
-export type ConsumerHandlerInput<TPayload> = {
+export type EmitInput<TEvents extends EventMap, K extends keyof TEvents> = {
+  name: K;
+  payload: TEvents[K];
+};
+
+export type EmitOptions = {
+  /** Pass a transaction client to make emit atomic with the surrounding domain write. */
+  client?: AsyncClient;
+};
+
+export type EmitResult = {eventId: number};
+
+export type EmitFn<TEvents extends EventMap> = <K extends keyof TEvents>(
+  event: EmitInput<TEvents, K>,
+  options?: EmitOptions,
+) => Promise<EmitResult>;
+
+export type ConsumerHandlerInput<TPayload, TEvents extends EventMap> = {
   payload: TPayload;
   eventId: number;
   eventName: string;
   job: {id: number; attempt: number};
+  /**
+   * Emit a follow-up event from inside this handler. This `emit` is pre-bound
+   * to the running job's causation, so the downstream event's
+   * `context.causedBy` points back to this job/consumer/event automatically.
+   *
+   * If you need to emit from outside a handler, use the top-level
+   * `outbox.emit`.
+   */
+  emit: EmitFn<TEvents>;
 };
 
-export type ConsumerDefinition<TPayload> = {
+export type ConsumerDefinition<TPayload, TEvents extends EventMap = EventMap> = {
   name: string;
   when?: WhenFn<TPayload>;
   delay?: DelayFn<TPayload>;
   retry?: RetryFn;
   visibilityTimeout?: TimePeriod;
-  handler: (input: ConsumerHandlerInput<TPayload>) => Promise<void | string>;
+  handler: (input: ConsumerHandlerInput<TPayload, TEvents>) => Promise<void | string>;
 };
 
 export type OutboxDefaults = {
@@ -66,27 +94,26 @@ export type OutboxDefaults = {
   environment?: string;
   /** How many jobs to claim per tick(). */
   batchSize?: number;
+  /**
+   * Hook for bookkeeping errors — updates that fail after a handler has
+   * already run its side effects. Default is `console.warn`; pass a custom
+   * logger or Sentry hook to surface these in production. Distinct from
+   * handler errors, which are routed through the retry policy.
+   */
+  onBookkeepingError?: (error: unknown, job: JobContext) => void;
 };
 
-export type OutboxConsumers<TEvents> = {
-  [K in keyof TEvents]?: ConsumerDefinition<TEvents[K]>[];
+export type EventMap = Record<string, unknown>;
+
+export type OutboxConsumers<TEvents extends EventMap> = {
+  [K in keyof TEvents]?: ConsumerDefinition<TEvents[K], TEvents>[];
 };
 
-export type OutboxConfig<TEvents> = {
+export type OutboxConfig<TEvents extends EventMap> = {
   client: AsyncClient;
   consumers: OutboxConsumers<TEvents>;
   now?: () => Date;
   defaults?: OutboxDefaults;
-};
-
-export type EmitInput<TEvents, K extends keyof TEvents> = {
-  name: K;
-  payload: TEvents[K];
-};
-
-export type EmitOptions = {
-  /** Pass a transaction client to make emit atomic with the surrounding domain write. */
-  client?: AsyncClient;
 };
 
 export type ClaimedJob = {
@@ -107,14 +134,16 @@ export type TickResult = {
   retried: number;
 };
 
-export interface Outbox<TEvents> {
+export interface Outbox<TEvents extends EventMap> {
   setup(): Promise<void>;
-  emit<K extends keyof TEvents>(event: EmitInput<TEvents, K>, options?: EmitOptions): Promise<{eventId: number}>;
+  emit: EmitFn<TEvents>;
   tick(): Promise<TickResult>;
   claim(input?: {limit?: number}): Promise<ClaimedJob[]>;
 }
 
-export function defineConsumer<TPayload>(definition: ConsumerDefinition<TPayload>): ConsumerDefinition<TPayload> {
+export function defineConsumer<TPayload, TEvents extends EventMap = EventMap>(
+  definition: ConsumerDefinition<TPayload, TEvents>,
+): ConsumerDefinition<TPayload, TEvents> {
   return definition;
 }
 
@@ -123,21 +152,21 @@ const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_VT: TimePeriod = '30s';
 const DEFAULT_RETRY: RetryFn = (_, error) => ({retry: true, reason: String(error), delay: '10s'});
 
-const causationStorage = new AsyncLocalStorage<Causation>();
-
-export function createOutbox<TEvents extends Record<string, unknown>>(config: OutboxConfig<TEvents>): Outbox<TEvents> {
+export function createOutbox<TEvents extends EventMap>(config: OutboxConfig<TEvents>): Outbox<TEvents> {
   const {client} = config;
   const now = config.now ?? (() => new Date());
-  const defaults: Required<OutboxDefaults> = {
+  const defaults: Required<Omit<OutboxDefaults, 'onBookkeepingError'>> & Pick<OutboxDefaults, 'onBookkeepingError'> = {
     visibilityTimeout: config.defaults?.visibilityTimeout ?? DEFAULT_VT,
     retry: config.defaults?.retry ?? DEFAULT_RETRY,
     maxAttempts: config.defaults?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
     environment: config.defaults?.environment ?? 'development',
     batchSize: config.defaults?.batchSize ?? DEFAULT_BATCH_SIZE,
+    onBookkeepingError: config.defaults?.onBookkeepingError,
   };
 
-  const consumersByEvent = new Map<string, ConsumerDefinition<unknown>[]>();
-  for (const [eventName, list] of Object.entries(config.consumers) as [string, ConsumerDefinition<unknown>[] | undefined][]) {
+  const consumersByEvent = new Map<string, ConsumerDefinition<unknown, TEvents>[]>();
+  for (const eventName of Object.keys(config.consumers) as (keyof TEvents & string)[]) {
+    const list = config.consumers[eventName] as ConsumerDefinition<unknown, TEvents>[] | undefined;
     if (list?.length) consumersByEvent.set(eventName, list);
   }
 
@@ -145,14 +174,14 @@ export function createOutbox<TEvents extends Record<string, unknown>>(config: Ou
     await client.raw(SCHEMA_DDL);
   }
 
-  async function emit<K extends keyof TEvents>(
+  async function emitWithCausation<K extends keyof TEvents>(
     event: EmitInput<TEvents, K>,
-    options: EmitOptions = {},
-  ): Promise<{eventId: number}> {
+    options: EmitOptions,
+    causedBy: Causation | null,
+  ): Promise<EmitResult> {
     const effectiveClient = options.client ?? client;
-    const causedBy = causationStorage.getStore() ?? null;
     const context = causedBy ? {causedBy} : {};
-    const eventName = String(event.name);
+    const eventName = event.name as string & keyof TEvents;
     const nowMs = now().getTime();
 
     // Use `returning id` + .all() rather than .run() + lastInsertRowid: libsql-client's
@@ -164,10 +193,11 @@ export function createOutbox<TEvents extends Record<string, unknown>>(config: Ou
       args: [eventName, JSON.stringify(event.payload), JSON.stringify(context), defaults.environment, nowMs],
     });
 
-    const eventId = Number(insertedRows[0]?.id);
-    if (!Number.isFinite(eventId) || eventId <= 0) {
-      throw new Error(`Could not determine inserted event id (got ${insertedRows[0]?.id})`);
+    const eventIdRaw = insertedRows[0]?.id;
+    if (typeof eventIdRaw !== 'number' || eventIdRaw <= 0) {
+      throw new Error(`Could not determine inserted event id (got ${String(eventIdRaw)})`);
     }
+    const eventId = eventIdRaw;
 
     const matching = (consumersByEvent.get(eventName) ?? []).filter((consumer) =>
       consumer.when ? Boolean(consumer.when({payload: event.payload})) : true,
@@ -186,6 +216,8 @@ export function createOutbox<TEvents extends Record<string, unknown>>(config: Ou
     return {eventId};
   }
 
+  const emit: EmitFn<TEvents> = (event, options = {}) => emitWithCausation(event, options, null);
+
   async function claim(input: {limit?: number} = {}): Promise<ClaimedJob[]> {
     const limit = input.limit ?? defaults.batchSize;
     const nowSec = Math.floor(now().getTime() / 1000);
@@ -203,7 +235,6 @@ export function createOutbox<TEvents extends Record<string, unknown>>(config: Ou
 
       if (candidates.length === 0) return [];
 
-      // compute per-row VT based on the consumer's own override (or the default)
       const vtUntilByConsumer = new Map<string, number>();
       for (const candidate of candidates) {
         const consumer = findConsumerByName(candidate.consumer_name);
@@ -239,35 +270,46 @@ export function createOutbox<TEvents extends Record<string, unknown>>(config: Ou
     for (const job of claimed) {
       const consumer = findConsumerByName(job.consumer_name);
       if (!consumer) {
-        await markFailed(job, new Error(`No consumer registered for ${job.consumer_name}`));
+        await bookkeep(job, () => markFailed(job, new Error(`No consumer registered for ${job.consumer_name}`)));
         result.failed += 1;
         continue;
       }
 
-      const payload = parseJson(job.event_payload);
+      const payload = JSON.parse(job.event_payload || 'null');
       const causation: Causation = {eventId: job.event_id, consumerName: job.consumer_name, jobId: job.id};
+      const boundEmit: EmitFn<TEvents> = (event, options = {}) => emitWithCausation(event, options, causation);
+
+      // Split: handler failures → retry policy; bookkeeping (DB) failures → log + let VT recovery handle.
+      // Conflating them once caused a successful handler side-effect to be retried when the status
+      // update failed.
+      let handlerError: unknown = null;
+      let handlerResult: void | string | undefined;
       try {
-        const handlerResult = await causationStorage.run(causation, () =>
-          consumer.handler({
-            payload,
-            eventId: job.event_id,
-            eventName: job.event_name,
-            job: {id: job.id, attempt: job.attempt + 1},
-          }),
-        );
-        await markSuccess(job, handlerResult);
-        result.succeeded += 1;
+        handlerResult = await consumer.handler({
+          payload,
+          eventId: job.event_id,
+          eventName: job.event_name,
+          job: {id: job.id, attempt: job.attempt + 1},
+          emit: boundEmit,
+        });
       } catch (error) {
+        handlerError = error;
+      }
+
+      if (handlerError == null) {
+        await bookkeep(job, () => markSuccess(job, handlerResult));
+        result.succeeded += 1;
+      } else {
         const newAttempt = job.attempt + 1;
         const retryFn = consumer.retry ?? defaults.retry;
-        const policy = retryFn({...causation, attempt: newAttempt}, error);
+        const policy = retryFn({...causation, attempt: newAttempt}, handlerError);
 
         if (!policy.retry || newAttempt >= defaults.maxAttempts) {
-          await markFailed(job, error, newAttempt);
+          await bookkeep(job, () => markFailed(job, handlerError, newAttempt));
           result.failed += 1;
         } else {
           const runAfterSec = Math.floor((now().getTime() + periodMs(policy.delay)) / 1000);
-          await markRetry(job, error, newAttempt, runAfterSec);
+          await bookkeep(job, () => markRetry(job, handlerError, newAttempt, runAfterSec));
           result.retried += 1;
         }
       }
@@ -276,7 +318,21 @@ export function createOutbox<TEvents extends Record<string, unknown>>(config: Ou
     return result;
   }
 
-  function findConsumerByName(name: string): ConsumerDefinition<unknown> | undefined {
+  async function bookkeep(job: ClaimedJob, update: () => Promise<void>): Promise<void> {
+    try {
+      await update();
+    } catch (error) {
+      const report = defaults.onBookkeepingError ?? defaultOnBookkeepingError;
+      report(error, {
+        jobId: job.id,
+        eventId: job.event_id,
+        attempt: job.attempt,
+        consumerName: job.consumer_name,
+      });
+    }
+  }
+
+  function findConsumerByName(name: string): ConsumerDefinition<unknown, TEvents> | undefined {
     for (const list of consumersByEvent.values()) {
       const found = list.find((c) => c.name === name);
       if (found) return found;
@@ -284,7 +340,7 @@ export function createOutbox<TEvents extends Record<string, unknown>>(config: Ou
     return undefined;
   }
 
-  async function markSuccess(job: ClaimedJob, _handlerResult: void | string): Promise<void> {
+  async function markSuccess(job: ClaimedJob, _handlerResult: void | string | undefined): Promise<void> {
     await client.run({
       sql: `update sqlfu_outbox_jobs set status = 'success', attempt = ?, last_error = null, updated_at = ? where id = ?`,
       args: [job.attempt + 1, now().getTime(), job.id],
@@ -312,6 +368,10 @@ export function createOutbox<TEvents extends Record<string, unknown>>(config: Ou
 
 /* -------------------------------------------------------------------------- */
 
+function defaultOnBookkeepingError(error: unknown, job: JobContext): void {
+  console.warn(`[sqlfu/outbox] bookkeeping failed for job ${job.jobId} (${job.consumerName}):`, error);
+}
+
 function periodMs(period: TimePeriod): number {
   const match = /^(\d+)(s|m|h|d)$/.exec(period);
   if (!match) throw new Error(`Expected period like "30s" / "5m" / "1h" / "2d", got ${period}`);
@@ -331,11 +391,6 @@ function periodMs(period: TimePeriod): number {
       throw new Error(`Unknown time unit: ${String(_exhaustive)}`);
     }
   }
-}
-
-function parseJson(text: string): unknown {
-  if (!text) return {};
-  return JSON.parse(text);
 }
 
 /* ---- Schema. Kept inline; outbox manages its own tables for now. -------- */

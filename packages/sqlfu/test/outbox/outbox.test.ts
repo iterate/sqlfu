@@ -2,10 +2,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import {createClient as createLibsqlClientRaw} from '@libsql/client';
+import {connect} from '@tursodatabase/database';
 import {expect, test} from 'vitest';
 
-import {createLibsqlClient, type AsyncClient} from '../../src/client.js';
+import {createTursoDatabaseClient, type AsyncClient} from '../../src/client.js';
 import {createOutbox, defineConsumer, type Outbox} from '../../src/outbox/index.js';
 
 /**
@@ -20,7 +20,7 @@ test('emit is atomic with the domain write', async () => {
   await using app = await createTestApp();
 
   // happy path: signUp inserts a user AND emits in the same transaction
-  await app.signUp('ada@nustom.com');
+  await app.signUp('ada@sqlfu.dev');
   expect(await app.listUsers()).toHaveLength(1);
   expect(await app.listEvents()).toHaveLength(1);
   expect(await app.listJobs()).toHaveLength(4); // 3 consumers for user:signed_up
@@ -34,7 +34,7 @@ test('emit is atomic with the domain write', async () => {
 
 test('fan-out: one event creates one job per matching consumer', async () => {
   await using app = await createTestApp();
-  await app.signUp('ada@nustom.com');
+  await app.signUp('ada@sqlfu.dev');
 
   const jobs = await app.listJobs();
   expect(jobs.map((j) => j.consumer_name).sort()).toEqual(
@@ -55,7 +55,7 @@ test('`when` filter skips consumers whose predicate is falsy', async () => {
 test('retries a transient failure and eventually succeeds', async () => {
   await using app = await createTestApp();
   app.makeNextWelcomeEmailFail('smtp down');
-  await app.signUp('ada@nustom.com');
+  await app.signUp('ada@sqlfu.dev');
 
   // first tick: welcome-email attempt 1 fails and gets scheduled for retry
   await app.tick();
@@ -70,13 +70,13 @@ test('retries a transient failure and eventually succeeds', async () => {
   app.clock.advance(5000);
   await app.tick();
   expect(await app.findJob('welcome-email')).toMatchObject({status: 'success', attempt: 2});
-  expect(await app.listSentEmails()).toContainEqual(expect.objectContaining({to: 'ada@nustom.com'}));
+  expect(await app.listSentEmails()).toContainEqual(expect.objectContaining({to: 'ada@sqlfu.dev'}));
 });
 
 test('permanent failure after retries lands in status=failed', async () => {
   await using app = await createTestApp();
   app.makeWelcomeEmailAlwaysFail('permanently broken');
-  await app.signUp('ada@nustom.com');
+  await app.signUp('ada@sqlfu.dev');
 
   // drive the retry schedule to exhaustion — app retry policy caps at 2 attempts
   for (let i = 0; i < 5; i++) {
@@ -92,7 +92,7 @@ test('permanent failure after retries lands in status=failed', async () => {
 
 test('delayed consumer does not fire until its run_after', async () => {
   await using app = await createTestApp();
-  await app.signUp('ada@nustom.com');
+  await app.signUp('ada@sqlfu.dev');
 
   await app.tick();
   expect(await app.findJob('onboarding-reminder')).toMatchObject({status: 'pending'});
@@ -109,7 +109,7 @@ test('delayed consumer does not fire until its run_after', async () => {
 
 test('events emitted inside a handler carry causation back to the originating job', async () => {
   await using app = await createTestApp();
-  await app.signUp('ada@nustom.com');
+  await app.signUp('ada@sqlfu.dev');
 
   app.clock.advance(1000 * 60 * 60 * 25); // fast-forward past the 24h delay
   await app.tick();
@@ -126,7 +126,7 @@ test('events emitted inside a handler carry causation back to the originating jo
 
 test('visibility-timeout expiry allows crash recovery', async () => {
   await using app = await createTestApp();
-  await app.signUp('ada@nustom.com');
+  await app.signUp('ada@sqlfu.dev');
 
   // simulate a worker crashing after claim but before completing: claim without processing
   const claimed = await app.outbox.claim({limit: 10});
@@ -157,15 +157,15 @@ type AppEvents = {
 
 async function createTestApp() {
   const dbPath = path.join(os.tmpdir(), `sqlfu-outbox-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.db`);
-  const raw = createLibsqlClientRaw({url: `file:${dbPath}`});
-  const client = createLibsqlClient(raw);
+  const database = await connect(dbPath);
+  const client = createTursoDatabaseClient(database);
   await bootstrapAppSchema(client);
 
-  const clock = createVirtualClock(new Date('2026-04-21T00:00:00Z').getTime());
+  const clock = createVirtualClock(new Date('2000-01-01T00:00:00Z').getTime());
   let nextWelcomeEmailError: string | null = null;
   let welcomeEmailAlwaysError: string | null = null;
 
-  const welcomeEmail = defineConsumer<UserSignedUpPayload>({
+  const welcomeEmail = defineConsumer<UserSignedUpPayload, AppEvents>({
     name: 'welcome-email',
     retry: (_, error) => ({retry: true, reason: String(error), delay: '5s'}),
     handler: async ({payload}) => {
@@ -182,9 +182,9 @@ async function createTestApp() {
     },
   });
 
-  const testDomainWelcome = defineConsumer<UserSignedUpPayload>({
+  const testDomainWelcome = defineConsumer<UserSignedUpPayload, AppEvents>({
     name: 'test-domain-welcome',
-    when: ({payload}) => payload.email.endsWith('@test.com') || payload.email.endsWith('@nustom.com'),
+    when: ({payload}) => payload.email.endsWith('@test.com') || payload.email.endsWith('@sqlfu.dev'),
     handler: async ({payload}) => {
       await client.run({
         sql: 'insert into sent_emails (to_addr, subject) values (?, ?)',
@@ -193,7 +193,7 @@ async function createTestApp() {
     },
   });
 
-  const slackAdminNotify = defineConsumer<UserSignedUpPayload>({
+  const slackAdminNotify = defineConsumer<UserSignedUpPayload, AppEvents>({
     name: 'slack-admin-notify',
     handler: async ({payload}) => {
       await client.run({
@@ -203,15 +203,15 @@ async function createTestApp() {
     },
   });
 
-  const onboardingReminder = defineConsumer<UserSignedUpPayload>({
+  const onboardingReminder = defineConsumer<UserSignedUpPayload, AppEvents>({
     name: 'onboarding-reminder',
     delay: () => '24h',
-    handler: async ({payload}) => {
-      await outbox.emit({name: 'reminder:due', payload: {userId: payload.userId, email: payload.email}});
+    handler: async ({payload, emit}) => {
+      await emit({name: 'reminder:due', payload: {userId: payload.userId, email: payload.email}});
     },
   });
 
-  const reminderDueHandler = defineConsumer<ReminderDuePayload>({
+  const reminderDueHandler = defineConsumer<ReminderDuePayload, AppEvents>({
     name: 'reminder-email',
     handler: async ({payload}) => {
       await client.run({
@@ -303,7 +303,7 @@ async function createTestApp() {
     },
     tick: () => outbox.tick(),
     async [Symbol.asyncDispose]() {
-      raw.close();
+      await database.close();
       await fs.rm(dbPath, {force: true}).catch(() => {});
     },
   };
