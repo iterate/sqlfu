@@ -1,233 +1,220 @@
-import fs from 'node:fs/promises';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import {ESLint, Linter} from 'eslint';
+import {ESLint, RuleTester} from 'eslint';
 import {expect, test} from 'vitest';
 
 import plugin, {formatSqlFileContents, resetQueryCache} from '../src/lint-plugin.js';
 
-test('flags an inline SQL template that duplicates a named .sql file', async () => {
-  await using project = await setupProject({
-    'sqlfu.config.ts': `export default { db: './app.db', migrations: './migrations', definitions: './definitions.sql', queries: './sql' }`,
-    'sql/list-users.sql': `select id, name from users order by name`,
-  });
+// ---------------------------------------------------------------------------
+// query-naming
+// ---------------------------------------------------------------------------
 
-  const messages = lintSource({
-    project,
-    filename: 'src/handler.js',
-    source: `const rows = client.all(\`select id, name from users order by name\`)`,
-  });
-
-  expect(messages).toHaveLength(1);
-  expect(messages[0]).toMatchObject({
-    ruleId: 'sqlfu/query-naming',
-    message: expect.stringContaining('list-users.sql'),
-  });
-  expect(messages[0].message).toContain('listUsers');
-});
-
-test('does not flag ad-hoc SQL with no matching file', async () => {
-  await using project = await setupProject({
+test('query-naming: flags an inline SQL template that duplicates a named .sql file', () => {
+  using project = makeProject({
     'sqlfu.config.ts': `export default { queries: './sql' }`,
     'sql/list-users.sql': `select id, name from users order by name`,
   });
 
-  const messages = lintSource({
-    project,
-    filename: 'src/handler.js',
-    source: `const x = client.all(\`select count(*) from sessions\`)`,
+  ruleTester.run('query-naming', plugin.rules!['query-naming'] as any, {
+    valid: [],
+    invalid: [
+      {
+        filename: project.file('src/handler.js'),
+        code: 'const rows = client.all(`select id, name from users order by name`)',
+        errors: [{message: /list-users\.sql.*listUsers/}],
+      },
+    ],
   });
-
-  expect(messages).toHaveLength(0);
 });
 
-test('does not flag parameterized queries (template with interpolations)', async () => {
-  await using project = await setupProject({
+test('query-naming: ignores ad-hoc SQL with no matching file', () => {
+  using project = makeProject({
+    'sqlfu.config.ts': `export default { queries: './sql' }`,
+    'sql/list-users.sql': `select id, name from users order by name`,
+  });
+
+  ruleTester.run('query-naming', plugin.rules!['query-naming'] as any, {
+    valid: [
+      {
+        filename: project.file('src/handler.js'),
+        code: 'const x = client.all(`select count(*) from sessions`)',
+      },
+    ],
+    invalid: [],
+  });
+});
+
+test('query-naming: ignores parameterized templates (interpolations)', () => {
+  using project = makeProject({
     'sqlfu.config.ts': `export default { queries: './sql' }`,
     'sql/list-users.sql': `select id, name from users where id = :userId`,
   });
 
-  const messages = lintSource({
-    project,
-    filename: 'src/handler.js',
-    source: `
-      const userId = 1
-      const rows = client.all(\`select id, name from users where id = \${userId}\`)
-    `,
+  ruleTester.run('query-naming', plugin.rules!['query-naming'] as any, {
+    valid: [
+      {
+        filename: project.file('src/handler.js'),
+        code: 'const userId = 1; const rows = client.all(`select id, name from users where id = ${userId}`)',
+      },
+    ],
+    invalid: [],
   });
-
-  expect(messages).toHaveLength(0);
 });
 
-test('matches regardless of whitespace and keyword casing', async () => {
-  await using project = await setupProject({
+test('query-naming: matches regardless of whitespace and keyword case', () => {
+  using project = makeProject({
     'sqlfu.config.ts': `export default { queries: './sql' }`,
     'sql/list-users.sql': `SELECT id, name\nFROM users\nORDER BY name`,
   });
 
-  const messages = lintSource({
-    project,
-    filename: 'src/handler.js',
-    source: `const rows = client.all(\`   select id, name   from users order by name   \`)`,
+  ruleTester.run('query-naming', plugin.rules!['query-naming'] as any, {
+    valid: [],
+    invalid: [
+      {
+        filename: project.file('src/handler.js'),
+        code: 'const rows = client.all(`   select id, name   from users order by name   `)',
+        errors: 1,
+      },
+    ],
   });
-
-  expect(messages).toHaveLength(1);
-  expect(messages[0].ruleId).toBe('sqlfu/query-naming');
 });
 
-test('flags client.sql tagged template literals too', async () => {
-  await using project = await setupProject({
+test('query-naming: flags client.sql tagged template literals too', () => {
+  using project = makeProject({
     'sqlfu.config.ts': `export default { queries: './sql' }`,
     'sql/list-users.sql': `select id from users`,
   });
 
-  const messages = lintSource({
-    project,
-    filename: 'src/handler.js',
-    source: `const rows = await client.sql\`select id from users\``,
+  ruleTester.run('query-naming', plugin.rules!['query-naming'] as any, {
+    valid: [],
+    invalid: [
+      {
+        filename: project.file('src/handler.js'),
+        code: 'const rows = await client.sql`select id from users`',
+        errors: 1,
+      },
+    ],
   });
-
-  expect(messages).toHaveLength(1);
-  expect(messages[0].ruleId).toBe('sqlfu/query-naming');
 });
 
-test('flags nested query directories using relative name', async () => {
-  await using project = await setupProject({
+test('query-naming: uses nested path in the message for subdirectory queries', () => {
+  using project = makeProject({
     'sqlfu.config.ts': `export default { queries: './sql' }`,
     'sql/users/list.sql': `select id from users`,
   });
 
-  const messages = lintSource({
-    project,
-    filename: 'src/handler.js',
-    source: `const rows = client.all(\`select id from users\`)`,
+  ruleTester.run('query-naming', plugin.rules!['query-naming'] as any, {
+    valid: [],
+    invalid: [
+      {
+        filename: project.file('src/handler.js'),
+        code: 'const rows = client.all(`select id from users`)',
+        errors: [{message: /users\/list\.sql/}],
+      },
+    ],
   });
-
-  expect(messages).toHaveLength(1);
-  expect(messages[0].message).toContain('users/list.sql');
 });
 
-test('is a no-op when there is no sqlfu.config', async () => {
-  await using project = await setupProject({
+test('query-naming: no-ops when there is no sqlfu.config', () => {
+  using project = makeProject({
     'package.json': `{"name": "not-a-sqlfu-project"}`,
   });
 
-  const messages = lintSource({
-    project,
-    filename: 'src/handler.js',
-    source: `const rows = client.all(\`select id from users\`)`,
-  });
-
-  expect(messages).toHaveLength(0);
-});
-
-test('format-sql: flags an inline SQL template that is not formatted', async () => {
-  await using project = await setupProject({});
-
-  const messages = lintSource({
-    project,
-    filename: 'src/handler.js',
-    source: `const rows = client.all(\`SELECT * FROM users WHERE id=1\`)`,
-    rules: {'sqlfu/format-sql': 'error'},
-  });
-
-  expect(messages).toHaveLength(1);
-  expect(messages[0]).toMatchObject({
-    ruleId: 'sqlfu/format-sql',
-    message: expect.stringContaining('not formatted'),
+  ruleTester.run('query-naming', plugin.rules!['query-naming'] as any, {
+    valid: [
+      {
+        filename: project.file('src/handler.js'),
+        code: 'const rows = client.all(`select id from users`)',
+      },
+    ],
+    invalid: [],
   });
 });
 
-test('format-sql: does not flag SQL that already matches formatter output', async () => {
-  await using project = await setupProject({});
+// ---------------------------------------------------------------------------
+// format-sql (inline templates)
+// ---------------------------------------------------------------------------
 
-  const alreadyFormatted = 'select *\n  from users\n  where id = 1';
-  const messages = lintSource({
-    project,
-    filename: 'src/handler.js',
-    source: `const rows = client.all(\`\n  ${alreadyFormatted}\n\`)`,
-    rules: {'sqlfu/format-sql': 'error'},
+test('format-sql: flags an inline SQL template that is not formatted', () => {
+  ruleTester.run('format-sql', plugin.rules!['format-sql'] as any, {
+    valid: [],
+    invalid: [
+      {
+        code: 'const rows = client.all(`SELECT * FROM users WHERE id=1`)',
+        errors: [{message: /not formatted/}],
+        // reapplyTemplateIndent adds the surrounding line's indent + two
+        // spaces to subsequent lines so the body stays visually aligned.
+        output: 'const rows = client.all(`select *\n  from users\n  where id = 1`)',
+      },
+    ],
   });
-
-  expect(messages).toHaveLength(0);
 });
 
-test('format-sql: autofix replaces template body with formatted SQL', async () => {
-  await using project = await setupProject({});
-
-  const {output, fixed} = lintAndFix({
-    project,
-    filename: 'src/handler.js',
-    source: `const rows = client.all(\`SELECT * FROM users WHERE id=1\`)`,
-    rules: {'sqlfu/format-sql': 'error'},
+test('format-sql: leaves already-formatted SQL alone', () => {
+  ruleTester.run('format-sql', plugin.rules!['format-sql'] as any, {
+    valid: [
+      {
+        code: 'const rows = client.all(`\n  select *\n  from users\n  where id = 1\n`)',
+      },
+    ],
+    invalid: [],
   });
-
-  expect(fixed).toBe(true);
-  expect(output).toMatch(/select \*/);
-  expect(output).toMatch(/from users/);
-  expect(output).toMatch(/where id = 1/);
-  expect(output).not.toMatch(/SELECT|FROM|WHERE/);
 });
 
-test('format-sql: does not flag parameterized (interpolated) templates', async () => {
-  await using project = await setupProject({});
-
-  const messages = lintSource({
-    project,
-    filename: 'src/handler.js',
-    source: `
-      const id = 1
-      const rows = client.all(\`SELECT * FROM users WHERE id=\${id}\`)
-    `,
-    rules: {'sqlfu/format-sql': 'error'},
+test('format-sql: ignores parameterized (interpolated) templates', () => {
+  ruleTester.run('format-sql', plugin.rules!['format-sql'] as any, {
+    valid: [
+      {
+        code: 'const id = 1; const rows = client.all(`SELECT * FROM users WHERE id=${id}`)',
+      },
+    ],
+    invalid: [],
   });
-
-  expect(messages).toHaveLength(0);
 });
 
-test('format-sql: flags client.sql tagged template literals too', async () => {
-  await using project = await setupProject({});
-
-  const messages = lintSource({
-    project,
-    filename: 'src/handler.js',
-    source: `const rows = await client.sql\`SELECT id FROM users\``,
-    rules: {'sqlfu/format-sql': 'error'},
+test('format-sql: flags client.sql tagged template literals too', () => {
+  ruleTester.run('format-sql', plugin.rules!['format-sql'] as any, {
+    valid: [],
+    invalid: [
+      {
+        code: 'const rows = await client.sql`SELECT id FROM users`',
+        errors: 1,
+        output: 'const rows = await client.sql`select id\n  from users`',
+      },
+    ],
   });
-
-  expect(messages).toHaveLength(1);
-  expect(messages[0].ruleId).toBe('sqlfu/format-sql');
 });
 
-test('format-sql: autofix preserves template indentation on multi-line SQL', async () => {
-  await using project = await setupProject({});
-
-  const {output, fixed} = lintAndFix({
-    project,
-    filename: 'src/handler.js',
-    source: [
-      'function load() {',
-      '  return client.all(`',
-      '    SELECT id, name FROM users WHERE id = 1',
-      '  `)',
-      '}',
-    ].join('\n'),
-    rules: {'sqlfu/format-sql': 'error'},
+test('format-sql: preserves template indentation on multi-line autofix', () => {
+  ruleTester.run('format-sql', plugin.rules!['format-sql'] as any, {
+    valid: [],
+    invalid: [
+      {
+        code: ['function load() {', '  return client.all(`', '    SELECT id, name FROM users WHERE id = 1', '  `)', '}'].join('\n'),
+        errors: 1,
+        output: [
+          'function load() {',
+          '  return client.all(`',
+          '    select id, name',
+          '    from users',
+          '    where id = 1',
+          '  `)',
+          '}',
+        ].join('\n'),
+      },
+    ],
   });
-
-  expect(fixed).toBe(true);
-  // Body of the template stays indented one level deeper than the call
-  expect(output).toMatch(/    select id, name/);
-  // And the closing backtick stays on its own line at the call's indent
-  expect(output).toMatch(/\n  `\)/);
-  expect(output).not.toMatch(/SELECT|FROM|WHERE/);
 });
+
+// ---------------------------------------------------------------------------
+// formatSqlFileContents (pure helper)
+// ---------------------------------------------------------------------------
 
 test('formatSqlFileContents: reformats a standalone .sql file body', () => {
-  const input = 'SELECT * FROM users WHERE id=1;\n';
-  const output = formatSqlFileContents(input);
-  expect(output).toBe('select *\nfrom users\nwhere id = 1;\n');
+  expect(formatSqlFileContents('SELECT * FROM users WHERE id=1;\n')).toBe('select *\nfrom users\nwhere id = 1;\n');
 });
 
 test('formatSqlFileContents: is a no-op on already-formatted content', () => {
@@ -236,8 +223,7 @@ test('formatSqlFileContents: is a no-op on already-formatted content', () => {
 });
 
 test('formatSqlFileContents: preserves absence of trailing newline', () => {
-  const input = 'SELECT * FROM users';
-  const output = formatSqlFileContents(input);
+  const output = formatSqlFileContents('SELECT * FROM users');
   expect(output.endsWith('\n')).toBe(false);
   expect(output).toMatch(/select \*/);
 });
@@ -247,36 +233,31 @@ test('formatSqlFileContents: leaves empty / whitespace-only input alone', () => 
   expect(formatSqlFileContents('\n\n')).toBe('\n\n');
 });
 
-test('format-sql (sql files): processor autofixes an unformatted .sql file (whole-file replacement)', async () => {
-  await using project = await setupProject({
+// ---------------------------------------------------------------------------
+// format-sql over the `sql` processor (whole-file integration)
+//
+// RuleTester can't drive processors — it talks to the rule directly on the
+// raw JS source — so we keep one end-to-end test per processor behavior we
+// care about, driving the full `ESLint` class through `configs.sqlFiles`.
+// ---------------------------------------------------------------------------
+
+test('format-sql (sql processor): autofixes an unformatted .sql file (whole-file replacement)', async () => {
+  await using project = await makeAsyncProject({
     'sql/list-users.sql': 'SELECT * FROM users WHERE id=1;\n',
   });
 
-  const filename = path.join(project.root, 'sql/list-users.sql');
-  const [result] = await lintFileWithEslint({project, filename});
+  const [result] = await lintSqlFile(project, 'sql/list-users.sql', {fix: true});
 
-  // ESLint runs preprocess → lint → fix → preprocess → lint in a loop.
-  // After the loop `output` holds the fully-fixed file and `messages` is
-  // empty because the final pass found nothing to report.
   expect(result.messages).toHaveLength(0);
-  expect(result.output).toMatch(/select \*/);
-  expect(result.output).toMatch(/from users/);
-  expect(result.output).not.toMatch(/SELECT|FROM|WHERE/);
+  expect(result.output).toBe('select *\nfrom users\nwhere id = 1;\n');
 });
 
-test('format-sql (sql files): processor without --fix reports a single message per unformatted file', async () => {
-  await using project = await setupProject({
+test('format-sql (sql processor): reports one message per unformatted file without --fix', async () => {
+  await using project = await makeAsyncProject({
     'sql/list-users.sql': 'SELECT * FROM users WHERE id=1;\n',
   });
 
-  const filename = path.join(project.root, 'sql/list-users.sql');
-  const eslint = new ESLint({
-    cwd: project.root,
-    overrideConfigFile: true,
-    overrideConfig: [...(plugin.configs?.sqlFiles as any[])],
-    fix: false,
-  });
-  const [result] = await eslint.lintFiles([filename]);
+  const [result] = await lintSqlFile(project, 'sql/list-users.sql', {fix: false});
 
   expect(result.messages).toHaveLength(1);
   expect(result.messages[0]).toMatchObject({
@@ -285,120 +266,93 @@ test('format-sql (sql files): processor without --fix reports a single message p
   });
 });
 
-test('format-sql (sql files): processor is a no-op on already-formatted .sql files', async () => {
-  await using project = await setupProject({
+test('format-sql (sql processor): is a no-op on already-formatted .sql files', async () => {
+  await using project = await makeAsyncProject({
     'sql/list-users.sql': 'select id, name\nfrom users\norder by name;\n',
   });
 
-  const filename = path.join(project.root, 'sql/list-users.sql');
-  const [result] = await lintFileWithEslint({project, filename});
+  const [result] = await lintSqlFile(project, 'sql/list-users.sql', {fix: true});
 
   expect(result.messages).toHaveLength(0);
   expect(result.output).toBeUndefined();
 });
 
-test('format-sql (sql files): processor handles SQL containing backticks and ${} without corruption', async () => {
-  // Backticks and ${ inside SQL would trip the wrapper template literal if
-  // the processor didn't escape them. This test asserts the escape survives
-  // preprocess → lint → postprocess round-trip without mangling the SQL.
-  await using project = await setupProject({
+test('format-sql (sql processor): round-trips backticks and ${} without corruption', async () => {
+  await using project = await makeAsyncProject({
     'sql/tricky.sql': 'SELECT `weird col`, "$" FROM t WHERE x=1;\n',
   });
 
-  const filename = path.join(project.root, 'sql/tricky.sql');
-  const [result] = await lintFileWithEslint({project, filename});
+  const [result] = await lintSqlFile(project, 'sql/tricky.sql', {fix: true});
 
-  // If a fix ran, the backticks must round-trip un-escaped.
   if (result.output) {
     expect(result.output).toContain('`weird col`');
     expect(result.output).not.toContain('\\`');
   }
 });
 
-test('format-sql: skips unparseable SQL silently', async () => {
-  await using project = await setupProject({});
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
 
-  const messages = lintSource({
-    project,
-    filename: 'src/handler.js',
-    source: `const rows = client.all(\`this is not sql at all\`)`,
-    rules: {'sqlfu/format-sql': 'error'},
-  });
-
-  // The formatter is lenient and will emit something for arbitrary text,
-  // so we expect at most 1 message (formatter disagreed with the input) —
-  // no crash, no unhandled throw.
-  expect(messages.length).toBeLessThanOrEqual(1);
+const ruleTester = new RuleTester({
+  languageOptions: {
+    ecmaVersion: 2022,
+    sourceType: 'module',
+  },
 });
 
-// ---
-
-interface Project {
+interface SyncProject {
   root: string;
-  [Symbol.asyncDispose](): Promise<void>;
+  file(relativePath: string): string;
+  [Symbol.dispose](): void;
 }
 
-async function setupProject(files: Record<string, string>): Promise<Project> {
+function makeProject(files: Record<string, string>): SyncProject {
   resetQueryCache();
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-eslint-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sqlfu-lint-'));
   for (const [relativePath, contents] of Object.entries(files)) {
     const full = path.join(root, relativePath);
-    await fs.mkdir(path.dirname(full), {recursive: true});
-    await fs.writeFile(full, contents);
+    fs.mkdirSync(path.dirname(full), {recursive: true});
+    fs.writeFileSync(full, contents);
   }
   return {
     root,
-    async [Symbol.asyncDispose]() {
-      await fs.rm(root, {recursive: true, force: true});
+    file(relativePath: string) {
+      return path.join(root, relativePath);
+    },
+    [Symbol.dispose]() {
+      fs.rmSync(root, {recursive: true, force: true});
     },
   };
 }
 
-function lintSource(args: {
-  project: Project;
-  filename: string;
-  source: string;
-  rules?: Record<string, 'error' | 'off'>;
-}) {
-  const linter = new Linter({configType: 'flat', cwd: args.project.root});
-  const messages = linter.verify(
-    args.source,
-    [
-      {
-        files: ['**/*.{js,cjs,mjs,ts,tsx,jsx}'],
-        plugins: {sqlfu: plugin as any},
-        rules: args.rules || {'sqlfu/query-naming': 'error'},
-        languageOptions: {ecmaVersion: 2022, sourceType: 'module'},
-      },
-    ],
-    path.join(args.project.root, args.filename),
-  );
-  return messages;
+interface AsyncProject {
+  root: string;
+  [Symbol.asyncDispose](): Promise<void>;
 }
 
-async function lintFileWithEslint(args: {project: Project; filename: string}) {
+async function makeAsyncProject(files: Record<string, string>): Promise<AsyncProject> {
+  resetQueryCache();
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'sqlfu-lint-'));
+  for (const [relativePath, contents] of Object.entries(files)) {
+    const full = path.join(root, relativePath);
+    await fsp.mkdir(path.dirname(full), {recursive: true});
+    await fsp.writeFile(full, contents);
+  }
+  return {
+    root,
+    async [Symbol.asyncDispose]() {
+      await fsp.rm(root, {recursive: true, force: true});
+    },
+  };
+}
+
+async function lintSqlFile(project: AsyncProject, relativePath: string, {fix}: {fix: boolean}) {
   const eslint = new ESLint({
-    cwd: args.project.root,
+    cwd: project.root,
     overrideConfigFile: true,
     overrideConfig: [...(plugin.configs?.sqlFiles as any[])],
-    fix: true,
+    fix,
   });
-  return eslint.lintFiles([args.filename]);
-}
-
-function lintAndFix(args: {project: Project; filename: string; source: string; rules: Record<string, 'error' | 'off'>}) {
-  const linter = new Linter({configType: 'flat', cwd: args.project.root});
-  const result = linter.verifyAndFix(
-    args.source,
-    [
-      {
-        files: ['**/*.{js,cjs,mjs,ts,tsx,jsx}'],
-        plugins: {sqlfu: plugin as any},
-        rules: args.rules,
-        languageOptions: {ecmaVersion: 2022, sourceType: 'module'},
-      },
-    ],
-    {filename: path.join(args.project.root, args.filename)},
-  );
-  return result;
+  return eslint.lintFiles([path.join(project.root, relativePath)]);
 }
