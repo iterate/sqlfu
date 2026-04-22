@@ -26,8 +26,6 @@ If you want to see the finished project running in your browser first, [open the
 pnpm add sqlfu
 ```
 
-sqlfu currently supports macOS and Linux.
-
 ## Initialize the project
 
 ```sh
