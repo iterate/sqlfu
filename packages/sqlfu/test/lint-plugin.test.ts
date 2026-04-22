@@ -21,7 +21,7 @@ test('flags an inline SQL template that duplicates a named .sql file', async () 
 
   expect(messages).toHaveLength(1);
   expect(messages[0]).toMatchObject({
-    ruleId: 'sqlfu/no-unnamed-inline-sql',
+    ruleId: 'sqlfu/query-naming',
     message: expect.stringContaining('list-users.sql'),
   });
   expect(messages[0].message).toContain('listUsers');
@@ -73,7 +73,7 @@ test('matches regardless of whitespace and keyword casing', async () => {
   });
 
   expect(messages).toHaveLength(1);
-  expect(messages[0].ruleId).toBe('sqlfu/no-unnamed-inline-sql');
+  expect(messages[0].ruleId).toBe('sqlfu/query-naming');
 });
 
 test('flags client.sql tagged template literals too', async () => {
@@ -89,7 +89,7 @@ test('flags client.sql tagged template literals too', async () => {
   });
 
   expect(messages).toHaveLength(1);
-  expect(messages[0].ruleId).toBe('sqlfu/no-unnamed-inline-sql');
+  expect(messages[0].ruleId).toBe('sqlfu/query-naming');
 });
 
 test('flags nested query directories using relative name', async () => {
@@ -367,7 +367,7 @@ function lintSource(args: {
       {
         files: ['**/*.{js,cjs,mjs,ts,tsx,jsx}'],
         plugins: {sqlfu: plugin as any},
-        rules: args.rules || {'sqlfu/no-unnamed-inline-sql': 'error'},
+        rules: args.rules || {'sqlfu/query-naming': 'error'},
         languageOptions: {ecmaVersion: 2022, sourceType: 'module'},
       },
     ],

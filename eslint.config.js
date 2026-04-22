@@ -35,7 +35,7 @@ export default [
     },
     plugins: {sqlfu},
     rules: {
-      'sqlfu/no-unnamed-inline-sql': 'error',
+      'sqlfu/query-naming': 'error',
       'sqlfu/format-sql': 'error',
     },
   },
@@ -43,7 +43,7 @@ export default [
     files: ['**/*.{js,jsx,mjs,cjs}'],
     plugins: {sqlfu},
     rules: {
-      'sqlfu/no-unnamed-inline-sql': 'error',
+      'sqlfu/query-naming': 'error',
       'sqlfu/format-sql': 'error',
     },
   },

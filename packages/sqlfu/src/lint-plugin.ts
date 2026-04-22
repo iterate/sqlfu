@@ -17,16 +17,12 @@ import type * as ESTree from 'estree';
  * Consumers wire it in ESLint flat config:
  *
  *   import sqlfu from 'sqlfu/lint-plugin';
- *   export default [{plugins: {sqlfu}, rules: {'sqlfu/no-unnamed-inline-sql': 'error'}}];
+ *   export default [{plugins: {sqlfu}, rules: {'sqlfu/query-naming': 'error'}}];
  *
  * Or via the preset:
  *
  *   import sqlfu from 'sqlfu/lint-plugin';
  *   export default [sqlfu.configs.recommended];
- *
- * Or in oxlint (`.oxlintrc.json`):
- *
- *   {"jsPlugins": ["sqlfu/lint-plugin"], "rules": {"sqlfu/format-sql": "error"}}
  */
 
 const CLIENT_METHODS = new Set(['all', 'run', 'iterate']);
@@ -247,7 +243,7 @@ function readTemplateRawSql(template: ESTree.TemplateLiteral): string {
  * Only when the template has no `${}` interpolations, and only when the
  * normalized SQL matches a file under the project's queries directory.
  */
-const noUnnamedInlineSql: Rule.RuleModule = {
+const queryNaming: Rule.RuleModule = {
   meta: {
     type: 'suggestion',
     docs: {
@@ -312,7 +308,7 @@ const noUnnamedInlineSql: Rule.RuleModule = {
  * formatter output. Offers an autofix that replaces the template body with
  * the formatted SQL.
  *
- * Fires on the same call shapes as `no-unnamed-inline-sql`. Templates with
+ * Fires on the same call shapes as `query-naming`. Templates with
  * `${}` interpolations are skipped — we can't safely round-trip them
  * through the formatter.
  *
@@ -524,7 +520,7 @@ const plugin: ESLint.Plugin = {
     name: 'sqlfu',
   },
   rules: {
-    'no-unnamed-inline-sql': noUnnamedInlineSql,
+    'query-naming': queryNaming,
     'format-sql': formatSqlRule,
     'format-sql-file': formatSqlFileRule,
   },
@@ -542,7 +538,7 @@ const plugin: ESLint.Plugin = {
 const recommended: Linter.Config = {
   plugins: {sqlfu: plugin},
   rules: {
-    'sqlfu/no-unnamed-inline-sql': 'error',
+    'sqlfu/query-naming': 'error',
     'sqlfu/format-sql': 'error',
   },
 };
