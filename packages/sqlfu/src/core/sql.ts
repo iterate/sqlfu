@@ -15,8 +15,8 @@ import type {
 const emptyFragment: SqlFragment = {sql: '', args: []};
 
 export class AsyncBoundRows<TRow extends ResultRow> implements SqlRowsPromise<TRow> {
-  readonly query: SqlQuery;
-  readonly #client: AsyncClient;
+  query: SqlQuery;
+  #client: AsyncClient;
 
   constructor(client: AsyncClient, query: SqlQuery) {
     this.#client = client;
@@ -46,8 +46,8 @@ export class AsyncBoundRows<TRow extends ResultRow> implements SqlRowsPromise<TR
 }
 
 export class SyncBoundRows<TRow extends ResultRow> implements SqlRowsPromise<TRow> {
-  readonly query: SqlQuery;
-  readonly #client: SyncClient;
+  query: SqlQuery;
+  #client: SyncClient;
 
   constructor(client: SyncClient, query: SqlQuery) {
     this.#client = client;

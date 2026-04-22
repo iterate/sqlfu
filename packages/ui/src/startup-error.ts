@@ -32,8 +32,8 @@ export const SUPPORTED_SERVER_RANGE = '>=0.0.2-3';
  * into a `version-mismatch` startup failure.
  */
 export class ServerVersionMismatchError extends Error {
-  readonly serverVersion: string | null;
-  readonly supportedRange: string;
+  serverVersion: string | null;
+  supportedRange: string;
 
   constructor(input: {serverVersion: string | null; supportedRange: string}) {
     const shown = input.serverVersion ?? 'unknown';

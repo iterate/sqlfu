@@ -52,7 +52,7 @@ export default [
             },
             create(context) {
               return {
-                'TSPropertySignature[readonly=true],TSTypeOperator[operator="readonly"]': node => {
+                'TSPropertySignature[readonly=true],TSTypeOperator[operator="readonly"],PropertyDefinition[readonly=true]': node => {
                   context.report({
                     message: "Don't use `readonly`",
                     node,

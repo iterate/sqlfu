@@ -5,7 +5,7 @@ declare module 'better-sqlite3' {
   };
 
   class Statement<TRow = unknown> {
-    readonly reader: boolean;
+    reader: boolean;
     all(...params: unknown[]): TRow[];
     run(...params: unknown[]): RunResult;
     raw(toggle?: boolean): Statement;
