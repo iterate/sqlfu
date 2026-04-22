@@ -1,9 +1,13 @@
 ---
-status: ready
+status: done
 size: medium
 ---
 
 # Error taxonomy and call-stack quality (v2)
+
+## Status (2026-04-22)
+
+Implemented on PR #49. Every checklist item below is checked with a breadcrumb. The previous attempt (PR #13) should be closed once this lands.
 
 Revisit of `tasks/error-taxonomy.md`. Previous attempt: PR #13 on branch `error-taxonomy`. User was not happy with the outcome — naming was the suspected root cause. This task file is the result of a grill-you interview (see `tasks/error-taxonomy-v2.interview.md` for every decision with reasoning).
 
@@ -138,16 +142,16 @@ One adapter-level integration test in `test/errors.test.ts` asserting `error.sta
 
 ## Checklist
 
-- [ ] `packages/sqlfu/src/core/errors.ts` — `SqlfuError`, `SqlfuErrorKind`, `mapSqliteDriverError`. No `mapError` option type.
-- [ ] `packages/sqlfu/src/core/adapter-errors.ts` — `wrapSyncClientErrors`, `wrapAsyncClientErrors`.
-- [ ] Rewrite each adapter factory to build a raw client then call `wrapXClientErrors` once at exit. Adapters to update: `better-sqlite3`, `node-sqlite`, `bun`, `libsql`, `libsql-client`, `d1`, `durable-object`, `expo-sqlite`, `sqlite-wasm`.
-- [ ] Export `SqlfuError` and `SqlfuErrorKind` from `packages/sqlfu/src/client.ts` / `index.ts`.
-- [ ] `packages/sqlfu/test/errors.test.ts` — per-adapter × per-kind integration sweep; stack-quality sweep. Cover at least: `syntax`, `missing_table`, `unique_violation`, `foreign_key_violation`, `not_null_violation`. Adapters: better-sqlite3, node:sqlite, libsql sync, @libsql/client async.
-- [ ] `packages/sqlfu/src/ui/router.ts` — replace middleware with the SqlfuError-aware version; delete `toClientError`; remove `saveTableRows` SQL enrichment.
-- [ ] OTel recipe test comment pointing at `errors.test.ts` for the real stack-quality sweep.
-- [ ] `packages/sqlfu/docs/errors.md` — docs page, argument-first ("handle by kind, not by string-match"). Show the `catch + instanceof + .kind` pattern and the `instrument.onError` / Sentry-tagging pattern.
-- [ ] `packages/sqlfu/README.md` — short "Typed errors" capability paragraph with a cross-reference to `docs/errors.md`. No new landing-page panel (this is tentpole-adjacent, not tentpole).
-- [ ] `packages/sqlfu/docs/observability.md` — one-line cross-reference from the existing `onError` recipe.
+- [x] `packages/sqlfu/src/core/errors.ts` — `SqlfuError`, `SqlfuErrorKind`, `mapSqliteDriverError`. No `mapError` option type. _Landed in core/errors.ts._
+- [x] `packages/sqlfu/src/core/adapter-errors.ts` — `wrapSyncClientErrors`, `wrapAsyncClientErrors`. _Landed; mirrors `instrumentClient` structurally._
+- [x] Rewrite each adapter factory to build a raw client then call `wrapXClientErrors` once at exit. Adapters to update: `better-sqlite3`, `node-sqlite`, `bun`, `libsql`, `libsql-client`, `d1`, `durable-object`, `expo-sqlite`, `sqlite-wasm`. _One-liner added to every factory's return; turso-database and turso-serverless also covered._
+- [x] Export `SqlfuError` and `SqlfuErrorKind` from `packages/sqlfu/src/client.ts` / `index.ts`. _Re-exports via `export * from './core/errors.js'` in `client.ts`._
+- [x] `packages/sqlfu/test/errors.test.ts` — per-adapter × per-kind integration sweep; stack-quality sweep. _28 tests, 4 adapters × 7 assertions (5 kinds + cause + stack). All passing._
+- [x] `packages/sqlfu/src/ui/router.ts` — replace middleware with the SqlfuError-aware version; delete `toClientError`; remove `saveTableRows` SQL enrichment. _`toOrpcError` helper + `kindToOrpcCode` switch; all 5 old call-sites collapsed; `deleteTableRow` outer try/catch also removed as it only gated on the stripped `\nSQL:` marker._
+- [x] OTel recipe test comment pointing at `errors.test.ts` for the real stack-quality sweep. _Added at the head of `opentelemetry.test.ts`._
+- [x] `packages/sqlfu/docs/errors.md` — docs page, argument-first. _Mental model + kind list + handler recipes + `.cause` usage + "why not rethrow"._
+- [x] `packages/sqlfu/README.md` — short "Typed errors" capability paragraph. _Added under Observability; links to `docs/errors.md`. No landing-page panel change._
+- [x] `packages/sqlfu/docs/observability.md` — one-line cross-reference from the existing `onError` recipe. _Paragraph added after `instrument.onError(report)` section._
 
 ## Out of scope
 
@@ -182,3 +186,16 @@ These are the judgement calls I made on the user's behalf during the grill. The 
 - Interview transcript: `tasks/error-taxonomy-v2.interview.md`
 - SQLSTATE reference: https://www.postgresql.org/docs/current/errcodes-appendix.html
 - SQLite error codes: https://www.sqlite.org/rescode.html
+
+## Implementation log
+
+- 2026-04-22 initial implementation landed in one commit on `error-taxonomy-v2`:
+  - `SqlfuError` + kind discriminator: `packages/sqlfu/src/core/errors.ts`
+  - Adapter wrapper: `packages/sqlfu/src/core/adapter-errors.ts`
+  - Every sqlite adapter (better-sqlite3, node-sqlite, bun, libsql, libsql-client, d1, durable-object, expo-sqlite, sqlite-wasm, turso-database, turso-serverless) wraps its return with `wrapSyncClientErrors` / `wrapAsyncClientErrors`
+  - oRPC middleware rewritten in `ui/router.ts`; `toClientError` deleted; `saveTableRows` and `deleteTableRow` dead-catch blocks removed
+  - Integration sweep in `test/errors.test.ts` (28 tests, all passing; 4 adapters × 7 assertions covering 5 kinds + cause preservation + stack quality)
+  - `posthog.test.ts` and `bun.test.ts` snapshots updated (error name is `SqlfuError` now, was `Error` / `SQLiteError`). `sentry.test.ts` already used `SqlfuError`-compatible patterns and didn't need a snapshot change.
+  - OTel recipe test gained a comment explaining why stack-quality isn't asserted there.
+  - Docs page `docs/errors.md`, cross-reference in `docs/observability.md`, "Typed errors" capability paragraph in `packages/sqlfu/README.md`.
+- Pre-existing failures not touched: `test/formatter.test.ts` (broken `formatSql` import on main, unrelated); `@sqlfu/ui` typecheck (`generateQueryTypes` import, also broken on main).
