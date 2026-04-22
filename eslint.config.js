@@ -15,9 +15,9 @@
  * rules layered on top — lint is scoped to sqlfu-specific checks.
  */
 
-import tseslint from 'typescript-eslint';
+import tseslint from 'typescript-eslint'
 
-import sqlfu from './scripts/dogfood-lint-plugin.js';
+import sqlfu from './scripts/dogfood-lint-plugin.js'
 
 export default [
   {
@@ -41,5 +41,82 @@ export default [
       parserOptions: {ecmaVersion: 2022, sourceType: 'module'},
     },
   },
+  {
+    plugins: {
+      /** @type {import('eslint').ESLint.Plugin} */
+      repolocal: {
+        rules: {
+          'no-readonly': {
+            meta: {
+              fixable: 'code',
+            },
+            create(context) {
+              return {
+                'TSPropertySignature[readonly=true],TSTypeOperator[operator="readonly"]': node => {
+                  context.report({
+                    message: "Don't use `readonly`",
+                    node,
+                    fix: fixer => fixer.replaceText(node, context.sourceCode.getText(node).replace(/^readonly /, '')),
+                  });
+                }
+              }
+            }
+          },
+          'no-dumb-error-ternary': {
+            meta: {
+              fixable: 'code',
+            },
+              create(context) {
+                return {
+                  'ConditionalExpression[test.operator="instanceof"][test.right.name="Error"][consequent.property.name="message"][alternate.callee.name="String"]': node => {
+                    context.report({
+                      node,
+                      message: "Don't use `e instanceof Error ? e.message : String(e)`, it's equivalent to `String(e)`",
+                      fix: fixer => fixer.replaceText(node, context.sourceCode.getText(node.alternate)),
+                    });
+                  }
+                }
+              }
+          },
+          'no-blunder': {
+            meta: {
+              docs: {
+                description: `The ?? operator (a "blunder" in chess) is almost-always worse than ||. Exceptions are when the left side can legitimately be 0 or ''. But '' is a hack anyway and usually whatever default value is better. For non-primitive types it should make no difference - but || will recover from "whoops i returned '' when i was supposed to return an array" better anyway.`
+              },
+            },
+            create: context => {
+              return {
+                'LogicalExpression[operator="??"]': node => {
+                  context.report({
+                    message: `Use || in most cases instead of ??. If you are SURE ?? is ACTUALLY BETTER, fine. Add an eslint-disable.`,
+                    node,
+                    suggest: [
+                      {
+                        desc: 'Use || instead of ??',
+                        fix: fixer => {
+                          const text = context.sourceCode.getText(node)
+                          const parts = text.split('??')
+                          if (parts.length !== 2) return
+                          fixer.replaceText(node, parts.join(' || '))
+                        }
+                      },
+                    ]
+                  })
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    rules: {
+      eqeqeq: 'error',
+      'repolocal/no-readonly': 'error',
+      'repolocal/no-dumb-error-ternary': 'error',
+      'repolocal/no-blunder': 'error',
+    }
+  },
   ...sqlfu.configs.recommended,
-];
+]

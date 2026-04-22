@@ -3,11 +3,13 @@
  * directly via `tsx` so we can iterate on `packages/sqlfu/src/lint-plugin.ts`
  * without a build step.
  *
- * Why this file exists: Node's built-in type-stripping (as of 24.x) erases
- * type annotations but does NOT rewrite NodeNext-style `.js` import
- * specifiers to `.ts`, so `eslint.config.js` pointing at the raw `.ts` file
- * would fail at import time. tsx's ESM loader does rewrite those specifiers,
- * so we register it once at module-load and then import the plugin.
+ * Why the CJS require dance: the VS Code / Cursor ESLint extension loads
+ * `eslint.config.js` through Node's sync CJS→ESM path
+ * (`importSyncForRequire`), which rejects any top-level await in the graph
+ * with `ERR_REQUIRE_ASYNC_MODULE`. Using `await import()` here poisoned the
+ * whole config for the IDE (CLI was fine — it uses real `import()`). tsx's
+ * CJS hook gives us a synchronous `require()` that still rewrites NodeNext
+ * `.js` specifiers to `.ts`, so we get dogfooding without TLA.
  *
  * Consumed by `eslint.config.js` at the repo root.
  *
@@ -16,13 +18,12 @@
  * development convenience only.
  */
 
-import {register} from 'tsx/esm/api';
+import {createRequire} from 'node:module';
+import {register} from 'tsx/cjs/api';
 
-// `register()` is idempotent per-process; calling it once here is enough to
-// make the subsequent dynamic import resolve the TS source with its `.js`
-// specifiers rewritten to `.ts`.
 register();
 
-const mod = await import('../packages/sqlfu/src/lint-plugin.ts');
+const require = createRequire(import.meta.url);
+const mod = require('../packages/sqlfu/src/lint-plugin.ts');
 
 export default mod.default;
