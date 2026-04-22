@@ -398,6 +398,23 @@ function reapplyTemplateIndent(formatted: string, original: string, indent: stri
   return prefix + indentedBody + suffix;
 }
 
+/**
+ * Format a standalone `.sql` file's contents the same way the `format-sql`
+ * rule would format an inline SQL template. Pure string-in, string-out;
+ * preserves a trailing newline if the input had one.
+ *
+ * Separate from the ESLint rule because oxlint/ESLint only parse JS/TS.
+ * Callers that want to dogfood the formatter on `.sql` files on disk — CLIs,
+ * CI scripts, editor integrations — call this directly.
+ */
+export function formatSqlFileContents(contents: string): string {
+  const trailingNewline = contents.endsWith('\n') ? '\n' : '';
+  const body = trailingNewline ? contents.slice(0, -1) : contents;
+  if (!body.trim()) return contents;
+  const formatted = formatSql(body, {style: 'sqlfu'});
+  return formatted + trailingNewline;
+}
+
 const plugin: ESLint.Plugin = {
   meta: {
     name: 'sqlfu',

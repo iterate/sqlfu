@@ -5,7 +5,7 @@ import path from 'node:path';
 import {Linter} from 'eslint';
 import {expect, test} from 'vitest';
 
-import plugin, {resetQueryCache} from '../src/lint-plugin.js';
+import plugin, {formatSqlFileContents, resetQueryCache} from '../src/lint-plugin.js';
 
 test('flags an inline SQL template that duplicates a named .sql file', async () => {
   await using project = await setupProject({
@@ -222,6 +222,29 @@ test('format-sql: autofix preserves template indentation on multi-line SQL', asy
   // And the closing backtick stays on its own line at the call's indent
   expect(output).toMatch(/\n  `\)/);
   expect(output).not.toMatch(/SELECT|FROM|WHERE/);
+});
+
+test('formatSqlFileContents: reformats a standalone .sql file body', () => {
+  const input = 'SELECT * FROM users WHERE id=1;\n';
+  const output = formatSqlFileContents(input);
+  expect(output).toBe('select *\nfrom users\nwhere id = 1;\n');
+});
+
+test('formatSqlFileContents: is a no-op on already-formatted content', () => {
+  const input = 'select id, name\nfrom users\norder by name;\n';
+  expect(formatSqlFileContents(input)).toBe(input);
+});
+
+test('formatSqlFileContents: preserves absence of trailing newline', () => {
+  const input = 'SELECT * FROM users';
+  const output = formatSqlFileContents(input);
+  expect(output.endsWith('\n')).toBe(false);
+  expect(output).toMatch(/select \*/);
+});
+
+test('formatSqlFileContents: leaves empty / whitespace-only input alone', () => {
+  expect(formatSqlFileContents('')).toBe('');
+  expect(formatSqlFileContents('\n\n')).toBe('\n\n');
 });
 
 test('format-sql: skips unparseable SQL silently', async () => {
