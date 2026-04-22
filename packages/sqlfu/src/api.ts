@@ -15,7 +15,7 @@ import {
 import {diffSchemaSql} from './schemadiff/index.js';
 import {inspectSqliteSchemaSql, schemasEqual} from './schemadiff/sqlite/index.js';
 
-const schemaDriftExcludedTables = ['sqlfu_migrations'] as const;
+const schemaDriftExcludedTables = (['sqlfu_migrations'] as const).slice();
 
 export async function getCheckMismatches(context: SqlfuContext): Promise<CheckMismatch[]> {
   const analysis = await analyzeDatabase(context);
