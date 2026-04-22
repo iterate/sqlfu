@@ -13,8 +13,14 @@ const repositoryBaseUrl = normalizeRepositoryUrl(readGit(['remote', 'get-url', '
 
 const docs = [
   {
+    slug: 'getting-started',
+    title: 'Getting Started',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'getting-started.md'),
+    description: 'End-to-end walkthrough: schema, migrations, query files, typed wrappers, and a working client.all() call.',
+  },
+  {
     slug: 'sqlfu',
-    title: 'sqlfu',
+    title: 'Overview',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'README.md'),
     description: 'Overview, quick start, CLI model, and core concepts.',
   },
@@ -62,6 +68,12 @@ const docs = [
     title: 'Schema Diff Model',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'schema-diff-model.md'),
     description: 'How sqlfu models SQLite schema diffing and migration planning.',
+  },
+  {
+    slug: 'lint-plugin',
+    title: 'Lint Plugin',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'lint-plugin.md'),
+    description: 'ESLint rules for enforcing the SQL First model: query-naming and format-sql.',
   },
 ];
 
