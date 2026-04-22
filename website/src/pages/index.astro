@@ -66,109 +66,112 @@ import '../styles/landing.css';
 
       <h2 class="section-title">SQL first. TypeScript second.</h2>
       <section class="section-grid" id="value-panels">
-        <article class="panel value-panel">
+        <article class="panel value-panel" data-animation-key="schema">
           <div class="eyebrow">source of truth</div>
-          <div class="value-media" data-animation-key="schema">
-            <video
-              class="value-video"
-              autoplay
-              loop
-              muted
-              playsinline
-              preload="metadata"
-              poster="/assets/animations/anim-1-schema.poster.jpg"
-            >
-              <source src="/assets/animations/anim-1-schema.webm" type="video/webm" />
-              <source src="/assets/animations/anim-1-schema.mp4" type="video/mp4" />
-            </video>
-            <img
-              class="value-video-fallback"
-              src="/assets/animations/anim-1-schema.poster.jpg"
-              alt="Schema lives in SQL."
-              loading="lazy"
-            />
-          </div>
-          <h3>Schema lives in SQL.</h3>
-          <p>Your schema is a single <code>definitions.sql</code> file. Edit it like code. No DSL, no runtime builder to fight.</p>
+          <h3>Schema, migrations, queries. All <code>.sql</code>.</h3>
+          <p>Your schema lives in <code>definitions.sql</code>. Migrations are ordered SQL files. Queries are <code>.sql</code> files checked in next to the code that calls them. No DSL, no runtime builder to fight.</p>
         </article>
-        <article class="panel value-panel">
+        <article class="panel value-panel" data-animation-key="generate">
           <div class="eyebrow">types, generated</div>
-          <div class="value-media" data-animation-key="generate">
-            <video
-              class="value-video"
-              autoplay
-              loop
-              muted
-              playsinline
-              preload="metadata"
-              poster="/assets/animations/anim-2-generate.poster.jpg"
-            >
-              <source src="/assets/animations/anim-2-generate.webm" type="video/webm" />
-              <source src="/assets/animations/anim-2-generate.mp4" type="video/mp4" />
-            </video>
-            <img
-              class="value-video-fallback"
-              src="/assets/animations/anim-2-generate.poster.jpg"
-              alt="Types follow SQL."
-              loading="lazy"
-            />
-          </div>
-          <h3>Types follow SQL.</h3>
-          <p><code>sqlfu generate</code> reads your <code>.sql</code> files and emits typed wrappers next to them. Call sites get typed params, typed rows, and autocomplete: you still wrote plain SQL. Query names travel to <a href="/docs/observability/">OpenTelemetry, Sentry, Datadog, PostHog</a>.</p>
+          <h3>TypeScript wrappers <i>from</i> your SQL</h3>
+          <p>
+            <code>sqlfu generate</code> reads your <code>.sql</code> files and emits typed wrappers next to them: typed params, typed rows, and a client you can call from application code. Your query names travel with them: to <a href="/docs/observability">OpenTelemetry, Sentry, Datadog, PostHog</a>, whatever.
+          </p>
         </article>
-        <article class="panel value-panel">
+        <article class="panel value-panel" data-animation-key="draft">
           <div class="eyebrow">diff-driven migrations</div>
-          <div class="value-media" data-animation-key="draft">
-            <video
-              class="value-video"
-              autoplay
-              loop
-              muted
-              playsinline
-              preload="metadata"
-              poster="/assets/animations/anim-3-draft.poster.jpg"
-            >
-              <source src="/assets/animations/anim-3-draft.webm" type="video/webm" />
-              <source src="/assets/animations/anim-3-draft.mp4" type="video/mp4" />
-            </video>
-            <img
-              class="value-video-fallback"
-              src="/assets/animations/anim-3-draft.poster.jpg"
-              alt="Migrations draft themselves."
-              loading="lazy"
-            />
-          </div>
-          <h3>Migrations draft themselves.</h3>
+          <h3>Drafts your next migration</h3>
           <p>The native SQLite diff engine compares replayed migration history against <code>definitions.sql</code> and writes the next migration for you. You review, edit for renames or backfills, and commit.</p>
         </article>
       </section>
 
-      {/* ?animation_alternative=a|b|c|d swaps each panel's <video> sources + poster
-          to the corresponding alt-<letter>-<key> composition. Base URL is derived
-          from the rendered <source> src so alternatives work under base-path-
-          prefixed previews (artifact.ci URLs etc.) too. */}
+      <p class="works-with">
+        Bring your own driver. sqlfu runs on top of <code>better-sqlite3</code>, <code>node:sqlite</code>, <code>bun:sqlite</code>, <code>@libsql/client</code>, <code>@tursodatabase/database</code> / <code>serverless</code> / <code>sync</code>, Cloudflare D1, Durable Objects, Expo SQLite, and <code>sqlite-wasm</code>. <a href="/docs/adapters">Full list →</a>
+      </p>
+
+      {/*
+        Animations are off by default. They are enabled with `?animation=<name>`:
+
+          - `?animation=sequential` — a single large stage that plays the three
+            beats (schema → generate → draft) in sequence, replacing the
+            three-card grid. This is the main animated treatment.
+          - `?animation=a|b|c|d` — the original three-panel alternatives,
+            each card keeps its copy but its body gets swapped for the
+            matching `alt-<letter>-<key>` video.
+
+        When no `animation` param is set, the page ships the plain static
+        value panels above (same as main).
+      */}
       <script is:inline>
         (() => {
           const params = new URLSearchParams(window.location.search);
-          const raw = params.get('animation_alternative');
+          const raw = params.get('animation');
           if (!raw) return;
-          const letter = raw.trim().toLowerCase();
-          if (!['a', 'b', 'c', 'd'].includes(letter)) return;
-          const root = document.getElementById('value-panels');
-          if (!root) return;
-          for (const media of root.querySelectorAll('.value-media')) {
-            const key = media.dataset.animationKey;
-            const slug = 'alt-' + letter + '-' + key;
-            const video = media.querySelector('video');
-            const img = media.querySelector('img');
-            const sources = video.querySelectorAll('source');
-            const firstSrc = sources[0].getAttribute('src') || '';
-            const base = firstSrc.replace(/[^/]+\.webm$/, '');
-            sources[0].src = base + slug + '.webm';
-            sources[1].src = base + slug + '.mp4';
-            video.poster = base + slug + '.poster.jpg';
-            img.src = video.poster;
-            video.load();
+          const name = raw.trim().toLowerCase();
+          const grid = document.getElementById('value-panels');
+          if (!grid) return;
+
+          if (name === 'sequential') {
+            // Single large stage. Replace the three-card grid wholesale.
+            const stage = document.createElement('section');
+            stage.className = 'animation-stage';
+            stage.innerHTML = `
+              <video
+                class="animation-stage-video"
+                autoplay
+                loop
+                muted
+                playsinline
+                preload="metadata"
+                poster="/assets/animations/anim-sequential.poster.jpg"
+              >
+                <source src="/assets/animations/anim-sequential.webm" type="video/webm" />
+                <source src="/assets/animations/anim-sequential.mp4" type="video/mp4" />
+              </video>
+              <img
+                class="animation-stage-fallback"
+                src="/assets/animations/anim-sequential.poster.jpg"
+                alt="sqlfu: edit schema, generate types, draft migrations."
+                loading="lazy"
+              />
+            `;
+            grid.replaceWith(stage);
+            return;
+          }
+
+          if (['a', 'b', 'c', 'd'].includes(name)) {
+            // Alternative three-card treatments: inject a `<video>` inside
+            // each value-panel, alongside the existing heading + copy.
+            for (const panel of grid.querySelectorAll('.value-panel')) {
+              const key = panel.dataset.animationKey;
+              if (!key) continue;
+              const slug = `alt-${name}-${key}`;
+              const media = document.createElement('div');
+              media.className = 'value-media';
+              media.innerHTML = `
+                <video
+                  class="value-video"
+                  autoplay
+                  loop
+                  muted
+                  playsinline
+                  preload="metadata"
+                  poster="/assets/animations/${slug}.poster.jpg"
+                >
+                  <source src="/assets/animations/${slug}.webm" type="video/webm" />
+                  <source src="/assets/animations/${slug}.mp4" type="video/mp4" />
+                </video>
+                <img
+                  class="value-video-fallback"
+                  src="/assets/animations/${slug}.poster.jpg"
+                  alt=""
+                  loading="lazy"
+                />
+              `;
+              const heading = panel.querySelector('.eyebrow');
+              if (heading) heading.after(media);
+              else panel.prepend(media);
+            }
           }
         })();
       </script>
