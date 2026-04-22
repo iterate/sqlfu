@@ -36,6 +36,7 @@ import type {
 import {columnWidthAlgorithm} from './column-width.js';
 import type {UiRouter} from 'sqlfu/ui/browser';
 import {SqlCodeMirror, TextCodeMirror, TextDiffCodeMirror} from './sql-codemirror.js';
+import {RelationQueryPanel} from './relation-query-panel.js';
 import {
   Dialog,
   DialogContent,
@@ -579,11 +580,7 @@ function Studio() {
         ) : route.kind === 'query' && selectedQuery ? (
           <QueryPanel entry={selectedQuery} relations={schemaQuery.data.relations} />
         ) : selectedTable ? (
-          <TablePanel
-            key={`${selectedTable.name}/${route.kind === 'table' ? route.page : 0}`}
-            relation={selectedTable}
-            page={route.kind === 'table' ? route.page : 0}
-          />
+          <TablePanel key={selectedTable.name} relation={selectedTable} />
         ) : (
           <EmptyState />
         )}
@@ -1018,16 +1015,16 @@ function MigrationDetail(input: {
   );
 }
 
-function TablePanel(input: {relation: StudioRelation; page: number}) {
+function TablePanel(input: {relation: StudioRelation}) {
   const tableListOptions = orpc.table.list.queryOptions({
     input: {
       relationName: input.relation.name,
-      page: input.page,
+      page: 0,
     },
   });
   const rowsQuery = useSuspenseQuery(tableListOptions);
   const [draftRows, setDraftRows] = useLocalStorageState<Record<string, unknown>[]>(
-    `sqlfu-ui/table-draft/${input.relation.name}/${input.page}`,
+    `sqlfu-ui/table-draft/${input.relation.name}/0`,
     {
       defaultValue: rowsQuery.data.rows,
     },
@@ -1058,7 +1055,7 @@ function TablePanel(input: {relation: StudioRelation; page: number}) {
     ...rowsQuery.data.rowKeys,
     ...displayedRows.slice(rowsQuery.data.rows.length).map((_, index) => ({
       kind: 'new' as const,
-      value: `new-${input.relation.name}-${input.page}-${index}`,
+      value: `new-${input.relation.name}-0-${index}`,
     })),
   ];
   const rowsDirty = JSON.stringify(displayedRows) !== JSON.stringify(displayedOriginalRows);
@@ -1069,25 +1066,44 @@ function TablePanel(input: {relation: StudioRelation; page: number}) {
   const handleSaveRows = () => {
     saveRowsMutation.mutate({
       relationName: input.relation.name,
-      page: input.page,
+      page: 0,
       originalRows: displayedOriginalRows.map((row) => ({...row})),
       rows: displayedRows.map((row) => ({...row})),
       rowKeys: displayedRowKeys,
     });
   };
-  const handleDeleteRow = (rowIndex: number) => {
+  const handleDeleteRow = async (rowIndex: number) => {
     const rowKey = displayedRowKeys[rowIndex];
     const originalRow = displayedOriginalRows[rowIndex];
     if (!rowKey || !originalRow) {
       return;
     }
     if (rowKey.kind === 'new') {
+      const row = displayedRows[rowIndex];
+      const columnNames = input.relation.columns.map((column) => column.name);
+      if (!row || isEmptyDraftRow(row, columnNames)) {
+        setDraftRows(displayedRows.filter((_, index) => index !== rowIndex));
+        return;
+      }
+      const result = await confirmationDialogStore.confirm({
+        title: 'Discard unsaved row?',
+        body: 'This row has values you have not saved yet. Discard them?',
+        bodyType: 'markdown',
+      });
+      if (!result.confirmed) return;
       setDraftRows(displayedRows.filter((_, index) => index !== rowIndex));
       return;
     }
+    const previewSql = buildDeleteRowPreviewSql(input.relation.name, rowKey);
+    const result = await confirmationDialogStore.confirm({
+      title: `Delete row from "${input.relation.name}"?`,
+      body: previewSql,
+      bodyType: 'sql',
+    });
+    if (!result.confirmed) return;
     deleteRowMutation.mutate({
       relationName: input.relation.name,
-      page: input.page,
+      page: 0,
       rowKey,
       originalRow,
     });
@@ -1109,82 +1125,46 @@ function TablePanel(input: {relation: StudioRelation; page: number}) {
       </header>
 
       <section className="card">
-        <div className="card-title-row">
-          <div className="card-title">Data</div>
-          <div className="pill-row">
-            <span className="pill">Page {input.page + 1}</span>
-            {rowsQuery.data.editable && rowsDirty ? (
-              <>
-                <button
-                  className="button primary"
-                  type="button"
-                  aria-label="Save changes"
-                  disabled={saveRowsMutation.isPending}
-                  onClick={handleSaveRows}
-                >
-                  {saveRowsMutation.isPending ? 'Saving…' : 'Save changes'}
-                </button>
-                <button
-                  className="button"
-                  type="button"
-                  aria-label="Discard changes"
-                  disabled={saveRowsMutation.isPending}
-                  onClick={handleDiscardRows}
-                >
-                  Discard changes
-                </button>
-              </>
-            ) : null}
-          </div>
-        </div>
         {tableMutationError ? <ErrorView error={tableMutationError} /> : null}
-        <DataTable
-          storageKey={`relation/${input.relation.name}`}
-          columns={rowsQuery.data.columns}
-          rowKeys={displayedRowKeys}
-          originalRows={displayedOriginalRows}
-          rows={displayedRows}
-          editable={rowsQuery.data.editable}
-          editableColumns={Object.fromEntries(
-            input.relation.columns.map((column) => [column.name, !column.primaryKey]),
-          )}
-          onRowsChange={setDraftRows}
-          onAppendRow={() => setDraftRows([...displayedRows, {...emptyRowTemplate}])}
-          onDeleteRow={handleDeleteRow}
-          showSelectedCellDetail
-        />
-        <div className="pager">
-          <a
-            className={input.page === 0 ? 'button disabled' : 'button'}
-            href={`#table/${encodeURIComponent(input.relation.name)}/${Math.max(0, input.page - 1)}`}
-          >
-            Previous
-          </a>
-          <a className="button" href={`#table/${encodeURIComponent(input.relation.name)}/${input.page + 1}`}>
-            Next
-          </a>
-        </div>
-      </section>
-
-      {input.relation.sql ? (
-        <details className="card relation-details">
-          <summary className="authority-card-summary" role="button">
-            <span className="card-title relation-details-title">Definition</span>
-            <span className="accordion-chevron" aria-hidden="true">
-              ▾
-            </span>
-          </summary>
-          <div className="authority-card-body">
-            <SqlCodeMirror
-              value={input.relation.sql}
-              ariaLabel="Relation definition editor"
-              relations={[input.relation]}
-              onChange={() => {}}
-              readOnly
+        <RelationQueryPanel
+          relation={input.relation}
+          runSql={(runInput) => orpcClient.sql.run(runInput)}
+          rowEditing={{
+            editable: rowsQuery.data.editable,
+            dirty: rowsDirty,
+            saving: saveRowsMutation.isPending,
+            onSave: handleSaveRows,
+            onDiscard: handleDiscardRows,
+          }}
+          renderDefaultDataTable={({toolbar}) => (
+            <DataTable
+              storageKey={`relation/${input.relation.name}`}
+              columns={rowsQuery.data.columns}
+              rowKeys={displayedRowKeys}
+              originalRows={displayedOriginalRows}
+              rows={displayedRows}
+              editable={rowsQuery.data.editable}
+              editableColumns={Object.fromEntries(
+                input.relation.columns.map((column) => [column.name, !column.primaryKey]),
+              )}
+              onRowsChange={setDraftRows}
+              onAppendRow={() => setDraftRows([...displayedRows, {...emptyRowTemplate}])}
+              onDeleteRow={handleDeleteRow}
+              showSelectedCellDetail
+              toolbar={toolbar}
             />
-          </div>
-        </details>
-      ) : null}
+          )}
+          renderSqlDataTable={(args) => (
+            <DataTable
+              storageKey={args.storageKey}
+              columns={args.columns}
+              rows={args.rows}
+              showSelectedCellDetail
+              toolbar={args.toolbar}
+            />
+          )}
+        />
+      </section>
     </section>
   );
 }
@@ -1649,9 +1629,15 @@ function DataTable(input: {
   onAppendRow?: () => void;
   onDeleteRow?: (rowIndex: number) => void;
   showSelectedCellDetail?: boolean;
+  toolbar?: ReactNode;
 }) {
-  if (input.rows.length === 0) {
-    return <p className="muted">No rows.</p>;
+  if (input.rows.length === 0 && !(input.editable && input.onAppendRow)) {
+    return (
+      <>
+        {input.toolbar ? <div className="data-toolbar">{input.toolbar}</div> : null}
+        <p className="muted">No rows.</p>
+      </>
+    );
   }
 
   const {ref: containerRef, width: containerWidth} = useElementWidth<HTMLDivElement>();
@@ -1735,9 +1721,7 @@ function DataTable(input: {
           ariaLabel: selectedRowIndex === rowIndex ? `Delete row ${rowIndex + 1}` : `Select row ${rowIndex + 1}`,
           onClick: () => {
             if (selectedRowIndex === rowIndex) {
-              if (!window.confirm('are you sure you want to delete')) {
-                return;
-              }
+              // Unarm before firing so a cancelled confirmation leaves no stuck state.
               setSelectedRowIndex(null);
               input.onDeleteRow?.(rowIndex);
               return;
@@ -1842,26 +1826,33 @@ function DataTable(input: {
         }
       }}
     >
-      {input.editable ? (
-        <div className="actions">
-          <button
-            className="button"
-            type="button"
-            aria-label="Undo cell changes"
-            disabled={rowHistoryRef.current.undo.length === 0}
-            onClick={applyUndo}
-          >
-            Undo
-          </button>
-          <button
-            className="button"
-            type="button"
-            aria-label="Redo cell changes"
-            disabled={rowHistoryRef.current.redo.length === 0}
-            onClick={applyRedo}
-          >
-            Redo
-          </button>
+      {input.toolbar || input.editable ? (
+        <div className="data-toolbar">
+          {input.toolbar}
+          {input.editable ? (
+            <div className="data-toolbar-undo-group">
+              <button
+                className="rqp-icon-button"
+                type="button"
+                aria-label="Undo cell changes"
+                disabled={rowHistoryRef.current.undo.length === 0}
+                onClick={applyUndo}
+                title="Undo (⌘Z)"
+              >
+                ↶
+              </button>
+              <button
+                className="rqp-icon-button"
+                type="button"
+                aria-label="Redo cell changes"
+                disabled={rowHistoryRef.current.redo.length === 0}
+                onClick={applyRedo}
+                title="Redo (⌘⇧Z)"
+              >
+                ↷
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
       <div className="table-scroll" ref={containerRef}>
@@ -1869,7 +1860,14 @@ function DataTable(input: {
           customCellTemplates={{rowAction: rowActionCellTemplate}}
           columns={gridColumns}
           rows={gridRows}
-          focusLocation={pendingFocusRef.current ?? undefined}
+          focusLocation={
+            pendingFocusRef.current &&
+            pendingFocusRef.current.rowId >= 0 &&
+            pendingFocusRef.current.rowId < input.rows.length &&
+            input.columns.includes(pendingFocusRef.current.columnId)
+              ? pendingFocusRef.current
+              : undefined
+          }
           stickyTopRows={1}
           stickyLeftColumns={1}
           enableRangeSelection
@@ -2255,6 +2253,39 @@ function isSameValue(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function isEmptyDraftRow(row: Record<string, unknown>, columnNames: string[]): boolean {
+  return columnNames.every((column) => {
+    const value = row[column];
+    return value === null || value === undefined || value === '';
+  });
+}
+
+function buildDeleteRowPreviewSql(
+  relationName: string,
+  rowKey: {kind: 'rowid'; value: number} | {kind: 'primaryKey'; values: Readonly<Record<string, unknown>>} | {kind: 'new'; value: string},
+): string {
+  const quoted = `"${relationName.replaceAll('"', '""')}"`;
+  if (rowKey.kind === 'rowid') {
+    return `delete from ${quoted}\nwhere rowid = ${rowKey.value};`;
+  }
+  if (rowKey.kind === 'primaryKey') {
+    const conditions = Object.entries(rowKey.values).map(
+      ([column, value]) =>
+        value == null
+          ? `"${column.replaceAll('"', '""')}" is null`
+          : `"${column.replaceAll('"', '""')}" = ${formatSqlLiteralPreview(value)}`,
+    );
+    return `delete from ${quoted}\nwhere ${conditions.join(' and ')};`;
+  }
+  return `-- unsaved row; nothing to delete`;
+}
+
+function formatSqlLiteralPreview(value: unknown): string {
+  if (typeof value === 'number' || typeof value === 'bigint') return String(value);
+  if (typeof value === 'boolean') return value ? '1' : '0';
+  return `'${String(value).replaceAll("'", "''")}'`;
+}
+
 function normalizeStoredTableDraft(
   draftRows: Record<string, unknown>[] | undefined,
   fetchedRows: Record<string, unknown>[],
@@ -2354,7 +2385,7 @@ function parseHash(hash: string): Route {
     return {kind: 'schema'};
   }
 
-  const [kind, first, second] = value.split('/').map(decodeURIComponent);
+  const [kind, first] = value.split('/').map(decodeURIComponent);
   if (kind === 'schema') {
     return {kind: 'schema'};
   }
@@ -2362,7 +2393,7 @@ function parseHash(hash: string): Route {
     return {kind: 'sql'};
   }
   if (kind === 'table' && first) {
-    return {kind: 'table', name: first, page: Number(second ?? '0') || 0};
+    return {kind: 'table', name: first};
   }
   if (kind === 'query' && first) {
     return {kind: 'query', id: first};
@@ -2602,7 +2633,6 @@ type Route =
   | {
       kind: 'table';
       name: string;
-      page: number;
     }
   | {
       kind: 'query';
