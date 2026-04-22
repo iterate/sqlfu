@@ -161,52 +161,52 @@ export async function analyzeAdHocSqlForConfig(config: SqlfuProjectConfig, sql: 
 }
 
 type DisposableClient = {
-  readonly client: Client;
+  client: Client;
   [Symbol.asyncDispose](): Promise<void>;
 };
 
 type TsColumn = {
-  readonly name: string;
-  readonly tsType: string;
-  readonly notNull: boolean;
+  name: string;
+  tsType: string;
+  notNull: boolean;
 };
 
 type RelationInfo = {
-  readonly kind: 'table' | 'view';
-  readonly name: string;
-  readonly columns: ReadonlyMap<string, TsColumn>;
-  readonly sql?: string;
+  kind: 'table' | 'view';
+  name: string;
+  columns: ReadonlyMap<string, TsColumn>;
+  sql?: string;
 };
 
 type GeneratedField = {
-  readonly name: string;
-  readonly tsType: string;
-  readonly notNull: boolean;
-  readonly optional?: boolean;
+  name: string;
+  tsType: string;
+  notNull: boolean;
+  optional?: boolean;
 };
 
 type GeneratedQueryDescriptor = {
-  readonly sql: string;
-  readonly queryType: 'Select' | 'Insert' | 'Update' | 'Delete' | 'Copy' | 'Ddl';
-  readonly returning?: true;
-  readonly multipleRowsResult: boolean;
-  readonly columns: readonly GeneratedField[];
-  readonly parameters: readonly (GeneratedField & {
-    readonly toDriver: string;
-    readonly isArray: boolean;
+  sql: string;
+  queryType: 'Select' | 'Insert' | 'Update' | 'Delete' | 'Copy' | 'Ddl';
+  returning?: true;
+  multipleRowsResult: boolean;
+  columns: GeneratedField[];
+  parameters: (GeneratedField & {
+    toDriver: string;
+    isArray: boolean;
   })[];
-  readonly data?: readonly (GeneratedField & {
-    readonly toDriver: string;
-    readonly isArray: boolean;
+  data?: (GeneratedField & {
+    toDriver: string;
+    isArray: boolean;
   })[];
 };
 
 type QueryFile = {
   /** absolute path to the .sql source file. */
-  readonly sqlPath: string;
+  sqlPath: string;
   /** path without `.sql`, relative to `config.queries`, forward slashes. E.g. `"users/list-profiles"`. */
-  readonly relativePath: string;
-  readonly sqlContent: string;
+  relativePath: string;
+  sqlContent: string;
 };
 
 async function materializeTypegenDatabase(config: SqlfuProjectConfig) {
@@ -270,7 +270,7 @@ async function openMainDevDatabase(dbPath: string): Promise<DisposableClient> {
   }
 }
 
-async function loadQueryFiles(queriesDir: string): Promise<readonly QueryFile[]> {
+async function loadQueryFiles(queriesDir: string): Promise<QueryFile[]> {
   const files: QueryFile[] = [];
 
   async function walk(currentDir: string, relativePrefix: string): Promise<void> {
@@ -311,7 +311,7 @@ async function loadQueryFiles(queriesDir: string): Promise<readonly QueryFile[]>
 
 async function writeGeneratedBarrel(
   generatedDir: string,
-  queryFiles: readonly QueryFile[],
+  queryFiles: QueryFile[],
   importExtension: '.js' | '.ts',
 ): Promise<void> {
   const lines = [
@@ -416,7 +416,7 @@ async function writeMigrationsBundle(config: SqlfuProjectConfig): Promise<void> 
 
 async function writeQueryCatalog(
   config: SqlfuProjectConfig,
-  queryFiles: readonly QueryFile[],
+  queryFiles: QueryFile[],
   queryAnalyses: Awaited<ReturnType<typeof analyzeVendoredTypesqlQueries>>,
   schema: ReadonlyMap<string, RelationInfo>,
 ): Promise<void> {
@@ -652,19 +652,19 @@ function buildQueryReference(
  * is imported from sqlfu.
  */
 type ValidatorEmitter = {
-  readonly importLine: string;
+  importLine: string;
   /** `'zod'` uses safeParse/z.prettifyError; `'standard'` uses `~standard.validate` + sqlfu helper. */
-  readonly parseFlavour: 'zod' | 'standard';
+  parseFlavour: 'zod' | 'standard';
   /**
    * Render a single `"  name: expression,"` line for a schema object. Controls both the
    * key (for validators like arktype that express optionality via `"name?"`) and the value
    * (each validator's native nullable/enum/array/etc. encoding).
    */
-  readonly renderFieldLine: (field: GeneratedField, fieldKind: 'parameter' | 'result') => string;
+  renderFieldLine: (field: GeneratedField, fieldKind: 'parameter' | 'result') => string;
   /** Build the `const Foo = object({...})` declaration lines. */
-  readonly objectSchemaDeclaration: (input: {schemaName: string; fieldLines: string[]}) => string[];
+  objectSchemaDeclaration: (input: {schemaName: string; fieldLines: string[]}) => string[];
   /** The call used in function signatures and return types to infer a TS type from a schema. */
-  readonly inferExpression: (schemaName: string) => string;
+  inferExpression: (schemaName: string) => string;
 };
 
 /** Default field-line rendering for the zod/valibot/zod-mini emitters — key is plain, value is wrapped. */
@@ -965,7 +965,7 @@ function buildRuntimeImports(emitter: ValidatorEmitter, prettyErrors: boolean, c
 function renderObjectSchemaDeclaration(
   emitter: ValidatorEmitter,
   schemaName: 'Data' | 'Params' | 'Result',
-  fields: readonly GeneratedField[],
+  fields: GeneratedField[],
   fieldKind: 'parameter' | 'result',
 ): string[] {
   // see tasks/typegen-extensibility.md — future user-provided validator plugins and per-column overrides would hook in here.
@@ -1013,9 +1013,9 @@ function valibotExpressionForTsType(tsType: string): string {
 
 type InputValidation = {
   /** Preamble statements to emit before the `query(...)` call (guards / throws). */
-  readonly statements: string[];
+  statements: string[];
   /** Expression that evaluates to the validated value — fed directly to `query(...)`. */
-  readonly expression: string;
+  expression: string;
 };
 
 /**
@@ -1131,7 +1131,7 @@ function buildValidatorQueryArgs(
 
 function buildValidatorImplementation(input: {
   resultMode: 'many' | 'nullableOne' | 'one' | 'metadata';
-  resultFields: readonly GeneratedField[];
+  resultFields: GeneratedField[];
   emitter: ValidatorEmitter;
   prettyErrors: boolean;
   queryReference: string;
@@ -1255,7 +1255,7 @@ function getResultMode(descriptor: GeneratedQueryDescriptor): 'many' | 'nullable
  * `export type Foo = …;`. Indentation is two tabs — one for the namespace, one for the fields.
  */
 function renderObjectTypeBody(
-  fields: readonly GeneratedField[],
+  fields: GeneratedField[],
   fieldKind: 'parameter' | 'result',
 ): string {
   const lines = fields.map((field) => {
@@ -1268,7 +1268,7 @@ function renderObjectTypeBody(
 
 function objectSchema(
   title: string,
-  fields: readonly GeneratedField[],
+  fields: GeneratedField[],
   input: {
     fieldKind?: 'parameter' | 'result';
   } = {},
@@ -1333,7 +1333,7 @@ function schemaForTsType(tsType: string): JsonSchemaObject {
   return {};
 }
 
-function parseStringLiteralUnion(tsType: string): readonly string[] | undefined {
+function parseStringLiteralUnion(tsType: string): string[] | undefined {
   const parts = tsType
     .replace(/^\(/, '')
     .replace(/\)$/, '')
@@ -1347,7 +1347,7 @@ function parseStringLiteralUnion(tsType: string): readonly string[] | undefined 
   return parts.map((part) => part.slice(1, -1));
 }
 
-function getResultFields(descriptor: GeneratedQueryDescriptor): readonly GeneratedField[] {
+function getResultFields(descriptor: GeneratedQueryDescriptor): GeneratedField[] {
   if (descriptor.returning || descriptor.queryType === 'Select') {
     return descriptor.columns;
   }
@@ -1377,8 +1377,8 @@ function buildQueryArgs(descriptor: GeneratedQueryDescriptor): string {
 function toCatalogArgument(
   scope: 'data' | 'params',
   field: GeneratedField & {
-    readonly toDriver: string;
-    readonly isArray: boolean;
+    toDriver: string;
+    isArray: boolean;
   },
 ): QueryCatalogArgument {
   return {
@@ -1393,8 +1393,8 @@ function toCatalogArgument(
 }
 
 function inferDriverEncoding(field: {
-  readonly tsType: string;
-  readonly toDriver: string;
+  tsType: string;
+  toDriver: string;
 }): QueryCatalogArgument['driverEncoding'] {
   if (field.tsType === 'boolean') {
     return 'boolean-number';
@@ -1419,8 +1419,8 @@ function toCatalogField(field: GeneratedField): QueryCatalogField {
 function toDriver(
   variableName: string,
   param: GeneratedField & {
-    readonly toDriver: string;
-    readonly isArray: boolean;
+    toDriver: string;
+    isArray: boolean;
   },
 ): string {
   if (param.tsType === 'Date') {

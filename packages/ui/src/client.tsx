@@ -61,7 +61,7 @@ const queryClient = new QueryClient({
   },
   mutationCache: new MutationCache({
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : String(error));
+      toast.error(String(error));
     },
   }),
 });
@@ -683,7 +683,7 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
     onError: (error, variables) => {
       setCommandErrors((current) => ({
         ...(current ?? {}),
-        [variables.command]: error instanceof Error ? error.message : String(error),
+        [variables.command]: String(error),
       }));
     },
   });
@@ -697,7 +697,7 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
   const desiredSchemaSql = desiredSchemaDraft ?? input.authorities.desiredSchemaSql;
   const desiredSchemaDirty =
     normalizeSqlDraft(desiredSchemaSql) !== normalizeSqlDraft(input.authorities.desiredSchemaSql);
-  const handleSchemaCommand = async (command: readonly [string, ...string[]]) => {
+  const handleSchemaCommand = async (command: [string, ...string[]]) => {
     await runCommandMutation.mutateAsync({command: formatSchemaCommand(command)});
   };
 
@@ -1026,7 +1026,7 @@ function TablePanel(input: {relation: StudioRelation; page: number}) {
     },
   });
   const rowsQuery = useSuspenseQuery(tableListOptions);
-  const [draftRows, setDraftRows] = useLocalStorageState<readonly Record<string, unknown>[]>(
+  const [draftRows, setDraftRows] = useLocalStorageState<Record<string, unknown>[]>(
     `sqlfu-ui/table-draft/${input.relation.name}/${input.page}`,
     {
       defaultValue: rowsQuery.data.rows,
@@ -1189,7 +1189,7 @@ function TablePanel(input: {relation: StudioRelation; page: number}) {
   );
 }
 
-function SqlRunnerPanel(input: {relations: readonly StudioRelation[]}) {
+function SqlRunnerPanel(input: {relations: StudioRelation[]}) {
   const [draft, setDraft] = useLocalStorageState<SqlRunnerDraft>('sqlfu-ui/sql-runner-draft', {
     defaultValue: {
       sql: `select name, type\nfrom sqlite_schema\nwhere name not like 'sqlite_%'\norder by type, name;`,
@@ -1267,7 +1267,7 @@ function SqlRunnerPanel(input: {relations: readonly StudioRelation[]}) {
   );
 }
 
-function QueryPanel(input: {entry: QueryCatalogEntry; relations: readonly StudioRelation[]}) {
+function QueryPanel(input: {entry: QueryCatalogEntry; relations: StudioRelation[]}) {
   const entry = input.entry;
 
   const mutation = useMutation({
@@ -1458,8 +1458,8 @@ function QueryWorkbench(input: {
   titleActions?: ReactNode;
   sql: string;
   editable?: boolean;
-  sqlEditorRelations?: readonly StudioRelation[];
-  sqlEditorDiagnostics?: readonly SqlEditorDiagnostic[];
+  sqlEditorRelations?: StudioRelation[];
+  sqlEditorDiagnostics?: SqlEditorDiagnostic[];
   sqlEditorOnExecute?: (value: string) => void;
   sqlEditorOnSave?: (value: string) => void;
   paramsSchema?: RJSFSchema;
@@ -1639,13 +1639,13 @@ const rowActionCellTemplate: reactGrid.CellTemplate<RowActionCell> = {
 
 function DataTable(input: {
   storageKey: string;
-  columns: readonly string[];
+  columns: string[];
   rowKeys?: TableRowsResponse['rowKeys'];
-  originalRows?: readonly Record<string, unknown>[];
-  rows: readonly Record<string, unknown>[];
+  originalRows?: Record<string, unknown>[];
+  rows: Record<string, unknown>[];
   editable?: boolean;
   editableColumns?: Readonly<Record<string, boolean>>;
-  onRowsChange?: (rows: readonly Record<string, unknown>[]) => void;
+  onRowsChange?: (rows: Record<string, unknown>[]) => void;
   onAppendRow?: () => void;
   onDeleteRow?: (rowIndex: number) => void;
   showSelectedCellDetail?: boolean;
@@ -1682,8 +1682,8 @@ function DataTable(input: {
   const pendingFocusRef = useRef<{rowId: number; columnId: string} | null>(null);
   const rowHistoryRef = useRef<{
     baseline: string;
-    undo: readonly (readonly Record<string, unknown>[])[];
-    redo: readonly (readonly Record<string, unknown>[])[];
+    undo: (Record<string, unknown>[])[];
+    redo: (Record<string, unknown>[])[];
   }>({
     baseline: '',
     undo: [],
@@ -2004,12 +2004,12 @@ function DataTable(input: {
   );
 }
 
-function cloneTableRows(rows: readonly Record<string, unknown>[]) {
+function cloneTableRows(rows: Record<string, unknown>[]) {
   return rows.map((row) => ({...row}));
 }
 
 function isDirtyDataCell(
-  originalRows: readonly Record<string, unknown>[] | undefined,
+  originalRows: Record<string, unknown>[] | undefined,
   rowIndex: number,
   columnId: string,
   value: unknown,
@@ -2226,7 +2226,7 @@ function renderSchemaRecommendationSummary(recommendation: SchemaCheckResponse['
   return nodes;
 }
 
-function formatSchemaCommand(command: readonly [string, ...string[]]) {
+function formatSchemaCommand(command: [string, ...string[]]) {
   return ['sqlfu', ...command].join(' ');
 }
 
@@ -2256,9 +2256,9 @@ function isSameValue(left: unknown, right: unknown) {
 }
 
 function normalizeStoredTableDraft(
-  draftRows: readonly Record<string, unknown>[] | undefined,
-  fetchedRows: readonly Record<string, unknown>[],
-  columns: readonly string[],
+  draftRows: Record<string, unknown>[] | undefined,
+  fetchedRows: Record<string, unknown>[],
+  columns: string[],
 ) {
   if (!draftRows) {
     return fetchedRows;
@@ -2370,14 +2370,14 @@ function parseHash(hash: string): Route {
   return {kind: 'home'};
 }
 
-function selectTable(route: Route, relations: readonly StudioRelation[]) {
+function selectTable(route: Route, relations: StudioRelation[]) {
   if (route.kind === 'table') {
     return relations.find((relation) => relation.name === route.name) ?? relations[0];
   }
   return relations[0];
 }
 
-function selectQuery(route: Route, queries: readonly QueryCatalogEntry[]) {
+function selectQuery(route: Route, queries: QueryCatalogEntry[]) {
   if (route.kind === 'query') {
     return queries.find((query) => query.id === route.id) ?? queries[0];
   }
@@ -2451,8 +2451,8 @@ function detectNamedParameters(sql: string) {
 }
 
 type SqlRunnerDraft = {
-  readonly sql: string;
-  readonly params: Record<string, unknown>;
+  sql: string;
+  params: Record<string, unknown>;
 };
 
 function slugifyPromptName(value: string) {
@@ -2497,7 +2497,7 @@ function renderVersionMismatchLede(startupError: Extract<StartupFailure, {kind: 
 // StartupFailureScreen talks about `npx sqlfu` and mkcert, which is misleading
 // here — so demo mode gets its own screen that surfaces the actual error.
 function DemoStartupFailureScreen(input: {error: unknown}) {
-  const message = input.error instanceof Error ? input.error.message : String(input.error);
+  const message = String(input.error);
   const stack = input.error instanceof Error ? input.error.stack : undefined;
   const userAgent = typeof navigator === 'undefined' ? '' : navigator.userAgent;
 
@@ -2591,22 +2591,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 type Route =
   | {
-      readonly kind: 'home';
+      kind: 'home';
     }
   | {
-      readonly kind: 'schema';
+      kind: 'schema';
     }
   | {
-      readonly kind: 'sql';
+      kind: 'sql';
     }
   | {
-      readonly kind: 'table';
-      readonly name: string;
-      readonly page: number;
+      kind: 'table';
+      name: string;
+      page: number;
     }
   | {
-      readonly kind: 'query';
-      readonly id: string;
+      kind: 'query';
+      id: string;
     };
 
 createRoot(document.getElementById('root')!).render(<App />);

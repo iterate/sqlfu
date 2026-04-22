@@ -3,12 +3,12 @@ import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from 
 import type {AsyncClient, ResultRow, SqlQuery} from '../core/types.js';
 
 export interface TursoDatabaseStatementLike<TRow extends ResultRow = ResultRow> {
-  readonly reader: boolean;
-  all(...params: readonly unknown[]): Promise<TRow[]>;
-  iterate(...params: readonly unknown[]): AsyncIterable<TRow>;
-  run(...params: readonly unknown[]): Promise<{
-    readonly changes?: number;
-    readonly lastInsertRowid?: string | number | bigint | null;
+  reader: boolean;
+  all(...params: unknown[]): Promise<TRow[]>;
+  iterate(...params: unknown[]): AsyncIterable<TRow>;
+  run(...params: unknown[]): Promise<{
+    changes?: number;
+    lastInsertRowid?: string | number | bigint | null;
   }>;
 }
 

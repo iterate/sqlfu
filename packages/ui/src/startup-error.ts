@@ -56,7 +56,7 @@ export function classifyStartupError(error: unknown): StartupFailure {
   }
 
   const status = readStatus(error);
-  const message = error instanceof Error ? error.message : String(error);
+  const message = String(error);
 
   if (status && status >= 500) {
     return {

@@ -294,7 +294,7 @@ function seedLiveDatabase(database: Database, definitionsSql: string) {
   `);
 }
 
-function normalizeAdHocParams(params: AdHocSqlParams): Record<string, unknown> | readonly unknown[] {
+function normalizeAdHocParams(params: AdHocSqlParams): Record<string, unknown> | unknown[] {
   if (params == null) return [];
-  return params as Record<string, unknown> | readonly unknown[];
+  return params as Record<string, unknown> | unknown[];
 }

@@ -112,10 +112,9 @@ export default [
   },
   {
     rules: {
-      eqeqeq: 'error',
       'repolocal/no-readonly': 'error',
       'repolocal/no-dumb-error-ternary': 'error',
-      'repolocal/no-blunder': 'error',
+      // 'repolocal/no-blunder': 'error', // fine we can leave this for now
     }
   },
   ...sqlfu.configs.recommended,

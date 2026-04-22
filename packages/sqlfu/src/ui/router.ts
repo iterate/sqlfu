@@ -358,7 +358,7 @@ export const uiRouter = {
         const args = query.args.flatMap((arg) => {
           const source = arg.scope === 'data' ? input.data : input.params;
           return encodeArgument(arg, source?.[arg.name]);
-        }) as readonly QueryArg[];
+        }) as QueryArg[];
 
         await using database = await context.host.openDb(config);
         if (query.resultMode === 'metadata') {
@@ -453,17 +453,17 @@ export type UiRouter = typeof uiRouter;
 
 export type CommandEvent =
   | {
-      readonly kind: 'needsConfirmation';
-      readonly id: string;
-      readonly params: SqlfuCommandConfirmParams;
+      kind: 'needsConfirmation';
+      id: string;
+      params: SqlfuCommandConfirmParams;
     }
   | {
-      readonly kind: 'done';
+      kind: 'done';
     };
 
 type PendingConfirmation = {
-  readonly resolve: (body: string | null) => void;
-  readonly reject: (error: unknown) => void;
+  resolve: (body: string | null) => void;
+  reject: (error: unknown) => void;
 };
 
 const pendingConfirmations = new Map<string, PendingConfirmation>();
@@ -478,8 +478,8 @@ function resolvePendingConfirmation(id: string, body: string | null) {
 }
 
 type QueueItem =
-  | {readonly kind: 'event'; readonly event: CommandEvent}
-  | {readonly kind: 'error'; readonly error: unknown};
+  | {kind: 'event'; event: CommandEvent}
+  | {kind: 'error'; error: unknown};
 
 function createCommandEventQueue() {
   const pendingIds = new Set<string>();
@@ -561,11 +561,11 @@ function requireProjectConfig(project: ResolvedUiProject) {
 
 function toClientError(error: unknown) {
   return new ORPCError('BAD_REQUEST', {
-    message: error instanceof Error ? error.message : String(error),
+    message: String(error),
   });
 }
 
-function buildSchemaCheckCards(analysis: CheckAnalysis): readonly SchemaCheckCard[] {
+function buildSchemaCheckCards(analysis: CheckAnalysis): SchemaCheckCard[] {
   const mismatchByKind = new Map(analysis.mismatches.map((mismatch) => [mismatch.kind, mismatch]));
   const recommendationKinds = new Set(analysis.recommendations.map((recommendation) => recommendation.kind));
 
@@ -610,7 +610,7 @@ function buildSchemaCheckCards(analysis: CheckAnalysis): readonly SchemaCheckCar
   ];
 }
 
-function buildSchemaCheckRecommendations(analysis: CheckAnalysis): readonly SchemaCheckRecommendation[] {
+function buildSchemaCheckRecommendations(analysis: CheckAnalysis): SchemaCheckRecommendation[] {
   return analysis.recommendations.map((recommendation) => ({
     kind: recommendation.kind,
     command: recommendation.command,
@@ -626,18 +626,18 @@ function toSchemaCheckCard(
   explainer: string,
   mismatch:
     | {
-        readonly kind: SchemaCheckCard['key'];
-        readonly summary: string;
-        readonly details: readonly string[];
+        kind: SchemaCheckCard['key'];
+        summary: string;
+        details: string[];
       }
     | undefined,
   recommendationKinds?: ReadonlySet<string>,
   mismatchByKind?: ReadonlyMap<
     string,
     {
-      readonly kind: SchemaCheckCard['key'];
-      readonly summary: string;
-      readonly details: readonly string[];
+      kind: SchemaCheckCard['key'];
+      summary: string;
+      details: string[];
     }
   >,
 ): SchemaCheckCard {
@@ -658,18 +658,18 @@ function getSchemaCheckCardVariant(
   key: SchemaCheckCard['key'],
   mismatch:
     | {
-        readonly kind: SchemaCheckCard['key'];
-        readonly summary: string;
-        readonly details: readonly string[];
+        kind: SchemaCheckCard['key'];
+        summary: string;
+        details: string[];
       }
     | undefined,
   recommendationKinds: ReadonlySet<string> = new Set(),
   mismatchByKind: ReadonlyMap<
     string,
     {
-      readonly kind: SchemaCheckCard['key'];
-      readonly summary: string;
-      readonly details: readonly string[];
+      kind: SchemaCheckCard['key'];
+      summary: string;
+      details: string[];
     }
   > = new Map(),
 ): SchemaCheckCard['variant'] {
@@ -702,7 +702,7 @@ function parseMigrationId(id: string) {
 function encodeArgument(
   arg: Extract<QueryCatalogEntry, {kind: 'query'}>['args'][number],
   value: unknown,
-): readonly QueryArg[] {
+): QueryArg[] {
   if (arg.isArray) {
     if (!Array.isArray(value)) {
       return [];
@@ -744,7 +744,7 @@ function encodeScalar(
   return JSON.stringify(value);
 }
 
-async function getRelationColumns(client: AsyncClient, relationName: string): Promise<readonly StudioColumn[]> {
+async function getRelationColumns(client: AsyncClient, relationName: string): Promise<StudioColumn[]> {
   const rows = await client.all<Record<string, unknown>>({
     sql: `PRAGMA table_xinfo("${escapeIdentifier(relationName)}")`,
     args: [],
@@ -842,10 +842,10 @@ async function saveTableRows(
         ? buildInsertRowStatement(relationName, row.nextRow, row.changedColumns)
         : buildUpdateRowStatement(relationName, row.rowKey, row.originalRow, row.nextRow, row.changedColumns);
     try {
-      await client.run({sql: statement.sql, args: statement.args as readonly QueryArg[]});
+      await client.run({sql: statement.sql, args: statement.args as QueryArg[]});
     } catch (error) {
       throw new Error(
-        `${error instanceof Error ? error.message : String(error)}\nSQL: ${statement.sql}\nArgs: ${JSON.stringify(statement.args)}`,
+        `${String(error)}\nSQL: ${statement.sql}\nArgs: ${JSON.stringify(statement.args)}`,
       );
     }
   }
@@ -874,7 +874,7 @@ async function deleteTableRow(
     }
 
     const statement = buildDeleteRowStatement(relationName, input.rowKey, originalRow);
-    const result = await client.run({sql: statement.sql, args: statement.args as readonly QueryArg[]});
+    const result = await client.run({sql: statement.sql, args: statement.args as QueryArg[]});
     if (result.rowsAffected !== 1) {
       throw new Error(`Delete affected ${result.rowsAffected ?? 0} rows`);
     }
@@ -884,7 +884,7 @@ async function deleteTableRow(
     if (error instanceof Error && error.message.includes('\nSQL: ')) {
       throw error;
     }
-    throw new Error(`${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`${String(error)}`);
   }
 }
 
@@ -896,7 +896,7 @@ function slugifyQueryName(value: string) {
     .replace(/^-+|-+$/g, '');
 }
 
-function normalizeSqlRunnerParams(value: unknown): Record<string, unknown> | readonly unknown[] | undefined {
+function normalizeSqlRunnerParams(value: unknown): Record<string, unknown> | unknown[] | undefined {
   if (value == null || value === '') {
     return undefined;
   }
@@ -943,7 +943,7 @@ async function getRelationInfo(client: AsyncClient, relationName: string) {
   return row;
 }
 
-function buildTableRowKey(row: Record<string, unknown>, primaryKeyColumns: readonly string[]): TableRowKey {
+function buildTableRowKey(row: Record<string, unknown>, primaryKeyColumns: string[]): TableRowKey {
   if (primaryKeyColumns.length > 0) {
     return {
       kind: 'primaryKey',
@@ -1005,7 +1005,7 @@ function buildExactRowMatchClause(row: Record<string, unknown>) {
 function buildInsertRowStatement(
   relationName: string,
   nextRow: Record<string, unknown>,
-  changedColumns: readonly string[],
+  changedColumns: string[],
 ) {
   const columns = changedColumns.map((column) => `"${escapeIdentifier(column)}"`).join(', ');
   const placeholders = changedColumns.map(() => '?').join(', ');
@@ -1020,7 +1020,7 @@ function buildUpdateRowStatement(
   rowKey: TableRowKey,
   originalRow: Record<string, unknown>,
   nextRow: Record<string, unknown>,
-  changedColumns: readonly string[],
+  changedColumns: string[],
 ) {
   const setSql = changedColumns.map((column) => `"${escapeIdentifier(column)}" = ?`).join(', ');
   const setArgs = changedColumns.map((column) => normalizeDbValue(nextRow[column]));

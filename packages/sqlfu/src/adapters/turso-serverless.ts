@@ -9,12 +9,12 @@ import type {AsyncClient, ResultRow, SqlQuery} from '../core/types.js';
 export interface TursoServerlessConnectionLike {
   execute(
     sql: string,
-    args?: readonly unknown[],
+    args?: unknown[],
   ): Promise<{
-    readonly columns: readonly string[];
-    readonly rows: readonly unknown[];
-    readonly rowsAffected?: number;
-    readonly lastInsertRowid?: string | number | bigint | null;
+    columns: string[];
+    rows: unknown[];
+    rowsAffected?: number;
+    lastInsertRowid?: string | number | bigint | null;
   }>;
 }
 
@@ -68,8 +68,8 @@ export function createTursoServerlessClient<TConnection extends TursoServerlessC
 export const createTursoServerless = createTursoServerlessClient;
 export const createTursoServerlessConnection = createTursoServerlessClient;
 
-function materializeRow<TRow extends ResultRow>(row: unknown, columns: readonly string[]): TRow {
-  const values = row as readonly unknown[];
+function materializeRow<TRow extends ResultRow>(row: unknown, columns: string[]): TRow {
+  const values = row as unknown[];
   const out: Record<string, unknown> = {};
   for (let i = 0; i < columns.length; i++) {
     out[columns[i]!] = values[i];

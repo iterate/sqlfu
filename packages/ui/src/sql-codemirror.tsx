@@ -19,8 +19,8 @@ export function SqlCodeMirror(input: {
   value: string;
   onChange: (value: string) => void;
   ariaLabel: string;
-  relations: readonly StudioRelation[];
-  diagnostics?: readonly SqlEditorDiagnostic[];
+  relations: StudioRelation[];
+  diagnostics?: SqlEditorDiagnostic[];
   onExecute?: (sql: string) => void;
   onSave?: (sql: string) => void;
   readOnly?: boolean;
@@ -134,7 +134,7 @@ export function TextDiffCodeMirror(input: {original: string; draft: string; aria
   );
 }
 
-function buildSqlSchema(relations: readonly StudioRelation[]): SQLNamespace {
+function buildSqlSchema(relations: StudioRelation[]): SQLNamespace {
   return Object.fromEntries(
     relations.map((relation) => [
       relation.name,

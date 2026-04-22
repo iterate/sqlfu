@@ -16,8 +16,8 @@ const sourceDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(sourceDir, '..', '..');
 
 type ProjectResolver = (request: {
-  readonly host: string;
-  readonly projectHeader?: string;
+  host: string;
+  projectHeader?: string;
 }) => Promise<ResolvedUiProject>;
 
 type UiAssetOptions = {
@@ -277,7 +277,7 @@ async function ensureDatabase(host: SqlfuHost, projectRoot: string) {
     `);
   } catch (error) {
     console.warn(
-      `sqlfu/ui could not initialize ${path.basename(projectRoot)} from definitions.sql: ${error instanceof Error ? error.message : String(error)}`,
+      `sqlfu/ui could not initialize ${path.basename(projectRoot)} from definitions.sql: ${String(error)}`,
     );
   }
 }
@@ -299,10 +299,10 @@ async function importConfigFile(configPath: string) {
   }
 
   return config as {
-    readonly db: string;
-    readonly migrations: string;
-    readonly definitions: string;
-    readonly queries: string;
+    db: string;
+    migrations: string;
+    definitions: string;
+    queries: string;
   };
 }
 
@@ -571,7 +571,7 @@ function renderServerHomePage(project: ResolvedUiProject) {
 }
 
 function renderErrorPage(error: unknown) {
-  const message = escapeHtml(error instanceof Error ? error.message : String(error));
+  const message = escapeHtml(String(error));
   return [
     '<!doctype html>',
     '<html lang="en">',
@@ -625,7 +625,7 @@ function headerValue(value: string | string[] | undefined) {
 }
 
 function apiError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = String(error);
   return new Response(message, {
     status: 400,
     headers: {
