@@ -7,8 +7,7 @@ import type {ESLint, Linter, Rule} from 'eslint';
 import type * as ESTree from 'estree';
 
 /**
- * sqlfu's lint plugin. Targets both ESLint (flat config) and oxlint (via
- * oxlint's `jsPlugins` — alpha as of 2026-04-20).
+ * sqlfu's lint plugin. Targets ESLint (flat config).
  *
  * Imports `sqlfu`'s formatter so the formatting rule can produce exact
  * autofix output. `eslint` and `estree` are type-only imports that

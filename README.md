@@ -180,7 +180,7 @@ import sqlfu from 'sqlfu/lint-plugin';
 
 export default [
   sqlfu.configs.recommended,       // both inline-SQL rules on TS/JS
-  ...sqlfu.configs.sqlFiles,       // format-sql-file on .sql files
+  ...sqlfu.configs.sqlFiles,       // format-sql on .sql files (via the sql processor)
 ];
 ```
 
