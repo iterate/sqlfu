@@ -1,85 +1,184 @@
 ---
-status: needs-grilling
+status: ready
 size: medium
 ---
 
-# Error taxonomy and call-stack quality
+# Error taxonomy and call-stack quality (v2)
 
-Split out from `named-and-loved-queries` so that PR could ship instrumentation plumbing without waiting on this design.
+Revisit of `tasks/error-taxonomy.md`. Previous attempt: PR #13 on branch `error-taxonomy`. User was not happy with the outcome — naming was the suspected root cause. This task file is the result of a grill-you interview (see `tasks/error-taxonomy-v2.interview.md` for every decision with reasoning).
 
-## Goal
+## Executive summary
 
-Let users handle errors by *kind* instead of by string-matching the error message.
+Ship `SqlfuError` with a `.kind` discriminator so application code branches on outcome instead of string-matching driver messages. Mapping lives at the adapter layer via a single `wrapSyncClientErrors` / `wrapAsyncClientErrors` wrapper applied at factory exit (mirrors `instrumentClient` structurally). No user-supplied `mapError` escape hatch yet. Every sqlite adapter normalized. oRPC middleware in the UI router becomes taxonomy-aware. Adapter-level stack-quality integration test is the real guard; OTel recipe test does not assert on stack.
 
-Motivating cases:
+## Decisions (from the interview)
 
-- `seleeeeect * from foo` — syntax error
-- `select * from wrongtable` — missing relation (`no such table: wrongtable`)
-- Constraint violation (unique, foreign key, not-null)
-- Transient / connection errors (sqlite BUSY, pg connection loss)
-- Auth / permission errors (pg `insufficient_privilege`)
+### Class name: `SqlfuError`
 
-Right now the error the hook receives is whatever the underlying driver threw. Users can string-match the message, but that's fragile and adapter-specific.
+Namespace-safety beats convention here. `SqlError` collides with driver-native `SqliteError`; `DatabaseError` is too generic; `QueryError` is misleading (connection errors aren't query errors). `SqlfuError` is unambiguous in any `catch`.
 
-## What the library would need to add
+### Kind values (SQLSTATE-aligned, flat snake_case)
 
-- A shared error shape: `SqlfuError extends Error` with a `kind: SqlfuErrorKind` discriminator and the original `cause` preserved. Something like:
-  ```ts
-  type SqlfuErrorKind =
-    | 'syntax'
-    | 'missing_relation'
-    | 'missing_column'
-    | 'constraint:unique'
-    | 'constraint:foreign_key'
-    | 'constraint:not_null'
-    | 'constraint:check'
-    | 'transient'
-    | 'auth'
-    | 'unknown';
-  ```
-- Per-adapter mapping. Each adapter's error → shared kind:
-  - SQLite (node-sqlite, better-sqlite3, bun): error `code` is usually `SQLITE_ERROR`/`SQLITE_CONSTRAINT` etc.; the sub-code or message discriminates (`no such table`, `UNIQUE constraint failed`).
-  - Postgres (if/when added): SQLSTATE 5-char code — this is the cleanest of the three, built for exactly this.
-  - D1 / durable-object: pass-through from underlying sqlite in most cases.
-  - Libsql: sqlite-shaped.
-- Adapter hook so users can extend or override the mapping for their setup.
+```ts
+type SqlfuErrorKind =
+  | 'syntax'
+  | 'missing_table'
+  | 'missing_column'
+  | 'unique_violation'
+  | 'not_null_violation'
+  | 'foreign_key_violation'
+  | 'check_violation'
+  | 'transient'
+  | 'unknown'
+```
 
-Open questions:
+- SQLSTATE-aligned names (`unique_violation`, `foreign_key_violation`, …) over colon-namespaced (`constraint:unique`). The day sqlfu adds postgres, the mapping is a direct SQLSTATE → kind lookup with no translation. Engineers who already know pg think in these names.
+- `missing_table` / `missing_column` — not `undefined_table` / `undefined_column`. TS `undefined` baggage makes the SQLSTATE names read awkwardly; and the pg mapping for these two is a trivial one-liner either way, so SQLSTATE fidelity buys nothing.
+- `primary_key_violation` collapsed into `unique_violation`. From a product POV both are "that row already exists"; users who need the distinction still have `cause.code`.
+- `transient` stays as a catch-all. Splitting into `busy` / `lock_timeout` / `connection_lost` is out of scope — retry/backoff is explicitly not sqlfu's job.
+- No `auth` kind in the initial shipped set. SQLite's `SQLITE_AUTH` is vanishingly rare in practice, and adding an `auth` kind that's never hit costs readers mental overhead. Add when pg lands (where it matters).
 
-- Is `missing_relation` really a taxonomic category or a subtype of `syntax` (since the SQL doesn't resolve)? Postgres separates them; SQLite doesn't.
-- Do we surface `cause.code` passthrough, or normalize? Probably both — normalize `kind`, preserve original `cause` untouched.
-- Do we want a `SqlfuError.query` field pointing back at the `SqlQuery` that caused it, so error reporters don't need the `QueryExecutionContext` separately?
+### Field shape
 
-## Scope decisions for reference
+```ts
+class SqlfuError extends Error {
+  kind: SqlfuErrorKind
+  query: SqlQuery   // nested, not flattened — preserves `.name` for tagging
+  system: 'sqlite'  // string; `db.system` OTel convention value
+  cause: unknown    // driver error, byte-identical
+}
+```
 
-Agreed during the `named-and-loved-queries` PR to defer because:
+- `.kind`, not `.code` (collides conceptually with `cause.code`) or `.type` (loaded in TS).
+- `.query` and `.system` on the error itself, not only on the hook context — so a plain `catch` block can tag Sentry / log the query name without restructuring around the hook API.
+- `.message` = driver's message passed through unchanged (`super(driverMessage)`). A user's `console.error` or Sentry breadcrumb sees the real signal.
+- `.stack` = driver's `.stack` verbatim. User's call-site frame is the first useful frame; sqlfu internals would be noise. (A bug in the wrapping layer is caught by the test suite, not by a production stack.)
 
-1. Adapter-specific — touches every `createXClient` function, not just instrumentation.
-2. Design-heavy — the category set is opinionated; worth discussing before coding.
-3. Orthogonal to naming — naming ships without this; this ships later without breaking naming.
+### Where mapping lives
 
-## Included in this task (per same discussion)
+Adapter layer. `SqlfuError` is the library's unconditional contract — users who skip `instrument()` still get typed errors. Mapping lives where the driver-specific knowledge lives.
 
-- [ ] Call-stack quality check. Add an assertion in the OTel / Sentry / PostHog recipe tests that `error.stack` contains the test file name (proves the instrumentation layer isn't clobbering the user's stack). Cheap guard against accidentally wrapping errors in the future.
-- [ ] Verify: does each adapter preserve the native error's stack, or does it rewrite? If any adapter rewrites, investigate and fix.
+### Factoring — one wrapper per factory, not per-call
 
-## UI-side companion cleanup
+PR #13 wrapped every `all`/`run`/`raw` and every `iterate` `next()` individually (the iterate loop had three separate wrap calls). Collapse to:
 
-While working on the Relations view we hit a related-but-shallower papercut: the oRPC backend was swallowing every SQLite error into a generic `"Internal server error"` because handlers threw plain `Error` instances and oRPC only preserves `ORPCError`. The quick fix was a one-liner middleware on `uiBase` in `packages/sqlfu/src/ui/router.ts` (see the `.use(async ({next}) => { ... })` block) that rewraps any non-`ORPCError` via `toClientError`. It works, but it's ugly on two axes:
+```ts
+// packages/sqlfu/src/core/adapter-errors.ts
+export function wrapSyncClientErrors<TDriver>(
+  client: SyncClient<TDriver>,
+  ctx: {system: string},
+): SyncClient<TDriver> {
+  const map = (e: unknown, query: SqlQuery) => mapSqliteDriverError(e, {query, system: ctx.system})
+  const wrapped: SyncClient<TDriver> = {
+    ...client,
+    all:  (q) => { try { return client.all(q)  } catch (e) { throw map(e, q) } },
+    run:  (q) => { try { return client.run(q)  } catch (e) { throw map(e, q) } },
+    raw:  (sql) => { try { return client.raw(sql) } catch (e) { throw map(e, {sql, args: []}) } },
+    *iterate(q) { try { yield* client.iterate(q) } catch (e) { throw map(e, q) } },
+    transaction: (fn) => client.transaction((tx) => fn(wrapSyncClientErrors(tx, ctx))),
+    sql: undefined as unknown as SyncClient<TDriver>['sql'],
+  }
+  wrapped.sql = bindSyncSql(wrapped)
+  return wrapped
+}
+```
 
-- The `toClientError` helper blanket-classifies everything as `BAD_REQUEST` with `message: String(error)`. That's fine for surfacing the message but loses the real taxonomy — `UNIQUE constraint failed` should be `constraint:unique`, not `BAD_REQUEST`.
-- Some server-side call sites still do their own `throw toClientError(error)` (e.g. `sql.run`, `schema.command`); the middleware makes those redundant. Should collapse.
+Plus matching `wrapAsyncClientErrors`. Each `createXClient` factory becomes:
 
-When we do the real taxonomy work here, tear that middleware out and replace it with something that maps a `SqlfuError` → an oRPC error whose `code`/`data` reflect the actual kind. Then the UI can render `constraint:unique` differently from `syntax`, etc.
+```ts
+export function createBetterSqlite3Client(db, _options = {}): SyncClient<…> {
+  const raw = buildRawBetterSqlite3Client(db)   // pure driver logic
+  return wrapSyncClientErrors(raw, {system: 'sqlite'})
+}
+```
+
+### No `mapError` escape hatch
+
+YAGNI. Zero users have asked. Classification bugs should be fixed in the library, not papered over per-user. Adding it later is mechanical (one optional option, threaded through the wrapper).
+
+### Classification: three-tier fallback
+
+Numeric extended code → extended string code (`SQLITE_CONSTRAINT_UNIQUE`) → message substring (`'UNIQUE constraint failed'`). Add a one-line comment on the message-substring block naming which adapters motivate it (D1 and expo-sqlite surface plain `Error` with no structured code). The SQLite message strings come from the C library itself, so drift risk is low; per-adapter × per-kind integration sweep catches any that do.
+
+### oRPC middleware rework
+
+`packages/sqlfu/src/ui/router.ts`: replace the current `toClientError` / `uiBase` middleware with a `SqlfuError`-aware version.
+
+```ts
+function kindToOrpcCode(kind: SqlfuErrorKind) {
+  switch (kind) {
+    case 'unique_violation': return 'CONFLICT'
+    case 'transient':        return 'SERVICE_UNAVAILABLE'
+    case 'unknown':          return 'INTERNAL_SERVER_ERROR'
+    default:                 return 'BAD_REQUEST'
+  }
+}
+
+const uiBase = os.$context<UiRouterContext>().use(async ({next}) => {
+  try {
+    return await next()
+  } catch (error) {
+    if (error instanceof ORPCError) throw error
+    if (error instanceof SqlfuError) {
+      throw new ORPCError(kindToOrpcCode(error.kind), {
+        message: error.message,
+        data: {kind: error.kind},
+      })
+    }
+    throw new ORPCError('INTERNAL_SERVER_ERROR', {message: String(error)})
+  }
+})
+```
+
+Delete `toClientError`. Let the five callsites that used it just throw naturally — the middleware catches them. Remove `saveTableRows`' manual `\nSQL: …` enrichment (redundant once `SqlfuError.query.sql` is available).
+
+### Stack-quality guard
+
+One adapter-level integration test in `test/errors.test.ts` asserting `error.stack` contains `__filename`. That covers every sqlite adapter via the same sweep. The OTel recipe test does **not** assert on stack — HTTP dispatch would unwind the test frame anyway, and stack preservation is an instrumentation-layer property, not a transport property. Add a comment in `opentelemetry.test.ts` pointing to `errors.test.ts` for the real sweep.
+
+## Checklist
+
+- [ ] `packages/sqlfu/src/core/errors.ts` — `SqlfuError`, `SqlfuErrorKind`, `mapSqliteDriverError`. No `mapError` option type.
+- [ ] `packages/sqlfu/src/core/adapter-errors.ts` — `wrapSyncClientErrors`, `wrapAsyncClientErrors`.
+- [ ] Rewrite each adapter factory to build a raw client then call `wrapXClientErrors` once at exit. Adapters to update: `better-sqlite3`, `node-sqlite`, `bun`, `libsql`, `libsql-client`, `d1`, `durable-object`, `expo-sqlite`, `sqlite-wasm`.
+- [ ] Export `SqlfuError` and `SqlfuErrorKind` from `packages/sqlfu/src/client.ts` / `index.ts`.
+- [ ] `packages/sqlfu/test/errors.test.ts` — per-adapter × per-kind integration sweep; stack-quality sweep. Cover at least: `syntax`, `missing_table`, `unique_violation`, `foreign_key_violation`, `not_null_violation`. Adapters: better-sqlite3, node:sqlite, libsql sync, @libsql/client async.
+- [ ] `packages/sqlfu/src/ui/router.ts` — replace middleware with the SqlfuError-aware version; delete `toClientError`; remove `saveTableRows` SQL enrichment.
+- [ ] OTel recipe test comment pointing at `errors.test.ts` for the real stack-quality sweep.
+- [ ] `packages/sqlfu/docs/errors.md` — docs page, argument-first ("handle by kind, not by string-match"). Show the `catch + instanceof + .kind` pattern and the `instrument.onError` / Sentry-tagging pattern.
+- [ ] `packages/sqlfu/README.md` — short "Typed errors" capability paragraph with a cross-reference to `docs/errors.md`. No new landing-page panel (this is tentpole-adjacent, not tentpole).
+- [ ] `packages/sqlfu/docs/observability.md` — one-line cross-reference from the existing `onError` recipe.
+
+## Out of scope
+
+- React-side consumption of `error.kind` in the UI (runner output, relations view, etc.). Separate design task — would balloon this PR.
+- Retry / backoff on `transient`.
+- Hook-layer error wrapping (users can do it via `instrument.onError`).
+- Postgres-specific SQLSTATE mapping code.
+- User-supplied `mapError` override.
+- Splitting `transient` into granular kinds.
+- Adding an `auth` kind. (Add when pg lands and it matters.)
+
+## For the next pass
+
+- When a real user hits a `kind === 'unknown'` in production, they'll either (a) report it and we improve the mapper, or (b) need an override hook. If (b), `mapError` is the mechanical follow-up.
+- Render-layer consumption of `.kind`. "How does the UI show `unique_violation` vs `syntax` vs `missing_table`?" That's a UI design task, not a library task.
+- Once pg is on the horizon: add `auth` / `permission_denied`, split `transient` into `connection_lost` / `lock_timeout` if pg actually distinguishes them usefully, and write the pg mapper against SQLSTATE.
+
+## Guesses and assumptions (flag for review)
+
+These are the judgement calls I made on the user's behalf during the grill. The user should spot-check them in review — an objection to any is reason to defer this PR.
+
+- `[guess: low-stakes]` Class name `SqlfuError`. The user's dissatisfaction note pointed at naming, but the sub-claude and I both landed on `SqlfuError` as the cleanest anyway. If the real issue was this specific name, speak up.
+- `[guess: load-bearing]` SQLSTATE alignment argument for kind values. The assumption is that sqlfu will eventually ship a postgres adapter, and every kind string we invent now is a string we'd have to translate later. If pg is a far-off "maybe", this argument weakens — but I don't think that's the case.
+- `[guess: product instinct]` Collapse `primary_key_violation` into `unique_violation`. From an HTTP-code / user-message perspective they're identical; SQLite does separate them at the code level. A SaaS-flavored product would collapse; a lower-level tool would split. sqlfu leans SaaS.
+- `[guess: minor]` Drop the `auth` kind from the initial shipped set. It's rare in SQLite and adding a kind that's never seen in practice costs readers mental overhead. If pg-on-the-horizon is near-term, adding it now is also defensible.
+- `[guess: scope call]` React-side consumption is a separate PR. Including it here would roughly double the PR size and get into "how does the runner UI render a syntax error" design territory.
 
 ## References
 
-- Existing PR: https://github.com/mmkal/sqlfu/pull/13 — `core: SqlfuError taxonomy + stack-quality guard`. Opened from this task but I wasn't happy with the outcome, can't remember why but maybe it was naming — revisit before merging.
+- **This task's PR:** #49 (branch `error-taxonomy-v2`)
+- Previous attempt: PR #13 (branch `error-taxonomy`). Close once this merges.
+- Interview transcript: `tasks/error-taxonomy-v2.interview.md`
+- SQLSTATE reference: https://www.postgresql.org/docs/current/errcodes-appendix.html
 - SQLite error codes: https://www.sqlite.org/rescode.html
-- Postgres SQLSTATE: https://www.postgresql.org/docs/current/errcodes-appendix.html
-- D1 error shape: https://developers.cloudflare.com/d1/observability/debug-d1/
-
-## Not in scope
-
-- Retry / backoff behavior on `transient` errors. That's a separate concern (likely lives at the adapter or user level, not in sqlfu core).
-- Error rewriting / augmentation at the hook layer. The hook already sees the error and can wrap it if the user wants; we don't need to do that for them.
