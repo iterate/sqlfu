@@ -39,12 +39,25 @@ test('multiple adjacent hidden columns keep commas tucked inside their comments'
   );
 });
 
-test('sort clause renders asc/desc with quoted column name', () => {
+test('single sort clause renders asc/desc with quoted column name', () => {
   const state = {
     ...defaultRelationQueryState({tableName: 'posts', allColumns}),
-    sort: {column: 'title', direction: 'desc' as const},
+    sorts: [{column: 'title', direction: 'desc' as const}],
   };
   expect(buildRelationQuery(state)).toBe(`select *\nfrom "posts"\norder by "title" desc\nlimit ${DEFAULT_LIMIT}`);
+});
+
+test('multiple sort clauses render in order, comma-separated', () => {
+  const state = {
+    ...defaultRelationQueryState({tableName: 'posts', allColumns}),
+    sorts: [
+      {column: 'published', direction: 'desc' as const},
+      {column: 'title', direction: 'asc' as const},
+    ],
+  };
+  expect(buildRelationQuery(state)).toBe(
+    `select *\nfrom "posts"\norder by "published" desc, "title" asc\nlimit ${DEFAULT_LIMIT}`,
+  );
 });
 
 describe('filter operator shapes', () => {
@@ -137,7 +150,7 @@ test('combined clauses render in canonical order: select / from / where / order 
     allColumns,
     hiddenColumns: ['body'],
     filters: [{column: 'slug', operator: 'like' as const, value: 'hello%'}],
-    sort: {column: 'title', direction: 'asc' as const},
+    sorts: [{column: 'title', direction: 'asc' as const}],
     limit: 25,
     offset: 50,
   };
@@ -168,7 +181,7 @@ test('combined clauses with a hidden middle column stays syntactically valid', (
     allColumns,
     hiddenColumns: ['title'],
     filters: [{column: 'slug', operator: 'like' as const, value: 'hello%'}],
-    sort: {column: 'id', direction: 'desc' as const},
+    sorts: [{column: 'id', direction: 'desc' as const}],
     limit: 25,
     offset: 0,
   };
@@ -193,7 +206,7 @@ describe('isDefaultRelationQueryState', () => {
   test('any sort makes it non-default', () => {
     const state = {
       ...defaultRelationQueryState({tableName: 'posts', allColumns}),
-      sort: {column: 'id', direction: 'asc' as const},
+      sorts: [{column: 'id', direction: 'asc' as const}],
     };
     expect(isDefaultRelationQueryState(state)).toBe(false);
   });

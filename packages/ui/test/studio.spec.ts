@@ -566,15 +566,16 @@ test('relation rows can be selected and deleted from the grid', async ({page}) =
   await expect(firstRowHeader).toContainText('🗑');
   await expect(page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="2"]')).toHaveClass(/selected-row/);
 
-  page.once('dialog', (dialog) => {
-    expect(dialog.message()).toBe('are you sure you want to delete');
-    dialog.accept();
-  });
+  await firstRowHeader.getByRole('button', {name: 'Delete row 1'}).click();
+  const confirmDialog = page.getByRole('dialog');
+  await expect(confirmDialog.getByText(/Delete row from "posts"\?/)).toBeVisible();
+  await expect(confirmDialog).toContainText('delete from "posts"');
+  await expect(confirmDialog).toContainText('where "id" = 1');
   const [deleteResponse] = await Promise.all([
     page.waitForResponse(
       (response) => response.request().method() === 'POST' && response.url().includes('/api/rpc/table/delete'),
     ),
-    firstRowHeader.getByRole('button', {name: 'Delete row 1'}).click(),
+    confirmDialog.getByRole('button', {name: 'Confirm'}).click(),
   ]);
   expect(deleteResponse.ok(), await deleteResponse.text()).toBe(true);
 
@@ -1180,6 +1181,120 @@ test('opening the Query popover shows a CodeMirror with the generated SQL', asyn
   await expect(page.getByLabel('Relation query editor')).toContainText('limit 100');
 });
 
+test('multi-column sort composes clauses in the order they were added', async ({page}) => {
+  await page.goto('/#table/posts');
+
+  // First sort: published asc
+  await page.getByRole('button', {name: 'Sort', exact: true}).click();
+  await page.getByRole('button', {name: 'Sort by published'}).click();
+  await page.keyboard.press('Escape');
+  // Second sort: title asc (appended)
+  await page.getByRole('button', {name: /^Sort —/}).click();
+  await page.getByRole('button', {name: 'Sort by title'}).click();
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('button', {name: 'Query SQL'}).click();
+  await expect(page.getByLabel('Relation query editor')).toContainText(
+    'order by "published" asc, "title" asc',
+  );
+});
+
+test('delete confirmation cancel leaves the row re-selectable', async ({page}) => {
+  await page.goto('/#table/posts');
+
+  const firstRowHeader = page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="0"]');
+  await firstRowHeader.getByRole('button', {name: 'Select row 1'}).click();
+  await expect(firstRowHeader).toContainText('🗑');
+  await firstRowHeader.getByRole('button', {name: 'Delete row 1'}).click();
+
+  // Cancel the confirmation: the row must go back to its unselected state, not stay armed.
+  await page.getByRole('dialog').getByRole('button', {name: 'Cancel'}).click();
+  await expect(firstRowHeader).toContainText('1');
+  await expect(firstRowHeader).not.toContainText('🗑');
+
+  // And we can arm + cancel + arm again without anything getting stuck.
+  await firstRowHeader.getByRole('button', {name: 'Select row 1'}).click();
+  await expect(firstRowHeader).toContainText('🗑');
+});
+
+test('failed saves surface the underlying SQL error instead of a generic internal server error', async ({page}) => {
+  await page.goto('/#table/posts');
+
+  // Append a row that will violate the UNIQUE(slug) constraint against the seeded hello-world row.
+  const appendCell = page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="0"]');
+  await appendCell.scrollIntoViewIfNeeded();
+  await appendCell.click({position: {x: 8, y: 8}});
+  await fillGridTextCell(page, 3, 1, '999');
+  await fillGridTextCell(page, 3, 2, 'hello-world');
+  await fillGridTextCell(page, 3, 3, 'dup');
+  await fillGridTextCell(page, 3, 4, 'dup');
+  await fillGridTextCell(page, 3, 5, '0');
+
+  const [saveResponse] = await Promise.all([
+    page.waitForResponse(
+      (response) => response.request().method() === 'POST' && response.url().includes('/api/rpc/table/save'),
+    ),
+    page.getByRole('button', {name: 'Save changes'}).click(),
+  ]);
+  expect(saveResponse.ok()).toBe(false);
+
+  const errorView = page.locator('.code-block.error');
+  await expect(errorView).toBeVisible();
+  // The underlying SQLite error should now bubble up, not a generic "Internal server error".
+  await expect(errorView).toContainText(/unique|constraint|posts\.slug/i);
+  await expect(errorView).not.toContainText('Internal server error');
+});
+
+test('after a failed insert, the grid stays editable so the user can fix the row', async ({page}) => {
+  await page.goto('/#table/posts');
+
+  // Trigger append by clicking the "+" cell in the append row.
+  const appendCell = page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="0"]');
+  await appendCell.scrollIntoViewIfNeeded();
+  await appendCell.click({position: {x: 8, y: 8}});
+
+  // Fill only id (leave NOT NULL fields blank) then try to save — server errors out.
+  await fillGridTextCell(page, 3, 1, '999');
+  await expect(page.getByRole('button', {name: 'Save changes'})).toBeVisible();
+
+  const [saveResponse] = await Promise.all([
+    page.waitForResponse(
+      (response) => response.request().method() === 'POST' && response.url().includes('/api/rpc/table/save'),
+    ),
+    page.getByRole('button', {name: 'Save changes'}).click(),
+  ]);
+  expect(saveResponse.ok()).toBe(false);
+  await expect(page.locator('.code-block.error')).toBeVisible();
+
+  // After the error the user should be able to correct the row. Click the slug cell.
+  const slugCell = page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="2"]');
+  await slugCell.click({position: {x: 8, y: 8}});
+  await expect(page.locator('.selected-cell-panel')).toContainText('Cell: slug, row 3');
+});
+
+test('Query popover requires Apply before the query re-runs', async ({page}) => {
+  await page.goto('/#table/posts');
+  // Contribute a change so we're in SQL mode (otherwise the grid uses table.list, not our SQL).
+  await page.getByRole('button', {name: 'Sort', exact: true}).click();
+  await page.getByRole('button', {name: 'Sort by title'}).click();
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('button', {name: 'Query SQL'}).click();
+  await replaceCodeMirrorText(
+    page,
+    'Relation query editor',
+    `select * from posts where slug = 'hello-world' limit 100`,
+  );
+  // Draft shows unapplied state. Grid still shows all rows.
+  await expect(page.getByText(/Unapplied changes/)).toBeVisible();
+  await expect(page.locator('.reactgrid').getByText('draft-notes')).toBeVisible();
+
+  // Apply
+  await page.getByRole('button', {name: 'Apply'}).click();
+  await expect(page.locator('.reactgrid').getByText('draft-notes')).toHaveCount(0);
+  await expect(page.locator('.reactgrid').getByText('hello-world')).toBeVisible();
+});
+
 test('Definition popover shows the relation DDL as read-only SQL', async ({page}) => {
   await page.goto('/#table/posts');
   await page.getByRole('button', {name: 'Table definition'}).click();
@@ -1224,7 +1339,8 @@ test('removing the limit clause surfaces a hard error and refuses to execute', a
   await page.getByRole('button', {name: 'Query SQL'}).click();
   await expect(page.getByLabel('Relation query editor')).toContainText('limit 100');
   await replaceCodeMirrorText(page, 'Relation query editor', 'select * from posts');
-  await expect(page.getByText(/Your query must end with a `limit` clause/)).toBeVisible();
+  await expect(page.getByText(/Your query must end with a/)).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Apply'})).toBeDisabled();
 });
 
 test('custom query that no longer targets this table shows an "Open in SQL Runner" hint', async ({page}) => {

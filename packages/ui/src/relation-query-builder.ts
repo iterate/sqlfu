@@ -47,7 +47,7 @@ export type RelationQueryState = {
   allColumns: string[];
   hiddenColumns: string[];
   filters: RelationQueryFilter[];
-  sort: RelationQuerySort | null;
+  sorts: RelationQuerySort[];
   limit: number;
   offset: number;
 };
@@ -58,7 +58,7 @@ export function defaultRelationQueryState(input: {tableName: string; allColumns:
     allColumns: input.allColumns,
     hiddenColumns: [],
     filters: [],
-    sort: null,
+    sorts: [],
     limit: DEFAULT_LIMIT,
     offset: 0,
   };
@@ -68,7 +68,7 @@ export function isDefaultRelationQueryState(state: RelationQueryState): boolean 
   return (
     state.hiddenColumns.length === 0 &&
     state.filters.length === 0 &&
-    state.sort === null &&
+    state.sorts.length === 0 &&
     state.limit === DEFAULT_LIMIT &&
     state.offset === 0
   );
@@ -81,8 +81,10 @@ export function buildRelationQuery(state: RelationQueryState): string {
   if (state.filters.length > 0) {
     lines.push(`where ${state.filters.map(buildFilterClause).join(' and ')}`);
   }
-  if (state.sort) {
-    lines.push(`order by ${quoteIdent(state.sort.column)} ${state.sort.direction}`);
+  if (state.sorts.length > 0) {
+    lines.push(
+      `order by ${state.sorts.map((s) => `${quoteIdent(s.column)} ${s.direction}`).join(', ')}`,
+    );
   }
   lines.push(state.offset > 0 ? `limit ${state.limit} offset ${state.offset}` : `limit ${state.limit}`);
   return lines.join('\n');

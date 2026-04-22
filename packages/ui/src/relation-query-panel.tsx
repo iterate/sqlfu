@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useEffect, useState} from 'react';
 import useLocalStorageState from 'use-local-storage-state';
 import {useQuery} from '@tanstack/react-query';
 import * as Popover from '@radix-ui/react-popover';
@@ -12,6 +12,7 @@ import {
   operatorTakesValue,
   type FilterOperator,
   type RelationQueryFilter,
+  type RelationQuerySort,
   type RelationQueryState,
 } from './relation-query-builder.js';
 import {SqlCodeMirror} from './sql-codemirror.js';
@@ -62,18 +63,15 @@ export function RelationQueryPanel(input: RelationQueryPanelProps) {
   const effectiveSql = customSql ?? generatedSql;
   const isStructured = customSql === null;
   const isDefault = isStructured && isDefaultRelationQueryState(safeState);
-  const limitError = !hasLimitClause(effectiveSql)
-    ? 'Your query must end with a `limit` clause. Remove manual edits or use the SQL Runner for unbounded queries.'
-    : null;
-  const simpleShapeMatch = isSimpleSelectFromTable(effectiveSql, relation.name);
   const activeFilterCount = safeState.filters.length;
   const hiddenCount = safeState.hiddenColumns.length;
   const visibleColumnCount = allColumns.length - hiddenCount;
 
+  const limitMissing = !hasLimitClause(effectiveSql);
   const runQuery = useQuery({
     queryKey: ['relation-query', relation.name, effectiveSql],
     queryFn: () => input.runSql({sql: effectiveSql}),
-    enabled: !isDefault && !limitError,
+    enabled: !isDefault && !limitMissing,
     placeholderData: (previous) => previous,
   });
 
@@ -83,13 +81,9 @@ export function RelationQueryPanel(input: RelationQueryPanelProps) {
   };
 
   const handleSortToggle = (column: string) => {
-    mutate((s) => {
-      const current = s.sort?.column === column ? s.sort.direction : null;
-      const next = current === null ? 'asc' : current === 'asc' ? 'desc' : null;
-      return {...s, sort: next === null ? null : {column, direction: next}};
-    });
+    mutate((s) => ({...s, sorts: toggleSort(s.sorts, column)}));
   };
-  const handleSortClear = () => mutate((s) => ({...s, sort: null}));
+  const handleSortClear = () => mutate((s) => ({...s, sorts: []}));
 
   const handleFilterApply = (filter: RelationQueryFilter) => {
     mutate((s) => {
@@ -122,12 +116,8 @@ export function RelationQueryPanel(input: RelationQueryPanelProps) {
     setState(defaultRelationQueryState({tableName: relation.name, allColumns}));
     setCustomSql(null);
   };
-  const handleSqlChange = (value: string) => {
-    if (value === generatedSql) {
-      setCustomSql(null);
-      return;
-    }
-    setCustomSql(value);
+  const handleSqlApply = (value: string) => {
+    setCustomSql(value === generatedSql ? null : value);
   };
 
   const toolbar = (
@@ -140,8 +130,7 @@ export function RelationQueryPanel(input: RelationQueryPanelProps) {
       activeFilterCount={activeFilterCount}
       visibleColumnCount={visibleColumnCount}
       effectiveSql={effectiveSql}
-      limitError={limitError}
-      simpleShapeMatch={simpleShapeMatch}
+      generatedSql={generatedSql}
       rowEditing={input.rowEditing}
       onSortToggle={handleSortToggle}
       onSortClear={handleSortClear}
@@ -150,7 +139,7 @@ export function RelationQueryPanel(input: RelationQueryPanelProps) {
       onFilterClearAll={handleFilterClearAll}
       onColumnToggle={handleColumnToggle}
       onColumnsShowAll={handleColumnsShowAll}
-      onSqlChange={handleSqlChange}
+      onSqlApply={handleSqlApply}
     />
   );
 
@@ -214,8 +203,7 @@ function RelationToolbar(input: {
   activeFilterCount: number;
   visibleColumnCount: number;
   effectiveSql: string;
-  limitError: string | null;
-  simpleShapeMatch: boolean;
+  generatedSql: string;
   rowEditing: RelationRowEditing | undefined;
   onSortToggle: (column: string) => void;
   onSortClear: () => void;
@@ -224,9 +212,14 @@ function RelationToolbar(input: {
   onFilterClearAll: () => void;
   onColumnToggle: (column: string) => void;
   onColumnsShowAll: () => void;
-  onSqlChange: (value: string) => void;
+  onSqlApply: (value: string) => void;
 }) {
-  const sortLabel = input.state.sort ? `${input.state.sort.column} ${input.state.sort.direction}` : null;
+  const sortLabel = (() => {
+    if (input.state.sorts.length === 0) return null;
+    const head = input.state.sorts[0]!;
+    const extra = input.state.sorts.length - 1;
+    return extra > 0 ? `${head.column} ${head.direction} +${extra}` : `${head.column} ${head.direction}`;
+  })();
   const dirty = input.rowEditing?.dirty ?? false;
   return (
     <div className="rqp-toolbar" role="toolbar" aria-label="Relation query toolbar">
@@ -276,7 +269,7 @@ function RelationToolbar(input: {
           <Popover.Content className="rqp-popover" align="start" sideOffset={6}>
             <SortManager
               allColumns={input.allColumns}
-              sort={input.state.sort}
+              sorts={input.state.sorts}
               onToggle={input.onSortToggle}
               onClear={input.onSortClear}
             />
@@ -329,25 +322,12 @@ function RelationToolbar(input: {
         </Popover.Trigger>
         <Popover.Portal>
           <Popover.Content className="rqp-popover rqp-popover-wide" align="start" sideOffset={6}>
-            <div className="rqp-query-body">
-              <SqlCodeMirror
-                value={input.effectiveSql}
-                ariaLabel="Relation query editor"
-                relations={[input.relation]}
-                onChange={input.onSqlChange}
-                height="7rem"
-              />
-              <div className="rqp-query-message" aria-live="polite">
-                {input.limitError ? (
-                  <div className="error-view rqp-query-message-inner">{input.limitError}</div>
-                ) : !input.isStructured && !input.simpleShapeMatch ? (
-                  <div className="info-callout rqp-query-message-inner">
-                    Your query is no longer a simple <code>select … from {input.relation.name}</code>. Consider opening
-                    it in the <a href="#sql">full SQL Runner</a> for more control.
-                  </div>
-                ) : null}
-              </div>
-            </div>
+            <QueryPopoverBody
+              relation={input.relation}
+              committedSql={input.effectiveSql}
+              generatedSql={input.generatedSql}
+              onApply={input.onSqlApply}
+            />
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
@@ -405,6 +385,57 @@ function RelationToolbar(input: {
           </button>
         </>
       ) : null}
+    </div>
+  );
+}
+
+function QueryPopoverBody(input: {
+  relation: StudioRelation;
+  committedSql: string;
+  generatedSql: string;
+  onApply: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(input.committedSql);
+  useEffect(() => {
+    setDraft(input.committedSql);
+  }, [input.committedSql]);
+
+  const limitMissing = !hasLimitClause(draft);
+  const simpleShapeMatch = isSimpleSelectFromTable(draft, input.relation.name);
+  const dirty = draft !== input.committedSql;
+  const apply = () => {
+    if (!limitMissing) input.onApply(draft);
+  };
+  return (
+    <div className="rqp-query-body">
+      <SqlCodeMirror
+        value={draft}
+        ariaLabel="Relation query editor"
+        relations={[input.relation]}
+        onChange={setDraft}
+        onExecute={apply}
+        height="7rem"
+      />
+      <div className="rqp-query-message" aria-live="polite">
+        {limitMissing ? (
+          <div className="error-view rqp-query-message-inner">
+            Your query must end with a <code>limit</code> clause. Apply is disabled until a limit is present.
+          </div>
+        ) : !simpleShapeMatch ? (
+          <div className="info-callout rqp-query-message-inner">
+            Your query is no longer a simple <code>select … from {input.relation.name}</code>. Consider opening it in
+            the <a href="#sql">full SQL Runner</a> for more control.
+          </div>
+        ) : null}
+      </div>
+      <div className="rqp-query-actions">
+        <span className="rqp-query-hint">
+          {dirty ? 'Unapplied changes.' : 'No changes.'} <span className="rqp-query-shortcut">⌘↵</span> to apply.
+        </span>
+        <button type="button" className="rqp-pill-button primary" onClick={apply} disabled={!dirty || limitMissing}>
+          Apply
+        </button>
+      </div>
     </div>
   );
 }
@@ -505,15 +536,19 @@ function FilterManager(input: {
 
 function SortManager(input: {
   allColumns: string[];
-  sort: RelationQueryState['sort'];
+  sorts: RelationQuerySort[];
   onToggle: (column: string) => void;
   onClear: () => void;
 }) {
+  const indexByColumn = new Map(input.sorts.map((s, i) => [s.column, i] as const));
   return (
     <div className="rqp-popover-body" role="dialog" aria-label="Sort">
+      <p className="rqp-popover-hint">Click to cycle asc → desc → off. Order of clicks sets the sort precedence.</p>
       <div className="rqp-sort-list">
         {input.allColumns.map((column) => {
-          const direction = input.sort?.column === column ? input.sort.direction : null;
+          const index = indexByColumn.get(column);
+          const sort = index != null ? input.sorts[index] : undefined;
+          const direction = sort?.direction ?? null;
           return (
             <button
               key={column}
@@ -524,16 +559,19 @@ function SortManager(input: {
               aria-label={`Sort by ${column}${direction ? ` (${direction})` : ''}`}
             >
               <span className="rqp-sort-name">{column}</span>
-              <span className="rqp-sort-direction" aria-hidden="true">
-                {direction === 'asc' ? '↑' : direction === 'desc' ? '↓' : '↕'}
+              <span className="rqp-sort-meta">
+                {index != null ? <span className="rqp-sort-position">{index + 1}</span> : null}
+                <span className="rqp-sort-direction" aria-hidden="true">
+                  {direction === 'asc' ? '↑' : direction === 'desc' ? '↓' : '↕'}
+                </span>
               </span>
             </button>
           );
         })}
       </div>
-      {input.sort ? (
+      {input.sorts.length > 0 ? (
         <button type="button" className="rqp-link-button" onClick={input.onClear}>
-          Clear sort
+          Clear all
         </button>
       ) : null}
     </div>
@@ -606,15 +644,35 @@ function PerPageMenu(input: {value: number; onChange: (value: number) => void}) 
   );
 }
 
-function reconcileState(state: RelationQueryState, tableName: string, allColumns: string[]): RelationQueryState {
+function toggleSort(sorts: RelationQuerySort[], column: string): RelationQuerySort[] {
+  const index = sorts.findIndex((s) => s.column === column);
+  if (index < 0) {
+    return [...sorts, {column, direction: 'asc'}];
+  }
+  const current = sorts[index]!;
+  if (current.direction === 'asc') {
+    return sorts.map((s, i) => (i === index ? {...s, direction: 'desc'} : s));
+  }
+  return sorts.filter((_, i) => i !== index);
+}
+
+type LegacyState = Partial<RelationQueryState> & {sort?: RelationQuerySort | null};
+
+function reconcileState(state: LegacyState, tableName: string, allColumns: string[]): RelationQueryState {
   const columnSet = new Set(allColumns);
+  const base = defaultRelationQueryState({tableName, allColumns});
+  // Tolerate old localStorage shape where `sort` was singular nullable.
+  const sorts = state.sorts ?? (state.sort ? [state.sort] : base.sorts);
   return {
+    ...base,
     ...state,
     tableName,
     allColumns,
-    hiddenColumns: state.hiddenColumns.filter((c) => columnSet.has(c)),
-    filters: state.filters.filter((f) => columnSet.has(f.column)),
-    sort: state.sort && columnSet.has(state.sort.column) ? state.sort : null,
+    hiddenColumns: (state.hiddenColumns ?? []).filter((c) => columnSet.has(c)),
+    filters: (state.filters ?? []).filter((f) => columnSet.has(f.column)),
+    sorts: sorts.filter((s) => columnSet.has(s.column)),
+    limit: typeof state.limit === 'number' ? state.limit : base.limit,
+    offset: typeof state.offset === 'number' ? state.offset : base.offset,
   };
 }
 

@@ -1072,16 +1072,35 @@ function TablePanel(input: {relation: StudioRelation}) {
       rowKeys: displayedRowKeys,
     });
   };
-  const handleDeleteRow = (rowIndex: number) => {
+  const handleDeleteRow = async (rowIndex: number) => {
     const rowKey = displayedRowKeys[rowIndex];
     const originalRow = displayedOriginalRows[rowIndex];
     if (!rowKey || !originalRow) {
       return;
     }
     if (rowKey.kind === 'new') {
+      const row = displayedRows[rowIndex];
+      const columnNames = input.relation.columns.map((column) => column.name);
+      if (!row || isEmptyDraftRow(row, columnNames)) {
+        setDraftRows(displayedRows.filter((_, index) => index !== rowIndex));
+        return;
+      }
+      const result = await confirmationDialogStore.confirm({
+        title: 'Discard unsaved row?',
+        body: 'This row has values you have not saved yet. Discard them?',
+        bodyType: 'markdown',
+      });
+      if (!result.confirmed) return;
       setDraftRows(displayedRows.filter((_, index) => index !== rowIndex));
       return;
     }
+    const previewSql = buildDeleteRowPreviewSql(input.relation.name, rowKey);
+    const result = await confirmationDialogStore.confirm({
+      title: `Delete row from "${input.relation.name}"?`,
+      body: previewSql,
+      bodyType: 'sql',
+    });
+    if (!result.confirmed) return;
     deleteRowMutation.mutate({
       relationName: input.relation.name,
       page: 0,
@@ -1702,9 +1721,7 @@ function DataTable(input: {
           ariaLabel: selectedRowIndex === rowIndex ? `Delete row ${rowIndex + 1}` : `Select row ${rowIndex + 1}`,
           onClick: () => {
             if (selectedRowIndex === rowIndex) {
-              if (!window.confirm('are you sure you want to delete')) {
-                return;
-              }
+              // Unarm before firing so a cancelled confirmation leaves no stuck state.
               setSelectedRowIndex(null);
               input.onDeleteRow?.(rowIndex);
               return;
@@ -1843,7 +1860,14 @@ function DataTable(input: {
           customCellTemplates={{rowAction: rowActionCellTemplate}}
           columns={gridColumns}
           rows={gridRows}
-          focusLocation={pendingFocusRef.current ?? undefined}
+          focusLocation={
+            pendingFocusRef.current &&
+            pendingFocusRef.current.rowId >= 0 &&
+            pendingFocusRef.current.rowId < input.rows.length &&
+            input.columns.includes(pendingFocusRef.current.columnId)
+              ? pendingFocusRef.current
+              : undefined
+          }
           stickyTopRows={1}
           stickyLeftColumns={1}
           enableRangeSelection
@@ -2227,6 +2251,39 @@ function getSchemaCardStatusIcon(card: SchemaCheckResponse['cards'][number]) {
 
 function isSameValue(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function isEmptyDraftRow(row: Record<string, unknown>, columnNames: string[]): boolean {
+  return columnNames.every((column) => {
+    const value = row[column];
+    return value === null || value === undefined || value === '';
+  });
+}
+
+function buildDeleteRowPreviewSql(
+  relationName: string,
+  rowKey: {kind: 'rowid'; value: number} | {kind: 'primaryKey'; values: Readonly<Record<string, unknown>>} | {kind: 'new'; value: string},
+): string {
+  const quoted = `"${relationName.replaceAll('"', '""')}"`;
+  if (rowKey.kind === 'rowid') {
+    return `delete from ${quoted}\nwhere rowid = ${rowKey.value};`;
+  }
+  if (rowKey.kind === 'primaryKey') {
+    const conditions = Object.entries(rowKey.values).map(
+      ([column, value]) =>
+        value == null
+          ? `"${column.replaceAll('"', '""')}" is null`
+          : `"${column.replaceAll('"', '""')}" = ${formatSqlLiteralPreview(value)}`,
+    );
+    return `delete from ${quoted}\nwhere ${conditions.join(' and ')};`;
+  }
+  return `-- unsaved row; nothing to delete`;
+}
+
+function formatSqlLiteralPreview(value: unknown): string {
+  if (typeof value === 'number' || typeof value === 'bigint') return String(value);
+  if (typeof value === 'boolean') return value ? '1' : '0';
+  return `'${String(value).replaceAll("'", "''")}'`;
 }
 
 function normalizeStoredTableDraft(
