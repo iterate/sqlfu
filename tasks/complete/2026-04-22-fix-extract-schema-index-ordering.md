@@ -1,9 +1,13 @@
 ---
-status: ready
+status: done
 size: small
 ---
 
 # Fix `extractSchema` replays indexes before tables
+
+## Status summary
+
+Fix shipped. One-line change in `extractSchema` (`packages/sqlfu/src/core/sqlite.ts`) replaces `order by type, name` with a `case` expression that orders `table → view → index → trigger`. A new test in `packages/sqlfu/test/core-sqlite.test.ts` asserts the extracted SQL replays cleanly against an empty database (covers the original iterate/iterate#1278 failure mode). One inline snapshot in `migrations.test.ts` was updated to reflect the new correct ordering. Pre-existing formatter test failures on `origin/main` are unrelated to this change.
 
 ## Summary
 
@@ -59,12 +63,12 @@ Rationale for this ordering (stricter than the iterate PR's suggested `case when
 
 ## Checklist
 
-- [ ] Add red test in `packages/sqlfu/test/core-sqlite.test.ts`
-- [ ] Verify it fails on main
-- [ ] Update `order by` in `extractSchema`
-- [ ] Test passes
-- [ ] Run `pnpm --filter sqlfu test` to confirm no snapshot regressions in `migrations/edge-cases.test.ts` / `migrations/migrations.test.ts`
-- [ ] Update any inline snapshots whose ordering shifts (expected — existing snapshots may have only tables so they shouldn't move, but check)
+- [x] Add red test in `packages/sqlfu/test/core-sqlite.test.ts` _replays extracted SQL against a fresh db; covers table+index+view+trigger_
+- [x] Verify it fails on main _`SqliteError: no such table: main.t`_
+- [x] Update `order by` in `extractSchema` _explicit `case type ... end, name`_
+- [x] Test passes
+- [x] Run `pnpm --filter sqlfu test` to confirm no snapshot regressions _only the expected extractSchema snapshot in `migrations.test.ts:608` moved; 840 pre-existing formatter failures unchanged_
+- [x] Update any inline snapshots whose ordering shifts _one, `goto > preserves surviving data while other schema objects change`, now `create table person(...); create index person_name_idx on person(name);`_
 
 ## Out of scope
 
