@@ -5,13 +5,11 @@
  *
  * Why this file exists: Node's built-in type-stripping (as of 24.x) erases
  * type annotations but does NOT rewrite NodeNext-style `.js` import
- * specifiers to `.ts`, so `.oxlintrc.json` pointing at the raw `.ts` file
+ * specifiers to `.ts`, so `eslint.config.js` pointing at the raw `.ts` file
  * would fail at import time. tsx's ESM loader does rewrite those specifiers,
  * so we register it once at module-load and then import the plugin.
  *
- * Consumed by:
- *   - `.oxlintrc.json`  via `jsPlugins: [{name, specifier: './scripts/dogfood-lint-plugin.js'}]`
- *   - `eslint.config.js` via `import sqlfuPlugin from './scripts/dogfood-lint-plugin.js'`
+ * Consumed by `eslint.config.js` at the repo root.
  *
  * Downstream packages consume `sqlfu/lint-plugin` from the published `dist/`,
  * which is a plain JS module and needs no tsx. This file is a repo-local

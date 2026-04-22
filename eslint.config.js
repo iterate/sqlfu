@@ -1,13 +1,14 @@
 /**
- * ESLint config for this repo. Exists ONLY to lint standalone `.sql` files
- * via sqlfu's `sql-file` processor — oxlint (used for TS/JS) doesn't support
- * custom processors yet (known limitation of the jsPlugins alpha as of March
- * 2026: https://oxc.rs/docs/guide/usage/linter/js-plugins.html).
+ * ESLint config for this repo.
  *
- * TS/JS files are linted by oxlint via `.oxlintrc.json`; this config should
- * not duplicate those rules. If oxlint ships processor support later, we can
- * fold everything back into one tool and delete this file.
+ * ESLint is the sole linter — it runs sqlfu's own lint-plugin rules on both
+ * TS/JS source (inline SQL templates) and standalone `.sql` files (via the
+ * plugin's `sql-file` processor). oxfmt handles formatting; TypeScript handles
+ * type errors. We don't layer generic lint rules on top — keep the lint loop
+ * fast and focused on sqlfu-specific checks.
  */
+
+import tseslint from 'typescript-eslint';
 
 import sqlfu from './scripts/dogfood-lint-plugin.js';
 
@@ -25,6 +26,34 @@ export default [
       'packages/sqlfu/test/formatter/**',
       'packages/sqlfu/test/schemadiff/fixtures/**',
     ],
+  },
+  {
+    files: ['**/*.{ts,tsx,mts,cts}'],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {ecmaVersion: 2022, sourceType: 'module'},
+    },
+    plugins: {sqlfu},
+    rules: {
+      'sqlfu/no-unnamed-inline-sql': 'error',
+      'sqlfu/format-sql': 'error',
+    },
+  },
+  {
+    files: ['**/*.{js,jsx,mjs,cjs}'],
+    plugins: {sqlfu},
+    rules: {
+      'sqlfu/no-unnamed-inline-sql': 'error',
+      'sqlfu/format-sql': 'error',
+    },
+  },
+  {
+    // Test files often keep inline SQL compact for readability; the formatter
+    // would reflow `select b from a` to two lines. Leave them alone.
+    files: ['**/*.test.{ts,tsx,js,jsx}', '**/test/**', '**/tests/**'],
+    rules: {
+      'sqlfu/format-sql': 'off',
+    },
   },
   ...sqlfu.configs.sqlFiles,
 ];
