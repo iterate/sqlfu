@@ -36,6 +36,7 @@ import type {
 import {columnWidthAlgorithm} from './column-width.js';
 import type {UiRouter} from 'sqlfu/ui/browser';
 import {SqlCodeMirror, TextCodeMirror, TextDiffCodeMirror} from './sql-codemirror.js';
+import {RelationQueryPanel} from './relation-query-panel.js';
 import {
   Dialog,
   DialogContent,
@@ -579,11 +580,7 @@ function Studio() {
         ) : route.kind === 'query' && selectedQuery ? (
           <QueryPanel entry={selectedQuery} relations={schemaQuery.data.relations} />
         ) : selectedTable ? (
-          <TablePanel
-            key={`${selectedTable.name}/${route.kind === 'table' ? route.page : 0}`}
-            relation={selectedTable}
-            page={route.kind === 'table' ? route.page : 0}
-          />
+          <TablePanel key={selectedTable.name} relation={selectedTable} />
         ) : (
           <EmptyState />
         )}
@@ -1018,16 +1015,16 @@ function MigrationDetail(input: {
   );
 }
 
-function TablePanel(input: {relation: StudioRelation; page: number}) {
+function TablePanel(input: {relation: StudioRelation}) {
   const tableListOptions = orpc.table.list.queryOptions({
     input: {
       relationName: input.relation.name,
-      page: input.page,
+      page: 0,
     },
   });
   const rowsQuery = useSuspenseQuery(tableListOptions);
   const [draftRows, setDraftRows] = useLocalStorageState<Record<string, unknown>[]>(
-    `sqlfu-ui/table-draft/${input.relation.name}/${input.page}`,
+    `sqlfu-ui/table-draft/${input.relation.name}/0`,
     {
       defaultValue: rowsQuery.data.rows,
     },
@@ -1058,7 +1055,7 @@ function TablePanel(input: {relation: StudioRelation; page: number}) {
     ...rowsQuery.data.rowKeys,
     ...displayedRows.slice(rowsQuery.data.rows.length).map((_, index) => ({
       kind: 'new' as const,
-      value: `new-${input.relation.name}-${input.page}-${index}`,
+      value: `new-${input.relation.name}-0-${index}`,
     })),
   ];
   const rowsDirty = JSON.stringify(displayedRows) !== JSON.stringify(displayedOriginalRows);
@@ -1069,7 +1066,7 @@ function TablePanel(input: {relation: StudioRelation; page: number}) {
   const handleSaveRows = () => {
     saveRowsMutation.mutate({
       relationName: input.relation.name,
-      page: input.page,
+      page: 0,
       originalRows: displayedOriginalRows.map((row) => ({...row})),
       rows: displayedRows.map((row) => ({...row})),
       rowKeys: displayedRowKeys,
@@ -1087,7 +1084,7 @@ function TablePanel(input: {relation: StudioRelation; page: number}) {
     }
     deleteRowMutation.mutate({
       relationName: input.relation.name,
-      page: input.page,
+      page: 0,
       rowKey,
       originalRow,
     });
@@ -1112,7 +1109,6 @@ function TablePanel(input: {relation: StudioRelation; page: number}) {
         <div className="card-title-row">
           <div className="card-title">Data</div>
           <div className="pill-row">
-            <span className="pill">Page {input.page + 1}</span>
             {rowsQuery.data.editable && rowsDirty ? (
               <>
                 <button
@@ -1138,32 +1134,30 @@ function TablePanel(input: {relation: StudioRelation; page: number}) {
           </div>
         </div>
         {tableMutationError ? <ErrorView error={tableMutationError} /> : null}
-        <DataTable
-          storageKey={`relation/${input.relation.name}`}
-          columns={rowsQuery.data.columns}
-          rowKeys={displayedRowKeys}
-          originalRows={displayedOriginalRows}
-          rows={displayedRows}
-          editable={rowsQuery.data.editable}
-          editableColumns={Object.fromEntries(
-            input.relation.columns.map((column) => [column.name, !column.primaryKey]),
+        <RelationQueryPanel
+          relation={input.relation}
+          runSql={(runInput) => orpcClient.sql.run(runInput)}
+          renderDefaultDataTable={() => (
+            <DataTable
+              storageKey={`relation/${input.relation.name}`}
+              columns={rowsQuery.data.columns}
+              rowKeys={displayedRowKeys}
+              originalRows={displayedOriginalRows}
+              rows={displayedRows}
+              editable={rowsQuery.data.editable}
+              editableColumns={Object.fromEntries(
+                input.relation.columns.map((column) => [column.name, !column.primaryKey]),
+              )}
+              onRowsChange={setDraftRows}
+              onAppendRow={() => setDraftRows([...displayedRows, {...emptyRowTemplate}])}
+              onDeleteRow={handleDeleteRow}
+              showSelectedCellDetail
+            />
           )}
-          onRowsChange={setDraftRows}
-          onAppendRow={() => setDraftRows([...displayedRows, {...emptyRowTemplate}])}
-          onDeleteRow={handleDeleteRow}
-          showSelectedCellDetail
+          renderSqlDataTable={(args) => (
+            <DataTable storageKey={args.storageKey} columns={args.columns} rows={args.rows} showSelectedCellDetail />
+          )}
         />
-        <div className="pager">
-          <a
-            className={input.page === 0 ? 'button disabled' : 'button'}
-            href={`#table/${encodeURIComponent(input.relation.name)}/${Math.max(0, input.page - 1)}`}
-          >
-            Previous
-          </a>
-          <a className="button" href={`#table/${encodeURIComponent(input.relation.name)}/${input.page + 1}`}>
-            Next
-          </a>
-        </div>
       </section>
 
       {input.relation.sql ? (
@@ -2354,7 +2348,7 @@ function parseHash(hash: string): Route {
     return {kind: 'schema'};
   }
 
-  const [kind, first, second] = value.split('/').map(decodeURIComponent);
+  const [kind, first] = value.split('/').map(decodeURIComponent);
   if (kind === 'schema') {
     return {kind: 'schema'};
   }
@@ -2362,7 +2356,7 @@ function parseHash(hash: string): Route {
     return {kind: 'sql'};
   }
   if (kind === 'table' && first) {
-    return {kind: 'table', name: first, page: Number(second ?? '0') || 0};
+    return {kind: 'table', name: first};
   }
   if (kind === 'query' && first) {
     return {kind: 'query', id: first};
@@ -2602,7 +2596,6 @@ type Route =
   | {
       kind: 'table';
       name: string;
-      page: number;
     }
   | {
       kind: 'query';
