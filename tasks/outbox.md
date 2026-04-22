@@ -24,7 +24,7 @@ Scope for this PR: ship a first-pass, feature-complete-enough-to-be-useful outbo
 
 - Two tables, created+owned by the outbox on first use:
   - `sqlfu_outbox_events` — append-only event log. One row per `emit()` call. Columns: id, name, payload (JSON), context (JSON, includes causation), environment, created_at.
-  - `sqlfu_outbox_jobs` — one row per (event × consumer) pair. Columns: id, event_id, consumer_name, run_after (unix seconds), vt_until (visibility-timeout-until, unix seconds), attempt, status (`pending` | `running` | `success` | `failed`), last_error, processing_results (JSON), created_at, updated_at.
+  - `sqlfu_outbox_jobs` — one row per (event × consumer) pair. Columns: id, event_id, consumer_name, run_after (unix seconds), vt_until (visibility-timeout-until, unix seconds), attempt, status (`pending` | `running` | `success` | `failed`), last_error, created_at, updated_at.
 - Emitter API (transactional by design):
   - `emit(client, {name, payload})` inserts one event row + one job row per registered consumer whose `when({payload})` returns truthy, all in the same transaction.
   - Inside a consumer handler, `emit` reaches the ambient consumer context (AsyncLocalStorage) so the new event's `context.causedBy` is set automatically.
@@ -81,7 +81,7 @@ The integration test drives the worker via `tick()`, virtual clock, and asserts:
 - [x] fleshed-out spec committed (this file) _(commit ad1acf0)_
 - [x] failing integration test for the saas scenario _(commit 14750c9, test/outbox/outbox.test.ts)_
 - [x] tables + schema bootstrap _(src/outbox/index.ts SCHEMA_DDL)_
-- [x] `emit()` + causation via AsyncLocalStorage _(src/outbox/index.ts causationStorage)_
+- [x] `emit()` + causation via explicit `emit` helper threaded into each handler _(`ConsumerHandlerInput.emit` in src/outbox/index.ts; the AsyncLocalStorage approach was dropped to keep the module dep-free for browsers/edge/workers — see commit 17e0c93)_
 - [x] `defineConsumer()` + `tick()` deterministic driver _(no real timers in tests; works today via a virtual clock injected through `now`)_
 - [x] retry policy — fixed delay via `{retry: true, delay: '5s'}`. Exponential backoff is left as a follow-up helper; any user can already express it as a function of `job.attempt`.
 - [x] delayed jobs _(`delay` option on the consumer writes `run_after` in the future)_

@@ -2,7 +2,7 @@
 
 >⚠️ Extra-experimental warning! The shape of this module is still in flux and will likely change. The basic principle of events + consumers will remain, so migrations will be easy but will be needed if you use this as-is.
 
-`sqlfu/outbox` is a small transactional-outbox / job-queue built on top of the same sqlfu client you already use. It's a single-file implementation (~300 lines) that gives you:
+`sqlfu/outbox` is a small transactional-outbox / job-queue built on top of the same sqlfu client you already use. It's a single-file implementation that gives you:
 
 - **Transactional emit**: the event row is inserted in the same transaction as your domain write, so "either both happen or neither does".
 - **Per-consumer fan-out**: one emitted event spawns one job per registered consumer.

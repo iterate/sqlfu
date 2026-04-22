@@ -78,7 +78,7 @@ export type ConsumerDefinition<TPayload, TEvents extends EventMap = EventMap> = 
   delay?: DelayFn<TPayload>;
   retry?: RetryFn;
   visibilityTimeout?: TimePeriod;
-  handler: (input: ConsumerHandlerInput<TPayload, TEvents>) => Promise<void | string>;
+  handler: (input: ConsumerHandlerInput<TPayload, TEvents>) => Promise<void>;
 };
 
 export type OutboxDefaults = {
@@ -279,9 +279,8 @@ export function createOutbox<TEvents extends EventMap>(config: OutboxConfig<TEve
       // Conflating them once caused a successful handler side-effect to be retried when the status
       // update failed.
       let handlerError: unknown = null;
-      let handlerResult: void | string | undefined;
       try {
-        handlerResult = await consumer.handler({
+        await consumer.handler({
           payload,
           eventId: job.event_id,
           eventName: job.event_name,
@@ -293,7 +292,7 @@ export function createOutbox<TEvents extends EventMap>(config: OutboxConfig<TEve
       }
 
       if (handlerError == null) {
-        await bookkeep(job, () => markSuccess(job, handlerResult));
+        await bookkeep(job, () => markSuccess(job));
         result.succeeded += 1;
       } else {
         const newAttempt = job.attempt + 1;
@@ -336,7 +335,7 @@ export function createOutbox<TEvents extends EventMap>(config: OutboxConfig<TEve
     return undefined;
   }
 
-  async function markSuccess(job: ClaimedJob, _handlerResult: void | string | undefined): Promise<void> {
+  async function markSuccess(job: ClaimedJob): Promise<void> {
     await client.run({
       sql: `update sqlfu_outbox_jobs set status = 'success', attempt = ?, last_error = null, updated_at = ? where id = ?`,
       args: [job.attempt + 1, now().getTime(), job.id],
@@ -412,7 +411,6 @@ create table if not exists sqlfu_outbox_jobs (
   attempt integer not null default 0,
   status text not null default 'pending',
   last_error text,
-  processing_results text,
   created_at integer not null,
   updated_at integer not null
 );
