@@ -148,18 +148,6 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@24.12.0)(vite@7.3.2(@types/node@24.12.0)(lightningcss@1.32.0)(sass@1.99.0)(tsx@4.21.0)(yaml@2.8.3))
 
-  packages/sqlfu-vscode:
-    devDependencies:
-      '@types/node':
-        specifier: ^24.5.2
-        version: 24.12.0
-      '@types/vscode':
-        specifier: ^1.90.0
-        version: 1.116.0
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-
   packages/ui:
     dependencies:
       '@codemirror/autocomplete':
@@ -3074,9 +3062,6 @@ packages:
 
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
-
-  '@types/vscode@1.116.0':
-    resolution: {integrity: sha512-sYHp4MO6BqJ2PD7Hjt0hlIS3tMaYsVPJrd0RUjDJ8HtOYnyJIEej0bLSccM8rE77WrC+Xox/kdBwEFDO8MsxNA==}
 
   '@types/ws@8.18.1':
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
@@ -8987,8 +8972,6 @@ snapshots:
   '@types/unist@2.0.11': {}
 
   '@types/unist@3.0.3': {}
-
-  '@types/vscode@1.116.0': {}
 
   '@types/ws@8.18.1':
     dependencies:
