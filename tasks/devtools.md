@@ -11,6 +11,14 @@ MVP shipped: `sqlfu/no-unnamed-inline-sql` lint rule + vscode scaffold. Round 2 
 
 **Round 4 (2026-04-22, same-day correction):** the walker script from Round 3 was the wrong shape. ESLint has a native extension point for exactly this use case: **processors** (not custom parsers — we don't want an ESTree-compatible SQL AST, we want "take SQL string, emit formatted SQL string"). Ripped out `scripts/lint-sql-files.ts`. `sqlfu/lint-plugin` now exports a `sql-file` processor + `format-sql-file` rule + a `configs.sqlFiles` flat-config preset. `eslint '**/*.sql'` (and `--fix`) now runs the formatter the same way it lints the inline-SQL rules. oxlint still can't help here — processors are on their "not supported yet" list in the March 2026 JS plugins alpha. Also: the oxlint config no longer references `packages/sqlfu/dist/...`. A new `scripts/dogfood-lint-plugin.js` uses `tsx/esm/api`'s `register()` to load the plugin's TypeScript source at runtime, so the plugin is dogfooded straight from `src/` with no build step in the lint loop.
 
+**Round 5 (2026-04-22, later same day):** Round 4 left the repo running two linters (oxlint for TS/JS, ESLint for `.sql`), which was a patched flow — `pnpm lint:fix` short-circuited whenever oxlint found an error before ESLint ever ran. And the plugin's public surface had accumulated verbose names and messageId indirection. Cleanup pass:
+
+1. **Dropped oxlint entirely.** `.oxlintrc.json` gone; `oxlint` out of devDependencies and scripts. ESLint is now the sole linter. Added `typescript-eslint` as the parser for `.ts/.tsx` (no generic rules — oxfmt covers formatting, tsc covers types; ESLint is scoped to sqlfu's plugin rules only).
+2. **Renamed `no-unnamed-inline-sql` → `query-naming`.** Shorter, more neutral, better describes the general "SQL reaching the client should have a name" problem — room to grow the rule without breaking the name.
+3. **Collapsed `format-sql` + `format-sql-file` into one `format-sql` rule.** The rule's `create()` now dispatches on AST shape: `TaggedTemplateExpression` with the processor's `__sqlfuSqlFile` tag → whole-file formatter path; everything else → inline-template path (unchanged). Processor key renamed `sql-file` → `sql` (`plugin.processors.sql`) so the config site reads as `processor: 'sqlfu/sql'`.
+4. **Dropped `messageId`.** Both rules have a single message per code path, so the indirection was noise. Replaced with inline `message:` strings on `context.report`, `meta.messages` entries deleted.
+5. **Rewrote tests with ESLint's `RuleTester`.** The previous `Linter.verify` / `verifyAndFix`-based helpers were an inherited scaffold from the first commit. Every per-rule case is now a declarative RuleTester `valid`/`invalid` block (automatic fixer verification via `output`); five integration tests remain for the `sql` processor's whole-file round-trip because RuleTester can't drive processors.
+
 **Restructure (post PR #16 review):** the lint plugin was originally shipped as a separate `@sqlfu/eslint-plugin` package. The user rejected that shape — the rule is now bundled inside the main `sqlfu` package as a single-file export. Originally at `sqlfu/eslint` with **zero runtime dependencies**; the round-2 changes introduce a runtime import of `sqlfu`'s formatter (~60 kB bundled), so the module is now more than a shim — hence the rename to `./lint-plugin`.
 
 ## Round 2 (2026-04-20)
@@ -177,6 +185,47 @@ The Round 3 design reasoning was wrong. Previous agent claimed ESLint couldn't p
 - **ESLint processor-extracted blocks do NOT inherit rules from the parent config block.** The rule config has to live on a config block that matches the synthetic block filename (`**/*.sql/**/*.js`), NOT on the block that attaches the processor (`**/*.sql`). First cut put the rule on the `.sql` block and it silently did nothing — preprocess ran, the synthetic JS block was parsed, but no rule ever fired on it. The [ESLint processor docs](https://eslint.org/docs/latest/extend/custom-processors) are explicit about this but easy to miss.
 - **`Linter.verify()` doesn't auto-apply processors from flat config.** Tests have to go through the `ESLint` class (or pass `preprocess`/`postprocess` to `Linter.verify` directly) to exercise the processor path. Tests were updated accordingly; the old `Linter.verify`-based tests still cover the individual rules.
 - **JSDoc doesn't tolerate `**/*.sql`-style glob patterns inside block comments.** esbuild's loader parses `/**` as JSDoc-start; a glob containing `**/*.sql/**` confuses it. Switched the affected doc comment on `configs.sqlFiles` to `//` line comments to sidestep the issue.
+
+### Round 5 (2026-04-22, cleanup)
+
+Commits (in order) on `devtools`:
+
+| commit | summary |
+|---|---|
+| `da3c15e` | devtools: drop oxlint; make ESLint the sole linter |
+| `910194d` | devtools: rename no-unnamed-inline-sql → query-naming |
+| `73d9bee` | devtools: collapse format-sql + format-sql-file into one rule |
+| `66e1387` | devtools: drop messageId; use inline messages on context.report |
+| `97d8a20` | devtools: rewrite lint-plugin tests with ESLint's RuleTester |
+
+Verification:
+
+- `pnpm lint` — ESLint alone, runs on TS, JS, and `.sql`. Clean.
+- `pnpm lint:fix` — clean end-to-end, no more short-circuit.
+- `pnpm --filter sqlfu test` — 1255 passed / 9 skipped.
+- `pnpm typecheck` — clean.
+
+Final public surface:
+
+```ts
+// plugin.rules
+//   'query-naming'   — unnamed inline SQL that duplicates a checked-in .sql
+//   'format-sql'     — unformatted SQL (inline templates + whole .sql files)
+// plugin.processors
+//   sql              — wraps .sql files for the `format-sql` rule
+// plugin.configs
+//   recommended      — both rules on TS/JS
+//   sqlFiles         — the processor + rule wired to **/*.sql
+```
+
+Judgment calls made during this round:
+
+- **Kept oxfmt**; the user's ask was specifically "drop oxlint". oxfmt is a formatter, not a linter, and has nothing to do with the `lint` / `lint:fix` loop. Leaving it alone kept the diff focused.
+- **Added `typescript-eslint` as a new devDependency** so ESLint can parse `.ts`/`.tsx`. The alternative was linting TS files with the default Espree parser (which chokes on type annotations) or restricting the plugin rules to `.js` only. Either alternative meant the sqlfu plugin rules wouldn't run on the codebase's actual TS source, which defeats the point of dogfooding. No generic `@typescript-eslint/*` lint rules added — just the parser.
+- **Discarded a stashed autofix batch** from a prior `pnpm lint:fix` run (`!Boolean(x)` → `!x`, `??` → `||`, `Promise.all([x])` → `[await x]`). Those were rewrites from oxlint rules we just removed. Two of them were neutral-or-improvements; one (`Promise.all` → bare array) was arguably worse than the original. Since the rules that would justify them no longer run, I didn't preserve them.
+- **Removed a stale `// eslint-disable-next-line @typescript-eslint/no-explicit-any`** comment in `test/sqlfu-sqlite-parser/antlr-shim.test.ts`. We never had that rule configured; it only showed up as an error once ESLint started parsing TS. Safest fix was to delete the disable comment — `any` is still there (needed), but without the dead directive.
+- **Kept one integration test per `sql`-processor behavior** because RuleTester can't drive processors. Five tests (autofix, no-fix reporting, no-op on formatted input, backtick round-trip) through the full `ESLint` class with `configs.sqlFiles`. Everything else moved to RuleTester.
+- **Kept `scripts/dogfood-lint-plugin.js`** even though only ESLint consumes it now. The reason it exists is unchanged: we want `eslint.config.js` to load the plugin straight from TS source without a build step. One-consumer config files are fine when the config is non-trivial (the `register()` dance is).
 
 ### Round 3 gotchas / formatter flaws surfaced
 
