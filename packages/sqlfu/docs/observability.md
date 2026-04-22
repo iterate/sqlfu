@@ -1,19 +1,19 @@
 # Observability
 
-Generated queries carry their filename to runtime as a `name` field. That name reaches OpenTelemetry spans, Sentry errors, PostHog events, Datadog metrics, and anywhere else you want to see it, without extra configuration per destination.
+Generated queries carry their identity to runtime as a `name` field — the camelCase function name, matching the symbol you import. That name reaches OpenTelemetry spans, Sentry errors, PostHog events, Datadog metrics, and anywhere else you want to see it, without extra configuration per destination.
 
 sqlfu's observability story mostly falls out of making query naming a first-class concept. The instrumentation itself is small: one `instrument(client, ...hooks)` wrapper and a couple of reference hooks.
 
 ## The `name` field
 
-Every `.sql` file you check in becomes a generated wrapper whose emitted `SqlQuery` carries the filename (without extension) as `name`. For `sql/list-profiles.sql` you get:
+Every `.sql` file you check in becomes a generated wrapper whose emitted `SqlQuery` carries its camelCased function name as `name`. For `sql/list-profiles.sql` you get:
 
 ```ts
 // sql/.generated/list-profiles.sql.ts  (generated - do not edit)
-const query: SqlQuery = {sql: ListProfilesSql, args: [], name: 'list-profiles'};
+const query: SqlQuery = {sql: ListProfilesSql, args: [], name: 'listProfiles'};
 ```
 
-Nested directories become slash-separated names (`sql/users/list-profiles.sql` → `name: 'users/list-profiles'`) and the generated function name is the camelCased path (`usersListProfiles`). Function names can't collide because distinct file paths produce distinct names.
+Nested directories fold into the same camelCase (`sql/users/list-profiles.sql` → `name: 'usersListProfiles'`, also the exported function name). Function names can't collide because distinct file paths produce distinct names.
 
 Ad-hoc SQL (via `` client.sql`...` ``) has no name, but you can pass one explicitly:
 
