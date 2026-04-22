@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 size: small
 ---
 
@@ -7,7 +7,9 @@ size: small
 
 ## Status (for humans)
 
-Spec only. Implementation still to do.
+Implementation complete. All 9 previously-failing tests pass; no new failures
+introduced. Full sqlfu suite: 1263 passing. `pnpm lint` clean. Lint rule
+removed, CLAUDE.md update **not** applied (flagged in PR body for user).
 
 ## The bug
 
@@ -99,14 +101,21 @@ semantics for the prefix.
 
 ## Scope
 
-- [ ] Delete `no-dumb-error-ternary` block in `eslint.config.js`
-- [ ] Restore `error instanceof Error ? error.message : String(error)` at
-      the three proven-broken sites (api.ts, sql-editor-diagnostic.ts x2,
-      bun.ts)
-- [ ] Run `pnpm --filter sqlfu test` — expect 0 failures (or only failures
-      clearly unrelated to this fix)
-- [ ] Mention the CLAUDE.md update proposal in the PR body so the user can
-      decide whether to apply it
+- [x] Delete `no-dumb-error-ternary` block in `eslint.config.js` (both the
+      rule definition at ~line 65 and the activation at ~line 100).
+- [x] Restore `error instanceof Error ? error.message : String(error)` at
+      the four proven-broken sites. _Turned out to be four, not three:_
+      - `packages/sqlfu/src/api.ts:884` — `summarizeSqlite3defError`
+      - `packages/sqlfu/src/core/sql-editor-diagnostic.ts:3` —
+        `toSqlEditorDiagnostic`
+      - `packages/sqlfu/src/core/sql-editor-diagnostic.ts:18` —
+        `isInternalUnsupportedSqlAnalysisError`
+      - `packages/sqlfu/test/adapters/bun.test.ts:221, :247` — the test-side
+        RPC fixture wrapping (2 sites in a `replace_all`; not product code
+        but produces the double-prefix via the same mechanism).
+- [x] `pnpm --filter sqlfu test` — 1263 passing, 9 skipped, 0 failed.
+- [x] `pnpm lint` clean.
+- [ ] CLAUDE.md update — deferred to user. See PR body.
 
 ## Out of scope
 
@@ -131,4 +140,22 @@ semantics for the prefix.
 
 ## Implementation log
 
-(appended during implementation)
+- The bun test failure is not product-code driven. The inventory listed
+  `adapters/bun.ts` as a potentially-affected file, but it has no
+  `String(error)` calls; the double-prefix comes from the test-side RPC
+  fixture at `bun.test.ts:221, :247`, which wraps remote errors in
+  `new Error(formatFixtureFailure(String(error), …))`. Fixed both sites
+  with a `replace_all`.
+- `sql-editor-diagnostic.ts` had TWO sites, not one — `toSqlEditorDiagnostic`
+  (line 3 after edit) and `isInternalUnsupportedSqlAnalysisError` (line 18).
+  The four failing `test/sql-editor-diagnostic.test.ts` cases were actually
+  all driven by the second helper (they match on message equality for
+  `'traverse_Sql_stmtContext'`, `'Not supported!'`, etc.). The first helper
+  didn't have failing tests but restoring it was the right call — it also
+  uses the message for UI display (SQL editor squiggle positioning +
+  display).
+- Did not introduce a helper function; three-token ternary is fine at four
+  sites.
+- Did not touch the other 18 collapsed sites. They remain `String(error)`.
+  If another double-prefix regression surfaces, fix it surgically like this
+  one.
