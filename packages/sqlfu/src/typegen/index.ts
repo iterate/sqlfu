@@ -220,23 +220,9 @@ async function materializeTypegenDatabase(config: SqlfuProjectConfig) {
 
   await using typegenDatabase = await openMainDevDatabase(tempDbPath);
   await typegenDatabase.client.raw(schemaSql);
-  // Queries against sqlfu's own bookkeeping table (e.g. `select * from sqlfu_migrations`)
-  // should type-check in every project, not just those whose authority happens to surface
-  // it. Inject the DDL unconditionally as `create table if not exists` — a no-op when the
-  // user schema already created it (sqlfu's internal generator is the one current instance
-  // of that).
-  await typegenDatabase.client.raw(SQLFU_MIGRATIONS_DDL);
 
   return tempDbPath;
 }
-
-const SQLFU_MIGRATIONS_DDL = `
-create table if not exists sqlfu_migrations (
-  name text primary key check (name not like '%.sql'),
-  checksum text not null,
-  applied_at text not null
-);
-`;
 
 async function readSchemaForAuthority(config: SqlfuProjectConfig): Promise<string> {
   const authority = config.generate.authority;

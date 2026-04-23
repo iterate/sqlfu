@@ -145,12 +145,6 @@ export type PostsRow = {
 	title: string | null;
 	created_at: string;
 };
-
-export type SqlfuMigrationsRow = {
-	name: string;
-	checksum: string;
-	applied_at: string;
-};
 ```
 
 ```ts (sql/.generated/index.ts)
@@ -255,12 +249,6 @@ export type PostsRow = {
 	slug: string;
 	body: string;
 	published_at: string | null;
-};
-
-export type SqlfuMigrationsRow = {
-	name: string;
-	checksum: string;
-	applied_at: string;
 };
 ```
 

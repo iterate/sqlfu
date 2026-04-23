@@ -74,12 +74,6 @@ export type PostsRow = {
 	slug: string;
 	title: string | null;
 };
-
-export type SqlfuMigrationsRow = {
-	name: string;
-	checksum: string;
-	applied_at: string;
-};
 ```
 
 </details>
@@ -135,12 +129,6 @@ export * from "./find-post-preview.sql.js";
 export type PostsRow = {
 	id: number;
 	body: string;
-};
-
-export type SqlfuMigrationsRow = {
-	name: string;
-	checksum: string;
-	applied_at: string;
 };
 ```
 
@@ -200,12 +188,6 @@ export * from "./find-published-post-by-slug.sql.js";
 export type PostsRow = {
 	id: number;
 	published_at: string | null;
-};
-
-export type SqlfuMigrationsRow = {
-	name: string;
-	checksum: string;
-	applied_at: string;
 };
 ```
 
@@ -269,12 +251,6 @@ export type PostsRow = {
 	id: number;
 	body: string;
 };
-
-export type SqlfuMigrationsRow = {
-	name: string;
-	checksum: string;
-	applied_at: string;
-};
 ```
 
 </details>
@@ -313,12 +289,6 @@ export * from "./list-post-cards.sql.js";
 
 export type PostsRow = {
 	body: string;
-};
-
-export type SqlfuMigrationsRow = {
-	name: string;
-	checksum: string;
-	applied_at: string;
 };
 ```
 
