@@ -32,6 +32,44 @@ export * from './adapters/turso-serverless.js';
 
 export {defineConfig} from './config.js';
 
+// Pure-SQLite text helpers — no node:*, useful on the light path for
+// anyone wrangling migration SQL, splitting statements, or extracting
+// schema from a running client.
+export {
+  extractSchema,
+  rawSqlWithSqlSplittingAsync,
+  rawSqlWithSqlSplittingSync,
+  splitSqlStatements,
+  surroundWithBeginCommitRollbackAsync,
+  surroundWithBeginCommitRollbackSync,
+} from './sqlite-text.js';
+
+// Structural SqlfuHost interface + related types. Types only; useful for
+// consumers building their own host implementations (test doubles, edge
+// runtimes).
+export type {
+  AdHocSqlParams,
+  AdHocSqlResult,
+  DisposableAsyncClient,
+  HostCatalog,
+  HostFs,
+  HostLogger,
+  SqlfuHost,
+} from './host.js';
+
+// Query-catalog shape types — what `sqlfu generate` emits. Consumed by
+// the UI, by custom codegen, and by anyone inspecting a project's
+// generated metadata.
+export type {
+  AdHocQueryAnalysis,
+  JsonSchema,
+  JsonSchemaObject,
+  QueryCatalog,
+  QueryCatalogArgument,
+  QueryCatalogEntry,
+  QueryCatalogField,
+} from './typegen/query-catalog.js';
+
 // The "just-run-the-sql-bro" migrator: enough to apply migrations from a
 // bundle at Cloudflare Worker / Bun boot. History-reconciliation helpers
 // (baseline, replace, readHistory, drift helpers) stay internal to
