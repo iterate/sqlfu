@@ -207,12 +207,42 @@ export default {
 
 Required fields:
 
-- `db` -- path to the main dev database used by `sync`, `migrate`, `generate`, and other tooling commands
+- `db` -- the database sqlfu talks to. Either a filesystem path (opens a local sqlite file) or a factory returning a `DisposableAsyncClient`. See [Pluggable `db`](#pluggable-db) below
 - `migrations` -- directory containing migration files
 - `definitions` -- schema source of truth (`definitions.sql`)
 - `queries` -- directory containing checked-in `.sql` queries
 
 `sqlfu` manages its own temporary files under `.sqlfu/`, including scratch databases used for schema diffing. These are generally safe to delete at any time.
+
+### Pluggable `db`
+
+When your app talks to an adapter-mediated database (Cloudflare D1, Turso, libsql, a miniflare binding), point sqlfu at the same client your app uses by giving `db` a factory instead of a path. Every sqlfu command that touches the DB -- `migrate`, `check`, `sync`, `goto`, `baseline`, `generate`, the UI -- will then operate on the *real* database, not a scratch file.
+
+```ts
+import {defineConfig, createD1Client} from 'sqlfu';
+import {Miniflare} from 'miniflare';
+
+export default defineConfig({
+  db: async () => {
+    const mf = new Miniflare({
+      script: '', modules: true,
+      d1Persist: true,
+      d1Databases: {DB: '<dev-db-id>'},
+    });
+    await mf.ready;
+    const d1 = await mf.getD1Database('DB');
+    return {
+      client: createD1Client(d1),
+      async [Symbol.asyncDispose]() { await mf.dispose(); },
+    };
+  },
+  migrations: './migrations',
+  definitions: './definitions.sql',
+  queries: './sql',
+});
+```
+
+The factory is invoked on every `openDb` call; sqlfu calls `[Symbol.asyncDispose]` when the command scope exits. Memoize inside the factory if the setup is expensive (e.g. spinning up miniflare once per process).
 
 ## Command Reference
 

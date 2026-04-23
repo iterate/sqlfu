@@ -7,13 +7,14 @@ size: large
 
 ## High-level status
 
-Working on it. Scope: **the callback form only** — make `config.db` accept a
-factory that returns a `DisposableAsyncClient`. The string form stays as a
-sugar for opening a local sqlite file. Every command that touches the DB
-today (`migrate`, `check`, `sync`, `goto`, `baseline`, `generate`, the UI)
-goes through the new code path. Typegen still opens the real DB for schema
-extraction (the "typegen doesn't need a DB" half waits on
-`generate-self-contained`).
+Done, pending review. Scope: **the callback form only** — `config.db`
+accepts a factory returning a `DisposableAsyncClient`; string form kept
+as sugar for opening a local sqlite file. Every command that touches the
+DB (`migrate`, `check`, `sync`, `goto`, `baseline`, `generate`, the UI)
+goes through the new `openConfigDb` dispatcher. Typegen still opens the
+real DB for schema extraction (the "typegen doesn't need a DB" half
+waits on `generate-self-contained`). Integration test added; full
+vitest suite passes.
 
 ## The problem
 
@@ -105,44 +106,41 @@ resolved below.
 
 ## Implementation plan
 
-- [ ] Move `DisposableAsyncClient` from `src/host.ts` to `src/types.ts` so
-  `SqlfuConfig.db`'s factory type can live alongside the rest of the
-  config shape without an import cycle. Keep a re-export in `src/host.ts`
-  so existing `host.ts` consumers keep working.
-- [ ] Add `SqlfuDbFactory` to `src/types.ts`:
+- [x] Move `DisposableAsyncClient` from `src/host.ts` to `src/types.ts`
+  _so the factory type can live alongside the rest of the config shape.
+  `src/host.ts` re-exports it so the existing `import ... from './host.js'`
+  callers keep working._
+- [x] Add `SqlfuDbFactory` to `src/types.ts`:
   `() => DisposableAsyncClient | Promise<DisposableAsyncClient>`.
-- [ ] Change `SqlfuConfig.db` and `SqlfuProjectConfig.db` to
+- [x] Change `SqlfuConfig.db` and `SqlfuProjectConfig.db` to
   `string | SqlfuDbFactory`.
-- [ ] Update `assertConfigShape` in `src/config.ts` to accept a function
-  as well as a string for `db`, with a clear error message for anything
-  else.
-- [ ] Update `resolveProjectConfig`: if string, resolve to absolute path
-  (existing behaviour). If function, pass through unchanged.
-- [ ] Extract `openLocalSqliteFile(dbPath):
-  Promise<DisposableAsyncClient>` from the existing `openNodeDb` inside
-  `createNodeHost`. Export it from `src/node/host.ts` so users who want
-  the factory form but with a local file have a one-liner.
-- [ ] In `createNodeHost.openDb(config)`: if `config.db` is a string,
-  call `openLocalSqliteFile`. If a function, invoke the factory and
-  return its result.
-- [ ] In `src/typegen/index.ts` `materializeTypegenDatabase(config)`:
-  when `config.db` is a function, call it to get the source client; when
-  a string, keep the existing `openMainDevDatabase(config.db)` code path
-  (which is bun/node/better-sqlite3 aware). Either way, extract the
-  schema and materialise into `.sqlfu/typegen.db`.
-- [ ] Export `SqlfuDbFactory` from the relevant entry points so users
-  can see and consume it.
-- [ ] Add an integration test under `packages/sqlfu/test/` that:
-  - Defines a config with a `db` factory that wraps a fresh in-memory /
-    file-backed sqlite.
-  - Runs `applyMigrateSql` and `getCheckMismatches` through the sqlfu
-    API against that config.
-  - Asserts the factory was invoked, migrations applied, check passes.
-- [ ] Make sure the existing test suite still passes; `sqlfu` builds;
-  the UI still boots against a string-form `db`.
-- [ ] Update `packages/sqlfu/README.md` (and any docs page that talks
-  about `db`) with one short paragraph + a code sample for the factory
-  form.
+- [x] Update `assertConfigShape` in `src/config.ts` to accept a function
+  as well as a string for `db`. _Dedicated error message: "db must be a
+  filesystem path or a factory function returning a DisposableAsyncClient"._
+- [x] Update `resolveProjectConfig`: string → resolved absolute path;
+  function → passthrough.
+- [x] Extract `openLocalSqliteFile(dbPath)` from `openNodeDb` inside
+  `createNodeHost`. _Exported from `src/node/host.ts` as a reusable
+  helper. Also added `openConfigDb(db)` — the dispatcher for
+  `string | factory` — so `SqlfuHost.openDb` is a thin wrapper._
+- [x] `createNodeHost.openDb(config)` now dispatches through
+  `openConfigDb(config.db)`.
+- [x] `src/typegen/index.ts` `materializeTypegenDatabase(config)`: reads
+  schema from the real DB via a new `readSchemaFromConfigDb(db)` that
+  handles both shapes, then materialises into `.sqlfu/typegen.db` as
+  before.
+- [x] Export `SqlfuDbFactory` from `src/index.ts`. _Re-exported
+  transitively via `export * from './types.js'`._
+- [x] Integration test at `packages/sqlfu/test/config-db-factory.test.ts`:
+  defines a config whose `db` is a factory wrapping a file-backed
+  better-sqlite3, runs `applyMigrateSql` + `getCheckMismatches`,
+  asserts factory invocations/disposals and post-migrate DB state.
+- [x] Existing test suite still passes (`pnpm test:node` — 1305 passed,
+  9 skipped). UI Playwright suite had one known-flaky grid test
+  (`appended rows focus the clicked cell`) that passed on retry;
+  unrelated to this change.
+- [x] Update `packages/sqlfu/README.md` with a "Pluggable `db`" section
+  and a miniflare/D1 example.
 
 ## Out of scope (explicit non-goals for this PR)
 
