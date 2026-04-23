@@ -11,7 +11,7 @@ import type {
   QueryCatalogEntry,
   QueryCatalogField,
 } from './query-catalog.js';
-import {loadProjectConfig} from '../core/config.js';
+import {loadProjectConfig} from '../core/config-load.js';
 import type {Client, SqlfuProjectConfig, SqlfuValidator} from '../core/types.js';
 import {extractSchema} from '../core/sqlite.js';
 import {createBunClient, createNodeSqliteClient} from '../client.js';

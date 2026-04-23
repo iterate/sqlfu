@@ -8,7 +8,7 @@ import type {AsyncClient, ResultRow, SqlfuProjectConfig, SqlQuery} from './types
 import {bindAsyncSql} from './sql.js';
 import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from './sqlite.js';
 import type {QueryCatalog} from '../typegen/query-catalog.js';
-import {initializeProject} from './config.js';
+import {initializeProject} from './config-load.js';
 import {analyzeAdHocSqlForConfig, generateQueryTypesForConfig} from '../typegen/index.js';
 import type {SqlAnalysisResponse} from '../ui/shared.js';
 import {isInternalUnsupportedSqlAnalysisError, toSqlEditorDiagnostic} from './sql-editor-diagnostic.js';
