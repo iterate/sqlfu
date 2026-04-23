@@ -21,8 +21,8 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query';
 
-import {queryNickname} from 'sqlfu/browser';
-import type {QueryCatalogEntry} from 'sqlfu/browser';
+import {queryNickname} from 'sqlfu';
+import type {QueryCatalogEntry} from 'sqlfu';
 import type {
   QueryExecutionResponse,
   SchemaAuthorityMigration,

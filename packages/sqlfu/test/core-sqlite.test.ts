@@ -1,8 +1,8 @@
 import BetterSqlite3 from 'better-sqlite3';
 import {expect, test} from 'vitest';
 
-import {createBetterSqlite3Client} from '../src/client.js';
-import {extractSchema, rawSqlWithSqlSplittingSync} from '../src/core/sqlite.js';
+import {createBetterSqlite3Client} from '../src/index.js';
+import {extractSchema, rawSqlWithSqlSplittingSync} from '../src/sqlite-text.js';
 
 test('rawSqlWithSqlSplittingSync ignores comment-only sql', () => {
   let calls = 0;

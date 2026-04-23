@@ -15,16 +15,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./browser": "./src/browser.ts",
-    "./client": "./src/client.ts",
+    "./analyze": "./src/analyze.ts",
     "./api": "./src/api.ts",
-    "./cli": "./src/cli.ts",
     "./lint-plugin": "./src/lint-plugin.ts",
     "./outbox": "./src/outbox/index.ts",
-    "./ui": {
-      "browser": "./src/ui/browser.ts",
-      "default": "./src/ui/index.ts"
-    },
+    "./ui": "./src/ui/server.ts",
     "./ui/browser": "./src/ui/browser.ts"
   },
   "publishConfig": {
@@ -33,21 +28,13 @@
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       },
-      "./browser": {
-        "types": "./dist/browser.d.ts",
-        "default": "./dist/browser.js"
-      },
-      "./client": {
-        "types": "./dist/client.d.ts",
-        "default": "./dist/client.js"
+      "./analyze": {
+        "types": "./dist/analyze.d.ts",
+        "default": "./dist/analyze.js"
       },
       "./api": {
         "types": "./dist/api.d.ts",
         "default": "./dist/api.js"
-      },
-      "./cli": {
-        "types": "./dist/cli.d.ts",
-        "default": "./dist/cli.js"
       },
       "./lint-plugin": {
         "types": "./dist/lint-plugin.d.ts",
@@ -58,9 +45,8 @@
         "default": "./dist/outbox/index.js"
       },
       "./ui": {
-        "types": "./dist/ui/index.d.ts",
-        "browser": "./dist/ui/browser.js",
-        "default": "./dist/ui/index.js"
+        "types": "./dist/ui/server.d.ts",
+        "default": "./dist/ui/server.js"
       },
       "./ui/browser": {
         "types": "./dist/ui/browser.d.ts",

@@ -12,8 +12,8 @@ import {createBrowserRpcFixture, type BrowserRpcFixture, type RenderedHost} from
 
 const test = baseTest.skipIf(!process.env.SQLITE_WASM_TEST);
 
-declare const createSqliteWasmClient: typeof import('../../src/client.js').createSqliteWasmClient;
-declare const sql: typeof import('../../src/client.js').sql;
+declare const createSqliteWasmClient: typeof import('../../src/index.js').createSqliteWasmClient;
+declare const sql: typeof import('../../src/index.js').sql;
 
 test('createSqliteWasmClient works in a real browser', {timeout: 60_000}, async () => {
   await using fixture = await createSqliteWasmWebFixture(
@@ -136,7 +136,7 @@ function createSqliteWasmWebFixture<TInstance extends object>(
         dedent`
           import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
           import {createSqliteWasmClient} from './runtime/adapters/sqlite-wasm.js';
-          import {sql} from './runtime/core/sql.js';
+          import {sql} from './runtime/sql.js';
 
           ${classDefString}
 

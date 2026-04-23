@@ -87,15 +87,16 @@ That means:
 
 There are also browser-safe entrypoints to avoid pulling Node-only code into Vite:
 
-- `sqlfu/browser`
-- `sqlfu/ui/browser`
+- `sqlfu` (root is browser-safe; strict-tier by design)
+- `sqlfu/analyze` (heavy in-browser schema/query analysis — typesql vendor bundle lives here)
+- `sqlfu/ui/browser` (UI router types and the browser-side router impl)
 
-Use those from browser code when you only need browser-safe helpers or types.
+Use those from browser code.
 
 Use these from Node-side code:
 
-- `sqlfu`
-- `sqlfu/ui`
+- `sqlfu/api` (all the smart tooling: diff engine, smart migrator, typegen, formatter)
+- `sqlfu/ui` (Node UI server)
 
 ## Practical rule of thumb
 

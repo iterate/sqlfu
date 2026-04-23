@@ -5,11 +5,12 @@ import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {RPCHandler} from '@orpc/server/fetch';
 import type {ViteDevServer} from 'vite';
-import {loadProjectStateFrom, resolveProjectConfig} from '../core/config.js';
-import {PortInUseError, getListeningProcesses} from '../core/port-process.js';
+import {resolveProjectConfig} from '../config.js';
+import {loadProjectStateFrom} from '../node/config.js';
+import {PortInUseError, getListeningProcesses} from '../node/port-process.js';
 import {generateQueryTypesForConfig} from '../typegen/index.js';
-import type {SqlfuHost} from '../core/host.js';
-import {createNodeHost} from '../core/node-host.js';
+import type {SqlfuHost} from '../host.js';
+import {createNodeHost} from '../node/host.js';
 import {uiRouter, type ResolvedUiProject} from './router.js';
 
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
@@ -42,6 +43,8 @@ export type StartSqlfuServerOptions = {
 };
 
 export type {UiRouter} from './router.js';
+export type * from './shared.js';
+export {ensureLocalhostCertificates} from './certs.js';
 
 export async function startSqlfuServer(input: StartSqlfuServerOptions = {}) {
   const host = await createNodeHost();

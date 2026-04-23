@@ -1,9 +1,9 @@
-import {createSqliteWasmClient} from 'sqlfu/client';
+import {createSqliteWasmClient} from 'sqlfu';
 import {
   analyzeVendoredTypesqlQueriesWithClient,
   isInternalUnsupportedSqlAnalysisError,
   toSqlEditorDiagnostic,
-} from 'sqlfu/browser';
+} from 'sqlfu/analyze';
 import type {
   AdHocSqlParams,
   AdHocSqlResult,
@@ -12,10 +12,10 @@ import type {
   HostFs,
   QueryCatalog,
   ResultRow,
-  SqlAnalysisResponse,
   SqlfuHost,
   SqlfuProjectConfig,
-} from 'sqlfu/browser';
+} from 'sqlfu';
+import type {SqlAnalysisResponse} from 'sqlfu/ui/browser';
 
 import {buildQueryCatalog} from './catalog.js';
 import {openWasmDatabase, type Database} from './sqlite-wasm-client.js';

@@ -10,7 +10,7 @@ import {execa} from 'execa';
 import {expect, test} from 'vitest';
 
 const packageRoot = path.resolve(path.dirname(import.meta.filename), '../..');
-declare const createBunClient: typeof import('../../src/client.ts').createBunClient;
+declare const createBunClient: typeof import('../../src/index.ts').createBunClient;
 type ExecaProcess = ReturnType<typeof execa>;
 
 test('createBunClient works with a real bun:sqlite database in a bun subprocess', async () => {
@@ -147,7 +147,7 @@ async function createBunFixture<TInstance extends object>(classDef: new (...args
   const rootUrl = `http://127.0.0.1:${port}`;
   const workerPath = path.join(tempDir, 'worker.ts');
   const bunAdapterUrl = pathToFileURL(path.join(packageRoot, 'src/adapters/bun.ts')).href;
-  const sqlRuntimeUrl = pathToFileURL(path.join(packageRoot, 'src/core/sql.ts')).href;
+  const sqlRuntimeUrl = pathToFileURL(path.join(packageRoot, 'src/sql.ts')).href;
 
   const classDefString = classDef.toString().trim();
   const className = classDefString.match(/^class (\w+) \{/)?.[1];

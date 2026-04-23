@@ -1,7 +1,7 @@
-import {wrapAsyncClientErrors} from '../core/adapter-errors.js';
-import {bindAsyncSql} from '../core/sql.js';
-import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../core/sqlite.js';
-import type {AsyncClient, QueryArg, ResultRow, SqlQuery} from '../core/types.js';
+import {wrapAsyncClientErrors} from '../adapter-errors.js';
+import {bindAsyncSql} from '../sql.js';
+import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
+import type {AsyncClient, QueryArg, ResultRow, SqlQuery} from '../types.js';
 
 export type SqliteWasmBindValue = string | number | bigint | Uint8Array | null;
 

@@ -173,7 +173,7 @@ async function createDOFixture<TInstance extends object>(classDef: new (...args:
     workerSourcePath,
     dedent`
       import {createDurableObjectClient} from './runtime/adapters/durable-object.js';
-      import {sql} from './runtime/core/sql.js';
+      import {sql} from './runtime/sql.js';
       import {applyMigrations, migrationsFromBundle} from './runtime/migrations/index.js';
 
       ${classDefString}

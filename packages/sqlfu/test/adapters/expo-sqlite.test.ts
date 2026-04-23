@@ -17,8 +17,8 @@ import {
 
 const test = baseTest.skipIf(!process.env.EXPO_TEST);
 
-declare const createExpoSqliteClient: typeof import('../../src/client.js').createExpoSqliteClient;
-declare const sql: typeof import('../../src/client.js').sql;
+declare const createExpoSqliteClient: typeof import('../../src/index.js').createExpoSqliteClient;
+declare const sql: typeof import('../../src/index.js').sql;
 
 test('createExpoSqliteClient works in a real expo web app', {timeout: 180_000}, async () => {
   await using fixture = await createExpoWebFixture(
@@ -178,7 +178,7 @@ function createExpoWebFixture<TInstance extends object>(
           import {Button, Text, TextInput, View} from 'react-native';
           import * as SQLite from 'expo-sqlite';
           import {createExpoSqliteClient} from './runtime/adapters/expo-sqlite.js';
-          import {sql} from './runtime/core/sql.js';
+          import {sql} from './runtime/sql.js';
 
           ${classDefString}
 

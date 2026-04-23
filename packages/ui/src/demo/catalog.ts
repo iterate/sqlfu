@@ -1,4 +1,4 @@
-import type {QueryCatalogEntry} from 'sqlfu/browser';
+import type {QueryCatalogEntry} from 'sqlfu';
 
 import type {DemoVfs} from './vfs.js';
 
