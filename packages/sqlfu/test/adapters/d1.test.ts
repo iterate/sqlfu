@@ -118,7 +118,7 @@ async function createD1Fixture(workerDef: {
     workerPath,
     dedent`
       import {createD1Client} from './runtime/adapters/d1.js';
-      import {sql} from './runtime/core/sql.js';
+      import {sql} from './runtime/sql.js';
 
       const userFetch = ${toCallableFunctionSource(workerDef.fetch.toString())};
 

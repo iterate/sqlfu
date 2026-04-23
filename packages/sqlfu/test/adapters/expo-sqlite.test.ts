@@ -178,7 +178,7 @@ function createExpoWebFixture<TInstance extends object>(
           import {Button, Text, TextInput, View} from 'react-native';
           import * as SQLite from 'expo-sqlite';
           import {createExpoSqliteClient} from './runtime/adapters/expo-sqlite.js';
-          import {sql} from './runtime/core/sql.js';
+          import {sql} from './runtime/sql.js';
 
           ${classDefString}
 

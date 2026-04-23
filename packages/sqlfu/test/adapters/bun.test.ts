@@ -147,7 +147,7 @@ async function createBunFixture<TInstance extends object>(classDef: new (...args
   const rootUrl = `http://127.0.0.1:${port}`;
   const workerPath = path.join(tempDir, 'worker.ts');
   const bunAdapterUrl = pathToFileURL(path.join(packageRoot, 'src/adapters/bun.ts')).href;
-  const sqlRuntimeUrl = pathToFileURL(path.join(packageRoot, 'src/core/sql.ts')).href;
+  const sqlRuntimeUrl = pathToFileURL(path.join(packageRoot, 'src/sql.ts')).href;
 
   const classDefString = classDef.toString().trim();
   const className = classDefString.match(/^class (\w+) \{/)?.[1];

@@ -136,7 +136,7 @@ function createSqliteWasmWebFixture<TInstance extends object>(
         dedent`
           import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
           import {createSqliteWasmClient} from './runtime/adapters/sqlite-wasm.js';
-          import {sql} from './runtime/core/sql.js';
+          import {sql} from './runtime/sql.js';
 
           ${classDefString}
 

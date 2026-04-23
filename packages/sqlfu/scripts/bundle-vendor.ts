@@ -1,5 +1,5 @@
 import * as esbuild from 'esbuild';
-import {readdir, rm} from 'node:fs/promises';
+import {cp, readdir, rm} from 'node:fs/promises';
 import {resolve} from 'node:path';
 
 const pkgRoot = resolve(import.meta.dirname, '..');
@@ -86,6 +86,20 @@ const typesqlToDelete = [
 for (const p of typesqlToDelete) {
 	await rm(resolve(distVendor, p), {recursive: true, force: true});
 }
+
+// src/typegen/analyze-vendored-typesql-with-client.{js,d.ts} is a hand-written
+// shim (not a .ts file) so tsgo's -p tsconfig.build.json doesn't include it.
+// Copy the pair into dist so dist/analyze.js and dist/typegen/*.js can resolve
+// it. See the top-of-file comment in the source shim for why it's authored as
+// a raw .js/.d.ts pair rather than typescript.
+await cp(
+	resolve(pkgRoot, 'src/typegen/analyze-vendored-typesql-with-client.js'),
+	resolve(pkgRoot, 'dist/typegen/analyze-vendored-typesql-with-client.js'),
+);
+await cp(
+	resolve(pkgRoot, 'src/typegen/analyze-vendored-typesql-with-client.d.ts'),
+	resolve(pkgRoot, 'dist/typegen/analyze-vendored-typesql-with-client.d.ts'),
+);
 
 // ------------------------------------------------------------------
 // vendor/sql-formatter bundle
