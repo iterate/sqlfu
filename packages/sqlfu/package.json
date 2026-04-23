@@ -19,7 +19,7 @@
     "./api": "./src/api.ts",
     "./lint-plugin": "./src/lint-plugin.ts",
     "./outbox": "./src/outbox/index.ts",
-    "./ui": "./src/ui/index.ts",
+    "./ui": "./src/ui/server.ts",
     "./ui/browser": "./src/ui/browser.ts"
   },
   "publishConfig": {
@@ -45,8 +45,8 @@
         "default": "./dist/outbox/index.js"
       },
       "./ui": {
-        "types": "./dist/ui/index.d.ts",
-        "default": "./dist/ui/index.js"
+        "types": "./dist/ui/server.d.ts",
+        "default": "./dist/ui/server.js"
       },
       "./ui/browser": {
         "types": "./dist/ui/browser.d.ts",

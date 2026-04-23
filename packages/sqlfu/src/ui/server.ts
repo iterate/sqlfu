@@ -43,6 +43,8 @@ export type StartSqlfuServerOptions = {
 };
 
 export type {UiRouter} from './router.js';
+export type * from './shared.js';
+export {ensureLocalhostCertificates} from './certs.js';
 
 export async function startSqlfuServer(input: StartSqlfuServerOptions = {}) {
   const host = await createNodeHost();
