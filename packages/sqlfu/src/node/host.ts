@@ -170,12 +170,33 @@ const nodeFs: HostFs = {
 
 const nodeCatalog: HostCatalog = {
   async load(config): Promise<QueryCatalog> {
-    await generateQueryTypesForConfig(config);
+    // Catalog load is best-effort: the UI's schema page calls this on every render, and the
+    // user has a separate "Schema Check" surface that shows real schema errors. If typegen
+    // can't build a catalog right now (broken definitions.sql, unreadable migrations, etc.),
+    // serve the last good catalog — or an empty one if none exists yet — instead of
+    // throwing. The CLI path (`sqlfu generate`) still throws, because there the user asked
+    // explicitly for types.
+    try {
+      await generateQueryTypesForConfig(config);
+    } catch (error) {
+      console.warn(`sqlfu/ui: catalog regeneration skipped — ${String(error)}`);
+    }
     const catalogPath = path.join(config.projectRoot, '.sqlfu', 'query-catalog.json');
-    return JSON.parse(await fs.readFile(catalogPath, 'utf8')) as QueryCatalog;
+    try {
+      return JSON.parse(await fs.readFile(catalogPath, 'utf8')) as QueryCatalog;
+    } catch {
+      return {generatedAt: new Date(0).toISOString(), queries: []};
+    }
   },
   async refresh(config) {
-    await generateQueryTypesForConfig(config);
+    // Same contract as `load`: don't bring the UI down on a typegen failure — the user
+    // lands on a surface (schema check, sync, generate) that surfaces the real error
+    // directly.
+    try {
+      await generateQueryTypesForConfig(config);
+    } catch (error) {
+      console.warn(`sqlfu/ui: catalog regeneration skipped — ${String(error)}`);
+    }
   },
   async analyzeSql(config, sql) {
     if (!sql.trim()) return {};

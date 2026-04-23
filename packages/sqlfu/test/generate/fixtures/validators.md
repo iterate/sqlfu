@@ -104,6 +104,12 @@ export type PostsRow = {
 	title: string | null;
 	status: string;
 };
+
+export type SqlfuMigrationsRow = {
+	name: string;
+	checksum: string;
+	applied_at: string;
+};
 ```
 
 </details>
@@ -193,6 +199,12 @@ export type PostsRow = {
 	title: string | null;
 	status: string;
 };
+
+export type SqlfuMigrationsRow = {
+	name: string;
+	checksum: string;
+	applied_at: string;
+};
 ```
 
 </details>
@@ -275,6 +287,12 @@ export type PostsRow = {
 	slug: string;
 	title: string | null;
 };
+
+export type SqlfuMigrationsRow = {
+	name: string;
+	checksum: string;
+	applied_at: string;
+};
 ```
 
 </details>
@@ -347,6 +365,12 @@ export * from "./find-post-by-slug.sql.js";
 export type PostsRow = {
 	id: number;
 	slug: string;
+};
+
+export type SqlfuMigrationsRow = {
+	name: string;
+	checksum: string;
+	applied_at: string;
 };
 ```
 
@@ -428,6 +452,12 @@ export type PostsRow = {
 	id: number;
 	slug: string;
 };
+
+export type SqlfuMigrationsRow = {
+	name: string;
+	checksum: string;
+	applied_at: string;
+};
 ```
 
 </details>
@@ -507,6 +537,12 @@ export * from "./find-post-by-slug.sql.js";
 export type PostsRow = {
 	id: number;
 	slug: string;
+};
+
+export type SqlfuMigrationsRow = {
+	name: string;
+	checksum: string;
+	applied_at: string;
 };
 ```
 
@@ -597,6 +633,12 @@ export type PostsRow = {
 	title: string | null;
 	status: string;
 };
+
+export type SqlfuMigrationsRow = {
+	name: string;
+	checksum: string;
+	applied_at: string;
+};
 ```
 
 </details>
@@ -676,6 +718,12 @@ export * from "./find-post-by-slug.sql.js";
 export type PostsRow = {
 	id: number;
 	slug: string;
+};
+
+export type SqlfuMigrationsRow = {
+	name: string;
+	checksum: string;
+	applied_at: string;
 };
 ```
 
@@ -805,6 +853,12 @@ export type PostsRow = {
 	id: number;
 	slug: string;
 };
+
+export type SqlfuMigrationsRow = {
+	name: string;
+	checksum: string;
+	applied_at: string;
+};
 ```
 
 </details>
@@ -860,6 +914,12 @@ export * from "./list-posts.sql.js";
 export type PostsRow = {
 	id: number;
 	slug: string;
+};
+
+export type SqlfuMigrationsRow = {
+	name: string;
+	checksum: string;
+	applied_at: string;
 };
 ```
 

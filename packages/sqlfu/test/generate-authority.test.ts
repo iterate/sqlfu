@@ -140,12 +140,15 @@ async function createAuthorityFixture(input: {
     host,
     factoryInvocations: () => invocations,
     async typegenDbTables(): Promise<string[]> {
+      // Filter out sqlfu's own injected bookkeeping table — it's an implementation detail of
+      // typegen (so queries against `sqlfu_migrations` always type), not part of the authority's
+      // view of the user's schema. Tests assert user-visible tables.
       const typegenPath = path.join(root, '.sqlfu', 'typegen.db');
       const database = new BetterSqlite3(typegenPath);
       try {
         const client = createBetterSqlite3Client(database);
         const rows = client.all<{name: string}>({
-          sql: `select name from sqlite_master where type = 'table' and name not like 'sqlite_%' order by rowid`,
+          sql: `select name from sqlite_master where type = 'table' and name not like 'sqlite_%' and name != 'sqlfu_migrations' order by rowid`,
           args: [],
         });
         return rows.map((row) => row.name);
