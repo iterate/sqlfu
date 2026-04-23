@@ -43,12 +43,12 @@ test('named and ad-hoc queries surface on OTel spans and error reporter fires on
   const listProfilesQuery: SqlQuery = {
     sql: 'select id, name from profiles order by id',
     args: [],
-    name: 'list-profiles',
+    name: 'listProfiles',
   };
   const brokenQuery: SqlQuery = {
     sql: 'select * from nonexistent_table',
     args: [],
-    name: 'broken-query',
+    name: 'brokenQuery',
   };
 
   const app = new Hono();
@@ -96,8 +96,8 @@ test('named and ad-hoc queries surface on OTel spans and error reporter fires on
 
   expect(await otel.renderTrace()).toMatchInlineSnapshot(`
     "GET /profiles
-      list-profiles
-        db.query.summary=list-profiles
+      listProfiles
+        db.query.summary=listProfiles
         db.query.text=select id, name from profiles order by id
         db.system.name=sqlite
         status=OK
@@ -107,8 +107,8 @@ test('named and ad-hoc queries surface on OTel spans and error reporter fires on
         db.system.name=sqlite
         status=OK
     GET /broken
-      broken-query
-        db.query.summary=broken-query
+      brokenQuery
+        db.query.summary=brokenQuery
         db.query.text=select * from nonexistent_table
         db.system.name=sqlite
         exception: no such table: nonexistent_table
@@ -116,7 +116,7 @@ test('named and ad-hoc queries surface on OTel spans and error reporter fires on
   `);
 
   expect(errorReports).toHaveLength(1);
-  expect(errorReports[0]!.queryName).toBe('broken-query');
+  expect(errorReports[0]!.queryName).toBe('brokenQuery');
   expect((errorReports[0]!.error as Error).message).toContain('no such table: nonexistent_table');
 });
 
