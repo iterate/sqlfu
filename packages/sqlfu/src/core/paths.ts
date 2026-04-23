@@ -22,3 +22,11 @@ export function dirname(value: string): string {
   if (idx === 0) return '/';
   return value.slice(0, idx);
 }
+
+// If `value` is absolute (starts with `/`), return it unchanged; otherwise join
+// it onto `base`. Matches the two-arg `path.resolve(base, value)` case we rely
+// on in `resolveProjectConfig` — not a full replacement for `path.resolve`.
+export function resolvePath(base: string, value: string): string {
+  if (value.startsWith('/')) return value;
+  return joinPath(base, value);
+}
