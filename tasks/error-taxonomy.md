@@ -74,7 +74,7 @@ When we do the real taxonomy work here, tear that middleware out and replace it 
 
 ## References
 
-- Existing PR: https://github.com/mmkal/sqlfu/pull/13 — `core: SqlfuError taxonomy + stack-quality guard`. Opened from this task but I wasn't happy with the implementation — revisit before merging. Specifically the adapter-mapping shape and how much of the "kind" discrimination leaks out to the public type felt off.
+- Existing PR: https://github.com/mmkal/sqlfu/pull/13 — `core: SqlfuError taxonomy + stack-quality guard`. Opened from this task but I wasn't happy with the outcome, can't remember why but maybe it was naming — revisit before merging.
 - SQLite error codes: https://www.sqlite.org/rescode.html
 - Postgres SQLSTATE: https://www.postgresql.org/docs/current/errcodes-appendix.html
 - D1 error shape: https://developers.cloudflare.com/d1/observability/debug-d1/
