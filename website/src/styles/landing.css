@@ -408,6 +408,7 @@ a {
   color: var(--muted);
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-size: 0.95rem;
+  text-align: center;
 }
 
 .works-with {
