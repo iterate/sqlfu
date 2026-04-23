@@ -226,10 +226,20 @@ async function materializeTypegenDatabase(config: SqlfuProjectConfig) {
 
 async function readSchemaForAuthority(config: SqlfuProjectConfig): Promise<string> {
   const authority = config.generate.authority;
-  if (authority === 'desired_schema') return readDefinitionsAsSchemaSql(config.definitions);
-  if (authority === 'migrations') return replayMigrationFilesAsSchemaSql(config);
-  if (authority === 'migration_history') return replayMigrationHistoryAsSchemaSql(config);
-  return readLiveSchema(config.db);
+  switch (authority) {
+    case 'desired_schema':
+      return readDefinitionsAsSchemaSql(config.definitions);
+    case 'migrations':
+      return replayMigrationFilesAsSchemaSql(config);
+    case 'migration_history':
+      return replayMigrationHistoryAsSchemaSql(config);
+    case 'live_schema':
+      return readLiveSchema(config.db);
+    default: {
+      const never: never = authority;
+      throw new Error(`Invalid generate.authority: ${JSON.stringify(never)}`);
+    }
+  }
 }
 
 async function readDefinitionsAsSchemaSql(definitionsPath: string): Promise<string> {
@@ -283,7 +293,11 @@ async function replayMigrationHistoryAsSchemaSql(config: SqlfuProjectConfig): Pr
 
 async function readLiveSchema(db: SqlfuProjectConfig['db']): Promise<string> {
   await using source = await openLiveDb(db, 'live_schema');
-  return extractSchema(source.client, 'main', {excludedTables: [SQLFU_MIGRATIONS_TABLE]});
+  // Exclude sqlfu's bookkeeping table from the live schema — it's noise, not something the
+  // user wrote. The other authorities replay user-provided SQL verbatim, so extraction there
+  // should reflect whatever that SQL actually created (sqlfu's internal typegen, for
+  // example, deliberately references `sqlfu_migrations` in its definitions.sql).
+  return extractSchema(source.client, 'main', {excludedTables: ['sqlfu_migrations']});
 }
 
 async function openLiveDb(
@@ -301,14 +315,12 @@ async function openLiveDb(
   return openMainDevDatabase(db);
 }
 
-const SQLFU_MIGRATIONS_TABLE = 'sqlfu_migrations';
-
 async function replayAndExtractSchema(files: Migration[]): Promise<string> {
   await using scratch = await openMainDevDatabase(':memory:');
   for (const file of files) {
     await scratch.client.raw(file.content);
   }
-  return extractSchema(scratch.client, 'main', {excludedTables: [SQLFU_MIGRATIONS_TABLE]});
+  return extractSchema(scratch.client);
 }
 
 async function readMigrationFiles(migrationsDir: string): Promise<Migration[]> {

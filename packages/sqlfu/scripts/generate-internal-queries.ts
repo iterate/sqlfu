@@ -20,7 +20,7 @@ import BetterSqlite3 from 'better-sqlite3';
 
 import {createBetterSqlite3Client} from '../src/adapters/better-sqlite3.js';
 import {generateQueryTypesForConfig} from '../src/typegen/index.js';
-import type {SqlfuProjectConfig} from '../src/core/types.js';
+import type {SqlfuProjectConfig} from '../src/types.js';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const internalRoot = path.join(packageRoot, 'internal');
@@ -58,6 +58,7 @@ async function main() {
       prettyErrors: false,
       sync: false,
       importExtension: '.js',
+      authority: 'desired_schema',
     },
   };
 
