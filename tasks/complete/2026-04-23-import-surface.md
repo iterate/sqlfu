@@ -26,7 +26,12 @@ Commit 11 (top-of-file comment pointing at the enforcement test) folded into com
 
 ## Follow-up
 
-**`sqlfu/ui/browser` is not yet strict-tier enforced.** Parked with a TODO in `scripts/check-strict-imports.ts`. Today the browser build of `uiRouter` transitively pulls `api.ts` (via `ui/router.ts`'s imports of command handlers), which transitively pulls `node:*` helpers. The `uiRouter` value is used at runtime in demo mode (fed to `createRouterClient` in `packages/ui/src/demo/index.ts`), so the fix requires splitting the router's schema/types from its handler implementations and having the browser import only the schema. Tractable, but out of scope for this refactor — opening a follow-up task.
+**`sqlfu/ui/browser` is not yet strict-tier enforced, and `sqlfu/api` can't re-export typegen.** Same root cause, two manifestations:
+
+- **Strict check on `sqlfu/ui/browser`** is parked with a TODO in `scripts/check-strict-imports.ts`. The browser build of `uiRouter` transitively pulls `api.ts` via `ui/router.ts`'s imports of command handlers.
+- **`sqlfu/api` cannot re-export `typegen/index.ts`** (`generateQueryTypes`, `generateQueryTypesForConfig`, `analyzeAdHocSqlForConfig`) even though the grill decided it should. `typegen/index.ts` imports `node:fs`, `node:path`, and `node/config.ts`. Because `ui/router.ts` imports from `api.ts` and `ui/browser.ts` re-exports `uiRouter`, a typegen re-export on `sqlfu/api` poisons the Vite build of `@sqlfu/ui` (rollup fails on `pathToFileURL` from `node:url` before tree-shaking can prune the unused re-export). Consumers who need typegen at runtime deep-import `sqlfu/dist/typegen/index.js` for now. Schemadiff and formatter DO get re-exported — they're node-free.
+
+Fix: split the router's schema/types from its handler implementations. Once `ui/router.ts` imports only types from `api.ts` (or gets handlers injected via context), `sqlfu/api` can re-export typegen, the strict check can cover `sqlfu/ui/browser`, and the public surface matches the grill's original decision.
 
 ## Why
 
