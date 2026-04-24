@@ -82,7 +82,7 @@ export type SchemadiffOperationKind =
 
 export type SchemadiffReason = {
   verb: 'rebuilding' | 'recreating' | 'dropping';
-  resourceType: 'table' | 'view' | 'trigger' | 'index' | 'column';
+  resourceType: 'table' | 'view' | 'trigger' | 'index';
   resourceName: string;
   explanation: string;
 };

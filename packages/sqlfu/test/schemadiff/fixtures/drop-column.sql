@@ -21,6 +21,19 @@ drop index a_y_idx;
 alter table a drop column y;
 -- #endregion
 
+-- #region: multi-column drop uses plural wording in cascade reason
+-- baseline:
+create table t(x int, y int, z int);
+create view t_yz as select y, z from t;
+-- desired:
+create table t(x int);
+-- output:
+-- dropping view "t_yz": table "t" removing columns "y", "z"
+drop view t_yz;
+alter table t drop column y;
+alter table t drop column z;
+-- #endregion
+
 -- #region: partial index on surviving column should not block unrelated drop
 -- baseline:
 create table t(x int, y int);
