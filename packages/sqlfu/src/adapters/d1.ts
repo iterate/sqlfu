@@ -1,6 +1,6 @@
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
-import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
+import {rawSqlWithSqlSplittingAsync} from '../sqlite-text.js';
 import type {AsyncClient, ResultRow, SqlQuery} from '../types.js';
 
 export interface D1PreparedStatement {
@@ -62,7 +62,14 @@ export function createD1Client(database: D1DatabaseLike): AsyncClient<D1Database
     raw,
     iterate,
     async transaction<TResult>(fn: (tx: AsyncClient<D1DatabaseLike>) => Promise<TResult> | TResult) {
-      return surroundWithBeginCommitRollbackAsync(d1Client, fn);
+      // D1 (like Durable Objects' built-in SQL) rejects `begin transaction` /
+      // `savepoint` in raw SQL — the workerd D1 binding only exposes
+      // `db.batch([...])` for atomicity, which requires collecting statements
+      // upfront and doesn't compose with sqlfu's callback-based transaction.
+      // Invoke the callback directly; the weaker guarantee (partial writes on
+      // error) mirrors the DO adapter and is the only shape that runs at all
+      // against a live D1 binding.
+      return fn(d1Client);
     },
     sql: undefined as unknown as AsyncClient<D1DatabaseLike>['sql'],
   } satisfies AsyncClient<D1DatabaseLike>;
