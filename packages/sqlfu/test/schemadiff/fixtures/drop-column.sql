@@ -16,8 +16,22 @@ create index a_y_idx on a(y);
 -- desired:
 create table a(x int);
 -- output:
+-- dropping index "a_y_idx": table "a" removing column "y"
 drop index a_y_idx;
 alter table a drop column y;
+-- #endregion
+
+-- #region: multi-column drop uses plural wording in cascade reason
+-- baseline:
+create table t(x int, y int, z int);
+create view t_yz as select y, z from t;
+-- desired:
+create table t(x int);
+-- output:
+-- dropping view "t_yz": table "t" removing columns "y", "z"
+drop view t_yz;
+alter table t drop column y;
+alter table t drop column z;
 -- #endregion
 
 -- #region: partial index on surviving column should not block unrelated drop
@@ -50,6 +64,7 @@ create table child(x int, parent_id int references parent(id));
 create table parent(id int primary key);
 create table child(x int);
 -- output:
+-- rebuilding table "child": foreign keys changed
 alter table child rename to __sqlfu_old_child;
 create table child(x int);
 insert into child(x) select x from __sqlfu_old_child;
@@ -62,6 +77,7 @@ create table a(x int, y int check(y > 0));
 -- desired:
 create table a(x int);
 -- output:
+-- rebuilding table "a": column "y" dropped (cannot drop in place)
 alter table a rename to __sqlfu_old_a;
 create table a(x int);
 insert into a(x) select x from __sqlfu_old_a;
@@ -109,6 +125,7 @@ end;
 -- desired:
 create table person(name text);
 -- output:
+-- dropping trigger "person_log": table "person" removing column "nickname"
 drop trigger person_log;
 alter table person drop column nickname;
 -- #endregion
@@ -135,6 +152,7 @@ create view person_names as select name, nickname from person;
 -- desired:
 create table person(name text);
 -- output:
+-- dropping view "person_names": table "person" removing column "nickname"
 drop view person_names;
 alter table person drop column nickname;
 -- #endregion
@@ -184,6 +202,7 @@ select person.nickname from person;
 -- desired:
 create table person(name text);
 -- output:
+-- dropping view "person_names": table "person" removing column "nickname"
 drop view person_names;
 alter table person drop column nickname;
 -- #endregion
