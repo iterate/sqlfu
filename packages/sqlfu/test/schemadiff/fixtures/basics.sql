@@ -103,6 +103,32 @@ insert into a(low, high) select low, high from __sqlfu_old_a;
 drop table __sqlfu_old_a;
 -- #endregion
 
+-- #region: column type change rebuilds with type-change reason
+-- baseline:
+create table a(x int);
+-- desired:
+create table a(x text);
+-- output:
+-- rebuilding table "a": column "x" type changed from int to text
+alter table a rename to __sqlfu_old_a;
+create table a(x text);
+insert into a(x) select x from __sqlfu_old_a;
+drop table __sqlfu_old_a;
+-- #endregion
+
+-- #region: column default change rebuilds with default-change reason
+-- baseline:
+create table a(x int default 0);
+-- desired:
+create table a(x int default 1);
+-- output:
+-- rebuilding table "a": column "x" default changed
+alter table a rename to __sqlfu_old_a;
+create table a(x int default 1);
+insert into a(x) select x from __sqlfu_old_a;
+drop table __sqlfu_old_a;
+-- #endregion
+
 -- #region: user-modified view cascades its unchanged trigger with "changing" reason
 -- baseline:
 create table t(x int, y int);
