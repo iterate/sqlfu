@@ -478,6 +478,47 @@ If a migration fails partway through, `sqlfu migrate` reruns that same check aga
 
 No row is ever written to `sqlfu_migrations` for a failed migration. That table only ever contains migrations `sqlfu` trusts to have fully applied.
 
+## Migration Presets
+
+`sqlfu` tracks applied migrations in a bookkeeping table. By default that table is `sqlfu_migrations` with columns `(name, checksum, applied_at)`. Some projects want sqlfu to play nicely with an existing convention — most commonly Cloudflare D1 projects where alchemy or wrangler already owns a `d1_migrations` table.
+
+The `migrations.preset` knob lets you switch the bookkeeping format without rewriting any migrations:
+
+```ts
+// sqlfu.config.ts
+export default defineConfig({
+  db: async () => /* ... your D1 / miniflare client factory ... */,
+  migrations: { path: 'migrations', preset: 'd1' },
+  definitions: 'definitions.sql',
+  queries: 'sql',
+});
+```
+
+### The two presets
+
+| Preset           | Table             | Columns                                                | Filename prefix default | Checksum tracking |
+|------------------|-------------------|--------------------------------------------------------|-------------------------|-------------------|
+| `'sqlfu'` (default) | `sqlfu_migrations`| `name text pk, checksum text, applied_at text`         | `iso`                   | Yes               |
+| `'d1'`           | `d1_migrations`   | `id text pk, name text, applied_at text` (alchemy-compatible) | `four-digit`            | No                |
+
+`prefix` is defaulted from the preset but can still be set explicitly to override — e.g. `{ preset: 'd1', prefix: 'iso' }` is valid if you want alchemy's table with ISO-prefixed filenames.
+
+### D1 and alchemy interoperability
+
+Under `preset: 'd1'` sqlfu reads and writes the same `d1_migrations` table alchemy and wrangler manage. The usual flow:
+
+1. Alchemy provisions the D1 database and runs its first migrations, creating `d1_migrations`.
+2. You add sqlfu to the project with `preset: 'd1'`. Keep every alchemy-era migration file in sqlfu's migrations directory — sqlfu uses them for drift detection and replay, even though alchemy already applied them.
+3. From this point on, `sqlfu migrate` is what applies new migrations. Alchemy's existing rows stay put; sqlfu appends new ones with alchemy-compatible id sequencing (`00001`, `00002`, …).
+
+Alchemy uses two different `d1_migrations` schemas — a 3-column remote shape in production D1 and a 4-column local shape (with a `type` column) when running against miniflare. Sqlfu introspects the existing table on first use and adapts its inserts, so the same `preset: 'd1'` config works in both environments.
+
+#### Checksum downgrade
+
+Alchemy's `d1_migrations` schema has no checksum column, so under `preset: 'd1'` sqlfu cannot detect that an applied migration's content was edited after the fact. This is a deliberate tradeoff of alchemy compatibility — if you edit an already-applied migration file, `sqlfu migrate` and `sqlfu check` will treat it as a no-op rather than throwing.
+
+Under `preset: 'sqlfu'` (the default) edited-after-apply is caught and reported as a checksum mismatch.
+
 ## Non-Goals
 
 This document intentionally does not answer every implementation question yet.
