@@ -4,7 +4,7 @@ import path from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 
-import type {AsyncClient, DisposableAsyncClient, ResultRow, SqlfuProjectConfig, SqlQuery} from '../types.js';
+import type {AsyncClient, DisposableAsyncClient, QueryArg, ResultRow, SqlfuProjectConfig, SqlQuery} from '../types.js';
 import {bindAsyncSql} from '../sql.js';
 import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
 import type {QueryCatalog} from '../typegen/query-catalog.js';
@@ -98,18 +98,36 @@ export async function createNodeHost(): Promise<SqlfuHost> {
     fs: nodeFs,
     openDb: (config) => openConfigDb(config.db),
     execAdHocSql: async (client, sql, params): Promise<AdHocSqlResult> => {
-      const database = client.driver as InstanceType<typeof DatabaseSync>;
-      const statement = database.prepare(sql);
-      try {
-        const rows = runPreparedAll(statement, params);
+      // Go through the sqlfu Client API uniformly — do NOT reach into
+      // `client.driver`. The previous driver-reach-through worked for
+      // sync drivers but silently dropped Promise-returning `.all()` calls
+      // on async drivers (D1, libsql, Turso), which in turn got invoked
+      // after the enclosing `await using` had already disposed the
+      // underlying resource (ERR_DISPOSED crash on miniflare). The Client
+      // API normalizes both shapes so one implementation fits both.
+      //
+      // The Client API only accepts positional args, so named-param
+      // objects are rewritten to positional here via a tiny SQLite
+      // tokenizer. Once `client.prepare(sql)` lands (see
+      // tasks/client-prepare.md), this function goes away — the adapter's
+      // native prepared-statement handle can take named params directly.
+      //
+      // Read vs. write is classified by the first SQL keyword rather than
+      // by try/catch-on-`all()`: drivers disagree on whether `.all()`
+      // throws for writes (node:sqlite returns `[]`, better-sqlite3
+      // throws), so the old heuristic silently mis-categorized writes on
+      // some drivers.
+      const {sql: positionalSql, args} = rewriteNamedParamsToPositional(sql, params);
+      if (sqlReturnsRows(positionalSql)) {
+        const rows = await client.all({sql: positionalSql, args, name: 'execAdHocSql'});
         return {mode: 'rows', rows};
-      } catch {}
-      const result = runPreparedRun(statement, params);
+      }
+      const result = await client.run({sql: positionalSql, args, name: 'execAdHocSql'});
       return {
         mode: 'metadata',
         metadata: {
-          rowsAffected: result.changes == null ? undefined : Number(result.changes),
-          lastInsertRowid: result.lastInsertRowid as string | number | bigint | null,
+          rowsAffected: result.rowsAffected,
+          lastInsertRowid: result.lastInsertRowid,
         },
       };
     },
@@ -220,16 +238,97 @@ const nodeFs: HostFs = {
 
 type NodeSqliteDatabase = InstanceType<typeof DatabaseSync>;
 
-function runPreparedAll(statement: ReturnType<NodeSqliteDatabase['prepare']>, params: AdHocSqlParams): ResultRow[] {
-  if (params == null) return statement.all() as ResultRow[];
-  return (
-    Array.isArray(params) ? statement.all(...(params as never[])) : statement.all(params as never)
-  ) as ResultRow[];
+/**
+ * Returns true for statements that produce a result set — `select`, `with`,
+ * `pragma`, `explain`, `values`, and any of the write variants with a
+ * `returning` clause. Used by `execAdHocSql` to pick between `client.all` and
+ * `client.run`. Strips leading comments/whitespace so a commented query is
+ * classified by its actual first keyword.
+ */
+function sqlReturnsRows(sql: string): boolean {
+  const stripped = sql.replace(/^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)+/u, '');
+  if (/^(select|with|pragma|explain|values)\b/iu.test(stripped)) return true;
+  return /\breturning\b/iu.test(sql);
 }
 
-function runPreparedRun(statement: ReturnType<NodeSqliteDatabase['prepare']>, params: AdHocSqlParams) {
-  if (params == null) return statement.run();
-  return Array.isArray(params) ? statement.run(...(params as never[])) : statement.run(params as never);
+/**
+ * Ad-hoc SQL from the UI's query runner can use named params (`:name`,
+ * `$name`, `@name`). The sqlfu Client API is positional-only, so this rewrites
+ * the SQL to `?` placeholders and returns the args in appearance order. A
+ * minimal tokenizer skips string literals and comments so colons/dollars inside
+ * quoted strings aren't mistaken for placeholders.
+ *
+ * This lives here (not in a shared util) because the UI's SQL runner is the
+ * only path that accepts non-positional params. Once `client.prepare(sql)`
+ * exposes a native handle with driver-level named-param support, this helper
+ * disappears and execAdHocSql goes through that instead.
+ */
+function rewriteNamedParamsToPositional(
+  sql: string,
+  params: AdHocSqlParams,
+): {sql: string; args: QueryArg[]} {
+  if (params == null) return {sql, args: []};
+  if (Array.isArray(params)) return {sql, args: params as QueryArg[]};
+
+  const named = params as Record<string, unknown>;
+  const order: string[] = [];
+  let out = '';
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i]!;
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      const start = i;
+      i += 1;
+      while (i < sql.length) {
+        if (sql[i] === quote) {
+          if (sql[i + 1] === quote) {
+            i += 2;
+            continue;
+          }
+          i += 1;
+          break;
+        }
+        i += 1;
+      }
+      out += sql.slice(start, i);
+      continue;
+    }
+    if (ch === '-' && sql[i + 1] === '-') {
+      const eol = sql.indexOf('\n', i);
+      const end = eol === -1 ? sql.length : eol;
+      out += sql.slice(i, end);
+      i = end;
+      continue;
+    }
+    if (ch === '/' && sql[i + 1] === '*') {
+      const close = sql.indexOf('*/', i + 2);
+      const end = close === -1 ? sql.length : close + 2;
+      out += sql.slice(i, end);
+      i = end;
+      continue;
+    }
+    if (ch === ':' || ch === '$' || ch === '@') {
+      const rest = sql.slice(i + 1);
+      const match = /^[a-zA-Z_][a-zA-Z0-9_]*/u.exec(rest);
+      if (match) {
+        order.push(match[0]);
+        out += '?';
+        i += 1 + match[0].length;
+        continue;
+      }
+    }
+    out += ch;
+    i += 1;
+  }
+
+  const args = order.map((name) => {
+    if (!Object.prototype.hasOwnProperty.call(named, name)) {
+      throw new Error(`SQL runner: missing value for named parameter "${name}".`);
+    }
+    return named[name] as QueryArg;
+  });
+  return {sql: out, args};
 }
 
 export function createAsyncNodeSqliteClient(database: NodeSqliteDatabase): AsyncClient<NodeSqliteDatabase> {

@@ -11,6 +11,7 @@ import {
   analyzeDatabase,
   autoAcceptConfirm,
   formatCheckFailure,
+  migrationsPresetOf,
   requireContextConfig,
 } from '../api.js';
 import {createDefaultInitPreview} from '../init-preview.js';
@@ -184,7 +185,7 @@ export const router = {
       const initializedContext = requireContextConfig(context);
       const migrations = await readMigrationsFromContext(initializedContext);
       await using database = await initializedContext.host.openDb(initializedContext.config);
-      const applied = await readMigrationHistory(database.client);
+      const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(initializedContext)});
       const appliedNames = new Set(applied.map((migration) => migration.name));
       return migrations.map((migration) => migrationName(migration)).filter((name) => !appliedNames.has(name));
     }),
@@ -196,7 +197,7 @@ export const router = {
     .handler(async ({context}) => {
       const initializedContext = requireContextConfig(context);
       await using database = await initializedContext.host.openDb(initializedContext.config);
-      const applied = await readMigrationHistory(database.client);
+      const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(initializedContext)});
       return applied.map((migration) => migration.name);
     }),
 
@@ -213,7 +214,7 @@ export const router = {
       const initializedContext = requireContextConfig(context);
       const migrations = await readMigrationsFromContext(initializedContext);
       await using database = await initializedContext.host.openDb(initializedContext.config);
-      const applied = await readMigrationHistory(database.client);
+      const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(initializedContext)});
       const appliedNames = new Set(applied.map((migration) => migration.name));
       return migrations
         .map((migration) => migrationName(migration))
@@ -268,8 +269,8 @@ export const router = {
         readMigrationsFromContext(sqlfuContext),
       ]);
       const [definitionsSchema, migrationsSchema] = await Promise.all([
-        materializeDefinitionsSchemaForContext(sqlfuContext.host, definitionsSql),
-        materializeMigrationsSchemaForContext(sqlfuContext.host, migrations),
+        materializeDefinitionsSchemaForContext(sqlfuContext, definitionsSql),
+        materializeMigrationsSchemaForContext(sqlfuContext, migrations),
       ]);
       if ((await compareSchemasForContext(sqlfuContext.host, definitionsSchema, migrationsSchema)).isDifferent) {
         throw new Error('replayed migrations do not match definitions.sql');

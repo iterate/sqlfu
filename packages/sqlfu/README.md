@@ -82,7 +82,7 @@ You should still get strong TypeScript output from SQL: generated wrappers, type
 - generated query wrappers
   TypeScript code generated into `sql/.generated/` as `<name>.sql.ts`.
 - `sqlfu_migrations`
-  The table that records applied migrations in a real database.
+  The table that records applied migrations in a real database. Configurable via `migrations.preset` — set `preset: 'd1'` to use Cloudflare D1's `d1_migrations` table instead, for projects taking over from alchemy/wrangler.
 - live schema
   The schema the database actually has right now.
 
@@ -108,6 +108,8 @@ See [Adapters](https://sqlfu.dev/docs/adapters) for the full driver table, copy-
 The migrator is SQL-only. Migrations are applied in filename order, recorded in `sqlfu_migrations`, and treated as explicit history. The production path is replayed migrations, not direct declarative apply.
 
 The diff engine powers `draft`, `goto`, and `sync` by comparing replayed migration state against `definitions.sql` and producing the SQL statements that describe the difference. See [Migration Model](https://sqlfu.dev/docs/migration-model) for the full model.
+
+For Cloudflare D1 projects already using alchemy or wrangler, set `migrations.preset: 'd1'` and sqlfu reads and writes the same `d1_migrations` table alchemy does. See [Migration Presets](https://sqlfu.dev/docs/migration-model#migration-presets) for the schema detection and checksum tradeoff.
 
 ### Type Generator
 
