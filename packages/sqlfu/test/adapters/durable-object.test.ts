@@ -8,11 +8,24 @@ import {expect, test} from 'vitest';
 import dedent from 'dedent';
 
 import {ensureBuilt, packageRoot} from './ensure-built.js';
+import {createDurableObjectClient as createLocalDurableObjectClient} from '../../src/index.js';
 
 declare const createDurableObjectClient: typeof import('../../src/index.ts').createDurableObjectClient;
 declare const sql: typeof import('../../src/index.ts').sql;
 declare const applyMigrations: typeof import('../../src/migrations/index.ts').applyMigrations;
 declare const migrationsFromBundle: typeof import('../../src/migrations/index.ts').migrationsFromBundle;
+
+test('createDurableObjectClient rejects a bare durable object sql handle', () => {
+  const sqlStorage = {
+    exec() {
+      return {toArray: () => []};
+    },
+  };
+
+  expect(() => createLocalDurableObjectClient(sqlStorage as any)).toThrow(
+    'createDurableObjectClient expects ctx.storage or {sql, transactionSync}; pass ctx.storage.sql as {sql}.',
+  );
+});
 
 test('createDurableObjectClient works in a real durable object', async () => {
   await using fixture = await createDOFixture(
@@ -20,7 +33,7 @@ test('createDurableObjectClient works in a real durable object', async () => {
       client: ReturnType<typeof createDurableObjectClient>;
 
       constructor(state: any) {
-        this.client = createDurableObjectClient(state.storage.sql);
+        this.client = createDurableObjectClient(state.storage);
       }
 
       async testme() {
@@ -38,7 +51,7 @@ test('createDurableObjectClient can write and read rows in a durable object', as
       client: ReturnType<typeof createDurableObjectClient>;
 
       constructor(state: any) {
-        this.client = createDurableObjectClient(state.storage.sql);
+        this.client = createDurableObjectClient(state.storage);
         this.client.run(sql`
           create table if not exists person (
             id integer primary key,
@@ -78,21 +91,15 @@ test('applyMigrations can run inside a durable object using a migrations bundle'
       client: ReturnType<typeof createDurableObjectClient>;
 
       constructor(state: any) {
-        this.client = createDurableObjectClient(state.storage.sql);
+        this.client = createDurableObjectClient(state.storage);
         const bundle = {
           'migrations/2026-04-10T00.00.00.000Z_create_posts.sql':
             'create table posts (id integer primary key, slug text not null);',
           'migrations/2026-04-10T01.00.00.000Z_add_body.sql': 'alter table posts add column body text;',
         };
-        // transactionSync requires a synchronous callback and provides the real
-        // per-request atomicity boundary: any error thrown by applyMigrations
-        // rolls back every statement run inside. This only works because
-        // applyMigrations is overloaded to be sync for sync clients.
-        state.storage.transactionSync(() =>
-          applyMigrations(this.client, {
-            migrations: migrationsFromBundle(bundle),
-          }),
-        );
+        applyMigrations(this.client, {
+          migrations: migrationsFromBundle(bundle),
+        });
       }
 
       async getColumns() {
@@ -117,13 +124,143 @@ test('applyMigrations can run inside a durable object using a migrations bundle'
   ]);
 });
 
+test('createDurableObjectClient uses transactionSync when given durable object storage', async () => {
+  await using fixture = await createDOFixture(
+    class ClientTransactionSyncTest {
+      client: ReturnType<typeof createDurableObjectClient>;
+      transactionCalls = 0;
+
+      constructor(state: any) {
+        const owner = this;
+        this.client = createDurableObjectClient({
+          sql: state.storage.sql,
+          transactionSync<TResult>(callback: () => TResult) {
+            owner.transactionCalls += 1;
+            return state.storage.transactionSync(callback);
+          },
+        });
+      }
+
+      async applyBundle() {
+        const bundle = {
+          'migrations/2026-04-10T00.00.00.000Z_create_posts.sql':
+            'create table posts (id integer primary key, slug text not null);',
+          'migrations/2026-04-10T01.00.00.000Z_add_body.sql': 'alter table posts add column body text;',
+        };
+
+        applyMigrations(this.client, {
+          migrations: migrationsFromBundle(bundle),
+        });
+      }
+
+      async getTransactionCalls() {
+        return this.transactionCalls;
+      }
+    },
+  );
+
+  await fixture.stub.applyBundle();
+
+  expect(await fixture.stub.getTransactionCalls()).toBe(2);
+});
+
+test('applyMigrations in a durable object refuses bundles missing an applied migration', async () => {
+  await using fixture = await createDOFixture(
+    class ClientMissingMigrationBundleTest {
+      client: ReturnType<typeof createDurableObjectClient>;
+
+      constructor(state: any) {
+        this.client = createDurableObjectClient(state.storage);
+      }
+
+      async applyInitialBundle() {
+        applyMigrations(this.client, {
+          migrations: migrationsFromBundle({
+            'migrations/2026-04-10T00.00.00.000Z_create_posts.sql':
+              'create table posts (id integer primary key, slug text not null);',
+          }),
+        });
+      }
+
+      async applyBundleMissingInitialMigration() {
+        try {
+          applyMigrations(this.client, {
+            migrations: migrationsFromBundle({
+              'migrations/2026-04-10T01.00.00.000Z_add_body.sql': 'alter table posts add column body text;',
+            }),
+          });
+          return {ok: true};
+        } catch (error) {
+          return {ok: false, message: String(error)};
+        }
+      }
+
+      async getColumns() {
+        return this.client.all<{name: string}>(sql`
+          select name from pragma_table_info('posts') order by cid
+        `);
+      }
+    },
+  );
+
+  await fixture.stub.applyInitialBundle();
+
+  expect(await fixture.stub.applyBundleMissingInitialMigration()).toMatchObject({
+    ok: false,
+    message: expect.stringContaining('deleted applied migration: 2026-04-10T00.00.00.000Z_create_posts'),
+  });
+  expect(await fixture.stub.getColumns()).toMatchObject([{name: 'id'}, {name: 'slug'}]);
+});
+
+test('createDurableObjectClient rolls back a failed migration with transactionSync', async () => {
+  await using fixture = await createDOFixture(
+    class ClientTransactionRollbackTest {
+      client: ReturnType<typeof createDurableObjectClient>;
+
+      constructor(state: any) {
+        this.client = createDurableObjectClient(state.storage);
+      }
+
+      async applyBrokenMigration() {
+        try {
+          applyMigrations(this.client, {
+            migrations: migrationsFromBundle({
+              'migrations/2026-04-10T00.00.00.000Z_broken.sql': `
+                create table partially_created (id integer primary key);
+                insert into missing_table (id) values (1);
+              `,
+            }),
+          });
+          return {ok: true};
+        } catch (error) {
+          return {ok: false, message: String(error)};
+        }
+      }
+
+      async listPartialTables() {
+        return this.client.all<{name: string}>(sql`
+          select name
+          from sqlite_schema
+          where type = 'table' and name = 'partially_created'
+        `);
+      }
+    },
+  );
+
+  expect(await fixture.stub.applyBrokenMigration()).toMatchObject({
+    ok: false,
+    message: expect.stringContaining('missing_table'),
+  });
+  expect(await fixture.stub.listPartialTables()).toMatchObject([]);
+});
+
 test('createDurableObjectClient.raw runs multiple statements', async () => {
   await using fixture = await createDOFixture(
     class ClientMultiStatementTest {
       client: ReturnType<typeof createDurableObjectClient>;
 
       constructor(state: any) {
-        this.client = createDurableObjectClient(state.storage.sql);
+        this.client = createDurableObjectClient({sql: state.storage.sql});
       }
 
       async seedPeople() {
