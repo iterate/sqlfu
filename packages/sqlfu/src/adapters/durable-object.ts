@@ -3,12 +3,18 @@ import {bindSyncSql} from '../sql.js';
 import {rawSqlWithSqlSplittingSync} from '../sqlite-text.js';
 import type {ResultRow, SqlQuery, SyncClient} from '../types.js';
 
+// Intentionally non-generic and bindings-typed-as-`any[]` so this interface
+// accepts Cloudflare's real `SqlStorage` (`exec<T extends Record<string,
+// SqlStorageValue>>`) without forcing consumers to import
+// `@cloudflare/workers-types`. CF's stricter row-type constraint is not
+// representable here; we narrow inside `all` / `iterate` instead. See the
+// type-test in `test/adapters/durable-object.test-d.ts`.
 export interface DurableObjectSqlStorageLike {
-  exec<TRow extends ResultRow = ResultRow>(
+  exec(
     query: string,
-    ...bindings: unknown[]
+    ...bindings: any[]
   ): {
-    toArray(): TRow[];
+    toArray(): unknown[];
     rowsWritten?: number;
   };
 }
@@ -36,7 +42,7 @@ export function createDurableObjectClient<TStorage extends DurableObjectClientIn
     system: 'sqlite',
     sync: true,
     all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
-      return sqlStorage.exec<TRow>(query.sql, ...query.args).toArray();
+      return sqlStorage.exec(query.sql, ...query.args).toArray() as TRow[];
     },
     run(query: SqlQuery) {
       const cursor = sqlStorage.exec(query.sql, ...query.args);
@@ -53,7 +59,7 @@ export function createDurableObjectClient<TStorage extends DurableObjectClientIn
       }, sql);
     },
     *iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
-      const rows = sqlStorage.exec<TRow>(query.sql, ...query.args).toArray();
+      const rows = sqlStorage.exec(query.sql, ...query.args).toArray() as TRow[];
       yield* rows;
     },
     transaction<TResult>(fn: (tx: SyncClient<TStorage>) => TResult | Promise<TResult>) {
