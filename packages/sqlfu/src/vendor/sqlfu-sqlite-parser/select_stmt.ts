@@ -45,7 +45,7 @@
 // Error philosophy: throw `SqlParseError` with the current token's offset on
 // any unexpected input. Prefer actionable messages over graceful recovery.
 
-import {type Token, type TokenKind, tokenize} from './tokenizer.js';
+import {type Token, type TokenKind, tokenize, isIdentLike} from './tokenizer.js';
 
 // -----------------------------------------------------------------------------
 // AST — plain data, no behavior
@@ -601,27 +601,33 @@ class Parser {
 		let stop = expr.stop;
 		if (this.matchKeyword('AS')) {
 			const aliasTok = this.expectAlias('column alias');
-			alias = unquoteStringyAlias(aliasTok);
+			alias = this.unquoteAliasTok(aliasTok);
 			stop = aliasTok.stop;
-		} else if (this.checkKind('IDENTIFIER') && this.identIsResultAlias()) {
+		} else if (this.checkIdentLike() && this.identIsResultAlias()) {
 			const aliasTok = this.advance();
-			alias = unquoteIdent(aliasTok.value);
+			alias = this.identNameOf(aliasTok);
 			stop = aliasTok.stop;
 		}
 		return {kind: 'Expr', expr, alias, start: expr.start, stop};
 	}
 
 	/** Accept an alias after AS, which SQLite grammar allows to be either an
-	 *  identifier or a string literal (`AS 'label'`). */
+	 *  identifier or a string literal (`AS 'label'`). Non-reserved keywords
+	 *  also work — `select 1 as offset` is legal SQLite. */
 	expectAlias(label: string): Token {
 		const tok = this.peek();
-		if (tok && (tok.kind === 'IDENTIFIER' || tok.kind === 'STRING_LITERAL')) {
+		if (tok && (isIdentLike(tok) || tok.kind === 'STRING_LITERAL')) {
 			return this.advance();
 		}
 		throw new SqlParseError(
 			`expected ${label} but got ${describeToken(tok)}`,
 			tok ? tok.start : this.sql.length
 		);
+	}
+
+	unquoteAliasTok(tok: Token): string {
+		if (tok.kind === 'STRING_LITERAL') return unquoteString(tok.value);
+		return this.identNameOf(tok);
 	}
 
 	/** Decide whether a bare IDENTIFIER after an expression in a result-column
@@ -1376,6 +1382,13 @@ class Parser {
 				};
 			}
 			default:
+				// Non-reserved keywords (OFFSET, KEY, ROW, …) act as bare
+				// identifiers in expression position. SQLite's parser uses a
+				// FALLBACK rule for the same purpose. See `NON_RESERVED_KEYWORDS`
+				// in tokenizer.ts.
+				if (isIdentLike(tok)) {
+					return this.parseIdentifierPrimary();
+				}
 				throw new SqlParseError(
 					`unexpected keyword '${tok.value}' where an expression was expected (offset ${tok.start})`,
 					tok.start
@@ -1480,7 +1493,8 @@ class Parser {
 	}
 
 	/** Identifier-led primary: column ref, qualified column ref, or function
-	 *  call (`name(...)`). */
+	 *  call (`name(...)`). Accepts a non-reserved keyword (e.g. OFFSET, KEY)
+	 *  in identifier position — see `NON_RESERVED_KEYWORDS`. */
 	parseIdentifierPrimary(): ParsedExpr {
 		const first = this.advance();
 		// Function call? `name ( ... )`.
@@ -1491,16 +1505,16 @@ class Parser {
 		// Qualified refs: schema.table.col / table.col.
 		if (this.checkKind('DOT')) {
 			this.advance(); // consume .
-			const second = this.expectKind('IDENTIFIER', 'column name or table name after `.`');
+			const second = this.expectIdentLike('column name or table name after `.`');
 			// Could be `schema.table.column` → another DOT.
 			if (this.checkKind('DOT')) {
 				this.advance();
-				const third = this.expectKind('IDENTIFIER', 'column name after `schema.table.`');
+				const third = this.expectIdentLike('column name after `schema.table.`');
 				return {
 					kind: 'ColumnRef',
-					schema: unquoteIdent(first.value),
-					table: unquoteIdent(second.value),
-					column: unquoteIdent(third.value),
+					schema: this.identNameOf(first),
+					table: this.identNameOf(second),
+					column: this.identNameOf(third),
 					start: first.start,
 					stop: third.stop,
 				};
@@ -1512,8 +1526,8 @@ class Parser {
 			return {
 				kind: 'ColumnRef',
 				schema: null,
-				table: unquoteIdent(first.value),
-				column: unquoteIdent(second.value),
+				table: this.identNameOf(first),
+				column: this.identNameOf(second),
 				start: first.start,
 				stop: second.stop,
 			};
@@ -1523,7 +1537,7 @@ class Parser {
 			kind: 'ColumnRef',
 			schema: null,
 			table: null,
-			column: unquoteIdent(first.value),
+			column: this.identNameOf(first),
 			start: first.start,
 			stop: first.stop,
 		};
@@ -1586,7 +1600,7 @@ class Parser {
 			over_clause = {kind: 'OverClause'};
 		}
 
-		const name = unquoteIdent(nameTok.value).toLowerCase();
+		const name = this.identNameOf(nameTok).toLowerCase();
 		void schemaTok; // schema-qualified function names aren't tracked separately.
 		return {
 			kind: 'FunctionCall',
@@ -1670,6 +1684,32 @@ class Parser {
 		this.index++;
 		return tok;
 	}
+	checkIdentLike(): boolean {
+		return isIdentLike(this.tokens[this.index]);
+	}
+	checkIdentLikeAt(offset: number): boolean {
+		return isIdentLike(this.tokens[this.index + offset]);
+	}
+	expectIdentLike(label: string): Token {
+		const tok = this.tokens[this.index];
+		if (!isIdentLike(tok)) {
+			throw new SqlParseError(
+				`expected ${label} but got ${describeToken(tok)}`,
+				tok ? tok.start : this.sql.length
+			);
+		}
+		this.index++;
+		return tok;
+	}
+	/** Pull the identifier text out of `tok`. For an IDENTIFIER token this is
+	 *  the (possibly quoted) source text, with quoting stripped. For a
+	 *  KEYWORD token acting as an identifier (per `NON_RESERVED_KEYWORDS`)
+	 *  the keyword's `value` is upper-cased by the tokenizer, so we slice the
+	 *  original casing back out of the source. */
+	identNameOf(tok: Token): string {
+		if (tok.kind === 'IDENTIFIER') return unquoteIdent(tok.value);
+		return this.sql.slice(tok.start, tok.stop + 1);
+	}
 	expectKeyword(kw: string): Token {
 		const tok = this.tokens[this.index];
 		if (!tok || tok.kind !== 'KEYWORD' || tok.value !== kw) {
@@ -1735,12 +1775,6 @@ function unquoteString(value: string): string {
 		return value.slice(1, -1).replace(/''/g, "'");
 	}
 	return value;
-}
-
-/** Accept a STRING_LITERAL as an alias target (SQLite allows `AS 'x'`). */
-function unquoteStringyAlias(tok: Token): string {
-	if (tok.kind === 'STRING_LITERAL') return unquoteString(tok.value);
-	return unquoteIdent(tok.value);
 }
 
 function describeToken(tok: Token | null): string {

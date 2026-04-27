@@ -165,10 +165,10 @@ export function applyAsyncPrepareSuite(input: {
   });
 }
 
-interface SeedPostRow {
+type SeedPostRow = {
   id: number;
   slug: string;
-}
+};
 
 function openSeededSyncFixture(open: () => PrepareSuiteSyncFixture): PrepareSuiteSyncFixture {
   const fixture = open();
