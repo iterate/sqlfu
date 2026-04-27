@@ -48,7 +48,7 @@ const docs = [
     title: 'Type generation',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'typegen.md'),
     description:
-      'Generated query wrappers, multi-query SQL files, and inline parameter modifiers for lists and bulk tuples.',
+      'Generated query wrappers, multi-query SQL files, and inferred parameter forms for lists and bulk inserts.',
   },
   {
     slug: 'runtime-validation',
