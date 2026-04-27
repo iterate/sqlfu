@@ -171,8 +171,8 @@ export default {
 
 ```ts
 import {DurableObject} from 'cloudflare:workers';
-import {applyMigrations, createDurableObjectClient, migrationsFromBundle} from 'sqlfu';
-import migrationsBundle from '../migrations/.generated/migrations';
+import {createDurableObjectClient} from 'sqlfu';
+import {migrate} from '../migrations/.generated/migrations';
 
 export class Counter extends DurableObject {
   client: ReturnType<typeof createDurableObjectClient>;
@@ -182,16 +182,14 @@ export class Counter extends DurableObject {
 
     this.client = createDurableObjectClient(ctx.storage);
 
-    applyMigrations(this.client, {
-      migrations: migrationsFromBundle(migrationsBundle),
-    });
+    migrate(this.client);
   }
 }
 ```
 
 Pass `ctx.storage`, not `ctx.storage.sql`. The SQL handle is enough for queries, but the full storage object gives sqlfu access to Cloudflare's `transactionSync()` API, so each migration is applied inside a real Durable Object storage transaction. If you need a query-only escape hatch, pass `{sql: ctx.storage.sql}` explicitly.
 
-The migration bundle is emitted by `sqlfu generate` when `migrations` is configured. Commit `migrations/*.sql`; import `migrations/.generated/migrations.ts` into the Worker bundle; let every Durable Object instance call `applyMigrations()` during startup. `applyMigrations()` is idempotent: once a given Durable Object's private SQLite database has a row in `sqlfu_migrations`, that migration is skipped on later starts.
+The generated migration module is emitted by `sqlfu generate` when `migrations` is configured. Commit `migrations/*.sql`; import `migrate` from `migrations/.generated/migrations.ts` into the Worker bundle; let every Durable Object instance call it during startup. `migrate()` is idempotent: once a given Durable Object's private SQLite database has a row in `sqlfu_migrations`, that migration is skipped on later starts.
 
 ## Mobile / browser
 

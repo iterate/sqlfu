@@ -89,7 +89,7 @@ The intended sqlfu flow is:
 1. Edit `definitions.sql`.
 2. Run `sqlfu draft` and commit the generated `migrations/*.sql`.
 3. Run `sqlfu generate` so `migrations/.generated/migrations.ts` contains those migration files as a plain TypeScript bundle.
-4. Import that bundle in the Durable Object, build the client with `createDurableObjectClient(ctx.storage)`, and run `applyMigrations(client, {migrations: migrationsFromBundle(bundle)})` during constructor initialization.
+4. Import `migrate` from that generated module in the Durable Object, build the client with `createDurableObjectClient(ctx.storage)`, and run `migrate(client)` during constructor initialization.
 
 The sqlfu Durable Object migrator is synchronous, so running it directly in the constructor is enough: the object does not serve a request before the constructor returns. Pass the full `ctx.storage` object to `createDurableObjectClient`, not `ctx.storage.sql`, so sqlfu can use Durable Objects' `transactionSync()` API for per-migration rollback. If you need a query-only escape hatch, pass `{sql: ctx.storage.sql}` explicitly.
 
