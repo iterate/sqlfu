@@ -15,8 +15,9 @@ Most query libraries force every database call to be `async`, even when the unde
 - Give it `better-sqlite3` → you get a `SyncClient`. `client.all(...)` returns rows, not a `Promise<rows>`. `client.transaction(fn)` calls `fn` synchronously.
 - Give it `@libsql/client` → you get an `AsyncClient`. Same surface, but `Promise`-returning.
 - Generated wrappers follow suit. A query generated against a sync-backed client is a plain function that returns its rows. Generated against an async-backed client, it returns a `Promise`. No gratuitous `async` creeping up your call stack.
+- The migrator follows suit too. `applyMigrations(syncClient, ...)` runs synchronously; `applyMigrations(asyncClient, ...)` returns a promise. This is why Durable Object startup migrations can run directly in the constructor.
 
-Concretely, that's why the Sync/Async column exists in the compatibility matrix below, and why the transaction helpers inside sqlfu have [two implementations](../src/core/sqlite.ts): `surroundWithBeginCommitRollbackSync` and `surroundWithBeginCommitRollbackAsync`. The [generator](../src/typegen/index.ts) reads `client.sync: true` / `false` and emits either a plain `function` returning `SyncClient`-flavored rows, or an `async function` returning a `Promise`.
+Concretely, that's why the Sync/Async column exists in the compatibility matrix below, why the transaction helpers inside sqlfu have [two implementations](../src/sqlite-text.ts): `surroundWithBeginCommitRollbackSync` and `surroundWithBeginCommitRollbackAsync`, and why the migrator uses the same sync/async dual-dispatch internally. The [generator](../src/typegen/index.ts) reads `client.sync: true` / `false` and emits either a plain `function` returning `SyncClient`-flavored rows, or an `async function` returning a `Promise`.
 
 Why this matters:
 
@@ -169,15 +170,26 @@ export default {
 ### Cloudflare Durable Object (per-DO SQLite)
 
 ```ts
+import {DurableObject} from 'cloudflare:workers';
 import {createDurableObjectClient} from 'sqlfu';
+import {migrate} from '../migrations/.generated/migrations';
 
-export class Counter {
-  client;
-  constructor(state: DurableObjectState) {
-    this.client = createDurableObjectClient(state.storage.sql);
+export class Counter extends DurableObject {
+  client: ReturnType<typeof createDurableObjectClient>;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+
+    this.client = createDurableObjectClient(ctx.storage);
+
+    migrate(this.client);
   }
 }
 ```
+
+Pass `ctx.storage`, not `ctx.storage.sql`. The SQL handle is enough for queries, but the full storage object gives sqlfu access to Cloudflare's `transactionSync()` API, so each migration is applied inside a real Durable Object storage transaction. If you need a query-only escape hatch, pass `{sql: ctx.storage.sql}` explicitly.
+
+The generated migration module is emitted by `sqlfu generate` when `migrations` is configured. Commit `migrations/*.sql`; import `migrate` from `migrations/.generated/migrations.ts` into the Worker bundle; let every Durable Object instance call it during startup. `migrate()` is idempotent: once a given Durable Object's private SQLite database has a row in `sqlfu_migrations`, that migration is skipped on later starts.
 
 ## Mobile / browser
 

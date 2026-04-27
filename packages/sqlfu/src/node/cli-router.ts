@@ -255,6 +255,10 @@ export const router = {
     all: base
       .meta({
         description: `Run all checks and recommend the next action.`,
+        // `default: true` makes `sqlfu check` (with no leaf specified)
+        // auto-dispatch here, instead of opening a clack picker that hangs
+        // when stdin isn't a TTY (CI, package.json scripts, piped invocations).
+        default: true,
       })
       .handler(async ({context}) => {
         const analysis = await analyzeDatabase(requireContextConfig(context));

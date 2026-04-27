@@ -33,6 +33,7 @@ import {
 	type Token,
 	type TokenKind,
 	tokenize,
+	isIdentLike,
 } from './tokenizer.js';
 
 import {
@@ -207,16 +208,16 @@ class DmlParser {
 		let tableStop = nameStop;
 		let alias: string | null = null;
 		if (this.matchKeyword('AS')) {
-			const aliasTok = this.expectKind('IDENTIFIER', 'table alias');
-			alias = unquoteIdent(aliasTok.value);
+			const aliasTok = this.expectIdentLike('table alias');
+			alias = this.identNameOf(aliasTok);
 			tableStop = aliasTok.stop;
 		}
 
 		const columns: string[] = [];
 		if (this.matchKind('OPEN_PAR')) {
-			columns.push(unquoteIdent(this.expectKind('IDENTIFIER', 'column name').value));
+			columns.push(this.identNameOf(this.expectIdentLike('column name')));
 			while (this.matchKind('COMMA')) {
-				columns.push(unquoteIdent(this.expectKind('IDENTIFIER', 'column name').value));
+				columns.push(this.identNameOf(this.expectIdentLike('column name')));
 			}
 			const close = this.expectKind('CLOSE_PAR', `')' closing column list`);
 			tableStop = close.stop;
@@ -307,9 +308,9 @@ class DmlParser {
 		this.expectKeyword('CONFLICT');
 		const target_columns: string[] = [];
 		if (this.matchKind('OPEN_PAR')) {
-			target_columns.push(unquoteIdent(this.expectKind('IDENTIFIER', 'target column').value));
+			target_columns.push(this.identNameOf(this.expectIdentLike('target column')));
 			while (this.matchKind('COMMA')) {
-				target_columns.push(unquoteIdent(this.expectKind('IDENTIFIER', 'target column').value));
+				target_columns.push(this.identNameOf(this.expectIdentLike('target column')));
 			}
 			this.expectKind('CLOSE_PAR', `')' closing conflict target`);
 		}
@@ -360,12 +361,12 @@ class DmlParser {
 		let stop = nameStop;
 		let alias: string | null = null;
 		if (this.matchKeyword('AS')) {
-			const aliasTok = this.expectKind('IDENTIFIER', 'table alias');
-			alias = unquoteIdent(aliasTok.value);
+			const aliasTok = this.expectIdentLike('table alias');
+			alias = this.identNameOf(aliasTok);
 			stop = aliasTok.stop;
-		} else if (this.checkKind('IDENTIFIER')) {
+		} else if (this.checkIdentLike() && !this.checkKeyword('SET')) {
 			const aliasTok = this.advance();
-			alias = unquoteIdent(aliasTok.value);
+			alias = this.identNameOf(aliasTok);
 			stop = aliasTok.stop;
 		}
 
@@ -414,15 +415,15 @@ class DmlParser {
 		let start: number;
 		if (this.matchKind('OPEN_PAR')) {
 			start = this.previous().start;
-			columns.push(unquoteIdent(this.expectKind('IDENTIFIER', 'column name').value));
+			columns.push(this.identNameOf(this.expectIdentLike('column name')));
 			while (this.matchKind('COMMA')) {
-				columns.push(unquoteIdent(this.expectKind('IDENTIFIER', 'column name').value));
+				columns.push(this.identNameOf(this.expectIdentLike('column name')));
 			}
 			this.expectKind('CLOSE_PAR', `')' closing column tuple`);
 		} else {
-			const colTok = this.expectKind('IDENTIFIER', 'column name');
+			const colTok = this.expectIdentLike('column name');
 			start = colTok.start;
-			columns.push(unquoteIdent(colTok.value));
+			columns.push(this.identNameOf(colTok));
 		}
 		const assignTok = this.expectKind('ASSIGN', `'=' after column name in assignment`);
 		const expr = this.parseExpr();
@@ -444,12 +445,12 @@ class DmlParser {
 		let stop = nameStop;
 		let alias: string | null = null;
 		if (this.matchKeyword('AS')) {
-			const aliasTok = this.expectKind('IDENTIFIER', 'table alias');
-			alias = unquoteIdent(aliasTok.value);
+			const aliasTok = this.expectIdentLike('table alias');
+			alias = this.identNameOf(aliasTok);
 			stop = aliasTok.stop;
-		} else if (this.checkKind('IDENTIFIER')) {
+		} else if (this.checkIdentLike() && !this.checkKeyword('WHERE') && !this.checkKeyword('RETURNING')) {
 			const aliasTok = this.advance();
-			alias = unquoteIdent(aliasTok.value);
+			alias = this.identNameOf(aliasTok);
 			stop = aliasTok.stop;
 		}
 
@@ -503,38 +504,82 @@ class DmlParser {
 			const tok = this.advance();
 			return {kind: 'Star', start: tok.start, stop: tok.stop};
 		}
-		if (this.checkKind('IDENTIFIER') && this.checkKindAt(1, 'DOT') && this.checkKindAt(2, 'STAR')) {
+		if (this.checkIdentLike() && this.checkKindAt(1, 'DOT') && this.checkKindAt(2, 'STAR')) {
 			const ident = this.advance();
 			this.advance();
 			const star = this.advance();
-			return {kind: 'TableStar', table: unquoteIdent(ident.value), start: ident.start, stop: star.stop};
+			return {kind: 'TableStar', table: this.identNameOf(ident), start: ident.start, stop: star.stop};
 		}
 		const expr = this.parseExpr();
 		let alias: string | null = null;
 		let stop = expr.stop;
 		if (this.matchKeyword('AS')) {
-			const aliasTok = this.expectOneOf(['IDENTIFIER', 'STRING_LITERAL'], 'column alias');
-			alias = unquoteIdentOrString(aliasTok);
+			const aliasTok = this.expectAliasLike('column alias');
+			alias = this.identOrStringNameOf(aliasTok);
 			stop = aliasTok.stop;
-		} else if (this.checkKind('IDENTIFIER')) {
+		} else if (this.checkIdentLike()) {
 			const aliasTok = this.advance();
-			alias = unquoteIdent(aliasTok.value);
+			alias = this.identNameOf(aliasTok);
 			stop = aliasTok.stop;
 		}
 		return {kind: 'Expr', expr, alias, start: expr.start, stop};
 	}
 
+	expectAliasLike(label: string): Token {
+		const tok = this.tokens[this.index];
+		if (tok && (isIdentLike(tok) || tok.kind === 'STRING_LITERAL')) {
+			this.index++;
+			return tok;
+		}
+		throw new SqlParseError(
+			`expected ${label} but got ${describeToken(tok ?? null)}`,
+			tok ? tok.start : this.sql.length,
+		);
+	}
+
+	identOrStringNameOf(tok: Token): string {
+		if (tok.kind === 'STRING_LITERAL') {
+			const v = tok.value;
+			if (v.length >= 2 && v[0] === "'" && v[v.length - 1] === "'") {
+				return v.slice(1, -1).replace(/''/g, "'");
+			}
+			return v;
+		}
+		return this.identNameOf(tok);
+	}
+
+	identNameOf(tok: Token): string {
+		if (tok.kind === 'IDENTIFIER') return unquoteIdent(tok.value);
+		return this.sql.slice(tok.start, tok.stop + 1);
+	}
+
+	checkIdentLike(): boolean {
+		return isIdentLike(this.tokens[this.index]);
+	}
+
+	expectIdentLike(label: string): Token {
+		const tok = this.tokens[this.index];
+		if (!isIdentLike(tok)) {
+			throw new SqlParseError(
+				`expected ${label} but got ${describeToken(tok ?? null)}`,
+				tok ? tok.start : this.sql.length,
+			);
+		}
+		this.index++;
+		return tok;
+	}
+
 	// --- shared name / expr helpers ---
 
 	parseSchemaQualifiedName(): {schema: string | null; table: string; start: number; stop: number} {
-		const first = this.expectKind('IDENTIFIER', 'table or schema name');
+		const first = this.expectIdentLike('table or schema name');
 		let schema: string | null = null;
-		let name = unquoteIdent(first.value);
+		let name = this.identNameOf(first);
 		let stop = first.stop;
 		if (this.matchKind('DOT')) {
-			const second = this.expectKind('IDENTIFIER', 'table name after schema.');
+			const second = this.expectIdentLike('table name after schema.');
 			schema = name;
-			name = unquoteIdent(second.value);
+			name = this.identNameOf(second);
 			stop = second.stop;
 		}
 		return {schema, table: name, start: first.start, stop};
@@ -667,17 +712,6 @@ function unquoteIdent(value: string): string {
 		if (first === '[' && last === ']') return value.slice(1, -1);
 	}
 	return value;
-}
-
-function unquoteIdentOrString(tok: Token): string {
-	if (tok.kind === 'STRING_LITERAL') {
-		const v = tok.value;
-		if (v.length >= 2 && v[0] === "'" && v[v.length - 1] === "'") {
-			return v.slice(1, -1).replace(/''/g, "'");
-		}
-		return v;
-	}
-	return unquoteIdent(tok.value);
 }
 
 function describeToken(tok: Token | null): string {

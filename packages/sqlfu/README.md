@@ -101,6 +101,8 @@ Those pieces give `sqlfu` enough information to answer the important questions:
 
 sqlfu doesn't ship its own database driver. Instead, `sqlfu` exports a thin adapter for each SQLite-compatible driver, so you can bring whichever one fits your runtime and get the same typed client surface on top. One thing sqlfu goes out of its way to preserve: **sync stays sync**. A client built on a synchronous driver (`better-sqlite3`, `node:sqlite`, Durable Objects) is itself synchronous -- no spurious `async` creeping up your call stack.
 
+That sync/async distinction carries through generated query wrappers and the migrator. Sync-backed generated functions return rows directly, and `applyMigrations()` runs synchronously on a `SyncClient`. Async-backed clients get the same API shape, but with promises where the underlying driver actually needs them.
+
 See [Adapters](https://sqlfu.dev/docs/adapters) for the full driver table, copy-paste snippets, and guidance on which to pick.
 
 ### Migrator

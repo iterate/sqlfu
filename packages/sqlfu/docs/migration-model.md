@@ -80,6 +80,23 @@ That chain is useful, but only if you are clear about where a command is allowed
 
 That means `sync` is intentionally allowed to make Migration History and Live Schema disagree.
 
+## Durable Objects
+
+Cloudflare Durable Objects make the chain more visible because each Durable Object instance has its own private SQLite database. A code deploy updates the Worker bundle, but existing Durable Object storage is still whatever that one object has applied so far. On startup, the object has to reconcile its private database with the migrations bundled into the new code.
+
+The intended sqlfu flow is:
+
+1. Edit `definitions.sql`.
+2. Run `sqlfu draft` and commit the generated `migrations/*.sql`.
+3. Run `sqlfu generate` so `migrations/.generated/migrations.ts` contains those migration files as a plain TypeScript bundle.
+4. Import `migrate` from that generated module in the Durable Object, build the client with `createDurableObjectClient(ctx.storage)`, and run `migrate(client)` during constructor initialization.
+
+The sqlfu Durable Object migrator is synchronous, so running it directly in the constructor is enough: the object does not serve a request before the constructor returns. Pass the full `ctx.storage` object to `createDurableObjectClient`, not `ctx.storage.sql`, so sqlfu can use Durable Objects' `transactionSync()` API for per-migration rollback. If you need a query-only escape hatch, pass `{sql: ctx.storage.sql}` explicitly.
+
+Missing migrations are treated as an integrity problem, not as a cue to synthesize SQL at runtime. If a Durable Object database has recorded `sqlfu_migrations` rows that are not present in the generated bundle, `applyMigrations()` fails with a deleted-applied-migration error before applying newer migrations. Under the default `sqlfu` preset it also checks applied migration checksums, so editing an already-applied migration file is reported as history drift.
+
+The schema diff engine helps before deployment: `sqlfu draft` turns reviewed `definitions.sql` changes into migration files, and `sqlfu check` can explain repo drift, pending migrations, history drift, and schema drift. It should not be used as runtime magic inside a Durable Object to invent missing migrations from the current desired schema. Runtime schema changes still need reviewable migration files because renames, destructive changes, and backfills are product decisions.
+
 ## Authority Mismatches
 
 | Name | Comparison | Meaning | Usually Normal? | Likely Action |
