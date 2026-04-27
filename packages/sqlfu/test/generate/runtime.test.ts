@@ -86,6 +86,81 @@ test('generate with validator: zod validates params and rows at runtime', async 
   expect(mod.findPostBySlug.sql).toContain('from posts where slug = ?');
 });
 
+test('generated annotated queries expand array and object params at runtime', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: `create table posts (id integer primary key, slug text not null, title text not null);`,
+    files: {
+      'sql/posts.sql': dedent`
+        /*
+          @name insertPost
+          @param post -> (slug, title)
+        */
+        insert into posts (slug, title) values :post returning id, slug, title;
+
+        /*
+          @name insertPosts
+          @param posts -> ((slug, title)...)
+        */
+        insert into posts (slug, title) values :posts returning id, slug, title;
+
+        /*
+          @name listPostsByIds
+          @param ids -> (...)
+        */
+        select id, slug, title from posts where id in :ids order by id;
+      `,
+    },
+  });
+
+  await project.generate();
+  const catalog = JSON.parse(await project.readText('.sqlfu/query-catalog.json'));
+  expect(catalog.queries).toMatchObject([
+    {
+      id: 'posts#insertPost',
+      functionName: 'insertPost',
+      args: [{name: 'post', tsType: '{ slug: string; title: string }'}],
+    },
+    {
+      id: 'posts#insertPosts',
+      functionName: 'insertPosts',
+      args: [{name: 'posts', tsType: 'Array<{ slug: string; title: string }>', isArray: true}],
+    },
+    {
+      id: 'posts#listPostsByIds',
+      functionName: 'listPostsByIds',
+      args: [{name: 'ids', tsType: 'number[]', isArray: true}],
+    },
+  ]);
+
+  const mod = await project.importTranspiledModule<{
+    insertPost: (client: unknown, params: {post: {slug: string; title: string}}) => Promise<{id: number; slug: string; title: string}>;
+    insertPosts: (client: unknown, params: {posts: {slug: string; title: string}[]}) => Promise<{id: number; slug: string; title: string}>;
+    listPostsByIds: (client: unknown, params: {ids: number[]}) => Promise<{id: number; slug: string; title: string}[]>;
+  }>('sql/.generated/posts.sql.ts');
+
+  using database = project.openDatabase();
+  const client = createNodeSqliteClient(database.database);
+
+  await expect(mod.insertPost(client, {post: {slug: 'one', title: 'One'}})).resolves.toMatchObject({
+    id: 1,
+    slug: 'one',
+  });
+  await mod.insertPosts(client, {
+    posts: [
+      {slug: 'two', title: 'Two'},
+      {slug: 'three', title: 'Three'},
+    ],
+  });
+
+  await expect(mod.listPostsByIds(client, {ids: [1, 3]})).resolves.toEqual([
+    {id: 1, slug: 'one', title: 'One'},
+    {id: 3, slug: 'three', title: 'Three'},
+  ]);
+  await expect(mod.listPostsByIds(client, {ids: []})).rejects.toThrow(
+    'Parameter "ids" must be a non-empty array',
+  );
+});
+
 test('generate with validator: valibot validates inputs at runtime via standard schema', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
@@ -299,6 +374,9 @@ async function createRuntimeFixture(input: {
       } catch {
         return false;
       }
+    },
+    async readText(relativePath: string): Promise<string> {
+      return fs.readFile(path.join(root, relativePath), 'utf8');
     },
     /**
      * Transpile the generated .ts to .mjs with esnext module + target, rewrite bare
