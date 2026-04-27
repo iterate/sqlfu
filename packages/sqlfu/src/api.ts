@@ -154,7 +154,7 @@ export async function runSqlfuCommand(
   const normalized = command.trim();
 
   if (normalized === 'sqlfu init') {
-    const preview = createDefaultInitPreview(context.projectRoot);
+    const preview = createDefaultInitPreview(context.projectRoot, {configPath: context.configPath});
     const configContents = await confirm({
       title: 'Create sqlfu.config.ts?',
       body: preview.configContents,
@@ -166,6 +166,7 @@ export async function runSqlfuCommand(
     }
     await context.host.initializeProject({
       projectRoot: context.projectRoot,
+      configPath: context.configPath,
       configContents,
     });
     return;
@@ -915,6 +916,7 @@ export interface SqlfuContext {
 
 export interface SqlfuCommandContext {
   projectRoot: string;
+  configPath?: string;
   config?: SqlfuProjectConfig;
   host: SqlfuHost;
 }
@@ -927,6 +929,9 @@ export interface SqlfuCommandRouterContext extends SqlfuCommandContext {
 
 export function requireContextConfig(context: SqlfuCommandContext): SqlfuContext {
   if (!context.config) {
+    if (context.configPath) {
+      throw new Error(`No sqlfu config found at ${context.configPath}. Run 'sqlfu init' first.`);
+    }
     throw new Error(`No sqlfu config found in ${context.projectRoot}. Run 'sqlfu init' first.`);
   }
 

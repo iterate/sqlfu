@@ -17,7 +17,7 @@ import {
 import {createDefaultInitPreview} from '../init-preview.js';
 import {migrationName, readMigrationHistory} from '../migrations/index.js';
 import {stopProcessesListeningOnPort} from './port-process.js';
-import {generateQueryTypes} from '../typegen/index.js';
+import {generateQueryTypesForConfig} from '../typegen/index.js';
 import {startSqlfuServer} from '../ui/server.js';
 import {resolveSqlfuUi} from '../ui/resolve-sqlfu-ui.js';
 import packageJson from '../../package.json' with {type: 'json'};
@@ -70,7 +70,7 @@ export const router = {
       description: `Initialize a new sqlfu project in the current directory.`,
     })
     .handler(async ({context}) => {
-      const preview = createDefaultInitPreview(context.projectRoot);
+      const preview = createDefaultInitPreview(context.projectRoot, {configPath: context.configPath});
       const configContents = await context.confirm({
         title: 'Create sqlfu.config.ts?',
         body: preview.configContents,
@@ -84,6 +84,7 @@ export const router = {
 
       await context.host.initializeProject({
         projectRoot: context.projectRoot,
+        configPath: context.configPath,
         configContents,
       });
 
@@ -117,8 +118,9 @@ export const router = {
     .meta({
       description: `Generate TypeScript functions for all queries in the sql/ directory.`,
     })
-    .handler(async () => {
-      await generateQueryTypes();
+    .handler(async ({context}) => {
+      const sqlfuContext = requireContextConfig(context);
+      await generateQueryTypesForConfig(sqlfuContext.config, sqlfuContext.host);
       return 'Generated schema-derived database and TypeSQL outputs.';
     }),
 
