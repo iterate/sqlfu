@@ -12,8 +12,9 @@ import {createDurableObjectClient as createLocalDurableObjectClient} from '../..
 
 declare const createDurableObjectClient: typeof import('../../src/index.ts').createDurableObjectClient;
 declare const sql: typeof import('../../src/index.ts').sql;
-declare const applyMigrations: typeof import('../../src/migrations/index.ts').applyMigrations;
-declare const migrationsFromBundle: typeof import('../../src/migrations/index.ts').migrationsFromBundle;
+type DurableObjectClient = ReturnType<typeof createDurableObjectClient>;
+declare const migrate: (client: DurableObjectClient) => void;
+declare const migrateMissingInitialMigration: (client: DurableObjectClient) => void;
 
 test('createDurableObjectClient works in a real durable object', async () => {
   await using fixture = await createDOFixture(
@@ -73,21 +74,14 @@ test('createDurableObjectClient can write and read rows in a durable object', as
   ]);
 });
 
-test('applyMigrations can run inside a durable object using a migrations bundle', async () => {
+test('generated migrate can run inside a durable object constructor', async () => {
   await using fixture = await createDOFixture(
-    class BundleMigrationsTest {
-      client: ReturnType<typeof createDurableObjectClient>;
+    class GeneratedMigrationsTest {
+      client: DurableObjectClient;
 
       constructor(state: any) {
         this.client = createDurableObjectClient(state.storage);
-        const bundle = {
-          'migrations/2026-04-10T00.00.00.000Z_create_posts.sql':
-            'create table posts (id integer primary key, slug text not null);',
-          'migrations/2026-04-10T01.00.00.000Z_add_body.sql': 'alter table posts add column body text;',
-        };
-        applyMigrations(this.client, {
-          migrations: migrationsFromBundle(bundle),
-        });
+        migrate(this.client);
       }
 
       async getColumns() {
@@ -101,6 +95,13 @@ test('applyMigrations can run inside a durable object using a migrations bundle'
           select name from sqlfu_migrations order by name
         `);
       }
+    },
+    {
+      migrations: {
+        'migrations/2026-04-10T00.00.00.000Z_create_posts.sql':
+          'create table posts (id integer primary key, slug text not null);',
+        'migrations/2026-04-10T01.00.00.000Z_add_body.sql': 'alter table posts add column body text;',
+      },
     },
   );
 
@@ -129,54 +130,44 @@ test('createDurableObjectClient uses transactionSync when given durable object s
         });
       }
 
-      async applyBundle() {
-        const bundle = {
-          'migrations/2026-04-10T00.00.00.000Z_create_posts.sql':
-            'create table posts (id integer primary key, slug text not null);',
-          'migrations/2026-04-10T01.00.00.000Z_add_body.sql': 'alter table posts add column body text;',
-        };
-
-        applyMigrations(this.client, {
-          migrations: migrationsFromBundle(bundle),
-        });
+      async applyGeneratedMigrations() {
+        migrate(this.client);
       }
 
       async getTransactionCalls() {
         return this.transactionCalls;
       }
     },
+    {
+      migrations: {
+        'migrations/2026-04-10T00.00.00.000Z_create_posts.sql':
+          'create table posts (id integer primary key, slug text not null);',
+        'migrations/2026-04-10T01.00.00.000Z_add_body.sql': 'alter table posts add column body text;',
+      },
+    },
   );
 
-  await fixture.stub.applyBundle();
+  await fixture.stub.applyGeneratedMigrations();
 
   expect(await fixture.stub.getTransactionCalls()).toBe(2);
 });
 
-test('applyMigrations in a durable object refuses bundles missing an applied migration', async () => {
+test('generated migrate in a durable object refuses a missing applied migration', async () => {
   await using fixture = await createDOFixture(
-    class ClientMissingMigrationBundleTest {
+    class ClientMissingGeneratedMigrationTest {
       client: ReturnType<typeof createDurableObjectClient>;
 
       constructor(state: any) {
         this.client = createDurableObjectClient(state.storage);
       }
 
-      async applyInitialBundle() {
-        applyMigrations(this.client, {
-          migrations: migrationsFromBundle({
-            'migrations/2026-04-10T00.00.00.000Z_create_posts.sql':
-              'create table posts (id integer primary key, slug text not null);',
-          }),
-        });
+      async applyInitialGeneratedMigrations() {
+        migrate(this.client);
       }
 
-      async applyBundleMissingInitialMigration() {
+      async applyGeneratedMigrationsAfterDeletingInitialFile() {
         try {
-          applyMigrations(this.client, {
-            migrations: migrationsFromBundle({
-              'migrations/2026-04-10T01.00.00.000Z_add_body.sql': 'alter table posts add column body text;',
-            }),
-          });
+          migrateMissingInitialMigration(this.client);
           return {ok: true};
         } catch (error) {
           return {ok: false, message: String(error)};
@@ -189,11 +180,20 @@ test('applyMigrations in a durable object refuses bundles missing an applied mig
         `);
       }
     },
+    {
+      migrations: {
+        'migrations/2026-04-10T00.00.00.000Z_create_posts.sql':
+          'create table posts (id integer primary key, slug text not null);',
+      },
+      migrationsAfterDeletingInitialFile: {
+        'migrations/2026-04-10T01.00.00.000Z_add_body.sql': 'alter table posts add column body text;',
+      },
+    },
   );
 
-  await fixture.stub.applyInitialBundle();
+  await fixture.stub.applyInitialGeneratedMigrations();
 
-  expect(await fixture.stub.applyBundleMissingInitialMigration()).toMatchObject({
+  expect(await fixture.stub.applyGeneratedMigrationsAfterDeletingInitialFile()).toMatchObject({
     ok: false,
     message: expect.stringContaining('deleted applied migration: 2026-04-10T00.00.00.000Z_create_posts'),
   });
@@ -211,14 +211,7 @@ test('createDurableObjectClient rolls back a failed migration with transactionSy
 
       async applyBrokenMigration() {
         try {
-          applyMigrations(this.client, {
-            migrations: migrationsFromBundle({
-              'migrations/2026-04-10T00.00.00.000Z_broken.sql': `
-                create table partially_created (id integer primary key);
-                insert into missing_table (id) values (1);
-              `,
-            }),
-          });
+          migrate(this.client);
           return {ok: true};
         } catch (error) {
           return {ok: false, message: String(error)};
@@ -232,6 +225,14 @@ test('createDurableObjectClient rolls back a failed migration with transactionSy
           where type = 'table' and name = 'partially_created'
         `);
       }
+    },
+    {
+      migrations: {
+        'migrations/2026-04-10T00.00.00.000Z_broken.sql': `
+                create table partially_created (id integer primary key);
+                insert into missing_table (id) values (1);
+              `,
+      },
     },
   );
 
@@ -292,13 +293,21 @@ test('createDurableObjectClient rejects a bare durable object sql handle', () =>
   );
 });
 
-async function createDOFixture<TInstance extends object>(classDef: new (...args: any[]) => TInstance) {
+async function createDOFixture<TInstance extends object>(
+  classDef: new (...args: any[]) => TInstance,
+  options: {
+    migrations?: Record<string, string>;
+    migrationsAfterDeletingInitialFile?: Record<string, string>;
+  } = {},
+) {
   await ensureBuilt();
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-do-fixture-'));
   const workerSourcePath = path.join(tempDir, 'worker-source.js');
   const workerPath = path.join(tempDir, 'worker.js');
   await fs.cp(path.join(packageRoot, 'dist'), path.join(tempDir, 'runtime'), {recursive: true});
+  await writeGeneratedMigrationsModule(tempDir, 'migrations', options.migrations || {});
+  await writeGeneratedMigrationsModule(tempDir, 'migrations-missing-initial', options.migrationsAfterDeletingInitialFile || {});
 
   const classDefString = classDef.toString().trim();
   const className = classDefString.match(/^class (\w+) \{/)?.[1];
@@ -311,7 +320,8 @@ async function createDOFixture<TInstance extends object>(classDef: new (...args:
     dedent`
       import {createDurableObjectClient} from './runtime/adapters/durable-object.js';
       import {sql} from './runtime/sql.js';
-      import {applyMigrations, migrationsFromBundle} from './runtime/migrations/index.js';
+      import {migrate} from './migrations/.generated/migrations.ts';
+      import {migrate as migrateMissingInitialMigration} from './migrations-missing-initial/.generated/migrations.ts';
 
       ${classDefString}
 
@@ -381,6 +391,38 @@ async function createDOFixture<TInstance extends object>(classDef: new (...args:
       await fs.rm(tempDir, {recursive: true, force: true});
     },
   };
+}
+
+async function writeGeneratedMigrationsModule(
+  rootPath: string,
+  migrationsDir: string,
+  migrations: Record<string, string>,
+) {
+  const generatedDir = path.join(rootPath, migrationsDir, '.generated');
+  await fs.mkdir(generatedDir, {recursive: true});
+  await fs.writeFile(
+    path.join(generatedDir, 'migrations.ts'),
+    [
+      '// Generated by `sqlfu generate`. Do not edit.',
+      `// A bundle of every migration in ${migrationsDir}/,`,
+      '// importable from runtimes without filesystem access (durable objects, edge workers, browsers).',
+      '// Use `migrate(client)` for the common path, or `migrations` for lower-level control.',
+      '',
+      "import {applyMigrations, migrationsFromBundle, type AsyncClient, type Client, type SyncClient} from '../../runtime/index.js';",
+      '',
+      `export const migrations = ${JSON.stringify(migrations, null, 2)};`,
+      '',
+      'export function migrate(client: SyncClient): void;',
+      'export function migrate(client: AsyncClient): Promise<void>;',
+      'export function migrate(client: Client): void | Promise<void> {',
+      '  return applyMigrations(client, {',
+      '    migrations: migrationsFromBundle(migrations),',
+      '    preset: "sqlfu",',
+      '  });',
+      '}',
+      '',
+    ].join('\n'),
+  );
 }
 
 interface DurableObjectNamespaceLike {
