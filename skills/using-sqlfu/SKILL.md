@@ -1,71 +1,66 @@
 ---
 name: using-sqlfu
-description: Guides an agent working in a sqlfu project: how to change the schema, author queries, and regenerate TypeScript wrappers. Use when the repo contains a `sqlfu.config.ts`, a `definitions.sql` file, a `migrations/` directory of timestamped `.sql` files, or when the user mentions sqlfu, `sqlfu generate`, `sqlfu draft`, or `sqlfu goto`.
+description: Use when working in a project that uses sqlfu: a SQL-first toolkit with `sqlfu.config.ts`, `definitions.sql`, migrations, checked-in query files, generated TypeScript wrappers, and commands such as `sqlfu draft`, `sqlfu migrate`, `sqlfu generate`, `sqlfu check`, or `sqlfu goto`.
 ---
 
 # Using sqlfu
 
-This project uses [sqlfu](https://github.com/mmkal/sqlfu). SQL is the source language. TypeScript is generated from it.
+`sqlfu` is a SQL-first data toolkit. If this skill triggered, treat the current project/package as using sqlfu for its database workflow: SQL is the authored source and TypeScript is generated from it.
 
-## The three source-of-truth files
+## First read the config
 
-- `definitions.sql`: the desired schema right now. Edit this when you want to change the schema.
-- `migrations/*.sql`: the ordered history of schema changes. **Do not hand-author these.** Use `sqlfu draft` or `sqlfu goto`.
-- `sql/*.sql`: checked-in queries. Each one gets a typed TypeScript wrapper emitted to `sql/.generated/<name>.sql.ts`. Import and call wrappers from application code; do not hand-write the `.sql.ts` files.
+Find the nearest `sqlfu.config.ts` for the project/package you are changing. It tells you where sqlfu's files live:
 
-The config file is `sqlfu.config.ts` at the repo root. The fields are `db`, `migrations`, `definitions`, `queries`. (Older names `migrationsDir`, `definitionsPath`, `sqlDir` are gone. Do not use them.)
+- `definitions`: desired schema SQL.
+- `migrations`: ordered migration history, if the project uses migrations.
+- `queries`: checked-in `.sql` query files.
+- `db`: the database used by `migrate`, `check`, `sync`, `goto`, `baseline`, and the UI, if configured.
+- `generate`: typegen options such as schema authority, runtime validators, sync wrappers, and import extension.
 
-## Schema change workflow
+Paths are relative to the config file. Do not assume the defaults if the config says otherwise.
 
-1. Edit `definitions.sql` to reflect the new desired schema.
-2. Run `sqlfu draft --name <snake_case_slug>`. This diffs replayed migrations against `definitions.sql` and writes a new file under `migrations/`.
-3. Open the drafted migration and review it. The diff engine is not psychic. Check for renames, data backfills, and destructive changes and edit the SQL if needed.
-4. Apply it: `sqlfu migrate`. In a dev project you can also use `sqlfu goto <target>` to jump the database and history to an exact target migration.
-5. If the change affects query shapes, run `sqlfu generate` to refresh wrappers in `sql/.generated/`.
-6. Run `sqlfu check` before committing. It verifies replayed migrations still produce `definitions.sql` and that the live database agrees.
+## Source files
 
-Never write a migration file by hand. If `sqlfu draft` produces the wrong SQL, fix `definitions.sql` or edit the drafted file. Do not create one from scratch.
+- Edit `definitions.sql` or the configured `definitions` file when changing the desired schema.
+- Do not hand-author a new migration file. Run `sqlfu draft`, then review and edit the drafted SQL if needed.
+- Edit query `.sql` files under the configured `queries` directory. Generated wrappers live under `<queries>/.generated/`; do not edit them directly.
 
-## Query workflow
+## Schema changes
 
-1. Add or edit a `.sql` file under the `queries` directory (default `sql/`). Use lowercase SQL keywords.
-2. Run `sqlfu generate`. A wrapper appears at `sql/.generated/<name>.sql.ts`.
-3. Import the wrapper in application code. Params and result rows are typed.
+When `migrations` is configured:
 
-If a generated wrapper looks wrong, the fix is almost always in the `.sql` source, not the `.sql.ts` output.
+1. Update the configured `definitions` file.
+2. Run `sqlfu draft`.
+3. Review the new migration. Pay attention to renames, destructive changes, backfills, and SQLite table rebuilds.
+4. Run `sqlfu migrate` for the configured dev database.
+5. Run `sqlfu generate` if generated outputs may have changed.
+6. Run `sqlfu check` before considering the schema work complete.
 
-## Command reference
+`sqlfu draft` derives a migration filename when no name is supplied. Only pass an explicit name when the user or repo convention calls for one.
 
-- `sqlfu init`: scaffold a new project.
-- `sqlfu draft --name <slug>`: create a migration from the `definitions.sql` diff.
-- `sqlfu migrate`: apply pending migrations.
-- `sqlfu goto <target>`: move the database and history to an exact migration.
-- `sqlfu baseline <target>`: rewrite history to a target without touching live schema.
-- `sqlfu sync`: push `definitions.sql` straight into the live database. Dev only; fails on semantic changes.
-- `sqlfu generate`: regenerate TypeScript wrappers for `sql/*.sql`. Requires migrations applied first.
-- `sqlfu check`: run all repo/database consistency checks.
-- `sqlfu` (no args): start the local UI backend on `localhost:56081`, reachable at `https://sqlfu.dev/ui`.
+When `migrations` is not configured, there is no migration history to draft. Update the configured `definitions` file and run the commands that still apply for the project, usually `sqlfu generate` and any repo tests.
 
-## Optional: auto-run `sqlfu generate` on edits
+## Query changes
 
-If an agent edits `definitions.sql` or files under `sql/`, the generated wrappers can drift until `sqlfu generate` runs. Users who want that to happen automatically can add this to `.claude/settings.json`:
+1. Add or edit a `.sql` file under the configured `queries` directory.
+2. Run `sqlfu generate`.
+3. Import and call the generated wrapper from application code.
 
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "jq -r '.tool_input.file_path' | grep -q '\\.sql$' && pnpm sqlfu generate >/dev/null 2>&1 || true"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+If generated TypeScript looks wrong, fix the SQL source or config first. The generated file is output, not the source of truth.
 
-Adjust the command to match your package manager (`npx sqlfu generate`, `bun sqlfu generate`, etc.). The snippet silently no-ops on edits to unrelated files.
+## Useful commands
+
+- `sqlfu init`: create a new sqlfu project.
+- `sqlfu config`: print the resolved project config.
+- `sqlfu draft`: create a reviewable migration from the definitions-vs-migrations diff.
+- `sqlfu migrate`: apply pending migrations to the configured database.
+- `sqlfu pending`: list unapplied migration files.
+- `sqlfu applied`: list migrations recorded in the database.
+- `sqlfu goto <target>`: move the database schema and migration history to a target migration.
+- `sqlfu baseline <target>`: update migration history to a target without changing live schema.
+- `sqlfu sync`: push the desired schema directly to the live database; use for local development only.
+- `sqlfu generate`: regenerate TypeScript outputs from checked-in query files.
+- `sqlfu check`: verify the repo and configured database agree, and report recommended next actions.
+- `sqlfu` or `sqlfu serve`: start the local backend for `https://sqlfu.dev/ui`.
+
+Use the project's normal command runner for these commands, such as a package script, `pnpm sqlfu ...`, `npx sqlfu ...`, or a local/global `sqlfu` binary already available in the environment.

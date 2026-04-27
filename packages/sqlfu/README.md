@@ -178,7 +178,7 @@ See [Lint Plugin](https://sqlfu.dev/docs/lint-plugin) for setup and configuratio
 
 ### Agent Skill
 
-`sqlfu` ships an agent skill at [`skills/using-sqlfu`](../../skills/using-sqlfu/SKILL.md). It teaches an agent the project's source-of-truth files, the schema-change workflow, the query workflow, and the command reference, so an agent dropped into a sqlfu repo does not hand-author migrations or invent old config field names.
+`sqlfu` ships an agent skill at [`skills/using-sqlfu`](../../skills/using-sqlfu/SKILL.md). It gives an agent the few sqlfu-specific facts it needs before editing a project: find `sqlfu.config.ts`, treat SQL as the authored source, draft migrations instead of inventing them, and regenerate TypeScript outputs from query files.
 
 Install it into a project:
 
