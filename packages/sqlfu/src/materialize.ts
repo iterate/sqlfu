@@ -18,7 +18,7 @@ export type MaterializeSchemaOptions = {
    * comparison; typegen leaves this empty so the user's schema is reflected
    * verbatim.
    */
-  excludedTables?: readonly string[];
+  excludedTables?: string[];
 };
 
 export type MaterializeMigrationsSchemaOptions = MaterializeSchemaOptions & {
