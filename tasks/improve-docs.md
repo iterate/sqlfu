@@ -93,7 +93,7 @@ Executive decisions made (with rationale):
 
 ## 2026-04-28 pass
 
-Status: planned. Branch: `improve-docs-2026-04-28`. Worktree: `/Users/mmkal/src/worktrees/sqlfu/improve-docs-2026-04-28`.
+Status: done for this pass. Five commits in PR #70. Website build green (23 pages built; `sync-ui` requires a pre-built `@sqlfu/ui` package, both ran clean). Branch: `improve-docs-2026-04-28`. Worktree: `/Users/mmkal/src/worktrees/sqlfu/improve-docs-2026-04-28`.
 
 Scope is the carry-over list from passes #1 and #2 plus an em-dash sweep on docs files that haven't been swept yet. Source-of-truth carry-overs:
 
@@ -120,19 +120,19 @@ Em-dash inventory (source docs only; vendored CLAUDE.md and generated content ex
 
 ### Plan
 
-- [x] Land this plan as the first commit so the PR shows context. _first commit_
-- [x] `packages/sqlfu/docs/migration-model.md`: split the shared `Migrations <> Migration History` comparison column so Pending and History Drift rows are visibly different (add a "Direction" or split the comparison text); sweep the 5 remaining em-dashes; drop aspirational voice on `sqlfu check`'s prefix-matching recommendation now that it's implemented. _b1ca8f0: 5 em-dashes replaced; comparison column changed to "Migrations vs Migration History (forward)" / "(backward)"; aspirational "may also recommend a target migration when it can prove..." rewritten to "also recommends a target migration when..."; replay-procedure list trimmed since the implementation walks prefixes 1..n itself_
-- [x] `packages/sqlfu/docs/observability.md`: tighten the lede to mirror the README's narrower claim (one `instrument()` call covers the listed destinations), and drop "anywhere else you want to see it"; sweep 2 em-dashes. _bd56ad7: lede rephrased without "without extra configuration per destination"; both em-dashes replaced (lede uses period; SqlfuError list uses parentheses)_
-- [x] `packages/sqlfu/docs/schema-diff-model.md`: remove the stray "So the short answer is" sentence at the end of "Where The Code Lives" — it's a leftover from an earlier framing question. _bd56ad7: deleted_
-- [x] `packages/sqlfu/README.md`: fold the two TypeSQL/post-pass bullets in Limitations into one; sweep 4 em-dashes (Core Concepts, Capabilities); pre-commit hook regenerates root README. _b9e6dde: bullets merged into "SQLite view typing in vendored TypeSQL is still imperfect in places, and the sqlfu post-pass that fills the gaps is still evolving"; em-dashes replaced; root README hook regenerated automatically by pre-commit_
-- [x] `packages/sqlfu/docs/adapters.md`: sweep 9 em-dashes — section headers become plain titles, sync-stays-sync paragraphs use periods/commas. _b9e6dde: 9 replacements; section headers now use ":" or strip the parenthetical; intro/closing paragraphs use periods or commas_
-- [x] `packages/sqlfu/docs/errors.md`: sweep 7 em-dashes (lede, deviations note, `.cause` / `.stack` / `.query` shape, low-cardinality dimension). _b9e6dde: 7 replacements; the lede uses a period split, the others use periods or parentheses_
-- [x] `packages/sqlfu/docs/dynamic-queries.md`: sweep 2 em-dashes. _b9e6dde: both replaced (parens for the optional-filters bullet, period for the non-goal paragraph)_
-- [x] `packages/sqlfu/docs/getting-started.md`: sweep 3 em-dashes. _b9e6dde: 3 replacements (period or `;` depending on flow)_
-- [x] `packages/sqlfu/docs/id-helpers.md`: sweep 9 em-dashes — section headers use ":" instead of " — ". _b9e6dde: 9 replacements_
-- [x] `packages/sqlfu/docs/outbox.md`: sweep 6 em-dashes. _b9e6dde: 6 replacements_
-- [x] `website/src/pages/index.astro`: replace the pre-alpha-notice em-dash with a period or comma. _b9e6dde: replaced with ". " (two short sentences)_
-- [x] Verify docs build: `pnpm --filter sqlfu-website build`. _green: 9 pages built (8 docs pages + landing)_
+- [x] Land this plan as the first commit so the PR shows context. _f452c1d_
+- [x] `packages/sqlfu/docs/migration-model.md`: split the shared `Migrations <> Migration History` comparison column so Pending and History Drift rows are visibly different; sweep the 5 remaining em-dashes; drop aspirational voice on `sqlfu check`'s prefix-matching recommendation now that it's implemented. _ff195e1: added a "Direction" column ("new migrations not yet applied" vs "applied migrations no longer match the repo"); 5 em-dashes replaced; aspirational "may also recommend a target migration when it can prove..." rewritten to indicative voice with a pointer to `findRecommendedTarget` in `src/api.ts`; replay-procedure list collapsed because the implementation walks prefixes 1..n itself_
+- [x] `packages/sqlfu/docs/observability.md`: tighten the lede to mirror the README's narrower claim; sweep 2 em-dashes. _aa649bf: lede rephrased to drop "without extra configuration per destination" and "anywhere else you want to see it"; both em-dashes replaced (lede uses comma + parens; SqlfuError discriminator list uses parens)_
+- [x] `packages/sqlfu/docs/schema-diff-model.md`: remove the stray "So the short answer is" sentence at the end of "Where The Code Lives". _aa649bf: replaced with a single direct sentence about the engine's location_
+- [x] `packages/sqlfu/README.md`: fold the two TypeSQL/post-pass bullets in Limitations into one; sweep 4 em-dashes (Core Concepts, Capabilities); pre-commit hook regenerates root README. _e35ee5d: bullets merged into "result-type inference is imperfect on some SQLite expressions and views; the sqlfu post-pass that fills gaps in the vendored TypeSQL output is still evolving"; em-dashes replaced; root README regenerated by pre-commit hook_
+- [x] `packages/sqlfu/docs/adapters.md`: sweep 9 em-dashes; section headers become plain titles, sync-stays-sync paragraphs use periods/commas. _80be404_
+- [x] `packages/sqlfu/docs/errors.md`: sweep 7 em-dashes (lede, deviations note, `.cause` / `.stack` / `.query` shape, low-cardinality dimension). _80be404_
+- [x] `packages/sqlfu/docs/dynamic-queries.md`: sweep 2 em-dashes. _80be404_
+- [x] `packages/sqlfu/docs/getting-started.md`: sweep the em-dash. _80be404 (1 em-dash; the original inventory of 3 conflated `--` text dashes used as separators with `—`; only 1 was a real em-dash)_
+- [x] `packages/sqlfu/docs/id-helpers.md`: sweep em-dashes; section headers use ":" instead of " — ". _80be404_
+- [x] `packages/sqlfu/docs/outbox.md`: sweep em-dashes. _80be404_
+- [x] `website/src/pages/index.astro`: replace the pre-alpha-notice em-dash with a period. _80be404: now reads "pre-alpha. The TypeScript API may still shift. The SQL won't."_
+- [x] Verify docs build: `pnpm --filter sqlfu-website build`. _green: 23 pages built (8 docs pages, landing, examples, ui sync)_
 - [x] Update this sub-section with breadcrumb italics as items land. _this commit_
 
 Not in scope this pass:
