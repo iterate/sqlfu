@@ -74,7 +74,7 @@ You should still get strong TypeScript output from SQL: generated wrappers, type
 ## Core Concepts
 
 - `definitions.sql`
-  The desired schema now. Tables, views, triggers, and — if you want them — copy-paste id generators (ULID, KSUID, nanoid, cuid2-shaped) live here alongside your schema. See [docs/id-helpers.md](./docs/id-helpers.md).
+  The desired schema now. Tables, views, triggers, and (if you want them) copy-paste id generators (ULID, KSUID, nanoid, cuid2-shaped) live here alongside your schema. See [docs/id-helpers.md](./docs/id-helpers.md).
 - `migrations/`
   The ordered history of schema changes.
 - `sql/`
@@ -82,7 +82,7 @@ You should still get strong TypeScript output from SQL: generated wrappers, type
 - generated query wrappers
   TypeScript code generated into `sql/.generated/` as `<name>.sql.ts`.
 - `sqlfu_migrations`
-  The table that records applied migrations in a real database. Configurable via `migrations.preset` — set `preset: 'd1'` to use Cloudflare D1's `d1_migrations` table instead, for projects taking over from alchemy/wrangler.
+  The table that records applied migrations in a real database. Configurable via `migrations.preset`: set `preset: 'd1'` to use Cloudflare D1's `d1_migrations` table instead, for projects taking over from alchemy/wrangler.
 - live schema
   The schema the database actually has right now.
 
@@ -147,7 +147,7 @@ Opt in to runtime validation by setting `generate.validator` to `'arktype'`, `'v
 
 ### Observability
 
-Generated queries carry their identity to runtime as a `name` field on the emitted `SqlQuery` — the camelCase function name, matching the symbol you import (e.g. `insertMigration`). That name reaches OpenTelemetry spans, Sentry errors, PostHog events, and Datadog metrics through a single `instrument()` call:
+Generated queries carry their identity to runtime as a `name` field on the emitted `SqlQuery` (the camelCase function name, matching the symbol you import, e.g. `insertMigration`). That name reaches OpenTelemetry spans, Sentry errors, PostHog events, and Datadog metrics through a single `instrument()` call:
 
 ```ts
 import {instrument} from 'sqlfu';
@@ -164,7 +164,7 @@ No peer dependencies on OpenTelemetry or Sentry. `TracerLike` is structural; hoo
 
 ### Typed errors
 
-Every adapter throws `SqlfuError` with a normalized `.kind` discriminator — `'unique_violation'`, `'missing_table'`, `'syntax'`, `'transient'`, etc. — so application code branches on the outcome instead of string-matching the driver's message.
+Every adapter throws `SqlfuError` with a normalized `.kind` discriminator (`'unique_violation'`, `'missing_table'`, `'syntax'`, `'transient'`, and so on), so application code branches on the outcome instead of string-matching the driver's message.
 
 ```ts
 import {SqlfuError} from 'sqlfu';
@@ -358,7 +358,7 @@ Those are not accidents. The project is trying to keep schema history explicit, 
 Current limits also matter:
 
 - `sqlfu` is SQLite-first in important parts of the toolchain
-- SQLite view typing is still imperfect in TypeSQL, and some expressions need the sqlfu post-pass to get better generated result types
+- result-type inference is imperfect on some SQLite expressions and views; the sqlfu post-pass that fills gaps in the vendored TypeSQL output is still evolving
 - the formatter is opinionated and still evolving
 
 ## Prior Art and Acknowledgements
