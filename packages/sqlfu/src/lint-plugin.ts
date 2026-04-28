@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 
 import {formatSql} from './formatter.js';
@@ -445,6 +446,97 @@ function unescapeWrappedSql(raw: string): string {
 const SQL_FILE_TAG = '__sqlfuSqlFile';
 const SQL_FILE_WRAPPER_PREFIX = SQL_FILE_TAG + '`';
 const SQL_FILE_WRAPPER_SUFFIX = '`;\n';
+const SOURCE_HASH_COMMENT_PATTERN = /^\/\/ sqlfu-source-hash:\s*([a-f0-9]{64})\s*$/m;
+
+const generatedQueryFreshness: Rule.RuleModule = {
+  meta: {
+    type: 'problem',
+    docs: {
+      description: 'flag .sql files whose generated query wrapper is missing or stale; run sqlfu generate.',
+    },
+    schema: [
+      {
+        type: 'object',
+        properties: {
+          queriesDir: {type: 'string'},
+        },
+        additionalProperties: false,
+      },
+    ],
+  },
+  create(context) {
+    const options = (context.options[0] || {}) as {queriesDir?: string};
+    const filename = context.physicalFilename || context.filename || context.getFilename();
+    if (!filename || filename === '<input>' || filename === '<text>') return {};
+
+    const sourceSqlFile = sourceSqlFileFromProcessorFilename(filename);
+    if (!sourceSqlFile) return {};
+
+    const projectRoot = findProjectRoot(sourceSqlFile);
+    if (!projectRoot) return {};
+
+    const queriesDir = options.queriesDir
+      ? path.resolve(projectRoot, options.queriesDir)
+      : resolveQueriesDir(projectRoot);
+    if (!queriesDir) return {};
+
+    const relativePath = relativeSqlPathInQueriesDir(queriesDir, sourceSqlFile);
+    if (!relativePath) return {};
+
+    const generatedPath = path.join(queriesDir, '.generated', `${relativePath.slice(0, -'.sql'.length)}.sql.ts`);
+
+    return {
+      TaggedTemplateExpression(node) {
+        if (node.tag.type !== 'Identifier' || node.tag.name !== SQL_FILE_TAG) return;
+        if (!fs.existsSync(generatedPath)) {
+          context.report({
+            node,
+            message: `generated wrapper for '${relativePath}' is missing; run sqlfu generate.`,
+          });
+          return;
+        }
+
+        const expectedHash = sourceSqlFileHash(sourceSqlFile);
+        const generatedText = fs.readFileSync(generatedPath, 'utf8');
+        const actualHash = SOURCE_HASH_COMMENT_PATTERN.exec(generatedText)?.[1];
+        if (!actualHash) {
+          context.report({
+            node,
+            message: `generated wrapper for '${relativePath}' does not include a source hash; run sqlfu generate.`,
+          });
+          return;
+        }
+        if (actualHash !== expectedHash) {
+          context.report({
+            node,
+            message: `generated wrapper for '${relativePath}' is stale; run sqlfu generate.`,
+          });
+        }
+      },
+    };
+  },
+};
+
+function sourceSqlFileHash(sourceSqlFile: string): string {
+  return crypto.createHash('sha256').update(fs.readFileSync(sourceSqlFile)).digest('hex');
+}
+
+function sourceSqlFileFromProcessorFilename(filename: string): string | null {
+  if (filename.endsWith('.sql')) return path.resolve(filename);
+  const forwardIndex = filename.indexOf('.sql/');
+  const backwardIndex = filename.indexOf('.sql\\');
+  const markerIndex =
+    forwardIndex === -1 ? backwardIndex : backwardIndex === -1 ? forwardIndex : Math.min(forwardIndex, backwardIndex);
+  return markerIndex === -1 ? null : path.resolve(filename.slice(0, markerIndex + '.sql'.length));
+}
+
+function relativeSqlPathInQueriesDir(queriesDir: string, sourceSqlFile: string): string | null {
+  const relative = path.relative(queriesDir, sourceSqlFile).replace(/\\/g, '/');
+  if (relative.startsWith('../') || relative === '..' || path.isAbsolute(relative)) return null;
+  if (relative.startsWith('.generated/')) return null;
+  if (!relative.endsWith('.sql')) return null;
+  return relative;
+}
 
 /**
  * Processor that lets ESLint lint standalone `.sql` files by wrapping their
@@ -491,6 +583,7 @@ const plugin: ESLint.Plugin = {
   rules: {
     'query-naming': queryNaming,
     'format-sql': formatSqlRule,
+    'generated-query-freshness': generatedQueryFreshness,
   },
   processors: {
     sql: sqlFileProcessor,
@@ -544,6 +637,7 @@ const recommended: Linter.Config[] = [
     plugins: {sqlfu: plugin},
     rules: {
       'sqlfu/format-sql': 'error',
+      'sqlfu/generated-query-freshness': 'error',
     },
   },
 ];
