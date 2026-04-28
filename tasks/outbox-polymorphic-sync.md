@@ -63,3 +63,26 @@ by client factory.
   CLI tool, or demo-mode sqlite-wasm without spurious `async` creeping into
   the call site.
 - Cheap to do, small surface (only three methods).
+
+## 2026-04-28 implementation pass
+
+Branch: `outbox-polymorphic-sync`
+
+Status (for humans): not started — about to begin the duplicate-and-strip-awaits implementation.
+
+Plan:
+
+- Make `createOutbox` generic over `TClient extends Client` so `emit`, `claim`, `setup` return polymorphic types via a conditional on `TClient extends SyncClient`.
+- Implement two parallel internal code paths: an async path identical to today's, and a sync path that's a literal copy with `await`s stripped and using the `SyncClient` operations. The runtime branches on `client.sync`.
+- `tick()` stays async; handlers are async.
+- Add a sync sibling test (`outbox.sync.test.ts`) that uses the same `node:sqlite` driver via `SyncClient` and asserts plain (non-Promise) return values.
+- Run `pnpm --filter sqlfu test outbox` and `pnpm --filter sqlfu typecheck`.
+
+Checklist:
+
+- [ ] type signatures: `createOutbox<TEvents, TClient extends Client>` with conditional return types on `emit`/`claim`/`setup`
+- [ ] runtime: split body into `runSync`/`runAsync` paths picked off `client.sync`
+- [ ] async tests still green
+- [ ] sync sibling test asserting non-Promise returns lands and passes
+- [ ] typecheck clean
+
