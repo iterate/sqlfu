@@ -65,6 +65,36 @@ describe('draft', () => {
     expect(await fixture.listMigrationFiles()).toEqual(before);
   });
 
+  test('does not draft a casing-only change for camelCase columns', async () => {
+    await using fixture = await createMigrationsFixture('draft-camel-case-column-no-op', {
+      desiredSchema: `create table events(createdAt text not null)`,
+      migrations: {
+        create_events: `create table events(createdAt text not null)`,
+      },
+    });
+
+    const before = await fixture.listMigrationFiles();
+
+    await fixture.api.draft();
+
+    expect(await fixture.listMigrationFiles()).toEqual(before);
+  });
+
+  test('does not draft a change that lowercases strftime format strings', async () => {
+    await using fixture = await createMigrationsFixture('draft-strftime-format-string-no-op', {
+      desiredSchema: `create table events(createdAt text not null default (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))`,
+      migrations: {
+        create_events: `create table events(createdAt text not null default (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))`,
+      },
+    });
+
+    const before = await fixture.listMigrationFiles();
+
+    await fixture.api.draft();
+
+    expect(await fixture.listMigrationFiles()).toEqual(before);
+  });
+
   test('uses an explicit name override when provided', async () => {
     await using fixture = await createMigrationsFixture('draft-explicit-name', {
       desiredSchema: `create table person(name text)`,

@@ -32,6 +32,22 @@ drop table pet;
 drop table toy;
 -- #endregion
 
+-- #region: camelCase columns are quoted when creating a table
+-- baseline:
+-- desired:
+create table events(createdAt text not null);
+-- output:
+create table events("createdAt" text not null);
+-- #endregion
+
+-- #region: string literals are preserved when creating a table
+-- baseline:
+-- desired:
+create table events(createdAt text not null default (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')));
+-- output:
+create table events("createdAt" text not null default (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')));
+-- #endregion
+
 -- #region: simple removed column drops directly
 -- baseline:
 create table a(x int, y int);
@@ -75,6 +91,16 @@ drop trigger person_insert_log;
 create trigger person_insert_log after insert on person begin
 insert into audit_log(name) values ('prefix:' || new.name);
 end;
+-- #endregion
+
+-- #region: view string literal case changes are semantic
+-- baseline:
+create view event_days as select strftime('%Y-%m-%dT%H:%M:%fZ', 'now') as ts;
+-- desired:
+create view event_days as select strftime('%y-%m-%dt%h:%m:%fz', 'now') as ts;
+-- output:
+drop view event_days;
+create view event_days as select strftime('%y-%m-%dt%h:%m:%fz', 'now') as ts;
 -- #endregion
 
 -- #region: column collation changes rebuild the table

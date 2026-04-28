@@ -15,6 +15,7 @@ import {
   normalizeComparableSql,
   normalizeIdentifierToken,
   normalizeStoredSql,
+  normalizeStoredSqlWithIdentifiers,
   normalizeViewDefinition,
   splitTopLevelCommaList,
 } from './sqltext.js';
@@ -96,8 +97,10 @@ export async function inspectSqliteSchema(client: Client, schemaName = 'main'): 
 
     const explicitIndexes: SqliteInspectedDatabase['tables'][string]['indexes'] = {};
     const uniqueConstraints: SqliteUniqueConstraint[] = [];
-    const createSql = normalizeStoredSql(object.sql || '');
-    const columnCollations = extractTableColumnCollations(createSql);
+    const rawCreateSql = object.sql || '';
+    const columnCollations = extractTableColumnCollations(rawCreateSql);
+    const columnNames = columns.map((column) => column.name);
+    const createSql = normalizeStoredSqlWithIdentifiers(rawCreateSql, [object.name, ...columnNames]);
 
     for (const index of indexList) {
       const indexNameLiteral = quoteSqlString(index.name);
@@ -114,9 +117,14 @@ export async function inspectSqliteSchema(client: Client, schemaName = 'main'): 
         sql: `select sql from ${schemaName}.sqlite_schema where type = 'index' and name = ${indexNameLiteral}`,
         args: [],
       });
+      const indexCreateSql = normalizeStoredSqlWithIdentifiers(createSqlRow[0]?.sql || '', [
+        index.name,
+        object.name,
+        ...columnNames,
+      ]);
       const indexInfo = {
         name: index.name,
-        createSql: normalizeStoredSql(createSqlRow[0]?.sql || ''),
+        createSql: indexCreateSql,
         unique: Boolean(index.unique),
         origin: index.origin,
         columns: indexColumns.map((column) => column.name || `expression:${column.seqno}`),
@@ -138,7 +146,7 @@ export async function inspectSqliteSchema(client: Client, schemaName = 'main'): 
       columns: columns.map((column) => ({
         name: column.name,
         declaredType: normalizeDeclaredType(column.type),
-        collation: columnCollations.get(column.name) || null,
+        collation: columnCollations.get(normalizeIdentifierToken(column.name)) || null,
         notNull: Boolean(column.notnull),
         defaultSql: normalizeDefaultSql(column.dflt_value),
         primaryKeyPosition: column.pk,

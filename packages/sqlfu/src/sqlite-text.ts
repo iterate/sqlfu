@@ -1,4 +1,5 @@
 import type {AsyncClient, Client, PreparedStatementParams, QueryArg, SyncClient} from './types.js';
+import {normalizeSchemaSqlForExtraction} from './schemadiff/sqlite/sqltext.js';
 
 /**
  * Returns true for statements that produce a result set — `select`, `with`,
@@ -138,7 +139,7 @@ export async function extractSchema(
     args: [],
   });
 
-  return rows.map((row) => `${String(row.sql).toLowerCase()};`).join('\n');
+  return rows.map((row) => `${normalizeSchemaSqlForExtraction(String(row.sql))};`).join('\n');
 }
 
 function sqlStringLiteral(value: string) {
