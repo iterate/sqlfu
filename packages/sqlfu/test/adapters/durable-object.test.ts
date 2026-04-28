@@ -3,12 +3,16 @@ import os from 'node:os';
 import path from 'node:path';
 
 import * as esbuild from 'esbuild';
+import {createORPCClient} from '@orpc/client';
+import {RPCLink} from '@orpc/client/fetch';
+import type {RouterClient} from '@orpc/server';
 import {Miniflare} from 'miniflare';
 import {expect, test} from 'vitest';
 import dedent from 'dedent';
 
 import {ensureBuilt, packageRoot} from './ensure-built.js';
 import {createDurableObjectClient as createLocalDurableObjectClient} from '../../src/index.js';
+import type {UiRouter} from '../../src/ui/browser.js';
 
 declare const createDurableObjectClient: typeof import('../../src/index.ts').createDurableObjectClient;
 declare const sql: typeof import('../../src/index.ts').sql;
@@ -293,6 +297,83 @@ test('createDurableObjectClient rejects a bare durable object sql handle', () =>
   );
 });
 
+test('durable object can serve sqlfu ui partial fetch against its sqlite storage', async () => {
+  await using fixture = await createDOPartialUiFetchFixture();
+
+  const indexResponse = await fixture.fetch('http://do/');
+  expect(indexResponse.status).toBe(200);
+  expect(indexResponse.headers.get('content-type')).toMatch(/text\/html/u);
+  expect(await indexResponse.text()).toContain('durable-ui-ok');
+
+  const assetResponse = await fixture.fetch('http://do/assets/app.js');
+  expect(assetResponse.status).toBe(200);
+  expect(assetResponse.headers.get('content-type')).toMatch(/text\/javascript/u);
+  expect(await assetResponse.text()).toContain('__sqlfuDoUiLoaded__');
+
+  const fallbackResponse = await fixture.fetch('http://do/not-owned');
+  expect(fallbackResponse.status).toBe(299);
+  expect(await fallbackResponse.text()).toBe('application fallback');
+
+  expect(await fixture.client.project.status()).toMatchObject({
+    initialized: true,
+    projectRoot: '/fixture-object',
+  });
+
+  expect(await fixture.client.schema.get()).toMatchObject({
+    projectName: 'fixture-object',
+    relations: [
+      {
+        name: 'person',
+        kind: 'table',
+        rowCount: 2,
+      },
+    ],
+  });
+
+  expect(
+    await fixture.client.table.list({
+      relationName: 'person',
+      page: 0,
+    }),
+  ).toMatchObject({
+    relation: 'person',
+    rows: [
+      {id: 1, name: 'Ada'},
+      {id: 2, name: 'Grace'},
+    ],
+  });
+
+  expect(
+    await fixture.client.sql.run({
+      sql: 'insert into person (id, name) values (?, ?)',
+      params: [3, 'Katherine'],
+    }),
+  ).toMatchObject({
+    mode: 'metadata',
+    metadata: {
+      rowsAffected: 1,
+    },
+  });
+
+  expect(
+    await fixture.client.sql.run({
+      sql: 'select id, name from person order by id',
+    }),
+  ).toMatchObject({
+    mode: 'rows',
+    rows: [
+      {id: 1, name: 'Ada'},
+      {id: 2, name: 'Grace'},
+      {id: 3, name: 'Katherine'},
+    ],
+  });
+
+  expect(await fixture.client.schema.authorities.get()).toMatchObject({
+    desiredSchemaSql: expect.stringContaining('create table person'),
+    liveSchemaSql: expect.stringContaining('create table person'),
+  });
+});
+
 async function createDOFixture<TInstance extends object>(
   classDef: new (...args: any[]) => TInstance,
   options: {
@@ -307,7 +388,11 @@ async function createDOFixture<TInstance extends object>(
   const workerPath = path.join(tempDir, 'worker.js');
   await fs.cp(path.join(packageRoot, 'dist'), path.join(tempDir, 'runtime'), {recursive: true});
   await writeGeneratedMigrationsModule(tempDir, 'migrations', options.migrations || {});
-  await writeGeneratedMigrationsModule(tempDir, 'migrations-missing-initial', options.migrationsAfterDeletingInitialFile || {});
+  await writeGeneratedMigrationsModule(
+    tempDir,
+    'migrations-missing-initial',
+    options.migrationsAfterDeletingInitialFile || {},
+  );
 
   const classDefString = classDef.toString().trim();
   const className = classDefString.match(/^class (\w+) \{/)?.[1];
@@ -423,6 +508,115 @@ async function writeGeneratedMigrationsModule(
       '',
     ].join('\n'),
   );
+}
+
+async function createDOPartialUiFetchFixture() {
+  await ensureBuilt();
+
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-do-ui-fixture-'));
+  const workerSourcePath = path.join(tempDir, 'worker-source.js');
+  const workerPath = path.join(tempDir, 'worker.js');
+  const definitionsSql = `
+    create table person (
+      id integer primary key,
+      name text not null
+    );
+  `;
+  await fs.cp(path.join(packageRoot, 'dist'), path.join(tempDir, 'runtime'), {recursive: true});
+  await fs.copyFile(path.join(packageRoot, 'package.json'), path.join(tempDir, 'package.json'));
+  await fs.writeFile(
+    workerSourcePath,
+    [
+      "import {createDurableObjectSqlfuUiFetch} from './runtime/ui/browser.js';",
+      '',
+      'export class FixtureObject {',
+      '  constructor(state) {',
+      '    this.sqlfuUiFetch = createDurableObjectSqlfuUiFetch({',
+      '      storage: state.storage,',
+      "      projectName: 'fixture-object',",
+      `      definitionsSql: ${JSON.stringify(definitionsSql)},`,
+      '      assets: {',
+      "        '/index.html': '<!doctype html><html><body><div id=\"app\">durable-ui-ok</div></body></html>',",
+      "        '/assets/app.js': 'globalThis.__sqlfuDoUiLoaded__ = true;',",
+      '      },',
+      '    });',
+      '',
+      "    state.storage.sql.exec('create table if not exists person (id integer primary key, name text not null)');",
+      "    state.storage.sql.exec('delete from person');",
+      "    state.storage.sql.exec('insert into person (id, name) values (?, ?)', 1, 'Ada');",
+      "    state.storage.sql.exec('insert into person (id, name) values (?, ?)', 2, 'Grace');",
+      '  }',
+      '',
+      '  async fetch(request) {',
+      '    const response = await this.sqlfuUiFetch(request);',
+      '    if (response) {',
+      '      return response;',
+      '    }',
+      "    return new Response('application fallback', {status: 299});",
+      '  }',
+      '}',
+      '',
+      'export default {',
+      '  fetch() {',
+      "    return new Response('ok');",
+      '  },',
+      '};',
+      '',
+    ].join('\n'),
+  );
+
+  await esbuild.build({
+    entryPoints: [workerSourcePath],
+    outfile: workerPath,
+    bundle: true,
+    format: 'esm',
+    platform: 'neutral',
+    target: 'es2022',
+    absWorkingDir: packageRoot,
+    nodePaths: [path.join(packageRoot, 'node_modules')],
+  });
+
+  const miniflare = new Miniflare({
+    rootPath: tempDir,
+    modulesRoot: tempDir,
+    scriptPath: 'worker.js',
+    modules: true,
+    modulesRules: [{type: 'ESModule', include: ['**/*.js']}],
+    durableObjects: {
+      FIXTURE_OBJECT: {
+        className: 'FixtureObject',
+        useSQLite: true,
+      },
+    },
+  });
+
+  await miniflare.ready;
+
+  const bindings = await miniflare.getBindings<{FIXTURE_OBJECT: DurableObjectNamespaceLike}>();
+  const durableObjectStub = bindings.FIXTURE_OBJECT.get(bindings.FIXTURE_OBJECT.idFromName('fixture'));
+  const client: RouterClient<UiRouter> = createORPCClient(
+    new RPCLink({
+      url: 'http://do/api/rpc',
+      fetch: async (request) => fetchRequestThroughStub(durableObjectStub, request),
+    }),
+  );
+
+  return {
+    client,
+    fetch: (input: string | URL | Request, init?: RequestInit) => durableObjectStub.fetch(input, init),
+    async [Symbol.asyncDispose]() {
+      await miniflare.dispose();
+      await fs.rm(tempDir, {recursive: true, force: true});
+    },
+  };
+}
+
+async function fetchRequestThroughStub(stub: DurableObjectFetchStub, request: Request) {
+  return stub.fetch(request.url, {
+    method: request.method,
+    headers: request.headers,
+    body: request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.arrayBuffer(),
+  });
 }
 
 interface DurableObjectNamespaceLike {
