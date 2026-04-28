@@ -35,8 +35,12 @@ Survey state at the start of the pass:
 - Bare-frontmatter holdouts: `landing-page-animations.md`, `sqlfu-vscode.md`. Will normalize. (`cleanup-tasks.md` and `improve-docs.md` are evergreen; intentionally left as bare lead-in.)
 
 Plan:
-- [ ] Move 9 stale task files (8 distinct tasks; `client-prepare` has a `.interview.md` sibling) to `tasks/complete/` with the merge date as prefix.
-- [ ] Normalize bare frontmatter on `landing-page-animations.md` and `sqlfu-vscode.md`.
-- [ ] Prune merged-PR worktrees: 22 total, leaving the 8 open-PR ones, the in-flight bedtime ones, the active main checkout, the unrelated `sqlfu-vendor-sqlite3def` worktree, and the two closed-without-merging worktrees the user might revisit (`api-extractor`, `typesql-ddl-support`). `typesql-ddl-support` has a dirty working tree; leave it alone.
-- [ ] List any orphaned directories under `../worktrees/sqlfu/` (those not in `git worktree list`).
+- [x] Move 9 stale task files (8 distinct tasks; `client-prepare` has a `.interview.md` sibling) to `tasks/complete/` with the merge date as prefix. _three commits — `tasks: file 2026-04-22 ...`, `tasks: file 2026-04-21 ...`, `tasks: file remaining ...`. The `error-taxonomy.md` original was filed as `2026-04-23-error-taxonomy-original.md` (the date of the v2 PR merge) to keep it adjacent to the v2 file already in `complete/`._
+- [x] Normalize bare frontmatter on `landing-page-animations.md` and `sqlfu-vscode.md`. _commit `tasks: yaml-fence frontmatter on ...`._
+- [x] Prune merged-PR worktrees: 22 removed (`camelcase-query-name`, `cause-double-error-prefix`, `ci-report-package-size`, `cleanup-tasks-2026-04-20`, `client-prepare`, `diff-statement-reasons`, `drop-antlr`, `error-taxonomy`, `error-taxonomy-v2`, `generate-self-contained`, `id-helpers`, `import-surface`, `improve-docs-2026-04-20`, `improve-docs-onboarding-pass`, `light-root-export`, `migrate-yes-flag`, `migrations-prefix-config`, `migrations-preset`, `outbox`, `playwright-ci`, `typegen-pgtyped-support`, `ui-small-ui-tweaks`). All clean working trees; `git worktree remove` succeeded for each. Branches preserved on remote so the moves are reversible. Kept: 7 open-PR worktrees (`detect-spurious-definitions`, `generate-watch`, `lint-generated-queries`, `outbox-polymorphic-sync`, `partial-fetch-ui-durable-object`, `sql-runner-named-params`, `target-safety-design`), the 2 in-flight bedtime ones (`cleanup-tasks-2026-04-28`, `improve-docs-2026-04-28`), 2 closed-without-merging-but-revisit-able (`api-extractor`, `typesql-ddl-support` — the latter has uncommitted changes in `tasks/complete/2026-04-20-typesql-ddl-support.md`, untouched).
+- [x] List any orphaned directories under `../worktrees/sqlfu/` (those not in `git worktree list`). _none — every directory is accounted for._
+
+Things flagged for follow-up (not actioned):
+- `typesql-ddl-support` worktree has an uncommitted edit to `tasks/complete/2026-04-20-typesql-ddl-support.md`. Per CLAUDE.md, never delete work the user might want; left in place for the user to either commit or stash.
+- `landing-page-animations.md` task file is keeping `status: in-progress` despite PR #14 having merged — the task captures unfinished follow-up (pacing review, alt-composition cleanup decision). If the user is happy with what shipped, this is a one-line move-to-complete next pass.
 
