@@ -13,8 +13,8 @@ import {
 } from '../api.js';
 import {SqlfuError, type SqlfuErrorKind} from '../errors.js';
 import {excludeReservedSqliteObjects, splitSqlStatements, sqlReturnsRows} from '../sqlite-text.js';
-import type {HostCatalog, HostFs, SqlfuHost, SqlfuUiHost} from '../host.js';
-import type {AsyncClient, PreparedStatementParams, QueryArg, SqlfuProjectConfig} from '../types.js';
+import type {DisposableClient, HostCatalog, HostFs, SqlfuHost, SqlfuUiHost} from '../host.js';
+import type {Client, PreparedStatementParams, QueryArg, SqlfuProjectConfig} from '../types.js';
 import {basename, joinPath} from '../paths.js';
 import type {QueryCatalogEntry} from '../typegen/query-catalog.js';
 import {sha256} from '../vendor/sha256.js';
@@ -59,6 +59,11 @@ export type SqlfuUiProject =
 export type UiRouterContext = {
   project: SqlfuUiProject;
   host: SqlfuUiHost;
+};
+
+type ResolvedSqlfuUiHost = Omit<SqlfuHost, 'openDb' | 'openScratchDb'> & {
+  openDb(config: SqlfuProjectConfig): Promise<DisposableClient>;
+  openScratchDb(slug: string): Promise<DisposableClient>;
 };
 
 const uiBase = os.$context<UiRouterContext>().use(async ({next, context}) => {
@@ -124,7 +129,7 @@ function applyUiProjectDefaults(project: SqlfuUiProject): ResolvedUiProject {
   };
 }
 
-function applyUiHostDefaults(host: SqlfuUiHost): SqlfuHost {
+function applyUiHostDefaults(host: SqlfuUiHost): ResolvedSqlfuUiHost {
   const fs = host.fs || unsupportedFs;
   return {
     fs,
@@ -217,7 +222,7 @@ export const uiRouter = {
     check: uiBase.handler(async ({context}) => {
       const config = requireProjectConfig(context.project);
       try {
-        const analysis = await getCheckAnalysis({config, host: context.host});
+        const analysis = await getCheckAnalysis({config, host: context.host as SqlfuHost});
         return {
           cards: buildSchemaCheckCards(analysis),
           recommendations: buildSchemaCheckRecommendations(analysis),
@@ -242,7 +247,7 @@ export const uiRouter = {
               }
             : await getSchemaAuthorities({
                 config: requireProjectConfig(context.project),
-                host: context.host,
+                host: context.host as SqlfuHost,
               });
         return {
           desiredSchemaSql: authorities.desiredSchemaSql,
@@ -281,7 +286,7 @@ export const uiRouter = {
 
           return {
             sql: await getMigrationResultantSchema(
-              {config: requireProjectConfig(context.project), host: context.host},
+              {config: requireProjectConfig(context.project), host: context.host as SqlfuHost},
               input,
             ),
           };
@@ -303,7 +308,7 @@ export const uiRouter = {
           {
             projectRoot: context.project.projectRoot,
             config: context.project.initialized ? context.project.config : undefined,
-            host: context.host,
+            host: context.host as SqlfuHost,
           },
           input.command,
           async (params) => {
@@ -346,7 +351,10 @@ export const uiRouter = {
           throw new Error('Desired Schema is required');
         }
 
-        await writeDefinitionsSql({config: requireProjectConfig(context.project), host: context.host}, input.sql);
+        await writeDefinitionsSql(
+          {config: requireProjectConfig(context.project), host: context.host as SqlfuHost},
+          input.sql,
+        );
         return {ok: true} as const;
       }),
   },
@@ -892,7 +900,7 @@ function encodeScalar(
   return JSON.stringify(value);
 }
 
-async function getRelationColumns(client: AsyncClient, relationName: string): Promise<StudioColumn[]> {
+async function getRelationColumns(client: Client, relationName: string): Promise<StudioColumn[]> {
   const rows = await client.all<Record<string, unknown>>({
     sql: `PRAGMA table_xinfo("${escapeIdentifier(relationName)}")`,
     args: [],
@@ -907,7 +915,7 @@ async function getRelationColumns(client: AsyncClient, relationName: string): Pr
     }));
 }
 
-async function getRelationCount(client: AsyncClient, relationName: string) {
+async function getRelationCount(client: Client, relationName: string) {
   const rows = await client.all<{count: number}>({
     sql: `select count(*) as count from "${escapeIdentifier(relationName)}"`,
     args: [],
@@ -915,7 +923,7 @@ async function getRelationCount(client: AsyncClient, relationName: string) {
   return Number(rows[0]?.count ?? 0);
 }
 
-async function getTableRows(client: AsyncClient, relationName: string, page: number): Promise<TableRowsResponse> {
+async function getTableRows(client: Client, relationName: string, page: number): Promise<TableRowsResponse> {
   const safePage = Math.max(0, page);
   const pageSize = 25;
   const relation = await getRelationInfo(client, relationName);
@@ -941,7 +949,7 @@ async function getTableRows(client: AsyncClient, relationName: string, page: num
 }
 
 async function saveTableRows(
-  client: AsyncClient,
+  client: Client,
   relationName: string,
   input: {
     page: number;
@@ -996,7 +1004,7 @@ async function saveTableRows(
 }
 
 async function deleteTableRow(
-  client: AsyncClient,
+  client: Client,
   relationName: string,
   input: {
     page: number;
@@ -1031,7 +1039,7 @@ function slugifyQueryName(value: string) {
     .replace(/^-+|-+$/g, '');
 }
 
-async function execAdHocSql(client: AsyncClient, sql: string, params: SqlRunnerParams) {
+async function execAdHocSql(client: Client, sql: string, params: SqlRunnerParams) {
   const stmt = client.prepare(sql);
   try {
     if (sqlReturnsRows(sql)) {
@@ -1049,7 +1057,7 @@ async function execAdHocSql(client: AsyncClient, sql: string, params: SqlRunnerP
   }
 }
 
-async function disposePreparedStatement(stmt: ReturnType<AsyncClient['prepare']>) {
+async function disposePreparedStatement(stmt: ReturnType<Client['prepare']>) {
   if (Symbol.asyncDispose in stmt) {
     await stmt[Symbol.asyncDispose]();
     return;
@@ -1091,7 +1099,7 @@ function escapeIdentifier(value: string) {
   return value.replaceAll('"', '""');
 }
 
-async function getRelationInfo(client: AsyncClient, relationName: string) {
+async function getRelationInfo(client: Client, relationName: string) {
   const row = (
     await client.all<{name: string; type: 'table' | 'view'; sql: string | null}>({
       sql: `select name, type, sql from sqlite_schema where name = ?`,

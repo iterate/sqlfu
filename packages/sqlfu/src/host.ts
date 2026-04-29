@@ -1,8 +1,8 @@
-import type {DisposableAsyncClient, SqlfuProjectConfig} from './types.js';
+import type {DisposableClient, DisposableAsyncClient, SqlfuProjectConfig} from './types.js';
 import type {QueryCatalog} from './typegen/query-catalog.js';
 import type {SqlAnalysisResponse} from './ui/shared.js';
 
-export type {DisposableAsyncClient} from './types.js';
+export type {DisposableAsyncClient, DisposableClient} from './types.js';
 
 export interface HostFs {
   readFile(path: string): Promise<string>;
@@ -37,4 +37,7 @@ export interface SqlfuHost {
   catalog: HostCatalog;
 }
 
-export type SqlfuUiHost = Pick<SqlfuHost, 'openDb'> & Partial<Omit<SqlfuHost, 'openDb'>>;
+export type SqlfuUiHost = {
+  openDb(config: SqlfuProjectConfig): Promise<DisposableClient>;
+  openScratchDb?(slug: string): Promise<DisposableClient>;
+} & Partial<Omit<SqlfuHost, 'openDb' | 'openScratchDb'>>;

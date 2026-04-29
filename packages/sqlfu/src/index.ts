@@ -50,7 +50,15 @@ export {
 // Structural SqlfuHost interface + related types. Types only; useful for
 // consumers building their own host implementations (test doubles, edge
 // runtimes).
-export type {DisposableAsyncClient, HostCatalog, HostFs, HostLogger, SqlfuHost, SqlfuUiHost} from './host.js';
+export type {
+  DisposableAsyncClient,
+  DisposableClient,
+  HostCatalog,
+  HostFs,
+  HostLogger,
+  SqlfuHost,
+  SqlfuUiHost,
+} from './host.js';
 
 // Query-catalog shape types — what `sqlfu generate` emits. Consumed by
 // the UI, by custom codegen, and by anyone inspecting a project's

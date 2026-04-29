@@ -19,13 +19,14 @@ const uiRoot = path.resolve(currentDir, '..');
 let buildPromise: Promise<void> | undefined;
 
 declare const createD1Client: typeof import('sqlfu').createD1Client;
+declare const createDurableObjectClient: typeof import('sqlfu').createDurableObjectClient;
 declare const createSqlfuUiPartialFetch: typeof import('@sqlfu/ui').createSqlfuUiPartialFetch;
 
 test('D1 worker partial fetch serves real UI assets while leaving app routes available', async ({page}) => {
   await using fixture = await createPartialFetchWorkerFixture({
     fetch: async (request, env) => {
       const db = createD1Client(env.DB);
-      await db.raw(`
+      await db.raw(dedent`
         create table if not exists todos (
           id integer primary key,
           title text not null,
@@ -42,14 +43,16 @@ test('D1 worker partial fetch serves real UI assets while leaving app routes ava
 
       if (url.pathname === '/todos/new') {
         return new Response(
-          `<!doctype html>
-          <form method="post" action="/todos">
-            <label>
-              Todo
-              <input name="title" />
-            </label>
-            <button type="submit">Add</button>
-          </form>`,
+          dedent`
+            <!doctype html>
+            <form method="post" action="/todos">
+              <label>
+                Todo
+                <input name="title" />
+              </label>
+              <button type="submit">Add</button>
+            </form>
+          `,
           {headers: {'content-type': 'text/html; charset=utf-8'}},
         );
       }
@@ -116,7 +119,7 @@ test('partial fetch can serve the UI behind worker-owned prefix auth', async ({p
   await using fixture = await createPartialFetchWorkerFixture({
     fetch: async (request, env) => {
       const db = createD1Client(env.DB);
-      await db.raw(`
+      await db.raw(dedent`
         create table if not exists todos (
           id integer primary key,
           title text not null,
@@ -127,14 +130,16 @@ test('partial fetch can serve the UI behind worker-owned prefix auth', async ({p
       const url = new URL(request.url);
       if (url.pathname === '/login') {
         return new Response(
-          `<!doctype html>
-          <form method="post" action="/session">
-            <label>
-              Passphrase
-              <input name="passphrase" type="password" />
-            </label>
-            <button type="submit">Unlock</button>
-          </form>`,
+          dedent`
+            <!doctype html>
+            <form method="post" action="/session">
+              <label>
+                Passphrase
+                <input name="passphrase" type="password" />
+              </label>
+              <button type="submit">Unlock</button>
+            </form>
+          `,
           {headers: {'content-type': 'text/html; charset=utf-8'}},
         );
       }
@@ -155,14 +160,16 @@ test('partial fetch can serve the UI behind worker-owned prefix auth', async ({p
 
       if (url.pathname === '/todos/new') {
         return new Response(
-          `<!doctype html>
-          <form method="post" action="/todos">
-            <label>
-              Todo
-              <input name="title" />
-            </label>
-            <button type="submit">Add</button>
-          </form>`,
+          dedent`
+            <!doctype html>
+            <form method="post" action="/todos">
+              <label>
+                Todo
+                <input name="title" />
+              </label>
+              <button type="submit">Add</button>
+            </form>
+          `,
           {headers: {'content-type': 'text/html; charset=utf-8'}},
         );
       }
@@ -226,6 +233,231 @@ test('partial fetch can serve the UI behind worker-owned prefix auth', async ({p
   await expect(page.getByText('Wash cloak')).toBeVisible();
 });
 
+test('partial fetch can serve separate worker and durable object UIs from one worker', async ({page}) => {
+  await using fixture = await createPartialFetchWorkerFixture({
+    durableObjects: {
+      SESSION_OBJECT: class SessionObject {
+        client: ReturnType<typeof createDurableObjectClient>;
+
+        constructor(state: any) {
+          this.client = createDurableObjectClient(state.storage);
+          this.client.raw(dedent`
+            create table if not exists events (
+              id integer primary key,
+              type text not null,
+              created_at text not null
+            );
+          `);
+        }
+
+        getTodoAddedCount() {
+          const rows = this.client.all<{total: number}>({
+            sql: "select count(*) as total from events where type = 'todo_added'",
+            args: [],
+          });
+          return rows[0]?.total || 0;
+        }
+
+        incrementTodoAddedCount() {
+          this.client.run({
+            sql: 'insert into events (type, created_at) values (?, ?)',
+            args: ['todo_added', new Date().toISOString()],
+          });
+        }
+
+        async fetch(request: Request) {
+          const url = new URL(request.url);
+          const sessionMatch = url.pathname.match(/^\/session-([^/]+)/u);
+          const sessionId = sessionMatch?.[1] || 'unknown';
+          const sessionPrefix = `/session-${sessionId}`;
+          const client = this.client;
+          const partialResponse = await createSqlfuUiPartialFetch({
+            prefixPath: `${sessionPrefix}/db-ui`,
+            project: {
+              initialized: true,
+              projectRoot: sessionPrefix,
+            },
+            host: {
+              async openDb() {
+                return {
+                  client,
+                  async [Symbol.asyncDispose]() {},
+                };
+              },
+            },
+          })(request);
+
+          if (partialResponse) {
+            return partialResponse;
+          }
+
+          return new Response('session not found', {status: 404});
+        }
+      },
+    },
+    fetch: async (request, env) => {
+      const db = createD1Client(env.DB);
+      await db.raw(dedent`
+        create table if not exists todos (
+          id integer primary key,
+          title text not null,
+          session_id text not null,
+          completed integer not null default 0
+        );
+      `);
+
+      const url = new URL(request.url);
+      const cookie = request.headers.get('cookie') || '';
+      const authenticatedSessionId = cookie.match(/partial_fetch_session=([^;]+)/u)?.[1] || '';
+      const authenticatedSessionObject = authenticatedSessionId
+        ? env.SESSION_OBJECT.get(env.SESSION_OBJECT.idFromName(authenticatedSessionId))
+        : null;
+
+      if (url.pathname.startsWith('/session-')) {
+        const sessionId = url.pathname.match(/^\/session-([^/]+)/u)?.[1] || '';
+        if (!sessionId) {
+          return new Response('missing session id', {status: 400});
+        }
+        const id = env.SESSION_OBJECT.idFromName(sessionId);
+        const sessionObject = env.SESSION_OBJECT.get(id);
+        const sessionPrefix = `/session-${sessionId}`;
+
+        if (url.pathname === sessionPrefix) {
+          const count = await sessionObject.getTodoAddedCount();
+          return new Response(
+            dedent`
+              <!doctype html>
+              <h1>Session ${sessionId}</h1>
+              <p>Todos added: ${count}</p>
+              <a href="/todos/new">Add todo</a>
+            `,
+            {headers: {'content-type': 'text/html; charset=utf-8'}},
+          );
+        }
+
+        return sessionObject.fetch(request);
+      }
+
+      if (url.pathname === '/login') {
+        return new Response(
+          dedent`
+            <!doctype html>
+            <form method="post" action="/session">
+              <label>
+                Passphrase
+                <input name="passphrase" type="password" />
+              </label>
+              <button type="submit">Unlock</button>
+            </form>
+          `,
+          {headers: {'content-type': 'text/html; charset=utf-8'}},
+        );
+      }
+
+      if (url.pathname === '/session' && request.method === 'POST') {
+        const formData = await request.formData();
+        if (formData.get('passphrase') !== 'open sesame') {
+          return new Response('Nope', {status: 401});
+        }
+        return new Response(null, {
+          status: 303,
+          headers: {
+            location: '/my-db',
+            'set-cookie': 'partial_fetch_session=alpha; HttpOnly; SameSite=Lax; Path=/',
+          },
+        });
+      }
+
+      if ((url.pathname === '/todos' || url.pathname === '/todos/new') && !authenticatedSessionObject) {
+        return new Response(null, {status: 303, headers: {location: '/login'}});
+      }
+
+      if (url.pathname === '/todos' && request.method === 'POST') {
+        const formData = await request.formData();
+        await db.run({
+          sql: 'insert into todos (title, session_id) values (?, ?)',
+          args: [String(formData.get('title') || ''), authenticatedSessionId],
+        });
+        await authenticatedSessionObject.incrementTodoAddedCount();
+        return new Response(null, {status: 303, headers: {location: '/my-db'}});
+      }
+
+      if (url.pathname === '/todos/new') {
+        return new Response(
+          dedent`
+            <!doctype html>
+            <form method="post" action="/todos">
+              <label>
+                Worker todo
+                <input name="title" />
+              </label>
+              <button type="submit">Add</button>
+            </form>
+          `,
+          {headers: {'content-type': 'text/html; charset=utf-8'}},
+        );
+      }
+
+      if (url.pathname.startsWith('/my-db') && !authenticatedSessionObject) {
+        return new Response(null, {status: 303, headers: {location: '/login'}});
+      }
+
+      const partialResponse = await createSqlfuUiPartialFetch({
+        prefixPath: '/my-db',
+        project: {
+          initialized: true,
+          projectRoot: '/partial-fetch-playwright-worker',
+        },
+        host: {
+          async openDb() {
+            return {
+              client: db,
+              async [Symbol.asyncDispose]() {},
+            };
+          },
+        },
+      })(request);
+
+      if (partialResponse) {
+        return partialResponse;
+      }
+
+      return new Response('plain worker fallback', {status: 404});
+    },
+  });
+
+  await page.goto(`${fixture.origin}/my-db`);
+  await expect(page).toHaveURL(`${fixture.origin}/login`);
+  await page.getByLabel('Passphrase').fill('open sesame');
+  await page.getByRole('button', {name: 'Unlock'}).click();
+  await expect(page).toHaveURL(`${fixture.origin}/my-db`);
+
+  await page.goto(`${fixture.origin}/todos/new`);
+  await page.getByLabel('Worker todo').fill('Feed snake');
+  await page.getByRole('button', {name: 'Add'}).click();
+
+  await page.goto(`${fixture.origin}/my-db/#table/todos`);
+  await expect(page.getByRole('heading', {name: 'todos'})).toBeVisible();
+  await expect(page.getByText('Feed snake')).toBeVisible();
+
+  await page.goto(`${fixture.origin}/session-alpha`);
+  await expect(page.getByRole('heading', {name: 'Session alpha'})).toBeVisible();
+  await expect(page.getByText('Todos added: 1')).toBeVisible();
+
+  await page.goto(`${fixture.origin}/session-alpha/db-ui/#table/events`);
+  await expect(page).toHaveURL(/\/session-alpha\/db-ui\/?#table\/events$/u);
+  await expect(page.getByRole('heading', {name: 'events'})).toBeVisible();
+  await expect(page.getByText('todo_added')).toBeVisible();
+
+  await page.goto(`${fixture.origin}/my-db/#table/todos`);
+  await expect(page.getByRole('heading', {name: 'todos'})).toBeVisible();
+  await expect(page.getByText('Feed snake')).toBeVisible();
+  await expect(page.getByText('alpha')).toBeVisible();
+
+  await page.goto(`${fixture.origin}/session-bravo`);
+  await expect(page.getByText('Todos added: 0')).toBeVisible();
+});
+
 async function createPartialFetchWorkerFixture(input: PartialFetchWorkerFixtureInput) {
   await ensureBuilt();
 
@@ -233,7 +465,7 @@ async function createPartialFetchWorkerFixture(input: PartialFetchWorkerFixtureI
   const workerSourcePath = path.join(tempDir, 'worker-source.js');
   const workerPath = path.join(tempDir, 'worker.js');
 
-  await fs.writeFile(workerSourcePath, createWorkerSource(input.fetch));
+  await fs.writeFile(workerSourcePath, createWorkerSource(input));
 
   await esbuild.build({
     entryPoints: [workerSourcePath],
@@ -244,6 +476,7 @@ async function createPartialFetchWorkerFixture(input: PartialFetchWorkerFixtureI
     target: 'es2022',
     absWorkingDir: sqlfuRoot,
     nodePaths: [path.join(sqlfuRoot, 'node_modules'), path.join(uiRoot, 'node_modules')],
+    external: ['cloudflare:workers'],
   });
 
   const miniflare = new Miniflare({
@@ -252,7 +485,9 @@ async function createPartialFetchWorkerFixture(input: PartialFetchWorkerFixtureI
     scriptPath: 'worker.js',
     modules: true,
     modulesRules: [{type: 'ESModule', include: ['**/*.js']}],
+    compatibilityDate: '2024-04-03',
     d1Databases: ['DB'],
+    durableObjects: durableObjectBindings(input.durableObjects || {}),
   });
   await miniflare.ready;
 
@@ -353,20 +588,25 @@ interface WorkerFetcherLike {
 }
 
 interface PartialFetchWorkerFixtureInput {
+  durableObjects?: Record<string, new (...args: any[]) => object>;
   fetch(
     request: Request,
     env: {
       DB: Parameters<typeof createD1Client>[0];
+      [binding: string]: any;
     },
   ): Promise<Response> | Response;
 }
 
-function createWorkerSource(fetch: PartialFetchWorkerFixtureInput['fetch']) {
-  return String.raw`
-import {createD1Client} from 'sqlfu';
+function createWorkerSource(input: PartialFetchWorkerFixtureInput) {
+  return dedent`
+import {DurableObject} from 'cloudflare:workers';
+import {createD1Client, createDurableObjectClient, dedent} from 'sqlfu';
 import {createSqlfuUiPartialFetch} from '@sqlfu/ui';
 
-const userFetch = ${toCallableFunctionExpressionSource(fetch.toString())};
+${durableObjectClassSource(input.durableObjects || {})}
+
+const userFetch = ${toCallableFunctionExpressionSource(input.fetch.toString())};
 
 export default {
   fetch(request, workerEnv) {
@@ -374,6 +614,46 @@ export default {
   },
 };
 `;
+}
+
+function durableObjectBindings(durableObjects: Record<string, new (...args: any[]) => object>) {
+  return Object.fromEntries(
+    Object.entries(durableObjects).map(([bindingName, classDef]) => [
+      bindingName,
+      {
+        className: durableObjectClassName(classDef),
+        useSQLite: true,
+      },
+    ]),
+  );
+}
+
+function durableObjectClassSource(durableObjects: Record<string, new (...args: any[]) => object>) {
+  return Object.values(durableObjects)
+    .map((classDef) => {
+      const className = durableObjectClassName(classDef);
+      return `${durableObjectClassWithBase(classDef)}\nexport {${className}};`;
+    })
+    .join('\n\n');
+}
+
+function durableObjectClassWithBase(classDef: new (...args: any[]) => object) {
+  return classDef
+    .toString()
+    .trim()
+    .replace(/^class\s+([A-Za-z_$][\w$]*)\s+\{/u, 'class $1 extends DurableObject {')
+    .replace(/constructor\(([^)]*)\)\s+\{/u, 'constructor($1) { super(...arguments);');
+}
+
+function durableObjectClassName(classDef: new (...args: any[]) => object) {
+  const className = classDef
+    .toString()
+    .trim()
+    .match(/^class\s+([A-Za-z_$][\w$]*)/u)?.[1];
+  if (!className) {
+    throw new Error(`Durable Object fixtures must use named classes: ${classDef.toString()}`);
+  }
+  return className;
 }
 
 function toCallableFunctionExpressionSource(source: string): string {
