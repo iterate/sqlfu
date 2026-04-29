@@ -19,20 +19,12 @@ let buildPromise: Promise<void> | undefined;
 
 declare const createD1Client: typeof import('sqlfu').createD1Client;
 declare const createSqlfuUiPartialFetch: typeof import('sqlfu/ui/browser').createSqlfuUiPartialFetch;
-declare const env: {DB: Parameters<typeof createD1Client>[0]};
+declare const sqlReturnsRows: typeof import('sqlfu').sqlReturnsRows;
 declare const uiAssets: import('sqlfu/ui/browser').SqlfuUiAssets;
-declare const project: import('sqlfu/ui/browser').CreateSqlfuUiPartialFetchInput['project'];
-declare const catalog: import('sqlfu').QueryCatalog;
-declare function ensureSeeded(database: Parameters<typeof createD1Client>[0]): Promise<void>;
-declare function createHost(input: {
-  project: typeof project;
-  catalog: typeof catalog;
-  openClient: () => ReturnType<typeof createD1Client>;
-}): import('sqlfu').SqlfuHost;
 
 test('D1 worker partial fetch serves real UI assets while leaving app routes available', async ({page}) => {
   await using fixture = await createPartialFetchWorkerFixture({
-    fetch: async (request) => {
+    fetch: async (request, env) => {
       const url = new URL(request.url);
       if (url.pathname === '/hello') {
         return new Response('<!doctype html><h1>Hello!</h1>', {
@@ -40,17 +32,164 @@ test('D1 worker partial fetch serves real UI assets while leaving app routes ava
         });
       }
 
-      await ensureSeeded(env.DB);
+      const db = createD1Client(env.DB);
+      await db.raw(`
+        create table if not exists people (
+          id integer primary key,
+          name text not null,
+          role text not null
+        );
+        insert or ignore into people (id, name, role) values (1, 'Ada Lovelace', 'Query planner');
+        insert or ignore into people (id, name, role) values (2, 'Grace Hopper', 'Compiler whisperer');
+      `);
+
+      const projectRoot = '/partial-fetch-playwright';
+      const definitionsSql = `
+        create table people (
+          id integer primary key,
+          name text not null,
+          role text not null
+        );
+      `;
+      const project = {
+        initialized: true,
+        projectRoot,
+        config: {
+          projectRoot,
+          db: ':d1:',
+          definitions: `${projectRoot}/definitions.sql`,
+          migrations: {
+            path: `${projectRoot}/migrations`,
+            prefix: 'iso',
+            preset: 'sqlfu',
+          },
+          queries: `${projectRoot}/sql`,
+          generate: {
+            validator: null,
+            prettyErrors: true,
+            sync: false,
+            importExtension: '.js',
+            authority: 'live_schema',
+          },
+        },
+      } satisfies import('sqlfu/ui/browser').CreateSqlfuUiPartialFetchInput['project'];
+
+      const files = new Map([[project.config.definitions, definitionsSql]]);
+      const normalizePath = (filePath: string) => {
+        const withSlash = filePath.startsWith('/') ? filePath : `/${filePath}`;
+        return withSlash.replace(/\/+/g, '/');
+      };
+      const normalizeDirectoryPath = (dirPath: string) => {
+        const normalized = normalizePath(dirPath);
+        return normalized.endsWith('/') ? normalized : `${normalized}/`;
+      };
 
       const partialResponse = await createSqlfuUiPartialFetch({
         assets: uiAssets,
         project,
-        host: createHost({
-          project,
-          catalog,
-          openClient: () => createD1Client(env.DB),
-        }),
+        host: {
+          fs: {
+            async readFile(filePath) {
+              const normalized = normalizePath(filePath);
+              if (!files.has(normalized)) {
+                const error = new Error(`${normalized} not found`) as NodeJS.ErrnoException;
+                error.code = 'ENOENT';
+                throw error;
+              }
+              return files.get(normalized) || '';
+            },
+            async writeFile(filePath, contents) {
+              files.set(normalizePath(filePath), contents);
+            },
+            async readdir(dirPath) {
+              const prefix = normalizeDirectoryPath(dirPath);
+              const entries = new Set<string>();
+              for (const filePath of files.keys()) {
+                if (!filePath.startsWith(prefix)) {
+                  continue;
+                }
+                const [entry] = filePath.slice(prefix.length).split('/');
+                if (entry) {
+                  entries.add(entry);
+                }
+              }
+              return [...entries].sort();
+            },
+            async mkdir() {},
+            async rm(filePath) {
+              files.delete(normalizePath(filePath));
+            },
+            async rename(from, to) {
+              const normalizedFrom = normalizePath(from);
+              if (!files.has(normalizedFrom)) {
+                const error = new Error(`${normalizedFrom} not found`) as NodeJS.ErrnoException;
+                error.code = 'ENOENT';
+                throw error;
+              }
+              const content = files.get(normalizedFrom) || '';
+              files.delete(normalizedFrom);
+              files.set(normalizePath(to), content);
+            },
+            async exists(filePath) {
+              const normalized = normalizePath(filePath);
+              if (files.has(normalized)) {
+                return true;
+              }
+              const prefix = normalizeDirectoryPath(normalized);
+              return [...files.keys()].some((candidate) => candidate.startsWith(prefix));
+            },
+          },
+          async openDb() {
+            return {
+              client: db,
+              async [Symbol.asyncDispose]() {},
+            };
+          },
+          async openScratchDb() {
+            throw new Error('partial fetch Playwright fixture does not provide scratch databases');
+          },
+          async execAdHocSql(client, sql, params) {
+            const stmt = client.prepare(sql);
+            try {
+              if (sqlReturnsRows(sql)) {
+                return {
+                  mode: 'rows',
+                  rows: await stmt.all(params),
+                };
+              }
+              return {
+                mode: 'metadata',
+                metadata: await stmt.run(params),
+              };
+            } finally {
+              await stmt[Symbol.asyncDispose]();
+            }
+          },
+          async initializeProject(projectInput) {
+            files.set(`${projectInput.projectRoot}/sqlfu.config.ts`, projectInput.configContents);
+          },
+          async digest(content) {
+            const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
+            return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, '0')).join('');
+          },
+          now: () => new Date(),
+          uuid: () => globalThis.crypto.randomUUID(),
+          logger: console,
+          catalog: {
+            async load() {
+              return {
+                generatedAt: new Date(0).toISOString(),
+                queries: [],
+              };
+            },
+            async refresh() {},
+            async analyzeSql() {
+              return {};
+            },
+          },
+        },
       })(request);
+
       if (partialResponse) {
         return partialResponse;
       }
@@ -262,7 +401,12 @@ interface WorkerFetcherLike {
 }
 
 interface PartialFetchWorkerFixtureInput {
-  fetch(request: Request): Promise<Response> | Response;
+  fetch(
+    request: Request,
+    env: {
+      DB: Parameters<typeof createD1Client>[0];
+    },
+  ): Promise<Response> | Response;
 }
 
 function createWorkerSource(fetch: PartialFetchWorkerFixtureInput['fetch']) {
@@ -272,222 +416,11 @@ import {createSqlfuUiPartialFetch} from './runtime/ui/browser.js';
 import {sqlReturnsRows} from './runtime/sqlite-text.js';
 import {uiAssets} from './ui-assets.generated.js';
 
-const definitionsSql = [
-  'create table people (',
-  '  id integer primary key,',
-  '  name text not null,',
-  '  role text not null',
-  ');',
-].join('\n');
-
-const catalog = {
-  generatedAt: new Date(0).toISOString(),
-  queries: [],
-};
-
-const project = createProject({
-  projectName: 'partial-fetch-playwright',
-  db: ':d1:',
-  definitionsSql,
-});
-
-let env;
 const userFetch = ${toCallableFunctionExpressionSource(fetch.toString())};
-
-async function ensureSeeded(database) {
-  const db = createD1Client(database);
-  await db.raw([
-    'create table if not exists people (',
-    '  id integer primary key,',
-    '  name text not null,',
-    '  role text not null',
-    ');',
-  ].join('\n'));
-
-  const rows = await db.all({sql: 'select count(*) as count from people', args: []});
-  if (Number(rows[0]?.count || 0) === 0) {
-    await db.raw([
-      "insert into people (id, name, role) values (1, 'Ada Lovelace', 'Query planner');",
-      "insert into people (id, name, role) values (2, 'Grace Hopper', 'Compiler whisperer');",
-    ].join('\n'));
-  }
-}
-
-function createProject(input) {
-  const projectName = sanitizeProjectName(input.projectName);
-  const projectRoot = '/' + projectName;
-  return {
-    initialized: true,
-    projectRoot,
-    config: {
-      projectRoot,
-      db: input.db,
-      definitions: projectRoot + '/definitions.sql',
-      migrations: {
-        path: projectRoot + '/migrations',
-        prefix: 'iso',
-        preset: 'sqlfu',
-      },
-      queries: projectRoot + '/sql',
-      generate: {
-        validator: null,
-        prettyErrors: true,
-        sync: false,
-        importExtension: '.js',
-        authority: 'live_schema',
-      },
-    },
-    definitionsSql: input.definitionsSql,
-  };
-}
-
-function createHost(input) {
-  const fs = createMemoryFs({
-    [input.project.config.definitions]: input.project.definitionsSql,
-  });
-
-  return {
-    fs,
-    async openDb() {
-      return {
-        client: input.openClient(),
-        async [Symbol.asyncDispose]() {},
-      };
-    },
-    async openScratchDb() {
-      throw new Error('partial fetch Playwright fixture does not provide scratch databases');
-    },
-    execAdHocSql,
-    async initializeProject(projectInput) {
-      await fs.writeFile(projectInput.projectRoot + '/sqlfu.config.ts', projectInput.configContents);
-    },
-    async digest(content) {
-      return digest(content);
-    },
-    now: () => new Date(),
-    uuid: () => globalThis.crypto.randomUUID(),
-    logger: console,
-    catalog: {
-      async load() {
-        return input.catalog;
-      },
-      async refresh() {},
-      async analyzeSql() {
-        return {};
-      },
-    },
-  };
-}
-
-async function execAdHocSql(client, sql, params) {
-  const stmt = client.prepare(sql);
-  try {
-    if (sqlReturnsRows(sql)) {
-      return {
-        mode: 'rows',
-        rows: await stmt.all(params),
-      };
-    }
-    return {
-      mode: 'metadata',
-      metadata: await stmt.run(params),
-    };
-  } finally {
-    await disposeStatement(stmt);
-  }
-}
-
-async function disposeStatement(stmt) {
-  if (stmt[Symbol.asyncDispose]) {
-    await stmt[Symbol.asyncDispose]();
-    return;
-  }
-  stmt[Symbol.dispose]?.();
-}
-
-function createMemoryFs(initialFiles) {
-  const files = new Map(Object.entries(initialFiles).map(([filePath, content]) => [normalizePath(filePath), content]));
-
-  return {
-    async readFile(filePath) {
-      const normalized = normalizePath(filePath);
-      if (!files.has(normalized)) {
-        const error = new Error(normalized + ' not found');
-        error.code = 'ENOENT';
-        throw error;
-      }
-      return files.get(normalized);
-    },
-    async writeFile(filePath, contents) {
-      files.set(normalizePath(filePath), contents);
-    },
-    async readdir(dirPath) {
-      const prefix = normalizeDirectoryPath(dirPath);
-      const entries = new Set();
-      for (const filePath of files.keys()) {
-        if (!filePath.startsWith(prefix)) {
-          continue;
-        }
-        const [entry] = filePath.slice(prefix.length).split('/');
-        if (entry) {
-          entries.add(entry);
-        }
-      }
-      return [...entries].sort();
-    },
-    async mkdir() {},
-    async rm(filePath) {
-      files.delete(normalizePath(filePath));
-    },
-    async rename(from, to) {
-      const normalizedFrom = normalizePath(from);
-      if (!files.has(normalizedFrom)) {
-        const error = new Error(normalizedFrom + ' not found');
-        error.code = 'ENOENT';
-        throw error;
-      }
-      const content = files.get(normalizedFrom);
-      files.delete(normalizedFrom);
-      files.set(normalizePath(to), content);
-    },
-    async exists(filePath) {
-      const normalized = normalizePath(filePath);
-      if (files.has(normalized)) {
-        return true;
-      }
-      const prefix = normalizeDirectoryPath(normalized);
-      return [...files.keys()].some((candidate) => candidate.startsWith(prefix));
-    },
-  };
-}
-
-function normalizePath(filePath) {
-  const withSlash = filePath.startsWith('/') ? filePath : '/' + filePath;
-  return withSlash.replace(/\/+/g, '/');
-}
-
-function normalizeDirectoryPath(dirPath) {
-  const normalized = normalizePath(dirPath);
-  return normalized.endsWith('/') ? normalized : normalized + '/';
-}
-
-function sanitizeProjectName(projectName) {
-  const sanitized = projectName.trim().replace(/^\/+|\/+$/g, '');
-  if (!sanitized || !/^[a-z0-9-]+$/u.test(sanitized)) {
-    throw new Error('Invalid sqlfu UI project name: ' + projectName);
-  }
-  return sanitized;
-}
-
-async function digest(content) {
-  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
-  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
 
 export default {
   fetch(request, workerEnv) {
-    env = workerEnv;
-    return userFetch(request);
+    return userFetch(request, workerEnv);
   },
 };
 `;
