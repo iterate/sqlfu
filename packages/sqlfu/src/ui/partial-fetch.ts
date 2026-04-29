@@ -12,21 +12,29 @@ export type SqlfuUiPartialFetch = (request: Request) => Promise<Response | undef
 export type CreateSqlfuUiPartialFetchInput = {
   assets: SqlfuUiAssets;
   host: SqlfuUiHost;
+  prefixPath?: string;
   project: SqlfuUiProject;
 };
 
 export function createSqlfuUiPartialFetch(input: CreateSqlfuUiPartialFetchInput): SqlfuUiPartialFetch {
   const rpcHandler = new RPCHandler(uiRouter);
+  const prefixPath = normalizePrefixPath(input.prefixPath);
+  const apiPrefix = `${prefixPath}/api/rpc` as `/${string}`;
 
   return async (request) => {
     const url = new URL(request.url);
-    if (url.pathname.startsWith('/api/rpc')) {
+    const requestPath = stripPrefixPath(url.pathname, prefixPath);
+    if (requestPath === undefined) {
+      return undefined;
+    }
+
+    if (requestPath.startsWith('/api/rpc')) {
       if (request.method === 'OPTIONS') {
         return apiPreflightResponse(request);
       }
 
       const {matched, response} = await rpcHandler.handle(request, {
-        prefix: '/api/rpc',
+        prefix: apiPrefix,
         context: {
           host: input.host,
           project: input.project,
@@ -39,13 +47,17 @@ export function createSqlfuUiPartialFetch(input: CreateSqlfuUiPartialFetchInput)
       return undefined;
     }
 
-    const assetPath = normalizeAssetPath(url.pathname === '/' ? '/index.html' : url.pathname);
+    const assetPath = normalizeAssetPath(requestPath === '' || requestPath === '/' ? '/index.html' : requestPath);
     const asset = getAsset(input.assets, assetPath);
     if (!asset) {
       return undefined;
     }
 
-    return assetResponse(assetPath, await loadAsset(asset), request.method === 'HEAD');
+    return assetResponse(
+      assetPath,
+      assetBodyForRequest(assetPath, await loadAsset(asset), prefixPath, url.origin),
+      request.method === 'HEAD',
+    );
   };
 }
 
@@ -76,6 +88,27 @@ function assetResponse(assetPath: string, body: SqlfuUiAssetBody, head: boolean)
       'content-type': contentTypeForPath(assetPath),
     },
   });
+}
+
+function assetBodyForRequest(
+  assetPath: string,
+  body: SqlfuUiAssetBody,
+  prefixPath: string,
+  origin: string,
+): SqlfuUiAssetBody {
+  if (!prefixPath) {
+    return body;
+  }
+
+  if (assetPath === '/runtime-config.js') {
+    return `window.SQLFU_API_ORIGIN = window.SQLFU_API_ORIGIN || ${JSON.stringify(new URL(`${prefixPath}/`, origin).toString())};\n`;
+  }
+
+  if (assetPath === '/index.html' && typeof body === 'string') {
+    return body.replace('<head>', `<head>\n    <base href="${htmlAttribute(`${prefixPath}/`)}" />`);
+  }
+
+  return body;
 }
 
 function responseBody(body: Exclude<SqlfuUiAssetBody, Response>) {
@@ -145,4 +178,26 @@ function withApiCors(request: Request, response: Response) {
 function normalizeAssetPath(assetPath: string) {
   const withSlash = assetPath.startsWith('/') ? assetPath : `/${assetPath}`;
   return withSlash.replace(/\/+/g, '/');
+}
+
+function normalizePrefixPath(prefixPath: string | undefined) {
+  const normalized = normalizeAssetPath(prefixPath || '/').replace(/\/+$/u, '');
+  return normalized === '' ? '' : normalized;
+}
+
+function stripPrefixPath(pathname: string, prefixPath: string) {
+  if (!prefixPath) {
+    return pathname;
+  }
+  if (pathname === prefixPath) {
+    return '';
+  }
+  if (pathname.startsWith(`${prefixPath}/`)) {
+    return pathname.slice(prefixPath.length);
+  }
+  return undefined;
+}
+
+function htmlAttribute(value: string) {
+  return value.replace(/&/gu, '&amp;').replace(/"/gu, '&quot;').replace(/</gu, '&lt;');
 }

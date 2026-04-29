@@ -31,3 +31,12 @@ test('runtime-config global overrides the hosted default', () => {
 
   expect(resolveApiOrigin()).toBe('http://127.0.0.1:56081');
 });
+
+test('runtime-config global can point at a prefixed backend', () => {
+  vi.stubGlobal('window', {
+    location: new URL('https://worker.dev/my-db/'),
+    SQLFU_API_ORIGIN: 'https://worker.dev/my-db/',
+  });
+
+  expect(resolveApiRpcUrl()).toBe('https://worker.dev/my-db/api/rpc');
+});

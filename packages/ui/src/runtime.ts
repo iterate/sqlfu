@@ -2,7 +2,7 @@ const defaultHostedApiOrigin = 'http://localhost:56081';
 
 export function resolveApiRpcUrl() {
   const apiOrigin = readApiOrigin();
-  return new URL('/api/rpc', apiOrigin || window.location.origin).toString();
+  return new URL('api/rpc', apiBaseUrl(apiOrigin || window.location.origin)).toString();
 }
 
 export function resolveApiOrigin() {
@@ -29,4 +29,8 @@ function readApiOrigin() {
   }
 
   return import.meta.env.VITE_SQLFU_API_ORIGIN || '';
+}
+
+function apiBaseUrl(apiOrigin: string) {
+  return apiOrigin.endsWith('/') ? apiOrigin : `${apiOrigin}/`;
 }

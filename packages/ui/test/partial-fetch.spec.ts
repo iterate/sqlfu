@@ -98,6 +98,96 @@ test('D1 worker partial fetch serves real UI assets while leaving app routes ava
   await expect(page.getByText('Katherine Johnson')).toBeVisible();
 });
 
+test('partial fetch can serve the UI behind worker-owned prefix auth', async ({page}) => {
+  await using fixture = await createPartialFetchWorkerFixture({
+    fetch: async (request, env) => {
+      const url = new URL(request.url);
+      if (url.pathname === '/login') {
+        return new Response(
+          `<!doctype html>
+          <form method="post" action="/session">
+            <label>
+              Passphrase
+              <input name="passphrase" type="password" />
+            </label>
+            <button type="submit">Unlock</button>
+          </form>`,
+          {headers: {'content-type': 'text/html; charset=utf-8'}},
+        );
+      }
+
+      if (url.pathname === '/session' && request.method === 'POST') {
+        const formData = await request.formData();
+        if (formData.get('passphrase') !== 'open sesame') {
+          return new Response('Nope', {status: 401});
+        }
+        return new Response(null, {
+          status: 303,
+          headers: {
+            location: '/my-db',
+            'set-cookie': 'partial_fetch_session=ok; HttpOnly; SameSite=Lax; Path=/',
+          },
+        });
+      }
+
+      if (url.pathname.startsWith('/my-db') && !request.headers.get('cookie')?.includes('partial_fetch_session=ok')) {
+        return new Response(null, {
+          status: 303,
+          headers: {
+            location: '/login',
+          },
+        });
+      }
+
+      const db = createD1Client(env.DB);
+      await db.raw(`
+        create table if not exists people (
+          id integer primary key,
+          name text not null,
+          role text not null
+        );
+        insert or ignore into people (id, name, role) values (1, 'Ada Lovelace', 'Query planner');
+        insert or ignore into people (id, name, role) values (2, 'Grace Hopper', 'Compiler whisperer');
+      `);
+
+      const uiPartialFetch = createSqlfuUiPartialFetch({
+        prefixPath: '/my-db',
+        project: {
+          initialized: true,
+          projectRoot: '/partial-fetch-playwright',
+        },
+        host: {
+          async openDb() {
+            return {
+              client: db,
+              async [Symbol.asyncDispose]() {},
+            };
+          },
+        },
+      });
+      const partialResponse = await uiPartialFetch(request);
+
+      if (partialResponse) {
+        return partialResponse;
+      }
+
+      return new Response('plain worker fallback', {status: 404});
+    },
+  });
+
+  await page.goto(`${fixture.origin}/my-db`);
+  await expect(page).toHaveURL(`${fixture.origin}/login`);
+  await page.getByLabel('Passphrase').fill('open sesame');
+  await page.getByRole('button', {name: 'Unlock'}).click();
+  await expect(page).toHaveURL(`${fixture.origin}/my-db`);
+
+  await page.goto(`${fixture.origin}/my-db/#table/people`);
+  await expect(page).toHaveURL(/\/my-db\/?#table\/people$/u);
+  await expect(page.getByRole('heading', {name: 'people'})).toBeVisible();
+  await expect(page.getByText('Ada Lovelace')).toBeVisible();
+  await expect(page.getByText('Grace Hopper')).toBeVisible();
+});
+
 async function createPartialFetchWorkerFixture(input: PartialFetchWorkerFixtureInput) {
   await ensureBuilt();
 
@@ -176,10 +266,12 @@ async function createHttpWorkerProxy(worker: WorkerFetcherLike) {
 
 async function proxyRequest(worker: WorkerFetcherLike, request: http.IncomingMessage, response: http.ServerResponse) {
   const body = await readIncomingBody(request);
-  const workerResponse = await worker.fetch(`http://partial-fetch.local${request.url || '/'}`, {
+  const requestUrl = `http://${request.headers.host || 'partial-fetch.local'}${request.url || '/'}`;
+  const workerResponse = await worker.fetch(requestUrl, {
     method: request.method,
     headers: headersFromIncomingRequest(request),
     body: request.method === 'GET' || request.method === 'HEAD' ? undefined : body,
+    redirect: 'manual',
   });
 
   response.statusCode = workerResponse.status;
