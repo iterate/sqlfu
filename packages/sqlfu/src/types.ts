@@ -84,23 +84,14 @@ export interface AsyncClient<TDriver = unknown> {
 export type Client<TDriver = unknown> = SyncClient<TDriver> | AsyncClient<TDriver>;
 
 export interface SyncSqlTag {
-  <TRow extends ResultRow = ResultRow>(
-    strings: TemplateStringsArray,
-    ...values: SqlValue[]
-  ): SqlRowsPromise<TRow>;
+  <TRow extends ResultRow = ResultRow>(strings: TemplateStringsArray, ...values: SqlValue[]): SqlRowsPromise<TRow>;
   all<TRow extends ResultRow = ResultRow>(strings: TemplateStringsArray, ...values: SqlValue[]): TRow[];
   run(strings: TemplateStringsArray, ...values: SqlValue[]): RunResult;
 }
 
 export interface AsyncSqlTag {
-  <TRow extends ResultRow = ResultRow>(
-    strings: TemplateStringsArray,
-    ...values: SqlValue[]
-  ): SqlRowsPromise<TRow>;
-  all<TRow extends ResultRow = ResultRow>(
-    strings: TemplateStringsArray,
-    ...values: SqlValue[]
-  ): Promise<TRow[]>;
+  <TRow extends ResultRow = ResultRow>(strings: TemplateStringsArray, ...values: SqlValue[]): SqlRowsPromise<TRow>;
+  all<TRow extends ResultRow = ResultRow>(strings: TemplateStringsArray, ...values: SqlValue[]): Promise<TRow[]>;
   run(strings: TemplateStringsArray, ...values: SqlValue[]): Promise<RunResult>;
 }
 
@@ -227,10 +218,20 @@ export interface ResolvedMigrationsConfig {
 }
 
 /**
- * A disposable wrapper around an `AsyncClient`. Returned by `SqlfuHost.openDb` and
- * by user-provided `SqlfuDbFactory` callbacks. The `[Symbol.asyncDispose]` method
- * runs when an `await using` scope exits, letting sqlfu pair each command with a
- * clean connection lifecycle regardless of where the client came from.
+ * A disposable wrapper around a sync or async SQL client. Accepted by the UI
+ * host so embedded runtimes like Durable Objects can expose their native sync
+ * SQLite handle without wrapping every operation in promises.
+ */
+export interface DisposableClient {
+  client: Client;
+  [Symbol.asyncDispose](): Promise<void>;
+}
+
+/**
+ * A disposable wrapper around an `AsyncClient`. Returned by `SqlfuHost.openDb`
+ * and by user-provided `SqlfuDbFactory` callbacks. The `[Symbol.asyncDispose]`
+ * method runs when an `await using` scope exits, letting sqlfu pair each command
+ * with a clean connection lifecycle regardless of where the client came from.
  */
 export interface DisposableAsyncClient {
   client: AsyncClient;

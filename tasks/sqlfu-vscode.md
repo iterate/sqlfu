@@ -1,5 +1,7 @@
+---
 status: needs-grilling
 size: medium
+---
 
 # VS Code extension for sqlfu
 

@@ -60,36 +60,32 @@ test('sqlfu server serves a local backend page and the ui rpc contract from pack
   });
 });
 
-test('sqlfu server serves a prebuilt @sqlfu/ui dist directory when passed ui.root', async () => {
-  const uiRoot = await createTempFixtureRoot('sqlfu-ui-prebuilt');
-  await writeFixtureFiles(uiRoot, {
-    'dist/index.html': '<!doctype html><html><body><div id="app">ui-bundle-ok</div></body></html>',
-    'dist/assets/app.js': '/* bundle */ globalThis.__sqlfuUiLoaded__ = true;',
+test('sqlfu server serves serialized @sqlfu/ui assets when passed ui.assets', async () => {
+  await using fixture = await createUiServerFixture({
+    uiAssets: {
+      '/index.html': '<!doctype html><html><body><div id="app">serialized-ui-ok</div></body></html>',
+      '/assets/app.js': '/* serialized */ globalThis.__sqlfuSerializedUiLoaded__ = true;',
+    },
   });
-
-  await using fixture = await createUiServerFixture({uiRoot});
 
   const homeResponse = await fetch(fixture.baseUrl, {signal: AbortSignal.timeout(5_000)});
   expect(homeResponse.status).toBe(200);
-  expect(await homeResponse.text()).toContain('ui-bundle-ok');
+  expect(await homeResponse.text()).toContain('serialized-ui-ok');
 
   const assetResponse = await fetch(`${fixture.baseUrl}/assets/app.js`, {signal: AbortSignal.timeout(5_000)});
   expect(assetResponse.status).toBe(200);
   expect(assetResponse.headers.get('content-type')).toMatch(/text\/javascript/u);
-  expect(await assetResponse.text()).toContain('__sqlfuUiLoaded__');
+  expect(await assetResponse.text()).toContain('__sqlfuSerializedUiLoaded__');
 
   expect(await fixture.client.project.status()).toMatchObject({
     initialized: true,
     projectRoot: fixture.root,
   });
-
-  await fs.rm(uiRoot, {recursive: true, force: true});
 });
 
 test('sqlfu server can serve the packages/ui Vite client in dev mode', async () => {
   await using fixture = await createUiServerFixture({
     dev: true,
-    uiRoot: path.resolve(process.cwd(), '..', 'ui'),
   });
 
   const homeResponse = await fetch(fixture.baseUrl, {
@@ -123,10 +119,43 @@ order by type, name;`,
   expect(analysis).toMatchObject({diagnostics: []});
 });
 
+test('sql.run executes ad-hoc statements through the ui router', async () => {
+  await using fixture = await createUiServerFixture();
+
+  expect(
+    await fixture.client.sql.run({
+      sql: 'select id, slug from posts where slug = :slug',
+      params: {slug: 'hello-world'},
+    }),
+  ).toMatchObject({
+    mode: 'rows',
+    rows: [{id: 1, slug: 'hello-world'}],
+  });
+
+  expect(
+    await fixture.client.sql.run({
+      sql: `select 'a:b' as literal, :real as param`,
+      params: {real: 42},
+    }),
+  ).toMatchObject({
+    mode: 'rows',
+    rows: [{literal: 'a:b', param: 42}],
+  });
+
+  expect(
+    await fixture.client.sql.run({
+      sql: 'insert into posts (slug, title) values (:slug, :title)',
+      params: {slug: 'second-post', title: 'Second Post'},
+    }),
+  ).toMatchObject({
+    mode: 'metadata',
+    metadata: {rowsAffected: 1, lastInsertRowid: 2},
+  });
+});
+
 test('sqlfu server can serve the packages/ui Vite client in dev mode for ngrok-style hosts when opted in', async () => {
   await using fixture = await createUiServerFixture({
     dev: true,
-    uiRoot: path.resolve(process.cwd(), '..', 'ui'),
     allowUnknownHosts: true,
   });
 
@@ -175,6 +204,48 @@ test('sqlfu server reports a useful error when the requested port is already in 
       projectRoot: fixture.root,
     }),
   ).rejects.toThrow(`Port ${port} is already in use.`);
+});
+
+test('sqlfu server uses an explicit config path instead of rediscovering the default config', async () => {
+  const root = await createTempFixtureRoot('ui-server-config-path');
+  await writeFixtureFiles(root, {
+    'sqlfu.config.ts': `
+      export default {
+        db: './default.db',
+        definitions: './default-definitions.sql',
+        queries: './default-sql',
+      };
+    `,
+    'sqlfu.config.prod.ts': `
+      export default {
+        db: './prod.db',
+        definitions: './prod-definitions.sql',
+        queries: './prod-sql',
+      };
+    `,
+    'default-definitions.sql': 'create table default_posts(id integer primary key);',
+    'prod-definitions.sql': 'create table prod_posts(id integer primary key);',
+    'default-sql/.gitkeep': '',
+    'prod-sql/.gitkeep': '',
+  });
+
+  const defaultDatabase = new DatabaseSync(path.join(root, 'default.db'));
+  const prodDatabase = new DatabaseSync(path.join(root, 'prod.db'));
+  try {
+    defaultDatabase.exec('create table default_posts(id integer primary key);');
+    prodDatabase.exec('create table prod_posts(id integer primary key);');
+  } finally {
+    defaultDatabase.close();
+    prodDatabase.close();
+  }
+
+  await using fixture = await createUiServerFixture({
+    projectRoot: root,
+    configPath: path.join(root, 'sqlfu.config.prod.ts'),
+  });
+
+  const schema = await fixture.client.schema.get();
+  expect(schema.relations.map((relation) => relation.name)).toEqual(['prod_posts']);
 });
 
 test('sqlfu server can initialize a fresh directory through the ui rpc', async () => {
@@ -226,9 +297,10 @@ test('sqlfu kill stops the process listening on the requested port', async () =>
 async function createUiServerFixture(
   input: {
     dev?: boolean;
-    uiRoot?: string;
+    uiAssets?: Record<string, string>;
     allowUnknownHosts?: boolean;
     projectRoot?: string;
+    configPath?: string;
   } = {},
 ) {
   const root = input.projectRoot ?? (await createTempFixtureRoot('ui-server'));
@@ -271,17 +343,28 @@ async function createUiServerFixture(
     }
   }
 
-  const server = await startSqlfuServer({
+  const serverInput: Parameters<typeof startSqlfuServer>[0] = {
     port: 0,
-    projectRoot: root,
     allowUnknownHosts: input.allowUnknownHosts || false,
     dev: input.dev,
-    ui: input.uiRoot
+    ui: input.uiAssets
       ? {
-          root: input.uiRoot,
+          assets: input.uiAssets,
         }
       : undefined,
-  });
+    uiDev: input.dev
+      ? {
+          root: path.resolve(process.cwd(), '..', 'ui'),
+        }
+      : undefined,
+  };
+  if (input.configPath) {
+    serverInput.configPath = input.configPath;
+  } else {
+    serverInput.projectRoot = root;
+  }
+
+  const server = await startSqlfuServer(serverInput);
   const baseUrl = `http://127.0.0.1:${server.port}`;
   const client: RouterClient<UiRouter> = createORPCClient(
     new RPCLink({

@@ -16,7 +16,8 @@ const docs = [
     slug: 'getting-started',
     title: 'Getting Started',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'getting-started.md'),
-    description: 'End-to-end walkthrough: schema, migrations, query files, typed wrappers, and a working client.all() call.',
+    description:
+      'End-to-end walkthrough: schema, migrations, query files, typed wrappers, and a working client.all() call.',
   },
   {
     slug: 'sqlfu',
@@ -30,6 +31,13 @@ const docs = [
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'adapters.md'),
     description:
       'Drivers sqlfu supports out of the box: better-sqlite3, libsql, Turso Cloud, Cloudflare D1, Durable Objects, Expo, sqlite-wasm, and more.',
+  },
+  {
+    slug: 'ui',
+    title: 'UI',
+    sourcePath: path.join(repoRoot, 'packages', 'ui', 'README.md'),
+    description:
+      'Hosted, demo, and embedded sqlfu UI modes, including partial-fetch mounting under your own auth and route prefix.',
   },
   {
     slug: 'migration-model',
@@ -62,12 +70,6 @@ const docs = [
     title: 'Pure-SQL id generators (ulid, ksuid, nanoid, cuid2)',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'id-helpers.md'),
     description: 'Copy-paste sqlite views for ULID, KSUID, nanoid, and cuid2-shaped ids — pure SQL, no extensions.',
-  },
-  {
-    slug: 'ui',
-    title: 'UI',
-    sourcePath: path.join(repoRoot, 'packages', 'ui', 'README.md'),
-    description: 'The browser client and how it relates to the local backend server.',
   },
   {
     slug: 'dynamic-queries',
@@ -184,10 +186,7 @@ async function syncGenerateFixtures() {
 }
 
 async function writeExamplesOverview(overviewEntries) {
-  const relativeSource = path
-    .relative(repoRoot, fixturesSourceDir)
-    .split(path.sep)
-    .join('/');
+  const relativeSource = path.relative(repoRoot, fixturesSourceDir).split(path.sep).join('/');
 
   const frontmatter = [
     '---',
@@ -205,7 +204,8 @@ async function writeExamplesOverview(overviewEntries) {
     .map(({slug, title, description}) => `- **[${title}](/docs/examples/${slug})** — ${description}`)
     .join('\n');
 
-  const body = dedent`
+  const body =
+    dedent`
     These pages are snapshot fixtures from \`packages/sqlfu/test/generate/fixtures/\`. Each \`##\`
     heading you'll find inside is a real test: the test harness parses the same markdown,
     runs \`sqlfu generate\` against the declared inputs, and asserts the outputs match what's

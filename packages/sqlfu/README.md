@@ -21,7 +21,7 @@ It is built around a simple idea: SQL should be the source language for schema, 
   - [Type Generator](#type-generator)
   - [Formatter](#formatter)
   - [Observability](#observability)
-  - [Outbox](#outbox)
+  - [Outbox (experimental)](#outbox-experimental)
   - [UI](#ui)
   - [Lint Plugin](#lint-plugin)
   - [Agent Skill](#agent-skill)
@@ -74,7 +74,7 @@ You should still get strong TypeScript output from SQL: generated wrappers, type
 ## Core Concepts
 
 - `definitions.sql`
-  The desired schema now. Tables, views, triggers, and — if you want them — copy-paste id generators (ULID, KSUID, nanoid, cuid2-shaped) live here alongside your schema. See [docs/id-helpers.md](./docs/id-helpers.md).
+  The desired schema now. Tables, views, triggers, and (if you want them) copy-paste id generators (ULID, KSUID, nanoid, cuid2-shaped) live here alongside your schema. See [docs/id-helpers.md](./docs/id-helpers.md).
 - `migrations/`
   The ordered history of schema changes.
 - `sql/`
@@ -82,7 +82,7 @@ You should still get strong TypeScript output from SQL: generated wrappers, type
 - generated query wrappers
   TypeScript code generated into `sql/.generated/` as `<name>.sql.ts`.
 - `sqlfu_migrations`
-  The table that records applied migrations in a real database. Configurable via `migrations.preset` — set `preset: 'd1'` to use Cloudflare D1's `d1_migrations` table instead, for projects taking over from alchemy/wrangler.
+  The table that records applied migrations in a real database. Configurable via `migrations.preset`: set `preset: 'd1'` to use Cloudflare D1's `d1_migrations` table instead, for projects taking over from alchemy/wrangler.
 - live schema
   The schema the database actually has right now.
 
@@ -147,7 +147,7 @@ Opt in to runtime validation by setting `generate.validator` to `'arktype'`, `'v
 
 ### Observability
 
-Generated queries carry their identity to runtime as a `name` field on the emitted `SqlQuery` — the camelCase function name, matching the symbol you import (e.g. `insertMigration`). That name reaches OpenTelemetry spans, Sentry errors, PostHog events, and Datadog metrics through a single `instrument()` call:
+Generated queries carry their identity to runtime as a `name` field on the emitted `SqlQuery` (the camelCase function name, matching the symbol you import, e.g. `insertMigration`). That name reaches OpenTelemetry spans, Sentry errors, PostHog events, and Datadog metrics through a single `instrument()` call:
 
 ```ts
 import {instrument} from 'sqlfu';
@@ -164,7 +164,7 @@ No peer dependencies on OpenTelemetry or Sentry. `TracerLike` is structural; hoo
 
 ### Typed errors
 
-Every adapter throws `SqlfuError` with a normalized `.kind` discriminator — `'unique_violation'`, `'missing_table'`, `'syntax'`, `'transient'`, etc. — so application code branches on the outcome instead of string-matching the driver's message.
+Every adapter throws `SqlfuError` with a normalized `.kind` discriminator (`'unique_violation'`, `'missing_table'`, `'syntax'`, `'transient'`, and so on), so application code branches on the outcome instead of string-matching the driver's message.
 
 ```ts
 import {SqlfuError} from 'sqlfu';
@@ -181,13 +181,17 @@ try {
 
 The driver error is preserved byte-identical on `.cause`; `.query` and `.system` come along so error reporters can tag events without a parallel `QueryExecutionContext`. Kind names are SQLSTATE-aligned, so the day a postgres adapter lands the mapping is a direct lookup rather than a second vocabulary to remember. Full kind list, handler recipes, Sentry-tagging example: [Errors](https://sqlfu.dev/docs/errors).
 
-### Outbox
+### Outbox (experimental)
+
+> ⚠️ The shape of this module is still in flux. The basic principle of events + consumers will stay, but expect breaking changes between releases.
 
 A small transactional-outbox / job-queue sits at `sqlfu/outbox`. Emit events in the same transaction as your domain writes; register consumers with retry, delay, `when` filter, and visibility timeout; drive a worker loop by calling `tick()` on a timer. Fan-out, crash recovery, and causation chains all work the way you'd expect, built on the fact that SQLite serialises writers so the queue doesn't need row-locks. See [Outbox](https://sqlfu.dev/docs/outbox).
 
 ### UI
 
-`sqlfu` also has a UI package for working with the project interactively. It sits on top of the same SQL-first model rather than inventing a separate one. See [UI](https://sqlfu.dev/docs/ui).
+`sqlfu` also has a UI package for working with the project interactively. To use it with your DB, run: `npx sqlfu`. This will start a server on your machine, and print a link to the hosted UI at `sqlfu.dev/ui`. The hosted UI talk to the backend running on your dev machine.
+
+The same UI can be embedded in a fetch server with `@sqlfu/ui` when you want your own auth, route prefix, or Worker/Durable Object database binding. See [UI](https://sqlfu.dev/docs/ui).
 
 ### Lint Plugin
 
@@ -243,6 +247,15 @@ Optional fields:
 - `generate.authority` -- where `sqlfu generate` reads the schema from. See [`generate.authority`](#generateauthority). Default `'desired_schema'`.
 
 `sqlfu` manages its own temporary files under `.sqlfu/`, including scratch databases used for schema diffing. These are generally safe to delete at any time.
+
+If a repo has more than one sqlfu project, pass the config file explicitly:
+
+```sh
+sqlfu --config ./durable-objects/counter/sqlfu.config.ts generate
+sqlfu --config ./durable-objects/session/sqlfu.config.ts draft
+```
+
+Relative paths inside that config are resolved from the config file's directory, so each Durable Object can keep its own `definitions.sql`, `migrations/`, and `sql/` directories alongside the config.
 
 ### Pluggable `db`
 
@@ -358,7 +371,7 @@ Those are not accidents. The project is trying to keep schema history explicit, 
 Current limits also matter:
 
 - `sqlfu` is SQLite-first in important parts of the toolchain
-- SQLite view typing is still imperfect in TypeSQL, and some expressions need the sqlfu post-pass to get better generated result types
+- result-type inference is imperfect on some SQLite expressions and views; the sqlfu post-pass that fills gaps in the vendored TypeSQL output is still evolving
 - the formatter is opinionated and still evolving
 
 ## Prior Art and Acknowledgements

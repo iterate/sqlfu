@@ -54,10 +54,12 @@ export type {
   AdHocSqlParams,
   AdHocSqlResult,
   DisposableAsyncClient,
+  DisposableClient,
   HostCatalog,
   HostFs,
   HostLogger,
   SqlfuHost,
+  SqlfuUiHost,
 } from './host.js';
 
 // Query-catalog shape types — what `sqlfu generate` emits. Consumed by

@@ -2,6 +2,7 @@ import type {Client, SqlfuMigrationPrefix, SqlfuMigrationPreset, SqlfuProjectCon
 import type {SqlfuHost} from './host.js';
 import {basename, joinPath} from './paths.js';
 import {createDefaultInitPreview} from './init-preview.js';
+import type {LoadedSqlfuProject} from './config.js';
 import {migrationNickname} from './naming.js';
 import {extractSchema} from './sqlite-text.js';
 import {
@@ -16,11 +17,7 @@ import {presetTableName} from './migrations/preset-queries.js';
 import {diffSchemaSql} from './schemadiff/index.js';
 import {inspectSqliteSchemaSql, schemasEqual} from './schemadiff/sqlite/index.js';
 
-import {
-  materializeDefinitionsSchemaFor,
-  materializeMigrationsSchemaFor,
-  readMigrationFiles,
-} from './materialize.js';
+import {materializeDefinitionsSchemaFor, materializeMigrationsSchemaFor, readMigrationFiles} from './materialize.js';
 
 export function migrationsPresetOf(context: SqlfuContext): SqlfuMigrationPreset {
   return context.config.migrations?.preset ?? 'sqlfu';
@@ -123,10 +120,7 @@ export async function getMigrationResultantSchema(
   if (targetMigrationIndex === -1) {
     throw new Error(`migration ${input.id} not found in repo`);
   }
-  const schemaSql = await materializeMigrationsSchemaForContext(
-    context,
-    migrations.slice(0, targetMigrationIndex + 1),
-  );
+  const schemaSql = await materializeMigrationsSchemaForContext(context, migrations.slice(0, targetMigrationIndex + 1));
   return `-- schema produced by sqlfu goto ${input.id}\n${schemaSql}`;
 }
 
@@ -154,7 +148,8 @@ export async function runSqlfuCommand(
   const normalized = command.trim();
 
   if (normalized === 'sqlfu init') {
-    const preview = createDefaultInitPreview(context.projectRoot);
+    const project = await loadContextProjectState(context);
+    const preview = createDefaultInitPreview(project.projectRoot, {configPath: project.configPath});
     const configContents = await confirm({
       title: 'Create sqlfu.config.ts?',
       body: preview.configContents,
@@ -165,13 +160,14 @@ export async function runSqlfuCommand(
       return;
     }
     await context.host.initializeProject({
-      projectRoot: context.projectRoot,
+      projectRoot: project.projectRoot,
+      configPath: project.configPath,
       configContents,
     });
     return;
   }
 
-  const initializedContext = requireContextConfig(context);
+  const initializedContext = await loadContextConfig(context);
 
   if (normalized === 'sqlfu draft') {
     await applyDraftSql(initializedContext, {}, confirm);
@@ -243,8 +239,7 @@ export async function applyDraftSql(
 ) {
   const migrations = await readMigrationsFromContext(context);
   const definitionsSql = await readDefinitionsSql(context.host, context.config.definitions);
-  const baselineSql =
-    migrations.length === 0 ? '' : await materializeMigrationsSchemaForContext(context, migrations);
+  const baselineSql = migrations.length === 0 ? '' : await materializeMigrationsSchemaForContext(context, migrations);
   const diffLines = await diffSchemaSql(context.host, {
     baselineSql,
     desiredSql: definitionsSql,
@@ -543,7 +538,11 @@ export async function applyBaselineSql(context: SqlfuContext, input: {target: st
     return;
   }
   await using database = await context.host.openDb(context.config);
-  await baselineMigrationHistory(database.client, {migrations, target: input.target, preset: migrationsPresetOf(context)});
+  await baselineMigrationHistory(database.client, {
+    migrations,
+    target: input.target,
+    preset: migrationsPresetOf(context),
+  });
 }
 
 export async function applyGotoSql(context: SqlfuContext, input: {target: string}, confirm: SqlfuCommandConfirm) {
@@ -915,7 +914,9 @@ export interface SqlfuContext {
 
 export interface SqlfuCommandContext {
   projectRoot: string;
+  configPath?: string;
   config?: SqlfuProjectConfig;
+  loadProjectState?: () => Promise<LoadedSqlfuProject>;
   host: SqlfuHost;
 }
 
@@ -927,12 +928,58 @@ export interface SqlfuCommandRouterContext extends SqlfuCommandContext {
 
 export function requireContextConfig(context: SqlfuCommandContext): SqlfuContext {
   if (!context.config) {
+    if (context.configPath) {
+      throw new Error(`No sqlfu config found at ${context.configPath}. Run 'sqlfu init' first.`);
+    }
     throw new Error(`No sqlfu config found in ${context.projectRoot}. Run 'sqlfu init' first.`);
   }
 
   return {
     config: context.config,
     host: context.host,
+  };
+}
+
+export async function loadContextConfig(context: SqlfuCommandContext): Promise<SqlfuContext> {
+  if (context.config) {
+    return {
+      config: context.config,
+      host: context.host,
+    };
+  }
+
+  const project = await loadContextProjectState(context);
+  if (!project.initialized) {
+    if (project.configPath) {
+      throw new Error(`No sqlfu config found at ${project.configPath}. Run 'sqlfu init' first.`);
+    }
+    throw new Error(`No sqlfu config found in ${project.projectRoot}. Run 'sqlfu init' first.`);
+  }
+
+  return {
+    config: project.config,
+    host: context.host,
+  };
+}
+
+export async function loadContextProjectState(context: SqlfuCommandContext): Promise<LoadedSqlfuProject> {
+  if (context.loadProjectState) {
+    return context.loadProjectState();
+  }
+
+  if (context.config) {
+    return {
+      initialized: true,
+      projectRoot: context.projectRoot,
+      configPath: context.configPath || joinPath(context.projectRoot, 'sqlfu.config.ts'),
+      config: context.config,
+    };
+  }
+
+  return {
+    initialized: false,
+    projectRoot: context.projectRoot,
+    configPath: context.configPath || joinPath(context.projectRoot, 'sqlfu.config.ts'),
   };
 }
 
@@ -944,14 +991,7 @@ export type CheckMismatch = {
 };
 
 export type CheckRecommendation = {
-  kind:
-    | 'draft'
-    | 'migrate'
-    | 'baseline'
-    | 'goto'
-    | 'sync'
-    | 'restoreMissingMigration'
-    | 'restoreOriginalMigration';
+  kind: 'draft' | 'migrate' | 'baseline' | 'goto' | 'sync' | 'restoreMissingMigration' | 'restoreOriginalMigration';
   command?: [string, ...string[]];
   label: string;
   rationale?: string;

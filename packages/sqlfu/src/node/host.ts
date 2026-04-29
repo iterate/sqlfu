@@ -14,17 +14,13 @@ import type {
   SqlQuery,
 } from '../types.js';
 import {bindAsyncSql} from '../sql.js';
-import {
-  rawSqlWithSqlSplittingAsync,
-  sqlReturnsRows,
-  surroundWithBeginCommitRollbackAsync,
-} from '../sqlite-text.js';
+import {rawSqlWithSqlSplittingAsync, sqlReturnsRows, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
 import type {QueryCatalog} from '../typegen/query-catalog.js';
-import {initializeProject} from './config.js';
 import {analyzeAdHocSqlForConfig, generateQueryTypesForConfig} from '../typegen/index.js';
 import type {SqlAnalysisResponse} from '../ui/shared.js';
 import {isInternalUnsupportedSqlAnalysisError, toSqlEditorDiagnostic} from '../sql-editor-diagnostic.js';
 import type {AdHocSqlResult, HostCatalog, HostFs, SqlfuHost} from '../host.js';
+import {initializeProject} from './config.js';
 
 type NodeSqliteModule = {DatabaseSync: typeof DatabaseSync};
 
@@ -233,7 +229,6 @@ const nodeFs: HostFs = {
     }
   },
 };
-
 
 type NodeSqliteDatabase = InstanceType<typeof DatabaseSync>;
 
