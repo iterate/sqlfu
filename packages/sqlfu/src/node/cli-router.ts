@@ -52,19 +52,15 @@ export const router = {
     )
     .handler(async ({context, input}) => {
       const project = await loadContextProjectState(context);
-      const ui = input?.ui ? resolveSqlfuUi({sqlfuVersion: packageJson.version}) : undefined;
-
-      await startSqlfuServer({
-        port: input?.port,
-        configPath: project.configPath,
-        ui: ui ? {root: ui.root} : undefined,
-      });
-
-      context.host.logger.log(
-        ui ? `sqlfu ready (UI + backend on the same origin)` : 'sqlfu ready at https://sqlfu.dev/ui',
-      );
-
-      await new Promise(() => {});
+      const params = {port: input?.port, configPath: project.configPath};
+      if (input?.ui) {
+        const ui = await resolveSqlfuUi({sqlfuVersion: packageJson.version});
+        await startSqlfuServer({...params, ui});
+        context.host.logger.log(`sqlfu ready at http://localhost:${params.port || 56081}`);
+      } else {
+        await startSqlfuServer(params);
+        context.host.logger.log('sqlfu ready at https://sqlfu.dev/ui');
+      }
     }),
 
   init: base

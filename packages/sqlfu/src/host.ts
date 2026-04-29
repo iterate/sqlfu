@@ -1,5 +1,6 @@
 import type {
   AsyncClient,
+  DisposableClient,
   DisposableAsyncClient,
   PreparedStatementParams,
   ResultRow,
@@ -9,11 +10,9 @@ import type {
 import type {QueryCatalog} from './typegen/query-catalog.js';
 import type {SqlAnalysisResponse} from './ui/shared.js';
 
-export type {DisposableAsyncClient} from './types.js';
+export type {DisposableAsyncClient, DisposableClient} from './types.js';
 
-export type AdHocSqlResult =
-  | {mode: 'rows'; rows: ResultRow[]}
-  | {mode: 'metadata'; metadata: RunResult};
+export type AdHocSqlResult = {mode: 'rows'; rows: ResultRow[]} | {mode: 'metadata'; metadata: RunResult};
 
 export type AdHocSqlParams = PreparedStatementParams | undefined;
 
@@ -51,3 +50,8 @@ export interface SqlfuHost {
   logger: HostLogger;
   catalog: HostCatalog;
 }
+
+export type SqlfuUiHost = {
+  openDb(config: SqlfuProjectConfig): Promise<DisposableClient>;
+  openScratchDb?(slug: string): Promise<DisposableClient>;
+} & Partial<Omit<SqlfuHost, 'openDb' | 'openScratchDb'>>;

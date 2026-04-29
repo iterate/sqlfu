@@ -17,11 +17,7 @@ import {presetTableName} from './migrations/preset-queries.js';
 import {diffSchemaSql} from './schemadiff/index.js';
 import {inspectSqliteSchemaSql, schemasEqual} from './schemadiff/sqlite/index.js';
 
-import {
-  materializeDefinitionsSchemaFor,
-  materializeMigrationsSchemaFor,
-  readMigrationFiles,
-} from './materialize.js';
+import {materializeDefinitionsSchemaFor, materializeMigrationsSchemaFor, readMigrationFiles} from './materialize.js';
 
 export function migrationsPresetOf(context: SqlfuContext): SqlfuMigrationPreset {
   return context.config.migrations?.preset ?? 'sqlfu';
@@ -124,10 +120,7 @@ export async function getMigrationResultantSchema(
   if (targetMigrationIndex === -1) {
     throw new Error(`migration ${input.id} not found in repo`);
   }
-  const schemaSql = await materializeMigrationsSchemaForContext(
-    context,
-    migrations.slice(0, targetMigrationIndex + 1),
-  );
+  const schemaSql = await materializeMigrationsSchemaForContext(context, migrations.slice(0, targetMigrationIndex + 1));
   return `-- schema produced by sqlfu goto ${input.id}\n${schemaSql}`;
 }
 
@@ -246,8 +239,7 @@ export async function applyDraftSql(
 ) {
   const migrations = await readMigrationsFromContext(context);
   const definitionsSql = await readDefinitionsSql(context.host, context.config.definitions);
-  const baselineSql =
-    migrations.length === 0 ? '' : await materializeMigrationsSchemaForContext(context, migrations);
+  const baselineSql = migrations.length === 0 ? '' : await materializeMigrationsSchemaForContext(context, migrations);
   const diffLines = await diffSchemaSql(context.host, {
     baselineSql,
     desiredSql: definitionsSql,
@@ -546,7 +538,11 @@ export async function applyBaselineSql(context: SqlfuContext, input: {target: st
     return;
   }
   await using database = await context.host.openDb(context.config);
-  await baselineMigrationHistory(database.client, {migrations, target: input.target, preset: migrationsPresetOf(context)});
+  await baselineMigrationHistory(database.client, {
+    migrations,
+    target: input.target,
+    preset: migrationsPresetOf(context),
+  });
 }
 
 export async function applyGotoSql(context: SqlfuContext, input: {target: string}, confirm: SqlfuCommandConfirm) {
@@ -995,14 +991,7 @@ export type CheckMismatch = {
 };
 
 export type CheckRecommendation = {
-  kind:
-    | 'draft'
-    | 'migrate'
-    | 'baseline'
-    | 'goto'
-    | 'sync'
-    | 'restoreMissingMigration'
-    | 'restoreOriginalMigration';
+  kind: 'draft' | 'migrate' | 'baseline' | 'goto' | 'sync' | 'restoreMissingMigration' | 'restoreOriginalMigration';
   command?: [string, ...string[]];
   label: string;
   rationale?: string;

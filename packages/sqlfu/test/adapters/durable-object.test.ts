@@ -307,7 +307,11 @@ async function createDOFixture<TInstance extends object>(
   const workerPath = path.join(tempDir, 'worker.js');
   await fs.cp(path.join(packageRoot, 'dist'), path.join(tempDir, 'runtime'), {recursive: true});
   await writeGeneratedMigrationsModule(tempDir, 'migrations', options.migrations || {});
-  await writeGeneratedMigrationsModule(tempDir, 'migrations-missing-initial', options.migrationsAfterDeletingInitialFile || {});
+  await writeGeneratedMigrationsModule(
+    tempDir,
+    'migrations-missing-initial',
+    options.migrationsAfterDeletingInitialFile || {},
+  );
 
   const classDefString = classDef.toString().trim();
   const className = classDefString.match(/^class (\w+) \{/)?.[1];

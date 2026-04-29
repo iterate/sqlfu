@@ -99,10 +99,13 @@ export async function createBrowserHost(input: {
       }
       const result = await stmt.run(params);
       input.onSchemaChange();
-      return {mode: 'metadata', metadata: {
-        rowsAffected: result.rowsAffected,
-        lastInsertRowid: result.lastInsertRowid,
-      }};
+      return {
+        mode: 'metadata',
+        metadata: {
+          rowsAffected: result.rowsAffected,
+          lastInsertRowid: result.lastInsertRowid,
+        },
+      };
     },
     initializeProject: async () => {
       throw new Error('sqlfu init is not supported in demo mode');
@@ -279,4 +282,3 @@ function seedLiveDatabase(database: Database, definitionsSql: string) {
       ('draft-notes', 'Draft Notes', 'Unpublished notes', 0);
   `);
 }
-
