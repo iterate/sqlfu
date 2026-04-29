@@ -90,12 +90,12 @@ test('D1 worker partial fetch serves real UI assets while leaving app routes ava
   await expect(page.getByRole('heading', {name: 'Hello!'})).toBeVisible();
 
   await page.goto(`${fixture.origin}/todos/new`);
-  await page.getByLabel('Todo').fill('Write partial fetch docs');
+  await page.getByLabel('Todo').fill('Feed snake');
   await page.getByRole('button', {name: 'Add'}).click();
 
   await page.goto(`${fixture.origin}/#table/todos`);
   await expect(page.getByRole('heading', {name: 'todos'})).toBeVisible();
-  await expect(page.getByText('Write partial fetch docs')).toBeVisible();
+  await expect(page.getByText('Feed snake')).toBeVisible();
 
   await page.getByRole('link', {name: 'SQL runner'}).click();
   await replaceCodeMirrorText(
@@ -108,7 +108,7 @@ test('D1 worker partial fetch serves real UI assets while leaving app routes ava
   `,
   );
   await page.getByRole('button', {name: 'Run SQL'}).click();
-  await expect(page.getByText('Write partial fetch docs')).toBeVisible();
+  await expect(page.getByText('Feed snake')).toBeVisible();
 });
 
 test('partial fetch can serve the UI behind worker-owned prefix auth', async ({page}) => {
@@ -216,13 +216,13 @@ test('partial fetch can serve the UI behind worker-owned prefix auth', async ({p
   await expect(page).toHaveURL(`${fixture.origin}/my-db`);
 
   await page.goto(`${fixture.origin}/todos/new`);
-  await page.getByLabel('Todo').fill('Ship auth-gated embedded UI');
+  await page.getByLabel('Todo').fill('Wash cloak');
   await page.getByRole('button', {name: 'Add'}).click();
 
   await page.goto(`${fixture.origin}/my-db/#table/todos`);
   await expect(page).toHaveURL(/\/my-db\/?#table\/todos$/u);
   await expect(page.getByRole('heading', {name: 'todos'})).toBeVisible();
-  await expect(page.getByText('Ship auth-gated embedded UI')).toBeVisible();
+  await expect(page.getByText('Wash cloak')).toBeVisible();
 });
 
 async function createPartialFetchWorkerFixture(input: PartialFetchWorkerFixtureInput) {
