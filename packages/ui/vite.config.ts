@@ -34,7 +34,7 @@ function sqlfuPartialFetchBundle(): Plugin {
       const files = await Array.fromAsync(
         fs.glob('**/*.{html,js,css}', {
           cwd: distDir,
-          exclude: ['**/serialized-assets.js'],
+          exclude: ['lib/**'],
         }),
       );
       const entries = await Promise.all(
@@ -43,9 +43,9 @@ function sqlfuPartialFetchBundle(): Plugin {
         }),
       );
 
-      await execFileAsync('tsc', ['-p', 'tsconfig.partial-fetch.json'], {cwd: resolvedConfig.root});
+      await execFileAsync('tsc', ['-p', 'tsconfig.lib.json'], {cwd: resolvedConfig.root});
       await fs.writeFile(
-        path.join(distDir, 'serialized-assets.js'),
+        path.join(distDir, 'lib', 'serialized-assets.js'),
         `export default ${JSON.stringify(Object.fromEntries(entries), null, 2)};\n`,
       );
     },

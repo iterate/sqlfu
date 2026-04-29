@@ -5,9 +5,9 @@
     "declaration": true,
     "declarationMap": false,
     "noEmit": false,
-    "outDir": "dist",
-    "rootDir": "src",
+    "outDir": "dist/lib",
+    "rootDir": "src/lib",
     "sourceMap": false
   },
-  "include": ["src/partial-fetch.ts", "src/serialized-assets.ts"]
+  "include": ["src/lib"]
 }

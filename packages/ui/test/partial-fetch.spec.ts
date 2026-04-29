@@ -18,7 +18,7 @@ const uiRoot = path.resolve(currentDir, '..');
 let buildPromise: Promise<void> | undefined;
 
 declare const createD1Client: typeof import('sqlfu').createD1Client;
-declare const createSqlfuUiPartialFetch: typeof import('@sqlfu/ui/partial-fetch').createSqlfuUiPartialFetch;
+declare const createSqlfuUiPartialFetch: typeof import('@sqlfu/ui').createSqlfuUiPartialFetch;
 
 test('D1 worker partial fetch serves real UI assets while leaving app routes available', async ({page}) => {
   await using fixture = await createPartialFetchWorkerFixture({
@@ -234,7 +234,7 @@ interface PartialFetchWorkerFixtureInput {
 function createWorkerSource(fetch: PartialFetchWorkerFixtureInput['fetch']) {
   return String.raw`
 import {createD1Client} from 'sqlfu';
-import {createSqlfuUiPartialFetch} from '@sqlfu/ui/partial-fetch';
+import {createSqlfuUiPartialFetch} from '@sqlfu/ui';
 
 const userFetch = ${toCallableFunctionExpressionSource(fetch.toString())};
 

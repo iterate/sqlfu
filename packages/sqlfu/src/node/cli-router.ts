@@ -51,7 +51,7 @@ export const router = {
         .optional(),
     )
     .handler(async ({context, input}) => {
-      const ui = input?.ui ? resolveSqlfuUi({sqlfuVersion: packageJson.version}) : undefined;
+      const ui = input?.ui ? await resolveSqlfuUi({sqlfuVersion: packageJson.version}) : undefined;
 
       await startSqlfuServer({
         port: input?.port,

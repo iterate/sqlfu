@@ -32,7 +32,7 @@ export class SqlfuUiVersionMismatchError extends Error {
     super(
       [
         `\`@sqlfu/ui\` is installed at v${input.uiVersion}, but this sqlfu server is v${input.sqlfuVersion}.`,
-        'The two must match so the UI speaks the server\'s RPC contract.',
+        "The two must match so the UI speaks the server's RPC contract.",
         '',
         `Install the matching version:`,
         '',
@@ -43,11 +43,11 @@ export class SqlfuUiVersionMismatchError extends Error {
   }
 }
 
-export function resolveSqlfuUi(input: {sqlfuVersion: string}): ResolvedSqlfuUi {
+export async function resolveSqlfuUi(input: {sqlfuVersion: string}): Promise<ResolvedSqlfuUi> {
   const require = createRequire(import.meta.url);
-  let packageJsonPath: string;
+  let entryPath: string;
   try {
-    packageJsonPath = require.resolve('@sqlfu/ui/package.json');
+    entryPath = require.resolve('@sqlfu/ui');
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'MODULE_NOT_FOUND') {
       throw new SqlfuUiNotInstalledError({expectedVersion: input.sqlfuVersion});
@@ -55,17 +55,17 @@ export function resolveSqlfuUi(input: {sqlfuVersion: string}): ResolvedSqlfuUi {
     throw error;
   }
 
-  const packageJson = require(packageJsonPath) as {version: string};
+  const {version} = (await import('@sqlfu/ui')) as {version: string};
 
-  if (packageJson.version !== input.sqlfuVersion) {
+  if (version !== input.sqlfuVersion) {
     throw new SqlfuUiVersionMismatchError({
       sqlfuVersion: input.sqlfuVersion,
-      uiVersion: packageJson.version,
+      uiVersion: version,
     });
   }
 
   return {
-    root: path.dirname(packageJsonPath),
-    version: packageJson.version,
+    root: path.resolve(path.dirname(entryPath), '..', '..'),
+    version,
   };
 }

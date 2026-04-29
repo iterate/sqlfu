@@ -11,20 +11,32 @@
     "dist"
   ],
   "type": "module",
-  "exports": {
-    "./package.json": "./package.json",
-    "./partial-fetch": {
-      "types": "./src/partial-fetch.ts",
-      "default": "./dist/partial-fetch.js"
+  "imports": {
+    "#serialized-assets": {
+      "types": "./src/lib/serialized-assets.ts",
+      "default": "./dist/lib/serialized-assets.js"
     }
+  },
+  "exports": {
+    ".": {
+      "types": "./src/lib/index.ts",
+      "default": "./src/lib/index.ts"
+    },
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public",
     "exports": {
-      "./package.json": "./package.json",
-      "./partial-fetch": {
-        "types": "./dist/partial-fetch.d.ts",
-        "default": "./dist/partial-fetch.js"
+      ".": {
+        "types": "./dist/lib/index.d.ts",
+        "default": "./dist/lib/index.js"
+      },
+      "./package.json": "./package.json"
+    },
+    "imports": {
+      "#serialized-assets": {
+        "types": "./dist/lib/serialized-assets.d.ts",
+        "default": "./dist/lib/serialized-assets.js"
       }
     }
   },
