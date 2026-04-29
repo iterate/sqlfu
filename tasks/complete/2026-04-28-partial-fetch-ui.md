@@ -14,12 +14,13 @@ serve the UI assets and handle the UI's `/api/rpc` oRPC backend from the same
 object, backed by that object's SQLite storage, so the UI can browse and edit
 the Durable Object database.
 
-## Status (2026-04-28)
+## Status (2026-04-29)
 
-Done. The branch exports `createSqlfuUiPartialFetch` plus Durable
-Object-specific helpers from `sqlfu/ui/browser`, and the Miniflare proof covers
-serving UI assets, falling through for unrelated requests, and browsing/editing
-the Durable Object SQLite database through the UI oRPC contract.
+Done. The branch exports the generic `createSqlfuUiPartialFetch` from
+`sqlfu/ui/browser`; adapter-specific Durable Object and D1 setup now lives in
+the Miniflare fixtures. The proofs cover serving UI assets, falling through for
+unrelated requests, and browsing/editing live SQLite-backed Worker databases
+through the UI oRPC contract.
 
 ## Assumptions
 
@@ -41,13 +42,16 @@ the Durable Object SQLite database through the UI oRPC contract.
   _Implemented as `createSqlfuUiPartialFetch` in `packages/sqlfu/src/ui/partial-fetch.ts`._
 - [x] Add durable-object-oriented host glue that opens the object's
   `ctx.storage.sql` through `createDurableObjectClient` and adapts it to the
-  async host shape expected by `uiRouter`. _Implemented as
-  `createDurableObjectSqlfuUiHost`; it keeps the sync Durable Object client at
-  runtime while satisfying the existing host contract._
+  async host shape expected by `uiRouter`. _Implemented in the Miniflare fixture
+  by building a `CreateSqlfuUiPartialFetchInput` with an explicit
+  `projectName`, in-memory files, static catalog, and `openClient` callback._
 - [x] Prove the use case in Miniflare: a Durable Object serves an index asset,
   a JS asset, and the UI oRPC contract from the same `fetch` method. _Covered
   by `durable object can serve sqlfu ui partial fetch against its sqlite storage`
   in `packages/sqlfu/test/adapters/durable-object.test.ts`._
+- [x] Prove the same partial fetch shape can run in a plain Worker backed by
+  D1. _Covered by `createSqlfuUiPartialFetch serves assets and RPC from a plain
+  D1 worker` in `packages/sqlfu/test/adapters/d1.test.ts`._
 - [x] Prove the Durable Object DB can be browsed through the UI contract by
   asserting `schema.get`, `table.list`, and `sql.run` work against object
   storage. _The same Miniflare spec asserts relation discovery, table rows,
@@ -76,6 +80,7 @@ the Durable Object SQLite database through the UI oRPC contract.
   and casts only at the host boundary. That keeps dual-dispatch migration/schema
   helpers on their sync path while allowing router handlers that simply `await`
   `.all()` / `.run()` to work.
-- `createDurableObjectSqlfuUiFetch` accepts an explicit asset map for this pass.
-  Cloudflare asset bindings or generated asset manifests can be layered on top
-  later without changing the generic partial fetch helper.
+- Adapter-specific convenience wrappers were removed from the production API.
+  The generic helper accepts `assets`, `host`, and `project`; callers can build
+  the `host.openDb` callback from `createDurableObjectClient`, `createD1Client`,
+  or any other sqlfu async client factory.

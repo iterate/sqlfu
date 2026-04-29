@@ -11,6 +11,7 @@ import {expect, test} from 'vitest';
 import dedent from 'dedent';
 
 import {ensureBuilt, packageRoot} from './ensure-built.js';
+import {partialFetchFixtureSupportSource} from './partial-fetch-fixture-support.js';
 import {createDurableObjectClient as createLocalDurableObjectClient} from '../../src/index.js';
 import type {UiRouter} from '../../src/ui/browser.js';
 
@@ -516,6 +517,7 @@ async function createDOPartialUiFetchFixture() {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-do-ui-fixture-'));
   const workerSourcePath = path.join(tempDir, 'worker-source.js');
   const workerPath = path.join(tempDir, 'worker.js');
+  const fixtureSupportPath = path.join(tempDir, 'partial-fetch-fixture-support.js');
   const definitionsSql = `
     create table person (
       id integer primary key,
@@ -524,17 +526,20 @@ async function createDOPartialUiFetchFixture() {
   `;
   await fs.cp(path.join(packageRoot, 'dist'), path.join(tempDir, 'runtime'), {recursive: true});
   await fs.copyFile(path.join(packageRoot, 'package.json'), path.join(tempDir, 'package.json'));
+  await fs.writeFile(fixtureSupportPath, partialFetchFixtureSupportSource);
   await fs.writeFile(
     workerSourcePath,
     [
-      "import {createDurableObjectSqlfuUiFetch} from './runtime/ui/browser.js';",
+      "import {createDurableObjectClient} from './runtime/adapters/durable-object.js';",
+      "import {createSqlitePartialFetchForFixture} from './partial-fetch-fixture-support.js';",
       '',
       'export class FixtureObject {',
       '  constructor(state) {',
-      '    this.sqlfuUiFetch = createDurableObjectSqlfuUiFetch({',
-      '      storage: state.storage,',
+      '    this.sqlfuUiFetch = createSqlitePartialFetchForFixture({',
       "      projectName: 'fixture-object',",
+      "      db: ':durable-object:',",
       `      definitionsSql: ${JSON.stringify(definitionsSql)},`,
+      '      openClient: () => createDurableObjectClient(state.storage),',
       '      assets: {',
       "        '/index.html': '<!doctype html><html><body><div id=\"app\">durable-ui-ok</div></body></html>',",
       "        '/assets/app.js': 'globalThis.__sqlfuDoUiLoaded__ = true;',",

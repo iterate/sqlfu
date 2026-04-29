@@ -11,6 +11,7 @@ import {Miniflare} from 'miniflare';
 import {expect, test} from 'vitest';
 
 import {ensureBuilt, packageRoot} from './ensure-built.js';
+import {partialFetchFixtureSupportSource} from './partial-fetch-fixture-support.js';
 import type {UiRouter} from '../../src/ui/browser.js';
 
 declare const createD1Client: typeof import('../../src/index.ts').createD1Client;
@@ -76,7 +77,7 @@ test('createD1Client works in a generated local worker fixture', async () => {
   ]);
 });
 
-test('createD1SqlfuUiFetch serves assets and RPC from a plain D1 worker', async () => {
+test('createSqlfuUiPartialFetch serves assets and RPC from a plain D1 worker', async () => {
   await using fixture = await createD1PartialUiFetchFixture();
 
   const index = await fixture.fetch('http://fixture/');
@@ -201,14 +202,16 @@ async function createD1PartialUiFetchFixture() {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-d1-ui-fixture-'));
   const workerSourcePath = path.join(tempDir, 'worker-source.js');
   const workerPath = path.join(tempDir, 'worker.js');
+  const fixtureSupportPath = path.join(tempDir, 'partial-fetch-fixture-support.js');
   await fs.cp(path.join(packageRoot, 'dist'), path.join(tempDir, 'runtime'), {recursive: true});
   await fs.copyFile(path.join(packageRoot, 'package.json'), path.join(tempDir, 'package.json'));
+  await fs.writeFile(fixtureSupportPath, partialFetchFixtureSupportSource);
   await fs.writeFile(
     workerSourcePath,
     dedent`
       import {createD1Client} from './runtime/adapters/d1.js';
       import {sql} from './runtime/sql.js';
-      import {createD1SqlfuUiFetch} from './runtime/ui/browser.js';
+      import {createSqlitePartialFetchForFixture} from './partial-fetch-fixture-support.js';
 
       const catalog = {
         generatedAt: new Date(0).toISOString(),
@@ -305,9 +308,9 @@ async function createD1PartialUiFetchFixture() {
             \`);
           }
 
-          const partialFetch = createD1SqlfuUiFetch({
-            database: env.DB,
+          const partialFetch = createSqlitePartialFetchForFixture({
             projectName: 'fixture-d1',
+            db: ':d1:',
             definitionsSql: \`
               create table person (
                 id integer primary key,
@@ -316,6 +319,7 @@ async function createD1PartialUiFetchFixture() {
               );
             \`,
             catalog,
+            openClient: () => createD1Client(env.DB),
             assets: {
               '/index.html': '<!doctype html><html><body><div id="app">d1-ui-ok</div></body></html>',
               '/assets/app.js': 'globalThis.__sqlfuD1UiLoaded__ = true;',
