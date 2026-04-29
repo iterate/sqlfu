@@ -12,9 +12,14 @@
  * receives an `emit` helper already bound to its own job context) rather than
  * via `AsyncLocalStorage`, which keeps this module runnable in browsers, edge
  * workers, and anywhere else sqlfu already runs.
+ *
+ * The body of each method is written once as a generator. `client.sync` picks
+ * the right driver (`driveSync` / `driveAsync`) so the runtime shape matches
+ * the input client without two parallel implementations to keep in step.
  */
 
-import type {AsyncClient, Client, SyncClient} from '../types.js';
+import {awaited, driveAsync, driveSync, type DualGenerator} from '../dual-dispatch.js';
+import type {Client, SyncClient} from '../types.js';
 
 export type TimeUnit = 's' | 'm' | 'h' | 'd';
 export type TimePeriod = `${number}${TimeUnit}`;
@@ -161,15 +166,10 @@ const DEFAULT_RETRY: RetryFn = (_, error) => ({retry: true, reason: String(error
 
 type ResolvedDefaults = Required<Omit<OutboxDefaults, 'onBookkeepingError'>> & Pick<OutboxDefaults, 'onBookkeepingError'>;
 
-interface SharedDeps<TEvents extends EventMap> {
-  defaults: ResolvedDefaults;
-  consumersByEvent: Map<string, ConsumerDefinition<unknown, TEvents>[]>;
-  now: () => Date;
-}
-
 export function createOutbox<TEvents extends EventMap, TClient extends Client = Client>(
   config: OutboxConfig<TEvents, TClient>,
 ): Outbox<TEvents, TClient> {
+  const client = config.client;
   const now = config.now || (() => new Date());
   const defaults: ResolvedDefaults = {
     visibilityTimeout: config.defaults?.visibilityTimeout || DEFAULT_VT,
@@ -186,34 +186,21 @@ export function createOutbox<TEvents extends EventMap, TClient extends Client = 
     if (list?.length) consumersByEvent.set(eventName, list);
   }
 
-  const shared: SharedDeps<TEvents> = {defaults, consumersByEvent, now};
+  // Runtime dispatcher: drive a generator with the matching driver. Caller
+  // narrows the return shape via the conditional `MaybeAsync<...>` types.
+  const drive = <T>(gen: DualGenerator<T>): T | Promise<T> =>
+    client.sync ? driveSync(gen) : driveAsync(gen);
 
-  // Runtime branch on `client.sync`. The two engines have parallel bodies —
-  // the sync one is the async one with `await`s stripped. The cast at the
-  // return statement collapses the `Outbox<TEvents, SyncClient> | Outbox<TEvents, AsyncClient>`
-  // narrowing back to the `Outbox<TEvents, TClient>` the caller asked for.
-  const outbox: Outbox<TEvents, SyncClient> | Outbox<TEvents, AsyncClient> = config.client.sync
-    ? createSyncOutbox<TEvents>(config.client, shared)
-    : createAsyncOutbox<TEvents>(config.client, shared);
-  return outbox as Outbox<TEvents, TClient>;
-}
-
-function createAsyncOutbox<TEvents extends EventMap>(
-  client: AsyncClient,
-  shared: SharedDeps<TEvents>,
-): Outbox<TEvents, AsyncClient> {
-  const {defaults, consumersByEvent, now} = shared;
-
-  async function setup(): Promise<void> {
-    await client.raw(SCHEMA_DDL);
+  function* setupGen(): DualGenerator<void> {
+    yield client.raw(SCHEMA_DDL);
   }
 
-  async function emitWithCausation<K extends keyof TEvents>(
+  function* emitWithCausationGen<K extends keyof TEvents>(
     event: EmitInput<TEvents, K>,
     options: EmitOptions,
     causedBy: Causation | null,
-  ): Promise<EmitResult> {
-    const effectiveClient = (options.client || client) as AsyncClient;
+  ): DualGenerator<EmitResult> {
+    const effectiveClient = options.client || client;
     const context = causedBy ? {causedBy} : {};
     const eventName = event.name as string & keyof TEvents;
     const nowMs = now().getTime();
@@ -221,11 +208,13 @@ function createAsyncOutbox<TEvents extends EventMap>(
     // Use `returning id` + .all() rather than .run() + lastInsertRowid: libsql-client's
     // .execute() doesn't populate lastInsertRowid when the statement has a RETURNING clause,
     // so reading the row back is the portable path.
-    const insertedRows = await effectiveClient.all<{id: number}>({
-      sql: `insert into sqlfu_outbox_events (name, payload, context, environment, created_at)
-            values (?, ?, ?, ?, ?) returning id`,
-      args: [eventName, JSON.stringify(event.payload), JSON.stringify(context), defaults.environment, nowMs],
-    });
+    const insertedRows = yield* awaited(
+      effectiveClient.all<{id: number}>({
+        sql: `insert into sqlfu_outbox_events (name, payload, context, environment, created_at)
+              values (?, ?, ?, ?, ?) returning id`,
+        args: [eventName, JSON.stringify(event.payload), JSON.stringify(context), defaults.environment, nowMs],
+      }),
+    );
 
     const eventIdRaw = insertedRows[0]?.id;
     if (typeof eventIdRaw !== 'number' || eventIdRaw <= 0) {
@@ -240,7 +229,7 @@ function createAsyncOutbox<TEvents extends EventMap>(
     for (const consumer of matching) {
       const delay = consumer.delay ? consumer.delay({payload: event.payload}) : '0s';
       const runAfter = Math.floor((nowMs + periodMs(delay)) / 1000);
-      await effectiveClient.run({
+      yield effectiveClient.run({
         sql: `insert into sqlfu_outbox_jobs (event_id, consumer_name, run_after, vt_until, attempt, status, created_at, updated_at)
               values (?, ?, ?, 0, 0, 'pending', ?, ?)`,
         args: [eventId, consumer.name, runAfter, nowMs, nowMs],
@@ -250,14 +239,24 @@ function createAsyncOutbox<TEvents extends EventMap>(
     return {eventId};
   }
 
-  const emit: EmitFn<TEvents, AsyncClient> = (event, options = {}) => emitWithCausation(event, options, null);
-
-  async function claim(input: {limit?: number} = {}): Promise<ClaimedJob[]> {
+  function* claimGen(input: {limit?: number} = {}): DualGenerator<ClaimedJob[]> {
     const limit = input.limit || defaults.batchSize;
     const nowSec = Math.floor(now().getTime() / 1000);
 
-    return client.transaction(async (tx) => {
-      const candidates = await tx.all<{id: number; consumer_name: string}>({
+    // The transaction callback is sync for sync clients, async for async clients.
+    // We route the inner generator through the matching driver so the same
+    // generator body services both shapes (mirrors migrations/index.ts).
+    return yield* awaited(
+      client.transaction((tx) => {
+        const innerGen = claimInnerGen(tx, limit, nowSec);
+        return tx.sync ? (driveSync(innerGen) as unknown as Promise<ClaimedJob[]>) : driveAsync(innerGen);
+      }),
+    );
+  }
+
+  function* claimInnerGen(tx: Client, limit: number, nowSec: number): DualGenerator<ClaimedJob[]> {
+    const candidates = yield* awaited(
+      tx.all<{id: number; consumer_name: string}>({
         sql: `select j.id, j.consumer_name
               from sqlfu_outbox_jobs j
               where j.run_after <= ?
@@ -265,27 +264,29 @@ function createAsyncOutbox<TEvents extends EventMap>(
               order by j.id
               limit ?`,
         args: [nowSec, nowSec, limit],
+      }),
+    );
+
+    if (candidates.length === 0) return [];
+
+    const vtUntilByConsumer = new Map<string, number>();
+    for (const candidate of candidates) {
+      const consumer = findConsumerByName(consumersByEvent, candidate.consumer_name);
+      const vt = consumer?.visibilityTimeout || defaults.visibilityTimeout;
+      vtUntilByConsumer.set(candidate.consumer_name, nowSec + Math.floor(periodMs(vt) / 1000));
+    }
+
+    for (const candidate of candidates) {
+      yield tx.run({
+        sql: `update sqlfu_outbox_jobs set status = 'running', vt_until = ?, updated_at = ? where id = ?`,
+        args: [vtUntilByConsumer.get(candidate.consumer_name)!, now().getTime(), candidate.id],
       });
+    }
 
-      if (candidates.length === 0) return [];
-
-      const vtUntilByConsumer = new Map<string, number>();
-      for (const candidate of candidates) {
-        const consumer = findConsumerByName(consumersByEvent, candidate.consumer_name);
-        const vt = consumer?.visibilityTimeout || defaults.visibilityTimeout;
-        vtUntilByConsumer.set(candidate.consumer_name, nowSec + Math.floor(periodMs(vt) / 1000));
-      }
-
-      for (const candidate of candidates) {
-        await tx.run({
-          sql: `update sqlfu_outbox_jobs set status = 'running', vt_until = ?, updated_at = ? where id = ?`,
-          args: [vtUntilByConsumer.get(candidate.consumer_name)!, now().getTime(), candidate.id],
-        });
-      }
-
-      const ids = candidates.map((c) => c.id);
-      const placeholders = ids.map(() => '?').join(', ');
-      return tx.all<ClaimedJob>({
+    const ids = candidates.map((c) => c.id);
+    const placeholders = ids.map(() => '?').join(', ');
+    return yield* awaited(
+      tx.all<ClaimedJob>({
         sql: `select j.id, j.event_id, j.consumer_name, j.attempt, j.vt_until,
                      e.name as event_name, e.payload as event_payload, e.context as event_context
               from sqlfu_outbox_jobs j
@@ -293,10 +294,64 @@ function createAsyncOutbox<TEvents extends EventMap>(
               where j.id in (${placeholders})
               order by j.id`,
         args: ids,
+      }),
+    );
+  }
+
+  function* bookkeepGen(job: ClaimedJob, update: () => DualGenerator<void>): DualGenerator<void> {
+    try {
+      yield* update();
+    } catch (error) {
+      const report = defaults.onBookkeepingError || defaultOnBookkeepingError;
+      report(error, {
+        jobId: job.id,
+        eventId: job.event_id,
+        attempt: job.attempt,
+        consumerName: job.consumer_name,
       });
+    }
+  }
+
+  function* markSuccessGen(job: ClaimedJob): DualGenerator<void> {
+    yield client.run({
+      sql: `update sqlfu_outbox_jobs set status = 'success', attempt = ?, last_error = null, updated_at = ? where id = ?`,
+      args: [job.attempt + 1, now().getTime(), job.id],
     });
   }
 
+  function* markRetryGen(
+    job: ClaimedJob,
+    error: unknown,
+    attempt: number,
+    runAfterSec: number,
+  ): DualGenerator<void> {
+    yield client.run({
+      sql: `update sqlfu_outbox_jobs
+              set status = 'pending', attempt = ?, last_error = ?, run_after = ?, vt_until = 0, updated_at = ?
+              where id = ?`,
+      args: [attempt, String(error), runAfterSec, now().getTime(), job.id],
+    });
+  }
+
+  function* markFailedGen(job: ClaimedJob, error: unknown, attempt?: number): DualGenerator<void> {
+    yield client.run({
+      sql: `update sqlfu_outbox_jobs set status = 'failed', attempt = ?, last_error = ?, updated_at = ? where id = ?`,
+      args: [attempt || job.attempt + 1, String(error), now().getTime(), job.id],
+    });
+  }
+
+  const setup = (): MaybeAsync<TClient, void, Promise<void>> =>
+    drive(setupGen()) as MaybeAsync<TClient, void, Promise<void>>;
+
+  const emit: EmitFn<TEvents, TClient> = (event, options = {}) =>
+    drive(emitWithCausationGen(event, options, null)) as MaybeAsync<TClient, EmitResult, Promise<EmitResult>>;
+
+  const claim = (input: {limit?: number} = {}): MaybeAsync<TClient, ClaimedJob[], Promise<ClaimedJob[]>> =>
+    drive(claimGen(input)) as MaybeAsync<TClient, ClaimedJob[], Promise<ClaimedJob[]>>;
+
+  // tick() is always async — handlers are async. It awaits the dispatched
+  // generators; in sync mode `await x` on a plain value is a no-op, in async
+  // mode it awaits the Promise.
   async function tick(): Promise<TickResult> {
     const claimed = await claim({limit: defaults.batchSize});
     const result: TickResult = {claimed: claimed.length, succeeded: 0, failed: 0, retried: 0};
@@ -304,17 +359,18 @@ function createAsyncOutbox<TEvents extends EventMap>(
     for (const job of claimed) {
       const consumer = findConsumerByName(consumersByEvent, job.consumer_name);
       if (!consumer) {
-        await bookkeep(job, () => markFailed(job, new Error(`No consumer registered for ${job.consumer_name}`)));
+        await drive(bookkeepGen(job, () => markFailedGen(job, new Error(`No consumer registered for ${job.consumer_name}`))));
         result.failed += 1;
         continue;
       }
 
       const payload = JSON.parse(job.event_payload || 'null');
       const causation: Causation = {eventId: job.event_id, consumerName: job.consumer_name, jobId: job.id};
-      // Hand handlers a Promise-shaped emit. emitWithCausation already returns
-      // Promise<EmitResult> in this engine, so a plain pass-through fits.
+      // Hand handlers a Promise-shaped emit even on a sync underlying client:
+      // handlers are async, so wrapping a plain return in Promise.resolve keeps
+      // the consumer-author API uniform across sync/async outbox setups.
       const boundEmit: EmitFn<TEvents> = (event, options = {}) =>
-        emitWithCausation(event, options, causation);
+        Promise.resolve(drive(emitWithCausationGen(event, options, causation)));
 
       // Split: handler failures → retry policy; bookkeeping (DB) failures → log + let VT recovery handle.
       // Conflating them once caused a successful handler side-effect to be retried when the status
@@ -333,7 +389,7 @@ function createAsyncOutbox<TEvents extends EventMap>(
       }
 
       if (handlerError == null) {
-        await bookkeep(job, () => markSuccess(job));
+        await drive(bookkeepGen(job, () => markSuccessGen(job)));
         result.succeeded += 1;
       } else {
         const newAttempt = job.attempt + 1;
@@ -341,11 +397,11 @@ function createAsyncOutbox<TEvents extends EventMap>(
         const policy = retryFn({...causation, attempt: newAttempt}, handlerError);
 
         if (!policy.retry || newAttempt >= defaults.maxAttempts) {
-          await bookkeep(job, () => markFailed(job, handlerError, newAttempt));
+          await drive(bookkeepGen(job, () => markFailedGen(job, handlerError, newAttempt)));
           result.failed += 1;
         } else {
           const runAfterSec = Math.floor((now().getTime() + periodMs(policy.delay)) / 1000);
-          await bookkeep(job, () => markRetry(job, handlerError, newAttempt, runAfterSec));
+          await drive(bookkeepGen(job, () => markRetryGen(job, handlerError, newAttempt, runAfterSec)));
           result.retried += 1;
         }
       }
@@ -354,242 +410,7 @@ function createAsyncOutbox<TEvents extends EventMap>(
     return result;
   }
 
-  async function bookkeep(job: ClaimedJob, update: () => Promise<void>): Promise<void> {
-    try {
-      await update();
-    } catch (error) {
-      const report = defaults.onBookkeepingError || defaultOnBookkeepingError;
-      report(error, {
-        jobId: job.id,
-        eventId: job.event_id,
-        attempt: job.attempt,
-        consumerName: job.consumer_name,
-      });
-    }
-  }
-
-  async function markSuccess(job: ClaimedJob): Promise<void> {
-    await client.run({
-      sql: `update sqlfu_outbox_jobs set status = 'success', attempt = ?, last_error = null, updated_at = ? where id = ?`,
-      args: [job.attempt + 1, now().getTime(), job.id],
-    });
-  }
-
-  async function markRetry(job: ClaimedJob, error: unknown, attempt: number, runAfterSec: number): Promise<void> {
-    await client.run({
-      sql: `update sqlfu_outbox_jobs
-              set status = 'pending', attempt = ?, last_error = ?, run_after = ?, vt_until = 0, updated_at = ?
-              where id = ?`,
-      args: [attempt, String(error), runAfterSec, now().getTime(), job.id],
-    });
-  }
-
-  async function markFailed(job: ClaimedJob, error: unknown, attempt?: number): Promise<void> {
-    await client.run({
-      sql: `update sqlfu_outbox_jobs set status = 'failed', attempt = ?, last_error = ?, updated_at = ? where id = ?`,
-      args: [attempt || job.attempt + 1, String(error), now().getTime(), job.id],
-    });
-  }
-
-  return {setup, emit, tick, claim};
-}
-
-/**
- * Sync mirror of {@link createAsyncOutbox}. Bodies are deliberately identical
- * except for stripped `await`s and `Promise<...>` return types — keeping the
- * two paths side-by-side makes the diff between them auditable. If you change
- * one, change the other.
- */
-function createSyncOutbox<TEvents extends EventMap>(
-  client: SyncClient,
-  shared: SharedDeps<TEvents>,
-): Outbox<TEvents, SyncClient> {
-  const {defaults, consumersByEvent, now} = shared;
-
-  function setup(): void {
-    client.raw(SCHEMA_DDL);
-  }
-
-  function emitWithCausation<K extends keyof TEvents>(
-    event: EmitInput<TEvents, K>,
-    options: EmitOptions,
-    causedBy: Causation | null,
-  ): EmitResult {
-    const effectiveClient = (options.client || client) as SyncClient;
-    const context = causedBy ? {causedBy} : {};
-    const eventName = event.name as string & keyof TEvents;
-    const nowMs = now().getTime();
-
-    const insertedRows = effectiveClient.all<{id: number}>({
-      sql: `insert into sqlfu_outbox_events (name, payload, context, environment, created_at)
-            values (?, ?, ?, ?, ?) returning id`,
-      args: [eventName, JSON.stringify(event.payload), JSON.stringify(context), defaults.environment, nowMs],
-    });
-
-    const eventIdRaw = insertedRows[0]?.id;
-    if (typeof eventIdRaw !== 'number' || eventIdRaw <= 0) {
-      throw new Error(`Could not determine inserted event id (got ${String(eventIdRaw)})`);
-    }
-    const eventId = eventIdRaw;
-
-    const matching = (consumersByEvent.get(eventName) || []).filter((consumer) =>
-      consumer.when ? Boolean(consumer.when({payload: event.payload})) : true,
-    );
-
-    for (const consumer of matching) {
-      const delay = consumer.delay ? consumer.delay({payload: event.payload}) : '0s';
-      const runAfter = Math.floor((nowMs + periodMs(delay)) / 1000);
-      effectiveClient.run({
-        sql: `insert into sqlfu_outbox_jobs (event_id, consumer_name, run_after, vt_until, attempt, status, created_at, updated_at)
-              values (?, ?, ?, 0, 0, 'pending', ?, ?)`,
-        args: [eventId, consumer.name, runAfter, nowMs, nowMs],
-      });
-    }
-
-    return {eventId};
-  }
-
-  const emit: EmitFn<TEvents, SyncClient> = (event, options = {}) => emitWithCausation(event, options, null);
-
-  function claim(input: {limit?: number} = {}): ClaimedJob[] {
-    const limit = input.limit || defaults.batchSize;
-    const nowSec = Math.floor(now().getTime() / 1000);
-
-    return client.transaction((tx) => {
-      const candidates = tx.all<{id: number; consumer_name: string}>({
-        sql: `select j.id, j.consumer_name
-              from sqlfu_outbox_jobs j
-              where j.run_after <= ?
-                and (j.status = 'pending' or (j.status = 'running' and j.vt_until < ?))
-              order by j.id
-              limit ?`,
-        args: [nowSec, nowSec, limit],
-      });
-
-      if (candidates.length === 0) return [];
-
-      const vtUntilByConsumer = new Map<string, number>();
-      for (const candidate of candidates) {
-        const consumer = findConsumerByName(consumersByEvent, candidate.consumer_name);
-        const vt = consumer?.visibilityTimeout || defaults.visibilityTimeout;
-        vtUntilByConsumer.set(candidate.consumer_name, nowSec + Math.floor(periodMs(vt) / 1000));
-      }
-
-      for (const candidate of candidates) {
-        tx.run({
-          sql: `update sqlfu_outbox_jobs set status = 'running', vt_until = ?, updated_at = ? where id = ?`,
-          args: [vtUntilByConsumer.get(candidate.consumer_name)!, now().getTime(), candidate.id],
-        });
-      }
-
-      const ids = candidates.map((c) => c.id);
-      const placeholders = ids.map(() => '?').join(', ');
-      return tx.all<ClaimedJob>({
-        sql: `select j.id, j.event_id, j.consumer_name, j.attempt, j.vt_until,
-                     e.name as event_name, e.payload as event_payload, e.context as event_context
-              from sqlfu_outbox_jobs j
-              join sqlfu_outbox_events e on e.id = j.event_id
-              where j.id in (${placeholders})
-              order by j.id`,
-        args: ids,
-      });
-    });
-  }
-
-  // tick() stays async even on a sync client because consumer handlers are async.
-  async function tick(): Promise<TickResult> {
-    const claimed = claim({limit: defaults.batchSize});
-    const result: TickResult = {claimed: claimed.length, succeeded: 0, failed: 0, retried: 0};
-
-    for (const job of claimed) {
-      const consumer = findConsumerByName(consumersByEvent, job.consumer_name);
-      if (!consumer) {
-        bookkeep(job, () => markFailed(job, new Error(`No consumer registered for ${job.consumer_name}`)));
-        result.failed += 1;
-        continue;
-      }
-
-      const payload = JSON.parse(job.event_payload || 'null');
-      const causation: Causation = {eventId: job.event_id, consumerName: job.consumer_name, jobId: job.id};
-      // Hand handlers a Promise-shaped emit even though we run sync underneath:
-      // handlers are async, so awaiting a synchronously-resolved Promise is a no-op
-      // and keeps the consumer-author API uniform across sync/async outbox setups.
-      const boundEmit: EmitFn<TEvents> = (event, options = {}) =>
-        Promise.resolve(emitWithCausation(event, options, causation));
-
-      let handlerError: unknown = null;
-      try {
-        await consumer.handler({
-          payload,
-          eventId: job.event_id,
-          eventName: job.event_name,
-          job: {id: job.id, attempt: job.attempt + 1},
-          emit: boundEmit,
-        });
-      } catch (error) {
-        handlerError = error;
-      }
-
-      if (handlerError == null) {
-        bookkeep(job, () => markSuccess(job));
-        result.succeeded += 1;
-      } else {
-        const newAttempt = job.attempt + 1;
-        const retryFn = consumer.retry || defaults.retry;
-        const policy = retryFn({...causation, attempt: newAttempt}, handlerError);
-
-        if (!policy.retry || newAttempt >= defaults.maxAttempts) {
-          bookkeep(job, () => markFailed(job, handlerError, newAttempt));
-          result.failed += 1;
-        } else {
-          const runAfterSec = Math.floor((now().getTime() + periodMs(policy.delay)) / 1000);
-          bookkeep(job, () => markRetry(job, handlerError, newAttempt, runAfterSec));
-          result.retried += 1;
-        }
-      }
-    }
-
-    return result;
-  }
-
-  function bookkeep(job: ClaimedJob, update: () => void): void {
-    try {
-      update();
-    } catch (error) {
-      const report = defaults.onBookkeepingError || defaultOnBookkeepingError;
-      report(error, {
-        jobId: job.id,
-        eventId: job.event_id,
-        attempt: job.attempt,
-        consumerName: job.consumer_name,
-      });
-    }
-  }
-
-  function markSuccess(job: ClaimedJob): void {
-    client.run({
-      sql: `update sqlfu_outbox_jobs set status = 'success', attempt = ?, last_error = null, updated_at = ? where id = ?`,
-      args: [job.attempt + 1, now().getTime(), job.id],
-    });
-  }
-
-  function markRetry(job: ClaimedJob, error: unknown, attempt: number, runAfterSec: number): void {
-    client.run({
-      sql: `update sqlfu_outbox_jobs
-              set status = 'pending', attempt = ?, last_error = ?, run_after = ?, vt_until = 0, updated_at = ?
-              where id = ?`,
-      args: [attempt, String(error), runAfterSec, now().getTime(), job.id],
-    });
-  }
-
-  function markFailed(job: ClaimedJob, error: unknown, attempt?: number): void {
-    client.run({
-      sql: `update sqlfu_outbox_jobs set status = 'failed', attempt = ?, last_error = ?, updated_at = ? where id = ?`,
-      args: [attempt || job.attempt + 1, String(error), now().getTime(), job.id],
-    });
-  }
-
-  return {setup, emit, tick, claim};
+  return {setup, emit, tick, claim} as Outbox<TEvents, TClient>;
 }
 
 /* -------------------------------------------------------------------------- */
