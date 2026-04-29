@@ -17,10 +17,11 @@ the Durable Object database.
 ## Status (2026-04-29)
 
 Done. The branch exports the generic `createSqlfuUiPartialFetch` from
-`sqlfu/ui/browser`; adapter-specific Durable Object and D1 setup now lives in
-the Miniflare fixtures. The proofs cover serving UI assets, falling through for
-unrelated requests, and browsing/editing live SQLite-backed Worker databases
-through the UI oRPC contract.
+`sqlfu/ui/browser`; adapter-specific setup now lives in test/demo fixtures. The
+browser-level proof is a Playwright spec that starts a Miniflare D1 Worker,
+serves the real built UI assets through partial fetch, verifies a `/hello`
+application route still falls through to the host Worker, then browses a table
+and runs ad-hoc SQL through the UI.
 
 ## Assumptions
 
@@ -47,23 +48,23 @@ through the UI oRPC contract.
   `projectName`, in-memory files, static catalog, and `openClient` callback._
 - [x] Prove the use case in Miniflare: a Durable Object serves an index asset,
   a JS asset, and the UI oRPC contract from the same `fetch` method. _Covered
-  by `durable object can serve sqlfu ui partial fetch against its sqlite storage`
-  in `packages/sqlfu/test/adapters/durable-object.test.ts`._
+  by the ignored `packages/demo-partial-fetch-ignoreme` demo Worker/Durable
+  Object setup._
 - [x] Prove the same partial fetch shape can run in a plain Worker backed by
-  D1. _Covered by `createSqlfuUiPartialFetch serves assets and RPC from a plain
-  D1 worker` in `packages/sqlfu/test/adapters/d1.test.ts`._
+  D1. _Covered through a browser by
+  `packages/ui/test/partial-fetch.spec.ts`._
 - [x] Prove the Durable Object DB can be browsed through the UI contract by
   asserting `schema.get`, `table.list`, and `sql.run` work against object
-  storage. _The same Miniflare spec asserts relation discovery, table rows,
-  ad-hoc insert metadata, and ad-hoc select rows._
+  storage. _The demo was used for the Durable Object storage path; the committed
+  Playwright regression covers equivalent browsing and SQL execution against
+  D1 through real UI navigation._
 - [x] Export the new surface from the appropriate UI entry and keep Node-only
   code out of the browser/edge entry. _Exported from
   `packages/sqlfu/src/ui/browser.ts`; the helper itself is fetch/Worker API
   based._
 - [x] Run focused tests and typecheck for the affected package. _Verified with
-  `pnpm --filter sqlfu typecheck`, `pnpm --filter sqlfu exec vitest run
-  test/adapters/durable-object.test.ts`, `pnpm --filter sqlfu exec vitest run
-  test/import-surface.test.ts`, and targeted `oxfmt --check`._
+  targeted sqlfu adapter tests, sqlfu/ui typechecks, import-surface coverage,
+  and the new targeted Playwright spec._
 
 ## Implementation Notes
 
@@ -84,3 +85,6 @@ through the UI oRPC contract.
   The generic helper accepts `assets`, `host`, and `project`; callers can build
   the `host.openDb` callback from `createDurableObjectClient`, `createD1Client`,
   or any other sqlfu async client factory.
+- The committed browser regression lives with the UI package because it verifies
+  the user-facing contract: real assets load, `/api/rpc` works, and unrelated
+  application routes can be handled by the host fetch implementation.

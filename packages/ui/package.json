@@ -7,10 +7,10 @@
     "url": "https://github.com/mmkal/sqlfu.git",
     "directory": "packages/ui"
   },
-  "type": "module",
   "files": [
     "dist"
   ],
+  "type": "module",
   "publishConfig": {
     "access": "public"
   },
@@ -64,6 +64,8 @@
     "@types/semver": "^7.7.0",
     "@typescript/native-preview": "^7.0.0-dev.20260414.1",
     "@vitejs/plugin-react": "^5.1.0",
+    "esbuild": "^0.25.0",
+    "miniflare": "^4.20260409.0",
     "sqlfu": "workspace:*",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
