@@ -8,6 +8,7 @@ import {promisify} from 'node:util';
 import * as esbuild from 'esbuild';
 import {expect, test, type Page} from '@playwright/test';
 import {Miniflare} from 'miniflare';
+import {dedent} from 'sqlfu';
 
 const execFile = promisify(childProcess.execFile);
 const currentDir = import.meta.dirname;
@@ -101,11 +102,11 @@ test('D1 worker partial fetch serves real UI assets while leaving app routes ava
   await replaceCodeMirrorText(
     page,
     'SQL editor',
-    `
-    select id, title, completed
-    from todos
-    order by id;
-  `,
+    dedent`
+      select id, title, completed
+      from todos
+      order by id;
+    `,
   );
   await page.getByRole('button', {name: 'Run SQL'}).click();
   await expect(page.getByText('Feed snake')).toBeVisible();
