@@ -9,5 +9,5 @@
     "rootDir": "src",
     "sourceMap": false
   },
-  "include": ["src/partial-fetch.ts", "src/sqlfu-ui-assets.generated.ts"]
+  "include": ["src/partial-fetch.ts", "src/serialized-assets.ts"]
 }

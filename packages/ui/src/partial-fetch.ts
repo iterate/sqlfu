@@ -6,7 +6,7 @@ import {
   type SqlfuUiAssets,
   type SqlfuUiPartialFetch,
 } from 'sqlfu/ui/browser';
-import bundledSqlfuUiAssets from './sqlfu-ui-assets.generated.js';
+import bundledSqlfuUiAssets from './serialized-assets.js';
 
 export const sqlfuUiAssets: SqlfuUiAssets = bundledSqlfuUiAssets;
 

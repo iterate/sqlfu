@@ -31,36 +31,23 @@ function sqlfuPartialFetchBundle(): Plugin {
     },
     async closeBundle() {
       const distDir = path.resolve(resolvedConfig.root, resolvedConfig.build.outDir);
-      const files = await listTextAssetFiles(distDir);
+      const files = await Array.fromAsync(
+        fs.glob('**/*.{html,js,css}', {
+          cwd: distDir,
+          exclude: ['**/serialized-assets.js'],
+        }),
+      );
       const entries = await Promise.all(
         files.map(async (filePath) => {
-          const relativePath = path.relative(distDir, filePath).split(path.sep).join('/');
-          return {
-            assetPath: `/${relativePath}`,
-            contents: await fs.readFile(filePath, 'utf8'),
-          };
+          return [`/${filePath}`, await fs.readFile(path.join(distDir, filePath), 'utf8')];
         }),
       );
 
-      await execFileAsync(tscBinary(), ['-p', 'tsconfig.partial-fetch.json'], {cwd: resolvedConfig.root});
-      await fs.writeFile(path.join(distDir, 'sqlfu-ui-assets.generated.js'), renderAssetsModule(entries));
+      await execFileAsync('tsc', ['-p', 'tsconfig.partial-fetch.json'], {cwd: resolvedConfig.root});
+      await fs.writeFile(
+        path.join(distDir, 'serialized-assets.js'),
+        `export default ${JSON.stringify(Object.fromEntries(entries), null, 2)};\n`,
+      );
     },
   };
-}
-
-function tscBinary() {
-  return process.platform === 'win32' ? 'tsc.cmd' : 'tsc';
-}
-
-async function listTextAssetFiles(dir: string): Promise<string[]> {
-  const files = await Array.fromAsync(fs.glob('**/*.{html,js,css}', {cwd: dir}));
-  return files
-    .filter((filePath) => filePath !== 'partial-fetch.js')
-    .filter((filePath) => filePath !== 'sqlfu-ui-assets.generated.js')
-    .map((filePath) => path.join(dir, filePath))
-    .sort();
-}
-
-function renderAssetsModule(entries: Array<{assetPath: string; contents: string}>) {
-  return `export default ${JSON.stringify(Object.fromEntries(entries.map((entry) => [entry.assetPath, entry.contents])), null, 2)};\n`;
 }
