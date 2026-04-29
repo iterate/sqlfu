@@ -187,7 +187,7 @@ A small transactional-outbox / job-queue sits at `sqlfu/outbox`. Emit events in 
 
 ### UI
 
-`sqlfu` also has a UI package for working with the project interactively. It sits on top of the same SQL-first model rather than inventing a separate one. See [UI](https://sqlfu.dev/docs/ui).
+`sqlfu` also has a UI package for working with the project interactively. The default flow is `npx sqlfu` plus the hosted shell at `sqlfu.dev/ui`, but the same UI can be embedded in a fetch server with `@sqlfu/ui` when you want your own auth, route prefix, or Worker/Durable Object database binding. See [UI](https://sqlfu.dev/docs/ui).
 
 ### Lint Plugin
 
