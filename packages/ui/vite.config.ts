@@ -1,8 +1,12 @@
+import {execFile} from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import {promisify} from 'node:util';
 
 import {defineConfig, type Plugin, type ResolvedConfig} from 'vite';
 import react from '@vitejs/plugin-react';
+
+const execFileAsync = promisify(execFile);
 
 export default defineConfig({
   base: './',
@@ -38,14 +42,14 @@ function sqlfuPartialFetchBundle(): Plugin {
         }),
       );
 
-      await Promise.all([
-        fs.writeFile(path.join(distDir, 'sqlfu-ui-assets.generated.js'), renderAssetsModule(entries)),
-        fs.writeFile(path.join(distDir, 'sqlfu-ui-assets.generated.d.ts'), renderAssetsTypes()),
-        fs.writeFile(path.join(distDir, 'partial-fetch.js'), renderPartialFetchModule()),
-        fs.writeFile(path.join(distDir, 'partial-fetch.d.ts'), renderPartialFetchTypes()),
-      ]);
+      await execFileAsync(tscBinary(), ['-p', 'tsconfig.partial-fetch.json'], {cwd: resolvedConfig.root});
+      await fs.writeFile(path.join(distDir, 'sqlfu-ui-assets.generated.js'), renderAssetsModule(entries));
     },
   };
+}
+
+function tscBinary() {
+  return process.platform === 'win32' ? 'tsc.cmd' : 'tsc';
 }
 
 async function listTextAssetFiles(dir: string): Promise<string[]> {
@@ -58,58 +62,5 @@ async function listTextAssetFiles(dir: string): Promise<string[]> {
 }
 
 function renderAssetsModule(entries: Array<{assetPath: string; contents: string}>) {
-  const lines = ['export const sqlfuUiAssets = {'];
-  for (const entry of entries) {
-    lines.push(`  ${JSON.stringify(entry.assetPath)}: ${JSON.stringify(entry.contents)},`);
-  }
-  lines.push('};');
-  return `${lines.join('\n')}\n`;
-}
-
-function renderAssetsTypes() {
-  return [
-    "import type {SqlfuUiAssets} from 'sqlfu/ui/browser';",
-    '',
-    'export declare const sqlfuUiAssets: SqlfuUiAssets;',
-    '',
-  ].join('\n');
-}
-
-function renderPartialFetchModule() {
-  return [
-    "import {createSqlfuUiPartialFetch as createPartialFetchWithAssets} from 'sqlfu/ui/browser';",
-    "import {sqlfuUiAssets} from './sqlfu-ui-assets.generated.js';",
-    '',
-    'export {sqlfuUiAssets};',
-    '',
-    'export function createSqlfuUiPartialFetch(input) {',
-    '  return createPartialFetchWithAssets({',
-    '    ...input,',
-    '    assets: input.assets || sqlfuUiAssets,',
-    '  });',
-    '}',
-    '',
-  ].join('\n');
-}
-
-function renderPartialFetchTypes() {
-  return [
-    'import type {',
-    '  CreateSqlfuUiPartialFetchInput as BaseCreateSqlfuUiPartialFetchInput,',
-    '  SqlfuUiAsset,',
-    '  SqlfuUiAssetBody,',
-    '  SqlfuUiAssets,',
-    '  SqlfuUiPartialFetch,',
-    "} from 'sqlfu/ui/browser';",
-    '',
-    "export type CreateSqlfuUiPartialFetchInput = Omit<BaseCreateSqlfuUiPartialFetchInput, 'assets'> & {",
-    '  assets?: SqlfuUiAssets;',
-    '};',
-    '',
-    'export type {SqlfuUiAsset, SqlfuUiAssetBody, SqlfuUiAssets, SqlfuUiPartialFetch};',
-    "export {sqlfuUiAssets} from './sqlfu-ui-assets.generated.js';",
-    '',
-    'export declare function createSqlfuUiPartialFetch(input: CreateSqlfuUiPartialFetchInput): SqlfuUiPartialFetch;',
-    '',
-  ].join('\n');
+  return `export default ${JSON.stringify(Object.fromEntries(entries.map((entry) => [entry.assetPath, entry.contents])), null, 2)};\n`;
 }
