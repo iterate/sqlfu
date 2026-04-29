@@ -51,6 +51,8 @@ export {
 // consumers building their own host implementations (test doubles, edge
 // runtimes).
 export type {
+  AdHocSqlParams,
+  AdHocSqlResult,
   DisposableAsyncClient,
   DisposableClient,
   HostCatalog,

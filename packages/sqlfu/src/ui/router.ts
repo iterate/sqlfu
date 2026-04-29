@@ -13,7 +13,15 @@ import {
 } from '../api.js';
 import {SqlfuError, type SqlfuErrorKind} from '../errors.js';
 import {excludeReservedSqliteObjects, splitSqlStatements, sqlReturnsRows} from '../sqlite-text.js';
-import type {DisposableClient, HostCatalog, HostFs, SqlfuHost, SqlfuUiHost} from '../host.js';
+import type {
+  AdHocSqlParams,
+  AdHocSqlResult,
+  DisposableClient,
+  HostCatalog,
+  HostFs,
+  SqlfuHost,
+  SqlfuUiHost,
+} from '../host.js';
 import type {Client, PreparedStatementParams, QueryArg, SqlfuProjectConfig} from '../types.js';
 import {basename, joinPath} from '../paths.js';
 import type {QueryCatalogEntry} from '../typegen/query-catalog.js';
@@ -61,9 +69,10 @@ export type UiRouterContext = {
   host: SqlfuUiHost;
 };
 
-type ResolvedSqlfuUiHost = Omit<SqlfuHost, 'openDb' | 'openScratchDb'> & {
+type ResolvedSqlfuUiHost = Omit<SqlfuHost, 'openDb' | 'openScratchDb' | 'execAdHocSql'> & {
   openDb(config: SqlfuProjectConfig): Promise<DisposableClient>;
   openScratchDb(slug: string): Promise<DisposableClient>;
+  execAdHocSql(client: Client, sql: string, params: AdHocSqlParams): Promise<AdHocSqlResult>;
 };
 
 const uiBase = os.$context<UiRouterContext>().use(async ({next, context}) => {
@@ -135,6 +144,8 @@ function applyUiHostDefaults(host: SqlfuUiHost): ResolvedSqlfuUiHost {
     fs,
     openDb: host.openDb,
     openScratchDb: host.openScratchDb || unsupportedOpenScratchDb,
+    execAdHocSql: host.execAdHocSql || execAdHocSql,
+    initializeProject: host.initializeProject || unsupportedInitializeProject,
     digest: host.digest || ((content) => Promise.resolve(sha256Hex(content))),
     now: host.now || (() => new Date()),
     uuid: host.uuid || (() => globalThis.crypto.randomUUID()),
@@ -159,6 +170,10 @@ async function unsupportedFileSystemOperation(): Promise<never> {
 
 async function unsupportedOpenScratchDb(): Promise<never> {
   throw new UnsupportedUiHostFeatureError('Scratch databases are not supported by this sqlfu UI host');
+}
+
+async function unsupportedInitializeProject(): Promise<never> {
+  throw new UnsupportedUiHostFeatureError('Project initialization is not supported by this sqlfu UI host');
 }
 
 const emptyCatalog: HostCatalog = {
@@ -307,6 +322,7 @@ export const uiRouter = {
         runSqlfuCommand(
           {
             projectRoot: context.project.projectRoot,
+            configPath: context.project.initialized ? undefined : context.project.configPath,
             config: context.project.initialized ? context.project.config : undefined,
             host: context.host as SqlfuHost,
           },

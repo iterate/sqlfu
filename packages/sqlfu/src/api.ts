@@ -1,7 +1,8 @@
 import type {Client, SqlfuMigrationPrefix, SqlfuMigrationPreset, SqlfuProjectConfig} from './types.js';
-import type {HostFs, SqlfuHost} from './host.js';
+import type {SqlfuHost} from './host.js';
 import {basename, joinPath} from './paths.js';
 import {createDefaultInitPreview} from './init-preview.js';
+import type {LoadedSqlfuProject} from './config.js';
 import {migrationNickname} from './naming.js';
 import {extractSchema} from './sqlite-text.js';
 import {
@@ -147,7 +148,8 @@ export async function runSqlfuCommand(
   const normalized = command.trim();
 
   if (normalized === 'sqlfu init') {
-    const preview = createDefaultInitPreview(context.projectRoot);
+    const project = await loadContextProjectState(context);
+    const preview = createDefaultInitPreview(project.projectRoot, {configPath: project.configPath});
     const configContents = await confirm({
       title: 'Create sqlfu.config.ts?',
       body: preview.configContents,
@@ -157,15 +159,15 @@ export async function runSqlfuCommand(
     if (!configContents?.trim()) {
       return;
     }
-    await initializeProjectFiles({
-      fs: context.host.fs,
-      projectRoot: context.projectRoot,
+    await context.host.initializeProject({
+      projectRoot: project.projectRoot,
+      configPath: project.configPath,
       configContents,
     });
     return;
   }
 
-  const initializedContext = requireContextConfig(context);
+  const initializedContext = await loadContextConfig(context);
 
   if (normalized === 'sqlfu draft') {
     await applyDraftSql(initializedContext, {}, confirm);
@@ -213,33 +215,6 @@ export async function runSqlfuCommand(
   }
 
   throw new Error(`Unsupported sqlfu command: ${command}`);
-}
-
-const configFileNames = ['sqlfu.config.ts', 'sqlfu.config.mjs', 'sqlfu.config.js', 'sqlfu.config.cjs'];
-
-export async function initializeProjectFiles(input: {fs: HostFs; projectRoot: string; configContents: string}) {
-  for (const configFileName of configFileNames) {
-    const configPath = joinPath(input.projectRoot, configFileName);
-    if (await input.fs.exists(configPath)) {
-      throw new Error(`sqlfu is already initialized in ${input.projectRoot}`);
-    }
-  }
-
-  const preview = createDefaultInitPreview(input.projectRoot);
-  await input.fs.mkdir(joinPath(input.projectRoot, 'db'));
-  await input.fs.mkdir(joinPath(input.projectRoot, 'migrations'));
-  await input.fs.mkdir(joinPath(input.projectRoot, 'sql'));
-  await input.fs.writeFile(preview.configPath, withTrailingNewline(input.configContents));
-  await input.fs.writeFile(
-    joinPath(input.projectRoot, 'definitions.sql'),
-    '-- create table yourtable(id int, body text);\n',
-  );
-  await input.fs.writeFile(joinPath(input.projectRoot, 'migrations', '.gitkeep'), '');
-  await input.fs.writeFile(joinPath(input.projectRoot, 'sql', '.gitkeep'), '');
-}
-
-function withTrailingNewline(value: string) {
-  return value.endsWith('\n') ? value : `${value}\n`;
 }
 
 export async function readMigrationsFromContext(context: SqlfuContext): Promise<Migration[]> {
@@ -939,7 +914,9 @@ export interface SqlfuContext {
 
 export interface SqlfuCommandContext {
   projectRoot: string;
+  configPath?: string;
   config?: SqlfuProjectConfig;
+  loadProjectState?: () => Promise<LoadedSqlfuProject>;
   host: SqlfuHost;
 }
 
@@ -951,12 +928,58 @@ export interface SqlfuCommandRouterContext extends SqlfuCommandContext {
 
 export function requireContextConfig(context: SqlfuCommandContext): SqlfuContext {
   if (!context.config) {
+    if (context.configPath) {
+      throw new Error(`No sqlfu config found at ${context.configPath}. Run 'sqlfu init' first.`);
+    }
     throw new Error(`No sqlfu config found in ${context.projectRoot}. Run 'sqlfu init' first.`);
   }
 
   return {
     config: context.config,
     host: context.host,
+  };
+}
+
+export async function loadContextConfig(context: SqlfuCommandContext): Promise<SqlfuContext> {
+  if (context.config) {
+    return {
+      config: context.config,
+      host: context.host,
+    };
+  }
+
+  const project = await loadContextProjectState(context);
+  if (!project.initialized) {
+    if (project.configPath) {
+      throw new Error(`No sqlfu config found at ${project.configPath}. Run 'sqlfu init' first.`);
+    }
+    throw new Error(`No sqlfu config found in ${project.projectRoot}. Run 'sqlfu init' first.`);
+  }
+
+  return {
+    config: project.config,
+    host: context.host,
+  };
+}
+
+export async function loadContextProjectState(context: SqlfuCommandContext): Promise<LoadedSqlfuProject> {
+  if (context.loadProjectState) {
+    return context.loadProjectState();
+  }
+
+  if (context.config) {
+    return {
+      initialized: true,
+      projectRoot: context.projectRoot,
+      configPath: context.configPath || joinPath(context.projectRoot, 'sqlfu.config.ts'),
+      config: context.config,
+    };
+  }
+
+  return {
+    initialized: false,
+    projectRoot: context.projectRoot,
+    configPath: context.configPath || joinPath(context.projectRoot, 'sqlfu.config.ts'),
   };
 }
 

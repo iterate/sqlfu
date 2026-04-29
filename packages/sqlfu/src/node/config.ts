@@ -3,21 +3,34 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 
 import type {SqlfuConfig, SqlfuProjectConfig} from '../types.js';
-import {assertConfigShape, resolveProjectConfig, type LoadedSqlfuProject, type TsconfigPreferences} from '../config.js';
+import {
+  assertConfigShape,
+  createDefaultInitPreview,
+  resolveProjectConfig,
+  type LoadedSqlfuProject,
+  type TsconfigPreferences,
+} from '../config.js';
+import {resolveCliConfigPath} from './cli-config.js';
 
 const defaultConfigFileNames = ['sqlfu.config.ts', 'sqlfu.config.mjs', 'sqlfu.config.js', 'sqlfu.config.cjs'] as const;
 const defaultSqlfuConfigFileName = 'sqlfu.config.ts';
 
-export async function loadProjectConfig(): Promise<SqlfuProjectConfig> {
+export async function loadProjectConfig(input: {configPath?: string} = {}): Promise<SqlfuProjectConfig> {
   const cwd = path.resolve(process.cwd());
-  const project = await loadProjectStateFrom(cwd);
+  const project = await loadProjectState({configPath: input.configPath});
   if (!project.initialized) {
+    if (input.configPath) {
+      throw new Error(`No sqlfu config found at ${project.configPath}.`);
+    }
     throw new Error(`No sqlfu config found in ${cwd}. Create sqlfu.config.ts.`);
   }
   return project.config;
 }
 
-export async function loadProjectState() {
+export async function loadProjectState(input: {configPath?: string} = {}) {
+  if (input.configPath) {
+    return loadProjectStateFromConfigPath(input.configPath, path.resolve(process.cwd()));
+  }
   return loadProjectStateFrom(path.resolve(process.cwd()));
 }
 
@@ -39,6 +52,51 @@ export async function loadProjectStateFrom(projectRoot: string): Promise<LoadedS
     configPath,
     config: resolveProjectConfig(fileConfig, configPath, tsconfigPreferences),
   };
+}
+
+export async function loadProjectStateFromConfigPath(configPath: string, cwd: string): Promise<LoadedSqlfuProject> {
+  const resolvedConfigPath = resolveCliConfigPath(configPath, cwd);
+  const projectRoot = path.dirname(resolvedConfigPath);
+  try {
+    await fs.access(resolvedConfigPath);
+  } catch {
+    return {
+      initialized: false,
+      projectRoot,
+      configPath: resolvedConfigPath,
+    };
+  }
+
+  const fileConfig = await loadConfigFile(resolvedConfigPath);
+  const tsconfigPreferences = await loadTsconfigPreferences(projectRoot);
+  return {
+    initialized: true,
+    projectRoot,
+    configPath: resolvedConfigPath,
+    config: resolveProjectConfig(fileConfig, resolvedConfigPath, tsconfigPreferences),
+  };
+}
+
+export async function initializeProject(input: {projectRoot: string; configContents: string; configPath?: string}) {
+  const preview = createDefaultInitPreview(input.projectRoot, {configPath: input.configPath});
+  const state = input.configPath
+    ? await loadProjectStateFromConfigPath(input.configPath, input.projectRoot)
+    : await loadProjectStateFrom(input.projectRoot);
+  if (state.initialized) {
+    throw new Error(`sqlfu is already initialized in ${input.projectRoot}`);
+  }
+
+  await fs.mkdir(path.join(input.projectRoot, 'db'), {recursive: true});
+  await fs.mkdir(path.join(input.projectRoot, 'migrations'), {recursive: true});
+  await fs.mkdir(path.join(input.projectRoot, 'sql'), {recursive: true});
+  await fs.mkdir(path.dirname(preview.configPath), {recursive: true});
+  await fs.writeFile(preview.configPath, withTrailingNewline(input.configContents));
+  await fs.writeFile(
+    path.join(input.projectRoot, 'definitions.sql'),
+    '-- create table yourtable(id int, body text);\n',
+  );
+  await fs.writeFile(path.join(input.projectRoot, 'migrations', '.gitkeep'), '');
+  await fs.writeFile(path.join(input.projectRoot, 'sql', '.gitkeep'), '');
 }
 
 async function resolveConfigPath(cwd: string): Promise<string | undefined> {
@@ -135,4 +193,8 @@ function stripJsonComments(value: string): string {
 
 function stripTrailingCommas(value: string): string {
   return value.replace(/,\s*([}\]])/g, '$1');
+}
+
+function withTrailingNewline(value: string) {
+  return value.endsWith('\n') ? value : `${value}\n`;
 }
