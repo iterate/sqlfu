@@ -406,10 +406,10 @@ test('relation page is data-first with foldable secondary panels', async ({page}
   await expect(page.getByText('Columns', {exact: true})).toHaveCount(0);
   await expect(page.getByText('Sample rows', {exact: true})).toHaveCount(0);
   await expect(page.getByRole('button', {name: 'Definition'})).toBeVisible();
-  await expect(page.getByLabel('Relation definition editor')).toBeHidden();
+  await expect(page.getByLabel('Relation definition editor', {exact: true})).toBeHidden();
 
   await page.getByRole('button', {name: 'Definition'}).click();
-  await expect(page.getByLabel('Relation definition editor')).toBeVisible();
+  await expect(page.getByLabel('Relation definition editor', {exact: true})).toBeVisible();
 });
 
 test('relation rows render in a sheet-style grid', async ({page}) => {
@@ -651,6 +651,38 @@ test('relation rows can discard dirty cell changes', async ({page}) => {
   await expect(page.getByRole('button', {name: 'Discard changes'})).toHaveCount(0);
   await expect(page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="3"]')).toContainText('Hello World');
   await expect(page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="3"]')).not.toHaveClass(/dirty/);
+});
+
+test('relation query actions confirm before leaving dirty editable rows', async ({page}) => {
+  await page.goto('/#table/posts');
+
+  const titleCell = page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="3"]');
+  await fillGridTextCell(page, 1, 3, 'Hello World Dirty');
+  await expect(page.getByRole('button', {name: 'Save changes'})).toBeVisible();
+  await expect(titleCell).toContainText('Hello World Dirty');
+
+  await page.getByRole('button', {name: 'Sort', exact: true}).click();
+  await page.getByRole('button', {name: 'Sort by title'}).click();
+  const confirmDiscard = page.getByRole('dialog', {name: 'Discard unsaved row edits?'});
+  await expect(confirmDiscard).toBeVisible();
+
+  await confirmDiscard.getByRole('button', {name: 'Cancel'}).click();
+  await expect(confirmDiscard).not.toBeVisible();
+  await expect(page.getByRole('button', {name: 'Save changes'})).toBeVisible();
+  await expect(titleCell).toContainText('Hello World Dirty');
+  await expect(page.getByRole('button', {name: 'Sort', exact: true})).toBeVisible();
+
+  const sortByTitle = page.getByRole('button', {name: 'Sort by title'});
+  if (!(await sortByTitle.isVisible())) {
+    await page.getByRole('button', {name: 'Sort', exact: true}).click();
+  }
+  await sortByTitle.click();
+  await expect(confirmDiscard).toBeVisible();
+  await confirmDiscard.getByRole('button', {name: 'Confirm', exact: true}).click();
+
+  await expect(page.getByRole('button', {name: /^Sort — title asc/})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Save changes'})).toHaveCount(0);
+  await expect(page.getByText('Hello World Dirty')).toHaveCount(0);
 });
 
 test('stale relation draft state is ignored when it does not match the fetched table shape', async ({page}) => {
@@ -1131,7 +1163,7 @@ test('relation toolbar exposes Filter / Sort / Columns / Query / Definition butt
   await expect(page.getByRole('button', {name: 'Query SQL'})).toBeVisible();
   await expect(page.getByRole('button', {name: 'Table definition'})).toBeVisible();
   // The Query editor is not mounted until the popover is opened.
-  await expect(page.getByLabel('Relation query editor')).toHaveCount(0);
+  await expect(page.getByLabel('Relation query editor', {exact: true})).toHaveCount(0);
 });
 
 test('opening the Query popover shows a CodeMirror with the generated SQL', async ({page}) => {
@@ -1140,9 +1172,9 @@ test('opening the Query popover shows a CodeMirror with the generated SQL', asyn
   await page.getByRole('button', {name: 'Sort by title'}).click();
 
   await page.getByRole('button', {name: 'Query SQL'}).click();
-  await expect(page.getByLabel('Relation query editor')).toBeVisible();
-  await expect(page.getByLabel('Relation query editor')).toContainText('order by "title" asc');
-  await expect(page.getByLabel('Relation query editor')).toContainText('limit 100');
+  await expect(page.getByLabel('Relation query editor', {exact: true})).toBeVisible();
+  await expect(page.getByLabel('Relation query editor', {exact: true})).toContainText('order by "title" asc');
+  await expect(page.getByLabel('Relation query editor', {exact: true})).toContainText('limit 100');
 });
 
 test('multi-column sort composes clauses in the order they were added', async ({page}) => {
@@ -1158,7 +1190,7 @@ test('multi-column sort composes clauses in the order they were added', async ({
   await page.keyboard.press('Escape');
 
   await page.getByRole('button', {name: 'Query SQL'}).click();
-  await expect(page.getByLabel('Relation query editor')).toContainText(
+  await expect(page.getByLabel('Relation query editor', {exact: true})).toContainText(
     'order by "published" asc, "title" asc',
   );
 });
@@ -1286,7 +1318,7 @@ test('Query popover requires Apply before the query re-runs', async ({page}) => 
 test('Definition popover shows the relation DDL as read-only SQL', async ({page}) => {
   await page.goto('/#table/posts');
   await page.getByRole('button', {name: 'Table definition'}).click();
-  const editor = page.getByLabel('Relation definition editor');
+  const editor = page.getByLabel('Relation definition editor', {exact: true});
   await expect(editor).toBeVisible();
   await expect(editor).toContainText(/create table posts/i);
 });
@@ -1303,7 +1335,7 @@ test('adding an equals filter writes a where clause and narrows the displayed ro
   await popover.getByRole('button', {name: 'Apply'}).click();
 
   await page.getByRole('button', {name: 'Query SQL'}).click();
-  await expect(page.getByLabel('Relation query editor')).toContainText(`where "slug" = 'hello-world'`);
+  await expect(page.getByLabel('Relation query editor', {exact: true})).toContainText(`where "slug" = 'hello-world'`);
   await expect(page.locator('.reactgrid').getByText('draft-notes')).toHaveCount(0);
   await expect(page.locator('.reactgrid').getByText('hello-world')).toBeVisible();
 });
@@ -1314,7 +1346,7 @@ test('hiding a middle column commas out inside the comment so the SQL stays vali
   await page.getByRole('dialog', {name: 'Columns'}).getByLabel('Hide title').click();
 
   await page.getByRole('button', {name: 'Query SQL'}).click();
-  await expect(page.getByLabel('Relation query editor')).toContainText('/* "title", */');
+  await expect(page.getByLabel('Relation query editor', {exact: true})).toContainText('/* "title", */');
   // Smoke-test that the generated SQL actually executes against the backend: the grid should still show rows.
   await expect(page.locator('.reactgrid').getByText('hello-world')).toBeVisible();
 });
@@ -1325,7 +1357,7 @@ test('removing the limit clause surfaces a hard error and refuses to execute', a
   await page.getByRole('button', {name: 'Sort by id'}).click();
 
   await page.getByRole('button', {name: 'Query SQL'}).click();
-  await expect(page.getByLabel('Relation query editor')).toContainText('limit 100');
+  await expect(page.getByLabel('Relation query editor', {exact: true})).toContainText('limit 100');
   await replaceCodeMirrorText(page, 'Relation query editor', 'select * from posts');
   await expect(page.getByText(/Your query must end with a/)).toBeVisible();
   await expect(page.getByRole('button', {name: 'Apply'})).toBeDisabled();

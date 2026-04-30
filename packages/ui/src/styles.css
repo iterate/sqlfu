@@ -1657,8 +1657,18 @@ form textarea {
 }
 
 .rqp-pill-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0.9rem;
   line-height: 1;
+}
+
+.rqp-svg-icon {
+  display: block;
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
 }
 
 .rqp-pill-badge {
@@ -1903,6 +1913,11 @@ form textarea {
 }
 
 .rqp-sort-direction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
   font-size: 0.9rem;
   opacity: 0.8;
 }

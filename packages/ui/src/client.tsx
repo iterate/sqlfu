@@ -1198,6 +1198,14 @@ function TablePanel(input: {relation: StudioRelation}) {
             editable: rowsData.editable,
             dirty: rowsDirty,
             saving: saveRowsMutation.isPending,
+            onConfirmDiscard: async () => {
+              const result = await confirmationDialogStore.confirm({
+                title: 'Discard unsaved row edits?',
+                body: 'This query action switches the table into read-only SQL results. Discard the unsaved row edits and continue?',
+                bodyType: 'markdown',
+              });
+              return result.confirmed;
+            },
             onSave: handleSaveRows,
             onDiscard: handleDiscardRows,
           }}
