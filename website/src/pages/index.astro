@@ -10,7 +10,7 @@ import '../styles/landing.css';
     <title>sqlfu</title>
     <meta
       name="description"
-      content="All you need is sql. sqlfu lets you (or your agent) write schema, migrations, and queries as .sql files, and generates typed TypeScript wrappers next to them."
+      content="sqlfu keeps schema, migrations, and queries in SQL files, then generates typed TypeScript wrappers, migration drafts, and named runtime calls."
     />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
@@ -61,10 +61,10 @@ import '../styles/landing.css';
           <div class="eyebrow lowercase">npm install sqlfu</div>
           <h1>all you need is sql.</h1>
           <p class="lede">
-            sqlfu lets you (or your agent) write schema, migrations, and queries as <code>.sql</code> files, and generates typed TypeScript wrappers next to them. Not the abstraction of the month.
+            Put the data layer in files your team can review: <code>definitions.sql</code> for the schema, <code>migrations/*.sql</code> for history, and <code>sql/*.sql</code> for queries. sqlfu turns those files into typed wrappers, migration drafts, and named runtime calls.
           </p>
           <div class="cta-row">
-            <a class="button primary" href="/docs/getting-started">Get started</a>
+            <a class="button primary" href="/docs/getting-started">Start tutorial</a>
             <a class="button" href="/ui?demo=1">Try in browser</a>
           </div>
         </article>
@@ -74,43 +74,136 @@ import '../styles/landing.css';
         <img src="/docs/assets/packages/sqlfu/docs/i-know-sqlfu.webp" alt="I know sqlfu" />
       </figure>
 
-      <h2 class="section-title">SQL first. TypeScript second.</h2>
-      <section class="section-grid" id="value-panels">
-        <article class="panel value-panel" data-animation-key="schema">
-          <div class="eyebrow">source of truth</div>
-          <h3>Schema, migrations, queries. All <code>.sql</code>.</h3>
-          <p>Your schema lives in <code>definitions.sql</code>. Migrations are ordered SQL files. Queries are <code>.sql</code> files checked in next to the code that calls them. No DSL, no runtime builder to fight.</p>
+      <h2 class="section-title">The path through a sqlfu project</h2>
+      <section class="feature-stack" id="value-panels">
+        <article class="feature-row value-panel" data-animation-key="schema">
+          <div class="feature-copy">
+            <div class="eyebrow">1. schema</div>
+            <h3>Describe the schema you want now.</h3>
+            <p>
+              <code>definitions.sql</code> is the current desired shape of the database. It is plain SQLite, so reviews stay about tables, indexes, views, and triggers rather than a TypeScript DSL.
+            </p>
+            <a href="/docs/getting-started#define-your-schema">Define a schema</a>
+          </div>
+          <div class="artifact-pair" aria-label="Schema file and drafted migration">
+            <figure class="artifact">
+              <figcaption>definitions.sql</figcaption>
+              <pre><code>create table posts (
+  id integer primary key autoincrement,
+  slug text not null unique,
+  title text not null,
+  published integer not null default 0
+);</code></pre>
+            </figure>
+            <figure class="artifact">
+              <figcaption>drafted migration</figcaption>
+              <pre><code>create table posts (
+  id integer primary key autoincrement,
+  slug text not null unique,
+  title text not null,
+  published integer not null default 0
+);</code></pre>
+            </figure>
+          </div>
         </article>
-        <article class="panel value-panel" data-animation-key="generate">
-          <div class="eyebrow">types, generated</div>
-          <h3>TypeScript wrappers <i>from</i> your SQL</h3>
-          <p>
-            <code>sqlfu generate</code> reads your <code>.sql</code> files and emits typed wrappers next to them: typed params, typed rows, and a client you can call from application code. Your query names travel with them: to <a href="/docs/observability">OpenTelemetry, Sentry, Datadog, PostHog</a>, whatever.
-          </p>
+
+        <article class="feature-row value-panel" data-animation-key="draft">
+          <div class="feature-copy">
+            <div class="eyebrow">2. migrations</div>
+            <h3>Let the diff engine write the first draft.</h3>
+            <p>
+              <code>sqlfu draft</code> replays migration history in a scratch database, compares it with <code>definitions.sql</code>, and writes the next migration file. You still review the SQL, especially for renames, backfills, and destructive changes.
+            </p>
+            <a href="/docs/migration-model">Read the migration model</a>
+          </div>
+          <div class="artifact-pair" aria-label="Draft command and reviewed migration">
+            <figure class="artifact">
+              <figcaption>terminal</figcaption>
+              <pre><code>$ npx sqlfu draft
+created migrations/20260430103000_add_posts.sql</code></pre>
+            </figure>
+            <figure class="artifact">
+              <figcaption>later change</figcaption>
+              <pre><code>alter table posts
+add column excerpt text;</code></pre>
+            </figure>
+          </div>
         </article>
-        <article class="panel value-panel" data-animation-key="draft">
-          <div class="eyebrow">diff-driven migrations</div>
-          <h3>Drafts your next migration</h3>
-          <p>The native SQLite diff engine compares replayed migration history against <code>definitions.sql</code> and writes the next migration for you. You review, edit for renames or backfills, and commit.</p>
+
+        <article class="feature-row value-panel" data-animation-key="generate">
+          <div class="feature-copy">
+            <div class="eyebrow">3. type generation</div>
+            <h3>Generate functions from checked-in queries.</h3>
+            <p>
+              Query files are the source. <code>sqlfu generate</code> reads the live schema and emits TypeScript wrappers with typed params, typed result rows, and the query name attached for runtime use.
+            </p>
+            <a href="/docs/typegen">See query shapes</a>
+          </div>
+          <div class="artifact-pair" aria-label="Query file and generated wrapper">
+            <figure class="artifact">
+              <figcaption>sql/get-posts.sql</figcaption>
+              <pre><code>select id, slug, title
+from posts
+where published = 1
+order by id desc
+limit :limit;</code></pre>
+            </figure>
+            <figure class="artifact">
+              <figcaption>generated wrapper</figcaption>
+              <pre><code>const posts = await getPosts(client, &#123;limit: 10&#125;);
+//    ^? Array&lt;&#123;id: number; slug: string; title: string&#125;&gt;
+
+getPosts.query.name
+// "getPosts"</code></pre>
+            </figure>
+          </div>
+        </article>
+
+        <article class="feature-row value-panel" data-animation-key="runtime">
+          <div class="feature-copy">
+            <div class="eyebrow">4. runtime</div>
+            <h3>Keep the wrapper when the driver changes.</h3>
+            <p>
+              Bring the SQLite driver your runtime already uses. The adapter preserves sync or async behavior, and the same generated function can feed OpenTelemetry, Sentry, PostHog, or Datadog through <code>instrument()</code>.
+            </p>
+            <a href="/docs/adapters">Choose an adapter</a>
+          </div>
+          <div class="artifact-pair" aria-label="Runtime client and query metadata">
+            <figure class="artifact">
+              <figcaption>application code</figcaption>
+              <pre><code>const client = instrument(
+  createNodeSqliteClient(db),
+  instrument.otel(&#123;tracer&#125;),
+);
+
+await getPosts(client, &#123;limit: 10&#125;);</code></pre>
+            </figure>
+            <figure class="artifact">
+              <figcaption>query context</figcaption>
+              <pre><code>db.query.summary = "getPosts"
+db.query.text = "select id, slug, title ..."
+db.system.name = "sqlite"</code></pre>
+            </figure>
+          </div>
         </article>
       </section>
 
       <p class="works-with">
-        Bring your own driver. sqlfu runs on top of <code>better-sqlite3</code>, <code>node:sqlite</code>, <code>bun:sqlite</code>, <code>@libsql/client</code>, <code>@tursodatabase/database</code> / <code>serverless</code> / <code>sync</code>, Cloudflare D1, Durable Objects, Expo SQLite, and <code>sqlite-wasm</code>. <a href="/docs/adapters">Full list →</a>
+        Driver support today: <code>better-sqlite3</code>, <code>node:sqlite</code>, <code>bun:sqlite</code>, <code>@libsql/client</code>, <code>@tursodatabase/database</code> / <code>serverless</code> / <code>sync</code>, Cloudflare D1, Durable Objects, Expo SQLite, and <code>sqlite-wasm</code>. <a href="/docs/adapters">Full list</a>
       </p>
 
       {/*
         Animations are off by default. They are enabled with `?animation=<name>`:
 
           - `?animation=sequential`: a single large stage that plays the three
-            beats (schema → generate → draft) in sequence, replacing the
-            three-card grid. This is the main animated treatment.
+            beats (schema, generate, draft) in sequence, replacing the
+            feature walkthrough. This is the main animated treatment.
           - `?animation=a|b|c|d`: the original three-panel alternatives,
-            each card keeps its copy but its body gets swapped for the
+            each supported feature keeps its copy but its body gets swapped for the
             matching `alt-<letter>-<key>` video.
 
         When no `animation` param is set, the page ships the plain static
-        value panels above (same as main).
+        feature walkthrough above.
       */}
       <script is:inline>
         (() => {
@@ -150,11 +243,12 @@ import '../styles/landing.css';
           }
 
           if (['a', 'b', 'c', 'd'].includes(name)) {
-            // Alternative three-card treatments: inject a `<video>` inside
-            // each value-panel, alongside the existing heading + copy.
+            const animatedKeys = new Set(['schema', 'generate', 'draft']);
+            // Alternative three-panel treatments: inject a `<video>` inside
+            // each feature that already has a matching animation asset.
             for (const panel of grid.querySelectorAll('.value-panel')) {
               const key = panel.dataset.animationKey;
-              if (!key) continue;
+              if (!key || !animatedKeys.has(key)) continue;
               const slug = `alt-${name}-${key}`;
               const media = document.createElement('div');
               media.className = 'value-media';

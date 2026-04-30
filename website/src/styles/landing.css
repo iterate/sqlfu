@@ -262,40 +262,110 @@ a {
   border-radius: 0.35rem;
 }
 
-.section-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
 .section-title {
-  margin-top: 2.4rem;
-  margin-bottom: 0.8rem;
+  margin: 2.8rem 0 1.2rem;
   font-size: 1.7rem;
   letter-spacing: -0.02em;
+  text-align: center;
 }
 
-.value-panel h3 {
+.feature-stack {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.feature-row {
+  display: grid;
+  grid-template-columns: minmax(14rem, 0.72fr) minmax(0, 1.28fr);
+  gap: 1.2rem;
+  align-items: start;
+  padding: 1.35rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.feature-row:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.feature-copy {
+  position: sticky;
+  top: 1rem;
+}
+
+.feature-copy h3 {
   margin: 0.45rem 0 0.55rem;
-  font-size: 1.18rem;
-  line-height: 1.25;
+  font-size: 1.55rem;
+  line-height: 1.18;
   letter-spacing: -0.01em;
 }
 
-.value-panel p {
-  margin: 0;
+.feature-copy p {
+  margin: 0 0 0.85rem;
+  font-size: 1rem;
+  line-height: 1.65;
   color: var(--muted);
+}
+
+.feature-copy a {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.92rem;
+  font-weight: 650;
+}
+
+.artifact-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.artifact {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  box-shadow: 0 12px 36px rgba(74, 43, 15, 0.08);
+}
+
+:root[data-theme='dark'] .artifact {
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+}
+
+.artifact figcaption {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--accent);
+  font-family: ui-monospace, 'SFMono-Regular', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.11em;
+  text-transform: lowercase;
+}
+
+.artifact pre {
+  min-height: 12.5rem;
+  margin: 0;
+  padding: 0.8rem;
+  overflow: auto;
+  color: var(--text);
+  font-family: ui-monospace, 'SFMono-Regular', monospace;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  background: transparent;
+}
+
+.artifact code {
+  font: inherit;
 }
 
 /* Animation surfaces. Only injected by the `?animation=...` script on the
  * landing page; the default landing page ships no video. Two modes:
  *
- *   `.value-media` — a 16:9 video slotted inside each value-panel alongside
- *   the heading and copy. Used by `?animation=a|b|c|d` (three-card alternatives).
+ *   `.value-media`: a 16:9 video slotted inside each value-panel alongside
+ *   the heading and copy. Used by `?animation=a|b|c|d` for legacy alternatives.
  *
- *   `.animation-stage` — a single full-width 16:9 video that replaces the
- *   three-card grid entirely. Used by `?animation=sequential` (the default
+ *   `.animation-stage`: a single full-width 16:9 video that replaces the
+ *   feature walkthrough entirely. Used by `?animation=sequential` (the default
  *   sequential showreel). */
 
 .value-media {
@@ -437,7 +507,8 @@ a {
 
 @media (max-width: 900px) {
   .hero,
-  .section-grid {
+  .feature-row,
+  .artifact-pair {
     grid-template-columns: 1fr;
   }
 
@@ -448,5 +519,13 @@ a {
 
   .site-shell {
     padding-inline: 0.85rem;
+  }
+
+  .feature-copy {
+    position: static;
+  }
+
+  .artifact pre {
+    min-height: auto;
   }
 }

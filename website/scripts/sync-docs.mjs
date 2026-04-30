@@ -52,6 +52,12 @@ const docs = [
     description: 'Named queries reach OpenTelemetry, Sentry, PostHog, Datadog via a single instrument() hook.',
   },
   {
+    slug: 'errors',
+    title: 'Errors',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'errors.md'),
+    description: 'SqlfuError kinds, normalized adapter errors, and application handler examples.',
+  },
+  {
     slug: 'typegen',
     title: 'Type generation',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'typegen.md'),
@@ -69,14 +75,14 @@ const docs = [
     slug: 'id-helpers',
     title: 'Pure-SQL id generators (ulid, ksuid, nanoid, cuid2)',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'id-helpers.md'),
-    description: 'Copy-paste sqlite views for ULID, KSUID, nanoid, and cuid2-shaped ids — pure SQL, no extensions.',
+    description: 'Copy-paste sqlite views for ULID, KSUID, nanoid, and cuid2-shaped ids. Pure SQL, no extensions.',
   },
   {
     slug: 'dynamic-queries',
     title: 'Dynamic queries',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'dynamic-queries.md'),
     description:
-      'How to handle optional filters and other runtime-composition shapes in a SQL-first project — with IS NULL patterns, JSON lists, and honest advice on when to reach for a query builder instead.',
+      'How to handle optional filters and other runtime-composition shapes in a SQL-first project, with IS NULL patterns, JSON lists, and honest advice on when to reach for a query builder instead.',
   },
   {
     slug: 'outbox',
@@ -201,7 +207,7 @@ async function writeExamplesOverview(overviewEntries) {
   ].join('\n');
 
   const pageLinks = overviewEntries
-    .map(({slug, title, description}) => `- **[${title}](/docs/examples/${slug})** — ${description}`)
+    .map(({slug, title, description}) => `- **[${title}](/docs/examples/${slug})**: ${description}`)
     .join('\n');
 
   const body =
@@ -210,7 +216,7 @@ async function writeExamplesOverview(overviewEntries) {
     heading you'll find inside is a real test: the test harness parses the same markdown,
     runs \`sqlfu generate\` against the declared inputs, and asserts the outputs match what's
     shown. That means every TypeScript file under an **output** block on these pages is
-    exactly what you'd find in your checkout after running the CLI — there is no drift.
+    exactly what you'd find in your checkout after running the CLI. There is no drift.
 
     Start here if you want to see what \`sqlfu generate\` produces for a given schema shape,
     query style, or config knob, before you try it in your own project.
@@ -238,7 +244,7 @@ function splitIntroAndBody(markdown) {
 
 function descriptionForIntro(intro, slug) {
   if (!intro) {
-    return `Generate fixtures — ${slug}`;
+    return `Generate fixtures: ${slug}`;
   }
 
   // Collapse newlines so YAML on a single line isn't forced to wrap, and trim to one sentence
@@ -290,7 +296,7 @@ async function transformMarkdown(markdown, currentDoc) {
   });
 
   // Rewrite HTML <img src="..."> with a relative src. We don't rewrite the
-  // surrounding tag — `align`, `width`, etc. pass through for rendering.
+  // surrounding tag. `align`, `width`, etc. pass through for rendering.
   out = out.replace(/<img\b([^>]*?)\bsrc\s*=\s*"([^"]+)"([^>]*)>/g, (match, before, rawSrc, after) => {
     const src = rawSrc.trim();
     if (/^(https?:|data:|#|\/)/.test(src)) {

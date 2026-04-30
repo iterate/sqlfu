@@ -6,7 +6,7 @@ I want you to think holistically about the docs, as mentioned in your agent inst
 
 ## 2026-04-30 pass
 
-Status: starting. This pass is scoped to landing-page pacing and docs navigation, with prose reviewed through the `writing-well` checklist before completion. Nothing is implemented yet; the main missing pieces are the landing rewrite, nested sidebar, build verification, and final task breadcrumbs.
+Status: done for this pass. Landing-page pacing now walks through schema, migration drafting, type generation, and runtime observability one feature at a time. Docs navigation is grouped into Start here, Concepts, Guides, and Reference, and the existing Errors page is now synced and linked. Website build is green after installing dependencies in the worktree and prebuilding `@sqlfu/ui`; no product behavior changes were made.
 
 Scope:
 
@@ -23,20 +23,22 @@ Assumptions:
 
 Checklist:
 
-- [ ] Land this 2026-04-30 pass as the first commit and open the PR against `nightly/2026-04-30`.
-- [ ] `website/src/pages/index.astro`: replace the current broad value grid with a sequential feature walkthrough that pairs SQL/code with the generated or operational artifact.
-- [ ] `website/src/styles/landing.css`: support the new landing layout responsively without adding decorative-only visuals.
-- [ ] `website/astro.config.mjs`: nest the docs sidebar into onboarding, concepts, guides, examples, and reference.
-- [ ] `website/scripts/sync-docs.mjs`: keep synced docs metadata aligned with the sidebar, including any reference pages surfaced by the new nav.
-- [ ] Apply the `writing-well` checklist: cut inflated framing, prefer concrete examples, avoid templated phrasing and em-dashes, keep headings natural.
-- [ ] Verify with `pnpm --filter sqlfu-website build`.
-- [ ] Update this section with brief italic breadcrumbs as items land.
+- [x] Land this 2026-04-30 pass as the first commit and open the PR against `nightly/2026-04-30`. _first commit `02fbb89`; PR #79 targets `nightly/2026-04-30`_
+- [x] `website/src/pages/index.astro`: replace the current broad value grid with a sequential feature walkthrough that pairs SQL/code with the generated or operational artifact. _four feature beats now pair prose with schema/migration/query/runtime snippets_
+- [x] `website/src/styles/landing.css`: support the new landing layout responsively without adding decorative-only visuals. _added the `feature-stack`, `feature-row`, and `artifact` layout; mobile collapses to one column_
+- [x] `website/astro.config.mjs`: nest the docs sidebar into onboarding, concepts, guides, examples, and reference. _sidebar now groups Start here, Concepts, Guides, and Reference_
+- [x] `website/scripts/sync-docs.mjs`: keep synced docs metadata aligned with the sidebar, including any reference pages surfaced by the new nav. _added `docs/errors` to the synced docs set and removed em-dash prose from generated examples metadata_
+- [x] Apply the `writing-well` checklist: cut inflated framing, prefer concrete examples, avoid templated phrasing and em-dashes, keep headings natural. _touched-file scan is clean for em-dashes and common filler patterns; runtime-validation prose lost a templated contrast_
+- [x] Verify with `pnpm --filter sqlfu-website build`. _green after `pnpm install` and `pnpm --filter @sqlfu/ui build`; 26 pages built_
+- [x] Update this section with brief italic breadcrumbs as items land. _this update_
 
 Implementation notes:
 
 - Initial inspection read `website/src/pages/index.astro`, `website/src/styles/landing.css`, `website/astro.config.mjs`, `website/scripts/sync-docs.mjs`, `packages/sqlfu/README.md`, and representative docs pages.
 - The current sidebar is almost flat: Getting Started, overview, adapters, UI, migration/typegen/runtime/dynamic/outbox/examples/observability/lint/schema-diff. That makes onboarding, concepts, guides, and reference look equivalent.
-- The current landing page already has a simple first CTA, but the main value section jumps from source files to generated wrappers to migrations in three equal cards. This pass will slow that down into separate feature beats.
+- The current landing page already had a simple first CTA, but the main value section jumped from source files to generated wrappers to migrations in three equal cards. This pass slowed that down into separate feature beats.
+- Build note: this worktree had no `node_modules`, so the first website build failed on missing `dedent`. After `pnpm install`, Astro built successfully but `sync-ui` required `packages/ui/dist`; `pnpm --filter @sqlfu/ui build` resolved that prerequisite.
+- Optional browser check note: Playwriter could not connect because the Chrome extension was not enabled. Static build output was inspected with `rg` for the landing text and grouped sidebar.
 
 ## 2026-04-20 pass
 
