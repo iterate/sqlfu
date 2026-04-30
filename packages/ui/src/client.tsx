@@ -1547,7 +1547,7 @@ function QueryWorkbench(input: {
           ) : null}
           {input.editable ? (
             <div className="stack">
-              <label className="form-label">
+              <div className="form-label">
                 <SqlCodeMirror
                   value={input.sql}
                   ariaLabel={input.sqlEditorLabel ?? 'SQL editor'}
@@ -1557,7 +1557,7 @@ function QueryWorkbench(input: {
                   onSave={input.sqlEditorOnSave}
                   onChange={(value) => input.onSqlChange?.(value)}
                 />
-              </label>
+              </div>
               {input.sqlEditorActions}
             </div>
           ) : (
