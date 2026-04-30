@@ -1,8 +1,51 @@
+---
 status: evergreen
+size: small
+---
+
+# Cleanup Tasks
+
+## Status summary
+
+2026-04-30 pass is in progress. Survey is complete; the first commit is only this task-file refresh. Main cleanup candidates are clean worktrees for already-merged PRs, plus any task files that are clearly complete but still sitting in `tasks/`; active open PRs and tonight's named worktrees are out of scope.
 
 Sometimes agents forget to move their task files to "done". Look at recent commits and see if that's happened. If it has, open a housekeeping PR to do just that. While you're there, you can also add to Implementation Notes if there's anything you spot in the change that wasn't tidied up properly that also wasn't documented in the task file.
 
 Make sure local worktrees are cleaned up too.
+
+## 2026-04-30 pass
+
+Branch: `cleanup-tasks-2026-04-30`.
+Base branch: `nightly/2026-04-30`.
+Base PR: #75.
+
+Scope:
+- File task files into `tasks/complete/` with date prefixes only when the matching work is clearly merged/done.
+- Normalize obviously stale frontmatter or status summaries when the task state is clear from current PR history.
+- Prune only clean local worktrees whose PRs are merged or safely closed.
+- Leave evergreen tasks open and append this pass instead of moving them to `complete/`.
+
+Assumptions:
+- PR #75 has merged into `main`, but `origin/nightly/2026-04-30` still exists at the same tip; per the handoff, this pass still targets `nightly/2026-04-30`.
+- Open PR worktrees stay in place: `detect-spurious-definitions`, `generate-watch`, `lint-generated-queries`, `outbox-polymorphic-sync`, `sql-runner-named-params`, `target-safety-design`, plus current open Better Auth worktrees.
+- Tonight's named active worktrees stay in place even if they have no PR yet: `affinity-types`, `relations-query-builder-polish`, `improve-docs-2026-04-30`, and this cleanup worktree.
+- Closed but not merged/revisit-able worktrees such as `api-extractor` and `typesql-ddl-support` stay in place; `typesql-ddl-support` still has an uncommitted task-file edit in its own worktree.
+
+Checklist:
+- [x] Read this evergreen task and prior cleanup passes. _surveyed the 2026-04-20 and 2026-04-28 pass notes before choosing the 2026-04-30 scope._
+- [x] Inspect current open/merged PRs. _open PRs: #2, #43, #60, #65, #67, #69, #73, #74; newly merged since the last cleanup pass include #68, #70, #71, #72, and #75._
+- [x] Inspect local worktrees and cleanliness. _all current worktrees are clean except the pre-existing `typesql-ddl-support` task-file edit; clean merged candidates are `cleanup-tasks-2026-04-28`, `improve-docs-2026-04-28`, `partial-fetch-ui-durable-object`, and `process-result-sync-async`._
+- [ ] Commit this task-file update before implementation.
+- [ ] Open a PR targeting `nightly/2026-04-30` before implementation.
+- [ ] File any clearly completed task files into `tasks/complete/` with date-prefixed filenames.
+- [ ] Normalize stale task frontmatter/status summaries when the state is unambiguous.
+- [ ] Remove only safe, clean, merged/closed local worktrees.
+- [ ] Verify final task tree and worktree list.
+
+Implementation notes:
+- Initial survey found `tasks/complete/2026-04-30-process-result-sync-async.md` already filed for PR #72 and `tasks/complete/2026-04-28-partial-fetch-ui.md` already filed for PR #68. No root task file has been moved yet in this pass.
+- `cleanup-tasks-2026-04-28` (#71) and `improve-docs-2026-04-28` (#70) are merged and their local worktrees are clean.
+- `partial-fetch-ui-durable-object` (#68) and `process-result-sync-async` (#72) are merged and their local worktrees are clean.
 
 ## 2026-04-20 pass
 
@@ -43,4 +86,3 @@ Plan:
 Things flagged for follow-up (not actioned):
 - `typesql-ddl-support` worktree has an uncommitted edit to `tasks/complete/2026-04-20-typesql-ddl-support.md`. Per CLAUDE.md, never delete work the user might want; left in place for the user to either commit or stash.
 - `landing-page-animations.md` task file is keeping `status: in-progress` despite PR #14 having merged — the task captures unfinished follow-up (pacing review, alt-composition cleanup decision). If the user is happy with what shipped, this is a one-line move-to-complete next pass.
-
