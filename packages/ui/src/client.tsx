@@ -1823,7 +1823,7 @@ function DataTable(input: {
         ]
       : []),
   ];
-  const expandCell = hoveredCell ?? selectedCell;
+  const expandCell = selectedCell ?? hoveredCell;
   const expandOriginalValue =
     expandCell && typeof expandCell.rowId === 'number' && typeof expandCell.columnId === 'string'
       ? formatCellText(input.originalRows?.[expandCell.rowId]?.[expandCell.columnId])

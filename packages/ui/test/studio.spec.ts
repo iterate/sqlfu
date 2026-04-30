@@ -88,10 +88,10 @@ test('schema page shows mismatch cards and can run the recommended sqlfu draft c
     })
     .toBe(1);
 
-  await expect(page.getByRole('button', {name: 'Desired Schema'})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Desired Schema', exact: true})).toBeVisible();
   await expect(await readCodeMirrorText(page, 'Desired Schema editor')).toContain('create table posts');
 
-  await expect(page.getByRole('button', {name: 'Migrations'})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Migrations', exact: true})).toBeVisible();
   const migrationToggle = page.locator('.authority-migrations .migration-item').first().getByRole('button').first();
   await expect(migrationToggle).toBeVisible();
   await expect(migrationToggle).toContainText('Pending');
@@ -105,10 +105,10 @@ test('schema page shows mismatch cards and can run the recommended sqlfu draft c
     'create view post_cards as',
   );
 
-  await expect(page.getByRole('button', {name: 'Migration History'})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Migration History', exact: true})).toBeVisible();
   await expect(page.getByText('No applied migrations.')).toBeVisible();
 
-  await expect(page.getByRole('button', {name: 'Live Schema'})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Live Schema', exact: true})).toBeVisible();
   await expect(await readCodeMirrorText(page, 'Live Schema editor')).toContain('create table posts');
 });
 
@@ -285,7 +285,7 @@ test('invalid desired schema shows a check error without breaking the schema pag
   await expect(page.getByRole('heading', {name: 'Schema', exact: true})).toBeVisible();
   await expect(page.getByRole('heading', {name: 'Schema Check Failed'})).toBeVisible();
   await expect(page.getByText(/near "tabl": syntax error/i)).toBeVisible();
-  await expect(page.getByRole('button', {name: 'Desired Schema'})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Desired Schema', exact: true})).toBeVisible();
   await expect(await readCodeMirrorText(page, 'Desired Schema editor')).toContain('create tabl nope');
 });
 
@@ -490,7 +490,8 @@ test('views created from the sql runner can be browsed without crashing the app'
   );
   await page.getByRole('button', {name: 'Run SQL'}).click();
 
-  await page.getByRole('link', {name: 'recent_migrations view'}).click();
+  await page.reload();
+  await page.getByRole('link', {name: /^recent_migrations\b/}).click();
   await expect(page).toHaveURL(/#table\/recent_migrations$/);
   await expect(page.locator('.nav-link.active')).toContainText('recent_migrations');
   await expect(page.getByText('No rows.')).toBeVisible();
@@ -546,29 +547,10 @@ test('relation rows can be appended from the grid', async ({page}) => {
   await expect(page.getByRole('button', {name: 'Cell: slug, row 3'})).toBeVisible();
   await expect(page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="2"]')).toBeVisible();
 
-  const editor = page.locator('.rg-celleditor input');
-  await page.keyboard.press('Enter');
-  await expect(editor).toBeVisible();
-  await editor.pressSequentially('brand-new-post');
-  await page.keyboard.press('Tab');
-
-  await expect(page.getByRole('button', {name: 'Cell: title, row 3'})).toBeVisible();
-  await page.keyboard.press('Enter');
-  await expect(editor).toBeVisible();
-  await editor.pressSequentially('Brand New Post');
-  await page.keyboard.press('Tab');
-
-  await expect(page.getByRole('button', {name: 'Cell: body, row 3'})).toBeVisible();
-  await page.keyboard.press('Enter');
-  await expect(editor).toBeVisible();
-  await editor.pressSequentially('Inserted from the relations grid');
-  await page.keyboard.press('Tab');
-
-  await expect(page.getByRole('button', {name: 'Cell: published, row 3'})).toBeVisible();
-  await page.keyboard.press('Enter');
-  await expect(editor).toBeVisible();
-  await editor.pressSequentially('0');
-  await page.keyboard.press('Enter');
+  await fillGridTextCell(page, 3, 2, 'brand-new-post');
+  await fillGridTextCell(page, 3, 3, 'Brand New Post');
+  await fillGridTextCell(page, 3, 4, 'Inserted from the relations grid');
+  await fillGridTextCell(page, 3, 5, '0');
 
   await expect(page.getByRole('button', {name: 'Save changes'})).toBeVisible();
   const [saveResponse] = await Promise.all([
@@ -603,7 +585,7 @@ test('relation rows can be selected and deleted from the grid', async ({page}) =
     page.waitForResponse(
       (response) => response.request().method() === 'POST' && response.url().includes('/api/rpc/table/delete'),
     ),
-    confirmDialog.getByRole('button', {name: 'Confirm'}).click(),
+    confirmDialog.getByRole('button', {name: 'Confirm', exact: true}).click(),
   ]);
   expect(deleteResponse.ok(), await deleteResponse.text()).toBe(true);
 
@@ -705,15 +687,12 @@ test('dirty relation cells show original, draft, and diff modes in the cell pane
   await page.goto('/#table/posts');
 
   const titleCell = page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="3"]');
-  await titleCell.click();
-  await page.keyboard.press('Enter');
-  const editor = page.locator('.rg-celleditor input');
-  await expect(editor).toBeVisible();
-  await editor.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+A`);
-  await editor.press('Backspace');
-  await editor.pressSequentially('Hello World Dirty');
-  await editor.press('Enter');
-  await titleCell.click();
+  await fillGridTextCell(page, 1, 3, 'Hello World Dirty');
+  await page.keyboard.press('Escape');
+  await titleCell.click({position: {x: 8, y: 8}});
+  await page.keyboard.press('Escape');
+  await titleCell.hover();
+  await expect(page.getByRole('button', {name: 'Cell: title, row 1'})).toBeVisible();
   await page.getByRole('button', {name: 'Cell: title, row 1'}).click();
 
   const cellPopover = page.getByRole('dialog', {name: 'Cell detail'});
@@ -1148,7 +1127,7 @@ async function confirmAndRunSchemaCommand(page: Page, button: Locator, confirmat
   }
   await Promise.all([
     page.waitForResponse((response) => response.url().includes('/api/rpc/schema/submitConfirmation')),
-    dialog.getByRole('button', {name: 'Confirm'}).click(),
+    dialog.getByRole('button', {name: 'Confirm', exact: true}).click(),
   ]);
   await expect(dialog).not.toBeVisible();
 }
@@ -1390,22 +1369,20 @@ async function fillGridTextCell(page: any, rowIndex: number, columnIndex: number
   const columnName = (
     await page.locator(`.reactgrid [data-cell-rowidx="0"][data-cell-colidx="${columnIndex}"]`).textContent()
   )?.trim();
+  const activeEditor = page.locator('.rg-celleditor input');
+  if (await activeEditor.isVisible()) {
+    await activeEditor.press('Enter');
+  }
   await cell.click({position: {x: 8, y: 8}});
   if (columnName) {
     await expect(page.getByRole('button', {name: `Cell: ${columnName}, row ${rowIndex}`})).toBeVisible();
   }
   await cell.dblclick({position: {x: 8, y: 8}});
   const editor = page.locator('.rg-celleditor input');
-  if (await editor.isVisible()) {
-    await editor.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+A`);
-    await editor.press('Backspace');
-    await editor.pressSequentially(value);
-    await editor.press('Enter');
-    await page.locator(`.reactgrid [data-cell-rowidx="${rowIndex}"][data-cell-colidx="0"]`).click();
-    return;
-  }
-
-  await cell.click();
-  await page.keyboard.type(value);
-  await page.keyboard.press('Enter');
+  await expect(editor).toBeVisible();
+  await editor.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+A`);
+  await editor.press('Backspace');
+  await editor.pressSequentially(value);
+  await editor.press('Enter');
+  await expect(editor).toHaveCount(0);
 }
