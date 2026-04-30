@@ -586,9 +586,13 @@ function Studio() {
                   : 'nav-link'
               }
               href={`#table/${encodeURIComponent(relation.name)}`}
+              title={relation.name}
             >
-              <span>{relation.name}</span>
-              <small>{relation.kind}</small>
+              <RelationKindIcon kind={relation.kind} />
+              <span className="nav-link-label">{relation.name}</span>
+              {typeof relation.rowCount === 'number' ? (
+                <span className="nav-link-count">{formatRowCount(relation.rowCount)}</span>
+              ) : null}
             </a>
           ))}
         </nav>
@@ -604,9 +608,11 @@ function Studio() {
                   : 'nav-link'
               }
               href={`#query/${encodeURIComponent(query.id)}`}
+              title={query.id}
             >
-              <span>{query.id}</span>
-              <small>{query.kind === 'query' ? query.queryType.toLowerCase() : 'error'}</small>
+              <QueryIcon />
+              <span className="nav-link-label">{query.id}</span>
+              {query.kind !== 'query' ? <small>error</small> : null}
             </a>
           ))}
         </nav>
@@ -1801,23 +1807,7 @@ function DataTable(input: {
     selectedCellDirty && selectedOriginalValue !== 'null' && selectedOriginalValue !== '';
   return (
     <div className="stack">
-      {input.toolbar || input.showSelectedCellDetail ? (
-        <div className="data-toolbar">
-          {input.toolbar}
-          {input.showSelectedCellDetail ? (
-            <div className="data-toolbar-trailing">
-              <CellDetailPopoverButton
-                selectedCell={selectedCell}
-                selectedOriginalValue={selectedOriginalValue}
-                selectedDraftValue={selectedDraftValue}
-                showDiffTabs={showSelectedCellDiffTabs}
-                selectedCellMode={selectedCellMode}
-                setSelectedCellMode={setSelectedCellMode}
-              />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      {input.toolbar ? <div className="data-toolbar">{input.toolbar}</div> : null}
       <div className="table-scroll" ref={containerRef}>
         <reactGrid.ReactGrid
           customCellTemplates={customCellTemplates}
@@ -1896,106 +1886,150 @@ function DataTable(input: {
               : undefined
           }
         />
+        {input.showSelectedCellDetail && selectedCell ? (
+          <CellExpandFloatingButton
+            selectedCell={selectedCell}
+            gridColumns={gridColumns}
+            rowHeight={GRID_ROW_HEIGHT}
+            selectedOriginalValue={selectedOriginalValue}
+            selectedDraftValue={selectedDraftValue}
+            showDiffTabs={showSelectedCellDiffTabs}
+            selectedCellMode={selectedCellMode}
+            setSelectedCellMode={setSelectedCellMode}
+          />
+        ) : null}
       </div>
 
     </div>
   );
 }
 
-function CellDetailPopoverButton(input: {
-  selectedCell: {rowId: number; columnId: string} | null | undefined;
+function CellExpandFloatingButton(input: {
+  selectedCell: {rowId: number; columnId: string};
+  gridColumns: reactGrid.Column[];
+  rowHeight: number;
   selectedOriginalValue: string;
   selectedDraftValue: string;
   showDiffTabs: boolean;
   selectedCellMode: 'diff' | 'original' | 'draft';
   setSelectedCellMode: (mode: 'diff' | 'original' | 'draft') => void;
 }) {
-  const cell = input.selectedCell;
-  const disabled = !cell || typeof cell.rowId !== 'number' || typeof cell.columnId !== 'string';
-  const label = disabled ? 'Cell (no selection)' : `Cell: ${cell!.columnId}, row ${cell!.rowId + 1}`;
+  const colIndex = input.gridColumns.findIndex((c) => c.columnId === input.selectedCell.columnId);
+  if (colIndex < 0) return null;
+  const colLeft = input.gridColumns.slice(0, colIndex).reduce((sum, c) => sum + (c.width ?? 0), 0);
+  const colWidth = input.gridColumns[colIndex]?.width ?? 100;
+  const rowTop = (1 + input.selectedCell.rowId) * input.rowHeight;
+  const label = `Show cell ${input.selectedCell.columnId}, row ${input.selectedCell.rowId + 1}`;
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
         <button
           type="button"
-          className="rqp-pill-button"
+          className="cell-expand-button"
           aria-label={label}
-          disabled={disabled}
+          style={{
+            position: 'absolute',
+            left: colLeft + colWidth - 24,
+            top: rowTop + 6,
+          }}
         >
-          <span className="rqp-pill-icon" aria-hidden="true">
-            ⊡
-          </span>
-          <span>Cell</span>
+          <CellExpandIcon />
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content className="rqp-popover rqp-popover-wide" align="end" sideOffset={6}>
-          <div className="rqp-popover-body" role="dialog" aria-label="Cell detail">
-            <div className="card-title-row">
-              <div className="card-title">{label}</div>
-            </div>
-            {input.showDiffTabs ? (
-              <div className="stack">
-                <div className="cell-panel-tabs" role="tablist" aria-label="Cell versions">
-                  <button
-                    className={input.selectedCellMode === 'diff' ? 'cell-panel-tab active' : 'cell-panel-tab'}
-                    type="button"
-                    role="tab"
-                    aria-selected={input.selectedCellMode === 'diff'}
-                    onClick={() => input.setSelectedCellMode('diff')}
-                  >
-                    Diff
-                  </button>
-                  <button
-                    className={input.selectedCellMode === 'original' ? 'cell-panel-tab active' : 'cell-panel-tab'}
-                    type="button"
-                    role="tab"
-                    aria-selected={input.selectedCellMode === 'original'}
-                    onClick={() => input.setSelectedCellMode('original')}
-                  >
-                    Original
-                  </button>
-                  <button
-                    className={input.selectedCellMode === 'draft' ? 'cell-panel-tab active' : 'cell-panel-tab'}
-                    type="button"
-                    role="tab"
-                    aria-selected={input.selectedCellMode === 'draft'}
-                    onClick={() => input.setSelectedCellMode('draft')}
-                  >
-                    Draft
-                  </button>
-                </div>
-                {input.selectedCellMode === 'original' ? (
-                  <TextCodeMirror
-                    value={input.selectedOriginalValue}
-                    ariaLabel="Original cell value"
-                    readOnly
-                    height="12rem"
-                  />
-                ) : null}
-                {input.selectedCellMode === 'draft' ? (
-                  <TextCodeMirror
-                    value={input.selectedDraftValue}
-                    ariaLabel="Draft cell value"
-                    readOnly
-                    height="12rem"
-                  />
-                ) : null}
-                {input.selectedCellMode === 'diff' ? (
-                  <TextDiffCodeMirror
-                    original={input.selectedOriginalValue}
-                    draft={input.selectedDraftValue}
-                    ariaLabel="Diff cell value"
-                  />
-                ) : null}
-              </div>
-            ) : (
-              <TextCodeMirror value={input.selectedDraftValue} ariaLabel="Cell value" readOnly height="12rem" />
-            )}
-          </div>
+          <CellDetailPopoverBody
+            label={label}
+            selectedOriginalValue={input.selectedOriginalValue}
+            selectedDraftValue={input.selectedDraftValue}
+            showDiffTabs={input.showDiffTabs}
+            selectedCellMode={input.selectedCellMode}
+            setSelectedCellMode={input.setSelectedCellMode}
+          />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+function CellExpandIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+      <path d="M3 6V3h3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M13 10v3h-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M6 13H3v-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M10 3h3v3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CellDetailPopoverBody(input: {
+  label: string;
+  selectedOriginalValue: string;
+  selectedDraftValue: string;
+  showDiffTabs: boolean;
+  selectedCellMode: 'diff' | 'original' | 'draft';
+  setSelectedCellMode: (mode: 'diff' | 'original' | 'draft') => void;
+}) {
+  return (
+    <div className="rqp-popover-body" role="dialog" aria-label="Cell detail">
+      <div className="card-title-row">
+        <div className="card-title">{input.label}</div>
+      </div>
+      {input.showDiffTabs ? (
+        <div className="stack">
+          <div className="cell-panel-tabs" role="tablist" aria-label="Cell versions">
+            <button
+              className={input.selectedCellMode === 'diff' ? 'cell-panel-tab active' : 'cell-panel-tab'}
+              type="button"
+              role="tab"
+              aria-selected={input.selectedCellMode === 'diff'}
+              onClick={() => input.setSelectedCellMode('diff')}
+            >
+              Diff
+            </button>
+            <button
+              className={input.selectedCellMode === 'original' ? 'cell-panel-tab active' : 'cell-panel-tab'}
+              type="button"
+              role="tab"
+              aria-selected={input.selectedCellMode === 'original'}
+              onClick={() => input.setSelectedCellMode('original')}
+            >
+              Original
+            </button>
+            <button
+              className={input.selectedCellMode === 'draft' ? 'cell-panel-tab active' : 'cell-panel-tab'}
+              type="button"
+              role="tab"
+              aria-selected={input.selectedCellMode === 'draft'}
+              onClick={() => input.setSelectedCellMode('draft')}
+            >
+              Draft
+            </button>
+          </div>
+          {input.selectedCellMode === 'original' ? (
+            <TextCodeMirror
+              value={input.selectedOriginalValue}
+              ariaLabel="Original cell value"
+              readOnly
+              height="12rem"
+            />
+          ) : null}
+          {input.selectedCellMode === 'draft' ? (
+            <TextCodeMirror value={input.selectedDraftValue} ariaLabel="Draft cell value" readOnly height="12rem" />
+          ) : null}
+          {input.selectedCellMode === 'diff' ? (
+            <TextDiffCodeMirror
+              original={input.selectedOriginalValue}
+              draft={input.selectedDraftValue}
+              ariaLabel="Diff cell value"
+            />
+          ) : null}
+        </div>
+      ) : (
+        <TextCodeMirror value={input.selectedDraftValue} ariaLabel="Cell value" readOnly height="12rem" />
+      )}
+    </div>
   );
 }
 
@@ -2240,6 +2274,43 @@ function getSchemaCardStatusIcon(card: SchemaCheckResponse['cards'][number]) {
     case 'warn':
       return '⚠';
   }
+}
+
+function RelationKindIcon(input: {kind: 'table' | 'view'}) {
+  // Tables are a 3×3 grid; views are an eye centered inside a rounded box (a derived view of a table).
+  if (input.kind === 'view') {
+    return (
+      <svg className="nav-link-icon" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        <path d="M4.5 8c1-2 5-2 6 0c-1 2-5 2-6 0z" fill="none" stroke="currentColor" strokeWidth="1.1" />
+        <circle cx="8" cy="8" r="1.1" fill="currentColor" />
+      </svg>
+    );
+  }
+  return (
+    <svg className="nav-link-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <line x1="2" y1="6.5" x2="14" y2="6.5" stroke="currentColor" strokeWidth="1.2" />
+      <line x1="6" y1="6.5" x2="6" y2="13" stroke="currentColor" strokeWidth="1.2" />
+      <line x1="10" y1="6.5" x2="10" y2="13" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+function QueryIcon() {
+  return (
+    <svg className="nav-link-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <ellipse cx="8" cy="4" rx="5" ry="2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M3 4v8c0 1.1 2.24 2 5 2s5-.9 5-2V4" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M3 8c0 1.1 2.24 2 5 2s5-.9 5-2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+const compactNumberFormatter = new Intl.NumberFormat('en', {notation: 'compact', maximumFractionDigits: 1});
+function formatRowCount(count: number) {
+  if (count < 1000) return String(count);
+  return compactNumberFormatter.format(count);
 }
 
 function isSameValue(left: unknown, right: unknown) {

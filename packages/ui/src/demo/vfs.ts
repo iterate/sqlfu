@@ -1,3 +1,5 @@
+import northwindDefinitions from './northwind/definitions.sql?raw';
+
 export type VirtualFile = {
   name: string;
   content: string;
@@ -9,46 +11,64 @@ export type DemoVfsSnapshot = {
   queries: VirtualFile[];
 };
 
-const INITIAL_DEFINITIONS = `create table posts (
-  id integer primary key,
-  slug text not null unique,
-  title text not null,
-  body text not null,
-  published integer not null
-);
-
-create table wide_sales (
-  id integer primary key,
-  account_name text not null,
-  segment text not null,
-  region text not null,
-  owner text not null,
-  stage text not null,
-  status text not null,
-  plan text not null,
-  arr integer not null,
-  seats integer not null,
-  health_score integer not null,
-  close_probability integer not null,
-  renewal_date text not null,
-  last_contacted_at text not null,
-  next_step text not null,
-  notes text not null
-);
-
-create view post_cards as
-select id, slug, title, published
-from posts;
-`;
+const INITIAL_DEFINITIONS = northwindDefinitions;
 
 const INITIAL_QUERIES: VirtualFile[] = [
   {
-    name: 'find-post-by-slug.sql',
-    content: `select id, slug, title, published\nfrom posts\nwhere slug = :slug\nlimit 1;\n`,
+    name: 'top-customers-by-revenue.sql',
+    content: `select customers.customer_id,
+       customers.company_name,
+       customers.country,
+       round(sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount)), 2) as revenue
+from customers
+  join orders on orders.customer_id = customers.customer_id
+  join order_details on order_details.order_id = orders.order_id
+group by customers.customer_id
+order by revenue desc
+limit 10;
+`,
   },
   {
-    name: 'list-post-cards.sql',
-    content: `select id, slug, title, published\nfrom post_cards\norder by id;\n`,
+    name: 'product-sales-by-category.sql',
+    content: `select categories.category_name,
+       count(distinct order_details.order_id) as orders,
+       sum(order_details.quantity) as units_sold,
+       round(sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount)), 2) as revenue
+from categories
+  join products on products.category_id = categories.category_id
+  join order_details on order_details.product_id = products.product_id
+group by categories.category_id
+order by revenue desc;
+`,
+  },
+  {
+    name: 'employees-leaderboard.sql',
+    content: `select employees.employee_id,
+       employees.first_name || ' ' || employees.last_name as name,
+       employees.title,
+       count(distinct orders.order_id) as orders,
+       round(sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount)), 2) as revenue
+from employees
+  left join orders on orders.employee_id = employees.employee_id
+  left join order_details on order_details.order_id = orders.order_id
+group by employees.employee_id
+order by revenue desc nulls last;
+`,
+  },
+  {
+    name: 'orders-needing-attention.sql',
+    content: `select orders.order_id,
+       orders.order_date,
+       orders.required_date,
+       customers.company_name,
+       customers.country
+from orders
+  join customers on customers.customer_id = orders.customer_id
+where orders.shipped_date is null
+  and orders.required_date is not null
+order by orders.required_date asc
+limit 25;
+`,
   },
 ];
 

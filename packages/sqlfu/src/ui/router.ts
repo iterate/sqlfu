@@ -227,7 +227,7 @@ export const uiRouter = {
           relations.map(async (relation) => ({
             name: String(relation.name),
             kind: (relation.type === 'view' ? 'view' : 'table') as 'table' | 'view',
-            rowCount: relation.type === 'table' ? await getRelationCount(client, String(relation.name)) : undefined,
+            rowCount: await getRelationCount(client, String(relation.name)),
             columns: await getRelationColumns(client, String(relation.name)),
             sql: typeof relation.sql === 'string' ? relation.sql : undefined,
           })),

@@ -321,7 +321,7 @@ function RelationToolbar(input: {
           <button
             type="button"
             className="rqp-pill-button"
-            aria-label="Table definition"
+            aria-label="View definition"
             disabled={!input.relation.sql}
           >
             <span className="rqp-pill-icon" aria-hidden="true">
@@ -332,14 +332,36 @@ function RelationToolbar(input: {
         </Popover.Trigger>
         <Popover.Portal>
           <Popover.Content className="rqp-popover rqp-popover-wide" align="start" sideOffset={6}>
-            <SqlCodeMirror
-              value={input.relation.sql ?? ''}
-              ariaLabel="Relation definition editor"
-              relations={[input.relation]}
-              onChange={() => {}}
-              readOnly
-              height="12rem"
-            />
+            <div className="rqp-popover-body">
+              <div className="card-title-row">
+                <div className="card-title">Definition</div>
+                <a
+                  className="rqp-icon-button"
+                  href="#schema"
+                  aria-label="Edit in Desired Schema"
+                  title="Edit in Desired Schema"
+                >
+                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                    <path
+                      d="M11.5 1.8 14.2 4.5 5.6 13.1 2.5 13.5 2.9 10.4z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.2"
+                      strokeLinejoin="round"
+                    />
+                    <line x1="10.4" y1="2.9" x2="13.1" y2="5.6" stroke="currentColor" strokeWidth="1.2" />
+                  </svg>
+                </a>
+              </div>
+              <SqlCodeMirror
+                value={input.relation.sql ?? ''}
+                ariaLabel="Relation definition editor"
+                relations={[input.relation]}
+                onChange={() => {}}
+                readOnly
+                height="12rem"
+              />
+            </div>
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
