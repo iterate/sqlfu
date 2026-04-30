@@ -20,8 +20,7 @@ describe('draft edge cases', () => {
     await fixture.api.draft();
 
     expect(await fixture.readMigration('create_table_project')).toMatchInlineSnapshot(`
-      "-- generated schema section
-      create table project(id integer primary key);
+      "create table project(id integer primary key);
       create index project_id_idx on project(id);
       "
     `);
