@@ -1,4 +1,4 @@
-import {Component, Suspense, useRef, useState, useSyncExternalStore} from 'react';
+import {Component, Suspense, useCallback, useRef, useState, useSyncExternalStore} from 'react';
 import type {ReactNode} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createORPCClient} from '@orpc/client';
@@ -551,6 +551,8 @@ function Studio() {
 
   const selectedTable = selectTable(route, schemaQuery.data.relations);
   const selectedQuery = selectQuery(route, catalogQuery.data.queries);
+  const isTableView =
+    route.kind !== 'schema' && route.kind !== 'sql' && !(route.kind === 'query' && selectedQuery) && !!selectedTable;
 
   return (
     <Shell>
@@ -610,7 +612,7 @@ function Studio() {
         </nav>
       </aside>
 
-      <main className="main">
+      <main className={isTableView ? 'main table-main' : 'main'}>
         {route.kind === 'schema' ? (
           <SchemaPanel
             projectName={schemaQuery.data.projectName}
@@ -1153,21 +1155,8 @@ function TablePanel(input: {relation: StudioRelation}) {
   };
 
   return (
-    <section className="panel">
-      <header className="panel-header">
-        <div>
-          <div className="eyebrow">{input.relation.kind}</div>
-          <h2>{input.relation.name}</h2>
-        </div>
-        <div className="pill-row">
-          <span className="pill">{input.relation.columns.length} columns</span>
-          {typeof input.relation.rowCount === 'number' ? (
-            <span className="pill">{input.relation.rowCount} rows</span>
-          ) : null}
-        </div>
-      </header>
-
-      <section className="card">
+    <section className="panel table-panel">
+      <section className="table-view">
         {tableMutationError ? <ErrorView error={tableMutationError} /> : null}
         <RelationQueryPanel
           relation={input.relation}
@@ -1660,6 +1649,10 @@ const rowActionCellTemplate: reactGrid.CellTemplate<RowActionCell> = {
   },
 };
 
+const customCellTemplates = {rowAction: rowActionCellTemplate};
+const ROW_ACTION_COLUMN_WIDTH = 42;
+const GRID_ROW_HEIGHT = 34;
+
 function DataTable(input: {
   storageKey: string;
   columns: string[];
@@ -1710,7 +1703,7 @@ function DataTable(input: {
   );
   const pendingFocusRef = useRef<{rowId: number; columnId: string} | null>(null);
   const computedColumnWidths = columnWidthAlgorithm({
-    availableWidth: Math.max(0, containerWidth - 64),
+    availableWidth: Math.max(0, containerWidth - ROW_ACTION_COLUMN_WIDTH),
     columns: input.columns.map((column) => ({
       key: column,
       header: column,
@@ -1718,7 +1711,7 @@ function DataTable(input: {
     })),
   });
   const gridColumns: reactGrid.Column[] = [
-    {columnId: '__row__', width: 64, reorderable: false, resizable: false},
+    {columnId: '__row__', width: ROW_ACTION_COLUMN_WIDTH, reorderable: false, resizable: false},
     ...computedColumnWidths.map((column) => ({
       columnId: column.key,
       width: columnWidthOverrides?.[column.key] ?? column.width,
@@ -1729,8 +1722,9 @@ function DataTable(input: {
   const gridRows: reactGrid.Row<reactGrid.DefaultCellTypes | RowActionCell>[] = [
     {
       rowId: 'header',
+      height: GRID_ROW_HEIGHT,
       cells: [
-        {type: 'header', text: '#'},
+        {type: 'header', text: ''},
         ...input.columns.map((column) => ({
           type: 'header' as const,
           text: column,
@@ -1739,10 +1733,11 @@ function DataTable(input: {
     },
     ...input.rows.map((row, rowIndex) => ({
       rowId: rowIndex,
+      height: GRID_ROW_HEIGHT,
       cells: [
         {
           type: 'rowAction' as const,
-          text: selectedRowIndex === rowIndex ? '🗑' : String(rowIndex + 1),
+          text: selectedRowIndex === rowIndex ? '🗑' : '',
           className: joinCellClassNames('row-action-cell', selectedRowIndex === rowIndex ? 'selected-row' : undefined),
           ariaLabel: selectedRowIndex === rowIndex ? `Delete row ${rowIndex + 1}` : `Select row ${rowIndex + 1}`,
           onClick: () => {
@@ -1772,6 +1767,7 @@ function DataTable(input: {
       ? [
           {
             rowId: '__append__',
+            height: GRID_ROW_HEIGHT,
             cells: [
               {type: 'header' as const, text: '+'},
               ...input.columns.map(() => ({
@@ -1824,7 +1820,7 @@ function DataTable(input: {
       ) : null}
       <div className="table-scroll" ref={containerRef}>
         <reactGrid.ReactGrid
-          customCellTemplates={{rowAction: rowActionCellTemplate}}
+          customCellTemplates={customCellTemplates}
           columns={gridColumns}
           rows={gridRows}
           focusLocation={
@@ -1837,6 +1833,7 @@ function DataTable(input: {
           }
           stickyTopRows={1}
           stickyLeftColumns={1}
+          enableColumnResizeOnAllHeaders
           enableRangeSelection
           enableColumnSelection
           enableRowSelection
@@ -2319,47 +2316,48 @@ function useElementWidth<TElement extends HTMLElement>() {
     listeners: new Set(),
   });
 
-  const subscribe = (listener: () => void) => {
+  const subscribe = useCallback((listener: () => void) => {
     storeRef.current.listeners.add(listener);
     return () => {
       storeRef.current.listeners.delete(listener);
     };
-  };
-  const getSnapshot = () => storeRef.current.width;
+  }, []);
+  const getSnapshot = useCallback(() => storeRef.current.width, []);
   const width = useSyncExternalStore(subscribe, getSnapshot, () => 0);
+  const ref = useCallback((element: TElement | null) => {
+    const store = storeRef.current;
+    if (store.element === element) {
+      return;
+    }
 
-  return {
-    width,
-    ref: (element: TElement | null) => {
-      const store = storeRef.current;
-      if (store.element === element) {
+    store.observer?.disconnect();
+    store.element = element;
+    store.width = element?.clientWidth ?? 0;
+    for (const listener of store.listeners) {
+      listener();
+    }
+
+    if (!element || typeof ResizeObserver === 'undefined') {
+      store.observer = null;
+      return;
+    }
+
+    store.observer = new ResizeObserver((entries) => {
+      const nextWidth = Math.floor(entries[0]?.contentRect.width ?? element.clientWidth);
+      if (nextWidth === store.width) {
         return;
       }
-
-      store.observer?.disconnect();
-      store.element = element;
-      store.width = element?.clientWidth ?? 0;
+      store.width = nextWidth;
       for (const listener of store.listeners) {
         listener();
       }
+    });
+    store.observer.observe(element);
+  }, []);
 
-      if (!element || typeof ResizeObserver === 'undefined') {
-        store.observer = null;
-        return;
-      }
-
-      store.observer = new ResizeObserver((entries) => {
-        const nextWidth = Math.floor(entries[0]?.contentRect.width ?? element.clientWidth);
-        if (nextWidth === store.width) {
-          return;
-        }
-        store.width = nextWidth;
-        for (const listener of store.listeners) {
-          listener();
-        }
-      });
-      store.observer.observe(element);
-    },
+  return {
+    width,
+    ref,
   };
 }
 

@@ -385,7 +385,7 @@ test('table browser, sql runner, and generated query form work against a live fi
   await page.goto('/');
 
   await page.getByRole('link', {name: /^posts/}).click();
-  await expect(page.getByRole('heading', {name: 'posts'})).toBeVisible();
+  await expect(page.locator('.nav-link.active')).toContainText('posts');
   await expect(page.getByText('hello-world')).toBeVisible();
 
   await page.getByRole('link', {name: 'SQL runner'}).click();
@@ -401,7 +401,7 @@ test('table browser, sql runner, and generated query form work against a live fi
 test('relation page is data-first with foldable secondary panels', async ({page}) => {
   await page.goto('/#table/posts');
 
-  await expect(page.getByRole('heading', {name: 'posts'})).toBeVisible();
+  await expect(page.locator('.nav-link.active')).toContainText('posts');
   await expect(page.getByText('hello-world')).toBeVisible();
   await expect(page.getByText('Columns', {exact: true})).toHaveCount(0);
   await expect(page.getByText('Sample rows', {exact: true})).toHaveCount(0);
@@ -417,6 +417,28 @@ test('relation rows render in a sheet-style grid', async ({page}) => {
 
   await expect(page.locator('.reactgrid')).toBeVisible();
   await expect(page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="2"]')).toContainText('hello-world');
+});
+
+test('relation columns can be resized from header handles', async ({page}) => {
+  await page.goto('/#table/posts');
+
+  const slugHeader = page.locator('.reactgrid [data-cell-rowidx="0"][data-cell-colidx="2"]').first();
+  await expect(slugHeader).toContainText('slug');
+
+  const initialWidth = await slugHeader.evaluate((element) => element.getBoundingClientRect().width);
+  const handle = slugHeader.locator('.rg-touch-column-resize-handle');
+  const box = await handle.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2, {steps: 8});
+  await page.mouse.up();
+
+  await expect
+    .poll(() => slugHeader.evaluate((element) => element.getBoundingClientRect().width))
+    .toBeGreaterThan(initialWidth + 40);
 });
 
 test('clicking a relation cell surfaces the cell detail popover via the toolbar Cell button', async ({page}) => {
@@ -470,7 +492,7 @@ test('views created from the sql runner can be browsed without crashing the app'
 
   await page.getByRole('link', {name: 'recent_migrations view'}).click();
   await expect(page).toHaveURL(/#table\/recent_migrations$/);
-  await expect(page.getByRole('heading', {name: 'recent_migrations'})).toBeVisible();
+  await expect(page.locator('.nav-link.active')).toContainText('recent_migrations');
   await expect(page.getByText('No rows.')).toBeVisible();
 });
 
@@ -566,7 +588,7 @@ test('relation rows can be selected and deleted from the grid', async ({page}) =
   await page.goto('/#table/posts');
 
   const firstRowHeader = page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="0"]');
-  await expect(firstRowHeader).toContainText('1');
+  await expect(firstRowHeader).not.toContainText('🗑');
 
   await firstRowHeader.getByRole('button', {name: 'Select row 1'}).click();
   await expect(firstRowHeader).toContainText('🗑');
@@ -1102,7 +1124,7 @@ async function confirmAndRunSchemaCommand(page: Page, button: Locator, confirmat
 test('relation toolbar exposes Filter / Sort / Columns / Query / Definition buttons', async ({page}) => {
   await page.goto('/#table/posts');
 
-  await expect(page.getByRole('heading', {name: 'posts'})).toBeVisible();
+  await expect(page.locator('.nav-link.active')).toContainText('posts');
   await expect(page.getByRole('button', {name: 'Filter', exact: true})).toBeVisible();
   await expect(page.getByRole('button', {name: 'Sort', exact: true})).toBeVisible();
   await expect(page.getByRole('button', {name: /Columns — \d+ of \d+ visible/})).toBeVisible();
@@ -1176,7 +1198,6 @@ test('delete confirmation cancel leaves the row re-selectable', async ({page}) =
 
   // Cancel the confirmation: the row must go back to its unselected state, not stay armed.
   await page.getByRole('dialog').getByRole('button', {name: 'Cancel'}).click();
-  await expect(firstRowHeader).toContainText('1');
   await expect(firstRowHeader).not.toContainText('🗑');
 
   // And we can arm + cancel + arm again without anything getting stuck.

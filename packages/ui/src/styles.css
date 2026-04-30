@@ -459,6 +459,14 @@ table {
   padding: 2rem;
 }
 
+.table-main {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 .sidebar-block,
 .panel,
 .card {
@@ -593,6 +601,24 @@ h3 {
   padding: 1rem 1.1rem;
 }
 
+.table-panel,
+.table-view {
+  min-width: 0;
+  min-height: 0;
+}
+
+.table-panel {
+  flex: 1;
+  gap: 0;
+}
+
+.table-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  background: var(--panel-strong);
+}
+
 .card-title {
   margin-bottom: 0.9rem;
   font-weight: 700;
@@ -686,6 +712,31 @@ h3 {
   margin-top: 0.35rem;
 }
 
+.table-view .rqp,
+.table-view .stack {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+}
+
+.table-view .data-toolbar {
+  margin-bottom: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--panel-strong);
+}
+
+.table-view .table-scroll {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  margin-top: 0;
+  background: var(--panel-strong);
+}
+
 /*
   Adapted from @silevis/reactgrid/styles.css (https://github.com/silevis/reactgrid).
   We vendor the minimal base rules here to keep the UI package's grid styling
@@ -721,6 +772,10 @@ h3 {
 .reactgrid {
   min-width: max-content;
   color: var(--text);
+}
+
+.table-view .reactgrid {
+  min-width: 100%;
 }
 
 .reactgrid-content {
@@ -763,13 +818,29 @@ h3 {
   align-items: center;
   overflow: hidden;
   box-sizing: border-box;
-  padding: 0 0.55rem;
+  padding: 0 0.75rem;
   white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--text);
   background: var(--panel-tint-faint);
   border-color: var(--line) !important;
   outline: none;
   font-family: 'IBM Plex Mono', 'SFMono-Regular', 'Menlo', monospace;
+}
+
+.reactgrid-content .rg-pane .rg-cell > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reactgrid-content .rg-pane .rg-cell.rg-text-cell,
+.reactgrid-content .rg-pane .rg-cell.rg-header-cell,
+.reactgrid-content .rg-pane .rg-cell.rg-number-cell {
+  display: block;
+  line-height: 33px;
+  text-overflow: ellipsis;
 }
 
 .reactgrid-content .rg-pane .rg-cell.rg-header-cell {
@@ -781,8 +852,33 @@ h3 {
   font-size: 0.78rem;
 }
 
+.reactgrid-content .rg-pane .rg-cell .rg-touch-column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -0.3rem;
+  z-index: 2;
+  width: 0.7rem;
+  height: 100%;
+  cursor: col-resize;
+  pointer-events: auto;
+}
+
+.reactgrid-content .rg-pane .rg-cell .rg-touch-column-resize-handle .rg-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0.28rem;
+  width: 0.14rem;
+  height: 100%;
+  background: transparent;
+}
+
+.reactgrid-content .rg-pane .rg-cell .rg-touch-column-resize-handle:hover .rg-resize-handle,
+.reactgrid-content .rg-pane .rg-cell .rg-touch-column-resize-handle:active .rg-resize-handle {
+  background: var(--accent);
+}
+
 .reactgrid-content .rg-pane .rg-cell.rg-number-cell {
-  justify-content: flex-end;
+  text-align: right;
 }
 
 .reactgrid-content .rg-pane .rg-cell.dirty-cell {
@@ -805,6 +901,9 @@ h3 {
 }
 
 .row-action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 100%;
   border: 0;
@@ -812,7 +911,22 @@ h3 {
   background: transparent;
   color: inherit;
   font: inherit;
+  line-height: 1;
   cursor: pointer;
+}
+
+.row-action-button:empty::before {
+  content: '';
+  width: 0.78rem;
+  height: 0.78rem;
+  border: 1px solid var(--line);
+  border-radius: 0.18rem;
+  background: var(--panel-tint-faint);
+}
+
+.row-action-button:hover:empty::before {
+  border-color: var(--accent-border-mid);
+  background: var(--panel-tint-soft);
 }
 
 .row-action-button:disabled {
@@ -852,7 +966,7 @@ h3 {
 .reactgrid-content .rg-pane-shadow.shadow-top {
   top: 0;
   pointer-events: none;
-  box-shadow: 2px 2px 3px 1px var(--rg-shadow);
+  box-shadow: none;
 }
 
 .rg-hidden-element {
@@ -1349,6 +1463,10 @@ form textarea {
 
   .main {
     padding: 1rem;
+  }
+
+  .table-main {
+    padding: 0;
   }
 }
 

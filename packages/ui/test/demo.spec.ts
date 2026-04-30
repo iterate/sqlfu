@@ -8,10 +8,15 @@ test('demo mode runs fully in-browser', async ({page}) => {
 
   await expect(page.getByRole('link', {name: /^posts/})).toBeVisible();
   await expect(page.getByRole('link', {name: /^post_cards/})).toBeVisible();
+  await expect(page.getByRole('link', {name: /^wide_sales/})).toBeVisible();
 
   await page.getByRole('link', {name: /^posts/}).click();
   await expect(page.getByText('hello-world')).toBeVisible();
   await expect(page.getByText('draft-notes')).toBeVisible();
+
+  await page.getByRole('link', {name: /^wide_sales/}).click();
+  await expect(page.getByText('Account 01')).toBeVisible();
+  await expect(page.locator('.nav-link.active')).toContainText('wide_sales');
 
   await page.getByRole('link', {name: 'Schema'}).click();
   await expect(page.getByRole('heading', {name: 'Repo Drift'})).toBeVisible();

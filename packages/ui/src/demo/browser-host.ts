@@ -281,4 +281,70 @@ function seedLiveDatabase(database: Database, definitionsSql: string) {
       ('hello-world', 'Hello World', 'First post body', 1),
       ('draft-notes', 'Draft Notes', 'Unpublished notes', 0);
   `);
+  seedWideSales(database);
+}
+
+function seedWideSales(database: Database) {
+  const segments = ['Enterprise', 'Mid-market', 'Startup', 'Agency'];
+  const regions = ['North America', 'EMEA', 'APAC', 'LATAM'];
+  const owners = ['Avery', 'Blair', 'Casey', 'Devon', 'Elliot', 'Finley'];
+  const stages = ['Prospecting', 'Qualified', 'Proposal', 'Negotiation', 'Closed won'];
+  const statuses = ['active', 'at risk', 'expansion', 'paused'];
+  const plans = ['Starter', 'Team', 'Business', 'Enterprise'];
+  const notes = [
+    'Security review requested before procurement.',
+    'Champion wants a usage report before next call.',
+    'Needs migration estimate for legacy dashboards.',
+    'Procurement asked for an updated order form.',
+  ];
+
+  for (let index = 0; index < 42; index += 1) {
+    const id = index + 1;
+    const segment = segments[index % segments.length]!;
+    const region = regions[index % regions.length]!;
+    const owner = owners[index % owners.length]!;
+    const stage = stages[index % stages.length]!;
+    const status = statuses[index % statuses.length]!;
+    const plan = plans[index % plans.length]!;
+    database.exec({
+      sql: `
+        insert into wide_sales (
+          id,
+          account_name,
+          segment,
+          region,
+          owner,
+          stage,
+          status,
+          plan,
+          arr,
+          seats,
+          health_score,
+          close_probability,
+          renewal_date,
+          last_contacted_at,
+          next_step,
+          notes
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      bind: [
+        id,
+        `Account ${String(id).padStart(2, '0')}`,
+        segment,
+        region,
+        owner,
+        stage,
+        status,
+        plan,
+        18000 + id * 1350,
+        8 + ((id * 7) % 95),
+        42 + ((id * 11) % 58),
+        10 + ((id * 13) % 90),
+        `2026-${String((id % 12) + 1).padStart(2, '0')}-15`,
+        `2026-04-${String((id % 28) + 1).padStart(2, '0')}`,
+        `${stage} follow-up with ${owner}`,
+        notes[index % notes.length]!,
+      ],
+    });
+  }
 }

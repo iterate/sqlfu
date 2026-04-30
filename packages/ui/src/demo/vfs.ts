@@ -17,6 +17,25 @@ const INITIAL_DEFINITIONS = `create table posts (
   published integer not null
 );
 
+create table wide_sales (
+  id integer primary key,
+  account_name text not null,
+  segment text not null,
+  region text not null,
+  owner text not null,
+  stage text not null,
+  status text not null,
+  plan text not null,
+  arr integer not null,
+  seats integer not null,
+  health_score integer not null,
+  close_probability integer not null,
+  renewal_date text not null,
+  last_contacted_at text not null,
+  next_step text not null,
+  notes text not null
+);
+
 create view post_cards as
 select id, slug, title, published
 from posts;
