@@ -63,7 +63,10 @@ initThemeOnLoad();
  * no cross-tab sync, no `isPersistent` / `removeItem` affordances — but fine
  * for scratch drafts where cross-tab sync is actively undesirable.
  */
-function useSessionStorageState<T>(key: string, defaultValue: T): [T, (next: T) => void] {
+function useSessionStorageState<T>(
+  key: string,
+  defaultValue: T,
+): [T, (next: T | ((current: T) => T)) => void] {
   const [value, setValue] = useState<T>(() => {
     if (typeof window === 'undefined') return defaultValue;
     const raw = window.sessionStorage.getItem(key);
@@ -74,13 +77,16 @@ function useSessionStorageState<T>(key: string, defaultValue: T): [T, (next: T) 
       return defaultValue;
     }
   });
-  const set = (next: T) => {
-    setValue(next);
-    if (typeof window !== 'undefined') {
-      try {
-        window.sessionStorage.setItem(key, JSON.stringify(next));
-      } catch {}
-    }
+  const set = (next: T | ((current: T) => T)) => {
+    setValue((current) => {
+      const resolved = typeof next === 'function' ? (next as (current: T) => T)(current) : next;
+      if (typeof window !== 'undefined') {
+        try {
+          window.sessionStorage.setItem(key, JSON.stringify(resolved));
+        } catch {}
+      }
+      return resolved;
+    });
   };
   return [value, set];
 }
@@ -702,17 +708,13 @@ function abbreviateHomeDirectory(path: string) {
 }
 
 function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; authorities: SchemaAuthoritiesResponse}) {
-  const [commandErrors, setCommandErrors] = useLocalStorageState<Record<string, string>>(
+  const [commandErrors, setCommandErrors] = useSessionStorageState<Record<string, string>>(
     `sqlfu-ui/schema-command-errors/${input.projectName}`,
-    {
-      defaultValue: {},
-    },
+    {},
   );
-  const [desiredSchemaDraft, setDesiredSchemaDraft] = useLocalStorageState(
+  const [desiredSchemaDraft, setDesiredSchemaDraft] = useSessionStorageState<string>(
     `sqlfu-ui/schema-desired/${input.projectName}`,
-    {
-      defaultValue: input.authorities.desiredSchemaSql,
-    },
+    input.authorities.desiredSchemaSql,
   );
   const runCommandMutation = useMutation({
     mutationFn: async (variables: {command: string}) => await runSchemaCommand(variables.command),
@@ -741,7 +743,7 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
       await queryClient.refetchQueries({queryKey: orpc.schema.key()});
     },
   });
-  const desiredSchemaSql = desiredSchemaDraft ?? input.authorities.desiredSchemaSql;
+  const desiredSchemaSql = desiredSchemaDraft;
   const desiredSchemaDirty =
     normalizeSqlDraft(desiredSchemaSql) !== normalizeSqlDraft(input.authorities.desiredSchemaSql);
   const handleSchemaCommand = async (command: [string, ...string[]]) => {
@@ -854,14 +856,26 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
             <div className="card-title-row authority-card-toolbar">
               <div />
               {desiredSchemaDirty ? (
-                <button
-                  className="icon-button"
-                  type="button"
-                  aria-label="Save Desired Schema"
-                  onClick={() => saveDesiredSchemaMutation.mutate({sql: desiredSchemaSql})}
-                >
-                  💾
-                </button>
+                <div className="inline-editor">
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="Discard Desired Schema edits"
+                    title="Discard edits"
+                    onClick={() => setDesiredSchemaDraft(input.authorities.desiredSchemaSql)}
+                  >
+                    ↩
+                  </button>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="Save Desired Schema"
+                    title="Save"
+                    onClick={() => saveDesiredSchemaMutation.mutate({sql: desiredSchemaSql})}
+                  >
+                    💾
+                  </button>
+                </div>
               ) : null}
             </div>
             <SqlCodeMirror
@@ -1072,13 +1086,26 @@ function TablePanel(input: {relation: StudioRelation}) {
       page: 0,
     },
   });
-  const rowsQuery = useSuspenseQuery(tableListOptions);
+  const fallbackRows: TableRowsResponse = {
+    relation: input.relation.name,
+    page: 0,
+    pageSize: 25,
+    editable: false,
+    rowKeys: [],
+    rows: [],
+    columns: input.relation.columns.map((column) => column.name),
+  };
+  // useQuery (not useSuspenseQuery): switching between tables shouldn't blank
+  // the page on a Suspense fallback. Until rows arrive we render the new
+  // relation's column headers with an empty body, which feels far snappier.
+  const rowsResult = useQuery(tableListOptions);
+  const rowsData = rowsResult.data ?? fallbackRows;
   // sessionStorage (not localStorage): unsaved table edits are per-tab scratch
   // work. Persisting across browser sessions surfaces stale drafts against
   // potentially-changed schema/data, which is more confusing than helpful.
   const [draftRows, setDraftRows] = useSessionStorageState<Record<string, unknown>[]>(
     `sqlfu-ui/table-draft/${input.relation.name}/0`,
-    rowsQuery.data.rows,
+    rowsData.rows,
   );
   const saveRowsMutation = useMutation({
     ...orpc.table.save.mutationOptions(),
@@ -1097,14 +1124,14 @@ function TablePanel(input: {relation: StudioRelation}) {
     },
   });
   const emptyRowTemplate = Object.fromEntries(input.relation.columns.map((column) => [column.name, null]));
-  const displayedRows = normalizeStoredTableDraft(draftRows, rowsQuery.data.rows, rowsQuery.data.columns);
+  const displayedRows = normalizeStoredTableDraft(draftRows, rowsData.rows, rowsData.columns);
   const displayedOriginalRows = [
-    ...rowsQuery.data.rows,
-    ...displayedRows.slice(rowsQuery.data.rows.length).map(() => ({...emptyRowTemplate})),
+    ...rowsData.rows,
+    ...displayedRows.slice(rowsData.rows.length).map(() => ({...emptyRowTemplate})),
   ];
   const displayedRowKeys = [
-    ...rowsQuery.data.rowKeys,
-    ...displayedRows.slice(rowsQuery.data.rows.length).map((_, index) => ({
+    ...rowsData.rowKeys,
+    ...displayedRows.slice(rowsData.rows.length).map((_, index) => ({
       kind: 'new' as const,
       value: `new-${input.relation.name}-0-${index}`,
     })),
@@ -1112,7 +1139,7 @@ function TablePanel(input: {relation: StudioRelation}) {
   const rowsDirty = JSON.stringify(displayedRows) !== JSON.stringify(displayedOriginalRows);
   const tableMutationError = saveRowsMutation.error ?? deleteRowMutation.error;
   const handleDiscardRows = () => {
-    setDraftRows(rowsQuery.data.rows);
+    setDraftRows(rowsData.rows);
   };
   const handleSaveRows = () => {
     saveRowsMutation.mutate({
@@ -1168,7 +1195,7 @@ function TablePanel(input: {relation: StudioRelation}) {
           relation={input.relation}
           runSql={(runInput) => orpcClient.sql.run(runInput)}
           rowEditing={{
-            editable: rowsQuery.data.editable,
+            editable: rowsData.editable,
             dirty: rowsDirty,
             saving: saveRowsMutation.isPending,
             onSave: handleSaveRows,
@@ -1177,11 +1204,11 @@ function TablePanel(input: {relation: StudioRelation}) {
           renderDefaultDataTable={({toolbar}) => (
             <DataTable
               storageKey={`relation/${input.relation.name}`}
-              columns={rowsQuery.data.columns}
+              columns={rowsData.columns}
               rowKeys={displayedRowKeys}
               originalRows={displayedOriginalRows}
               rows={displayedRows}
-              editable={rowsQuery.data.editable}
+              editable={rowsData.editable}
               editableColumns={Object.fromEntries(
                 input.relation.columns.map((column) => [column.name, !column.primaryKey]),
               )}
@@ -1208,11 +1235,9 @@ function TablePanel(input: {relation: StudioRelation}) {
 }
 
 function SqlRunnerPanel(input: {relations: StudioRelation[]}) {
-  const [draft, setDraft] = useLocalStorageState<SqlRunnerDraft>('sqlfu-ui/sql-runner-draft', {
-    defaultValue: {
-      sql: `select name, type\nfrom sqlite_schema\nwhere name not like 'sqlite_%'\norder by type, name;`,
-      params: {},
-    },
+  const [draft, setDraft] = useSessionStorageState<SqlRunnerDraft>('sqlfu-ui/sql-runner-draft', {
+    sql: `select name, type\nfrom sqlite_schema\nwhere name not like 'sqlite_%'\norder by type, name;`,
+    params: {},
   });
   const analysisQuery = useQuery({
     ...orpc.sql.analyze.queryOptions({
@@ -1294,12 +1319,14 @@ function QueryPanel(input: {entry: QueryCatalogEntry; relations: StudioRelation[
       await invalidateSchemaContent();
     },
   });
-  const [renameDraft, setRenameDraft] = useLocalStorageState(`sqlfu-ui/query-rename/${entry.id}`, {
-    defaultValue: entry.id,
-  });
-  const [sqlDraft, setSqlDraft] = useLocalStorageState(`sqlfu-ui/query-sql/${entry.id}`, {
-    defaultValue: entry.sqlFileContent,
-  });
+  const [renameDraft, setRenameDraft] = useSessionStorageState<string>(
+    `sqlfu-ui/query-rename/${entry.id}`,
+    entry.id,
+  );
+  const [sqlDraft, setSqlDraft] = useSessionStorageState<string>(
+    `sqlfu-ui/query-sql/${entry.id}`,
+    entry.sqlFileContent,
+  );
   const [renameMode, setRenameMode] = useLocalStorageState(`sqlfu-ui/query-rename-mode/${entry.id}`, {
     defaultValue: false,
   });
@@ -1707,6 +1734,7 @@ function DataTable(input: {
       defaultValue: null,
     },
   );
+  const [hoveredCell, setHoveredCell] = useState<{rowId: number; columnId: string} | null>(null);
   const pendingFocusRef = useRef<{rowId: number; columnId: string} | null>(null);
   const computedColumnWidths = columnWidthAlgorithm({
     availableWidth: Math.max(0, containerWidth - ROW_ACTION_COLUMN_WIDTH),
@@ -1787,28 +1815,55 @@ function DataTable(input: {
         ]
       : []),
   ];
-  const selectedOriginalValue =
-    selectedCell && typeof selectedCell.rowId === 'number' && typeof selectedCell.columnId === 'string'
-      ? formatCellText(input.originalRows?.[selectedCell.rowId]?.[selectedCell.columnId])
+  const expandCell = hoveredCell ?? selectedCell;
+  const expandOriginalValue =
+    expandCell && typeof expandCell.rowId === 'number' && typeof expandCell.columnId === 'string'
+      ? formatCellText(input.originalRows?.[expandCell.rowId]?.[expandCell.columnId])
       : '';
-  const selectedDraftValue =
-    selectedCell && typeof selectedCell.rowId === 'number' && typeof selectedCell.columnId === 'string'
-      ? formatCellText(input.rows[selectedCell.rowId]?.[selectedCell.columnId])
+  const expandDraftValue =
+    expandCell && typeof expandCell.rowId === 'number' && typeof expandCell.columnId === 'string'
+      ? formatCellText(input.rows[expandCell.rowId]?.[expandCell.columnId])
       : '';
-  const selectedCellDirty =
-    selectedCell != null &&
-    isDirtyDataCell(
-      input.originalRows,
-      selectedCell.rowId,
-      selectedCell.columnId,
-      input.rows[selectedCell.rowId]?.[selectedCell.columnId],
-    );
-  const showSelectedCellDiffTabs =
-    selectedCellDirty && selectedOriginalValue !== 'null' && selectedOriginalValue !== '';
+  const expandCellDirty =
+    expandCell != null &&
+    isDirtyDataCell(input.originalRows, expandCell.rowId, expandCell.columnId, input.rows[expandCell.rowId]?.[expandCell.columnId]);
+  const showExpandDiffTabs = expandCellDirty && expandOriginalValue !== 'null' && expandOriginalValue !== '';
+
+  const handleCellMouseOver = (event: React.MouseEvent<HTMLDivElement>) => {
+    const cellEl = (event.target as HTMLElement).closest('.rg-cell') as HTMLElement | null;
+    if (!cellEl) {
+      setHoveredCell(null);
+      return;
+    }
+    const rowAttr = cellEl.getAttribute('data-cell-rowidx');
+    const colAttr = cellEl.getAttribute('data-cell-colidx');
+    if (rowAttr === null || colAttr === null) {
+      setHoveredCell(null);
+      return;
+    }
+    const dataRowId = Number(rowAttr) - 1; // header is rowidx=0; data rows start at 1
+    const colIdx = Number(colAttr);
+    if (dataRowId < 0 || dataRowId >= input.rows.length) {
+      setHoveredCell(null);
+      return;
+    }
+    const columnId = gridColumns[colIdx]?.columnId;
+    if (typeof columnId !== 'string' || columnId === '__row__') {
+      setHoveredCell(null);
+      return;
+    }
+    setHoveredCell({rowId: dataRowId, columnId});
+  };
+
   return (
     <div className="stack">
       {input.toolbar ? <div className="data-toolbar">{input.toolbar}</div> : null}
-      <div className="table-scroll" ref={containerRef}>
+      <div
+        className="table-scroll"
+        ref={containerRef}
+        onMouseOver={handleCellMouseOver}
+        onMouseLeave={() => setHoveredCell(null)}
+      >
         <reactGrid.ReactGrid
           customCellTemplates={customCellTemplates}
           columns={gridColumns}
@@ -1886,14 +1941,14 @@ function DataTable(input: {
               : undefined
           }
         />
-        {input.showSelectedCellDetail && selectedCell ? (
+        {input.showSelectedCellDetail && expandCell ? (
           <CellExpandFloatingButton
-            selectedCell={selectedCell}
+            selectedCell={expandCell}
             gridColumns={gridColumns}
             rowHeight={GRID_ROW_HEIGHT}
-            selectedOriginalValue={selectedOriginalValue}
-            selectedDraftValue={selectedDraftValue}
-            showDiffTabs={showSelectedCellDiffTabs}
+            selectedOriginalValue={expandOriginalValue}
+            selectedDraftValue={expandDraftValue}
+            showDiffTabs={showExpandDiffTabs}
             selectedCellMode={selectedCellMode}
             setSelectedCellMode={setSelectedCellMode}
           />
@@ -1919,7 +1974,7 @@ function CellExpandFloatingButton(input: {
   const colLeft = input.gridColumns.slice(0, colIndex).reduce((sum, c) => sum + (c.width ?? 0), 0);
   const colWidth = input.gridColumns[colIndex]?.width ?? 100;
   const rowTop = (1 + input.selectedCell.rowId) * input.rowHeight;
-  const label = `Show cell ${input.selectedCell.columnId}, row ${input.selectedCell.rowId + 1}`;
+  const label = `Cell: ${input.selectedCell.columnId}, row ${input.selectedCell.rowId + 1}`;
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
@@ -1929,7 +1984,7 @@ function CellExpandFloatingButton(input: {
           aria-label={label}
           style={{
             position: 'absolute',
-            left: colLeft + colWidth - 24,
+            left: colLeft + colWidth - 28,
             top: rowTop + 6,
           }}
         >

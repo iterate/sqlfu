@@ -8,14 +8,18 @@ import {EditorView, keymap} from '@codemirror/view';
 import {acceptCompletion, autocompletion} from '@codemirror/autocomplete';
 import CodeMirror from '@uiw/react-codemirror';
 import CodeMirrorMerge from 'react-codemirror-merge';
+import type {ReactNode} from 'react';
 
+import {Dialog, DialogContent, DialogTitle, DialogTrigger} from './components/ui/dialog.js';
 import type {SqlEditorDiagnostic, StudioRelation} from './shared.js';
 import {useResolvedTheme} from './theme.js';
+
+const FULLSCREEN_HEIGHT = '78vh';
 
 const Original = CodeMirrorMerge.Original;
 const Modified = CodeMirrorMerge.Modified;
 
-export function SqlCodeMirror(input: {
+type SqlCodeMirrorProps = {
   value: string;
   onChange: (value: string) => void;
   ariaLabel: string;
@@ -25,7 +29,9 @@ export function SqlCodeMirror(input: {
   onSave?: (sql: string) => void;
   readOnly?: boolean;
   height?: string;
-}) {
+};
+
+function SqlCodeMirrorBase(input: SqlCodeMirrorProps) {
   const theme = useResolvedTheme();
   const schema = buildSqlSchema(input.relations);
   const executeKeymapHandler = (view: EditorView) => {
@@ -91,14 +97,26 @@ export function SqlCodeMirror(input: {
   );
 }
 
-export function TextCodeMirror(input: {
+export function SqlCodeMirror(input: SqlCodeMirrorProps) {
+  return (
+    <FullscreenAffordance
+      title={input.ariaLabel}
+      inline={<SqlCodeMirrorBase {...input} />}
+      fullscreen={<SqlCodeMirrorBase {...input} height={FULLSCREEN_HEIGHT} />}
+    />
+  );
+}
+
+type TextCodeMirrorProps = {
   value: string;
   ariaLabel: string;
   readOnly?: boolean;
   height?: string;
   language?: 'plain' | 'yaml' | 'markdown' | 'typescript';
   onChange?: (value: string) => void;
-}) {
+};
+
+function TextCodeMirrorBase(input: TextCodeMirrorProps) {
   const theme = useResolvedTheme();
   return (
     <CodeMirror
@@ -115,10 +133,26 @@ export function TextCodeMirror(input: {
   );
 }
 
-export function TextDiffCodeMirror(input: {original: string; draft: string; ariaLabel: string}) {
+export function TextCodeMirror(input: TextCodeMirrorProps) {
+  return (
+    <FullscreenAffordance
+      title={input.ariaLabel}
+      inline={<TextCodeMirrorBase {...input} />}
+      fullscreen={<TextCodeMirrorBase {...input} height={FULLSCREEN_HEIGHT} />}
+    />
+  );
+}
+
+type TextDiffCodeMirrorProps = {original: string; draft: string; ariaLabel: string};
+
+function TextDiffCodeMirrorBase(input: TextDiffCodeMirrorProps & {height?: string}) {
   const theme = useResolvedTheme();
   return (
-    <div aria-label={input.ariaLabel}>
+    <div
+      aria-label={input.ariaLabel}
+      className="text-diff-editor-host"
+      style={input.height ? {height: input.height} : undefined}
+    >
       <CodeMirrorMerge
         orientation="a-b"
         theme={theme}
@@ -132,6 +166,46 @@ export function TextDiffCodeMirror(input: {original: string; draft: string; aria
         <Modified value={input.draft} extensions={buildTextExtensions(true, 'plain')} />
       </CodeMirrorMerge>
     </div>
+  );
+}
+
+export function TextDiffCodeMirror(input: TextDiffCodeMirrorProps) {
+  return (
+    <FullscreenAffordance
+      title={input.ariaLabel}
+      inline={<TextDiffCodeMirrorBase {...input} />}
+      fullscreen={<TextDiffCodeMirrorBase {...input} height={FULLSCREEN_HEIGHT} />}
+    />
+  );
+}
+
+function FullscreenAffordance(props: {title: string; inline: ReactNode; fullscreen: ReactNode}) {
+  return (
+    <div className="cm-host">
+      {props.inline}
+      <Dialog>
+        <DialogTrigger asChild>
+          <button type="button" className="cm-fullscreen-button" aria-label={`Open ${props.title} fullscreen`}>
+            <FullscreenIcon />
+          </button>
+        </DialogTrigger>
+        <DialogContent className="cm-fullscreen-dialog">
+          <DialogTitle className="cm-fullscreen-dialog-title">{props.title}</DialogTitle>
+          {props.fullscreen}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function FullscreenIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+      <path d="M3 6V3h3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M13 10v3h-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M6 13H3v-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M10 3h3v3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
   );
 }
 

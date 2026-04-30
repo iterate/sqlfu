@@ -758,6 +758,51 @@ h3 {
   border-color: var(--accent-border-mid);
 }
 
+.cm-host {
+  position: relative;
+}
+
+.cm-fullscreen-button {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  z-index: 2;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  background: var(--panel-tint-soft);
+  color: var(--muted);
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.cm-host:hover .cm-fullscreen-button,
+.cm-fullscreen-button:hover,
+.cm-fullscreen-button:focus-visible {
+  opacity: 1;
+  color: var(--text);
+  background: var(--panel-tint-mid);
+  border-color: var(--accent-border-mid);
+}
+
+.cm-fullscreen-dialog {
+  width: min(80rem, calc(100vw - 2rem));
+  max-width: none;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.cm-fullscreen-dialog-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 .table-view .rqp,
 .table-view .stack {
   display: flex;
@@ -872,6 +917,12 @@ h3 {
   border-color: var(--line) !important;
   outline: none;
   font-family: 'IBM Plex Mono', 'SFMono-Regular', 'Menlo', monospace;
+  font-size: 0.82rem;
+}
+
+.reactgrid-content .rg-pane .rg-cell:hover,
+.reactgrid-content .rg-pane .rg-cell.cell-expand-active {
+  padding-right: 2rem;
 }
 
 .reactgrid-content .rg-pane .rg-cell > * {
@@ -921,10 +972,6 @@ h3 {
 .reactgrid-content .rg-pane .rg-cell .rg-touch-column-resize-handle:hover .rg-resize-handle,
 .reactgrid-content .rg-pane .rg-cell .rg-touch-column-resize-handle:active .rg-resize-handle {
   background: var(--accent);
-}
-
-.reactgrid-content .rg-pane .rg-cell.rg-number-cell {
-  text-align: right;
 }
 
 .reactgrid-content .rg-pane .rg-cell.dirty-cell {
