@@ -4,6 +4,40 @@ Go through all of the docs and improve them. Look for inconsistencies, informati
 
 I want you to think holistically about the docs, as mentioned in your agent instructions for this repo. From time to time that will mean re-thinking docs entirely. Sometimes it will mean creating a separate task in the branch you create for *changing the product* instead. Docs are most useful when not thought of as something entirely downstream from the product code - if there's no clear way to write about a concept, the concept might be poorly thought through. You are free to flag that as an alternative to documenting weirdness.
 
+## 2026-04-30 pass
+
+Status: starting. This pass is scoped to landing-page pacing and docs navigation, with prose reviewed through the `writing-well` checklist before completion. Nothing is implemented yet; the main missing pieces are the landing rewrite, nested sidebar, build verification, and final task breadcrumbs.
+
+Scope:
+
+- Use <https://v2.alchemy.run> only as pacing/navigation inspiration, not as text or design to copy.
+- Make the landing page introduce one sqlfu feature at a time with concrete code/artifact pairings instead of compressing every capability into one three-card value grid.
+- Reorganize `/docs` sidebar into clearer nested groups for onboarding, concepts, guides, examples, and reference.
+- Keep this pass to docs/website information architecture and prose. Product behavior changes, new CLI behavior, and broad doc rewrites stay out of scope.
+
+Assumptions:
+
+- The existing Getting Started walkthrough remains the first-run path; this pass should make the surrounding landing/docs navigation point at it more cleanly.
+- The Alchemy pattern worth borrowing is structural: a tight start path, feature sections with adjacent artifacts, and docs groups that separate tutorial/concepts/guides/reference.
+- `tasks/improve-docs.md` is evergreen, so this pass stays in this file instead of moving the task to `tasks/complete/`.
+
+Checklist:
+
+- [ ] Land this 2026-04-30 pass as the first commit and open the PR against `nightly/2026-04-30`.
+- [ ] `website/src/pages/index.astro`: replace the current broad value grid with a sequential feature walkthrough that pairs SQL/code with the generated or operational artifact.
+- [ ] `website/src/styles/landing.css`: support the new landing layout responsively without adding decorative-only visuals.
+- [ ] `website/astro.config.mjs`: nest the docs sidebar into onboarding, concepts, guides, examples, and reference.
+- [ ] `website/scripts/sync-docs.mjs`: keep synced docs metadata aligned with the sidebar, including any reference pages surfaced by the new nav.
+- [ ] Apply the `writing-well` checklist: cut inflated framing, prefer concrete examples, avoid templated phrasing and em-dashes, keep headings natural.
+- [ ] Verify with `pnpm --filter sqlfu-website build`.
+- [ ] Update this section with brief italic breadcrumbs as items land.
+
+Implementation notes:
+
+- Initial inspection read `website/src/pages/index.astro`, `website/src/styles/landing.css`, `website/astro.config.mjs`, `website/scripts/sync-docs.mjs`, `packages/sqlfu/README.md`, and representative docs pages.
+- The current sidebar is almost flat: Getting Started, overview, adapters, UI, migration/typegen/runtime/dynamic/outbox/examples/observability/lint/schema-diff. That makes onboarding, concepts, guides, and reference look equivalent.
+- The current landing page already has a simple first CTA, but the main value section jumps from source files to generated wrappers to migrations in three equal cards. This pass will slow that down into separate feature beats.
+
 ## 2026-04-20 pass
 
 Status: done for this pass. All planned edits landed across 5 commits. Website build green after the last edit. Source docs (README + 3 docs pages + landing) are now em-dash-free; only remaining em-dashes in the tree are inside `src/vendor/*/CLAUDE.md` (agent-facing vendor notes, out of scope).
