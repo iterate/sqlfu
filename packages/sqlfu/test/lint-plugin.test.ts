@@ -379,6 +379,25 @@ test('generated-query-freshness: reports stale generated query manifest SQL', as
   });
 });
 
+test('generated-query-freshness: compares source query against the linted SQL text', async () => {
+  const generatedSql = 'select id, name\nfrom users\norder by name;\n';
+  const lintedSql = 'select id, name\nfrom users\nwhere active = 1\norder by name;\n';
+  await using project = await makeAsyncProject({
+    'sqlfu.config.ts': `export default { queries: './sql' }`,
+    'sql/list-users.sql': generatedSql,
+    'sql/.generated/queries.ts': queriesManifest([{sqlFile: 'list-users.sql', sourceSql: generatedSql}]),
+    'sql/.generated/list-users.sql.ts': 'export {};\n',
+  });
+
+  const [result] = await lintSqlText(project, 'sql/list-users.sql', lintedSql, {fix: false});
+
+  expect(result.messages).toHaveLength(1);
+  expect(result.messages[0]).toMatchObject({
+    ruleId: 'sqlfu/generated-query-freshness',
+    message: expect.stringContaining('stale'),
+  });
+});
+
 test('generated-query-freshness: reports a source query missing from the generated query manifest', async () => {
   await using project = await makeAsyncProject({
     'sqlfu.config.ts': `export default { queries: './sql' }`,
@@ -500,14 +519,24 @@ async function lintSqlFile(project: AsyncProject, relativePath: string, {fix}: {
   return lintProjectFile(project, relativePath, {fix});
 }
 
+async function lintSqlText(project: AsyncProject, relativePath: string, text: string, {fix}: {fix: boolean}) {
+  const eslint = createProjectEslint(project, {fix});
+  return eslint.lintText(text, {filePath: path.join(project.root, relativePath)});
+}
+
 async function lintProjectFile(project: AsyncProject, relativePath: string, {fix}: {fix: boolean}) {
+  const eslint = createProjectEslint(project, {fix});
+  return eslint.lintFiles([path.join(project.root, relativePath)]);
+}
+
+function createProjectEslint(project: AsyncProject, {fix}: {fix: boolean}) {
   const eslint = new ESLint({
     cwd: project.root,
     overrideConfigFile: true,
     overrideConfig: [...(plugin.configs?.recommended as any[])],
     fix,
   });
-  return eslint.lintFiles([path.join(project.root, relativePath)]);
+  return eslint;
 }
 
 function queriesManifest(entries: {sqlFile: string; sourceSql: string}[]): string {

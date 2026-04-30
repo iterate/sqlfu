@@ -512,7 +512,9 @@ const generatedQueryFreshness: Rule.RuleModule = {
     return {
       TaggedTemplateExpression(node) {
         if (node.tag.type !== 'Identifier' || node.tag.name !== SQL_FILE_TAG) return;
-        reportSourceQueryFreshnessProblem(context, node, queriesDir, sourceSqlFile, relativePath, generateCommand);
+        if (node.quasi.expressions.length > 0) return;
+        const sourceSql = unescapeWrappedSql(readTemplateRawSql(node.quasi));
+        reportSourceQueryFreshnessProblem(context, node, queriesDir, relativePath, sourceSql, generateCommand);
       },
     };
   },
@@ -522,8 +524,8 @@ function reportSourceQueryFreshnessProblem(
   context: Rule.RuleContext,
   node: ESTree.Node,
   queriesDir: string,
-  sourceSqlFile: string,
   relativePath: string,
+  sourceSql: string,
   generateCommand: string,
 ): void {
   const generatedDir = path.join(queriesDir, '.generated');
@@ -562,7 +564,7 @@ function reportSourceQueryFreshnessProblem(
     return;
   }
 
-  if (entry.sourceSql !== fs.readFileSync(sourceSqlFile, 'utf8')) {
+  if (entry.sourceSql !== sourceSql) {
     context.report({
       node,
       message: `generated query manifest SQL for '${relativePath}' is stale; ${runGenerateInstruction(generateCommand)}`,
