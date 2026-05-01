@@ -236,7 +236,7 @@ export async function applyDraftSql(
   context: SqlfuContext,
   input: {name?: string} | undefined,
   confirm: SqlfuCommandConfirm,
-) {
+): Promise<{path: string} | null> {
   const migrations = await readMigrationsFromContext(context);
   const definitionsSql = await readDefinitionsSql(context.host, context.config.definitions);
   const baselineSql = migrations.length === 0 ? '' : await materializeMigrationsSchemaForContext(context, migrations);
@@ -247,7 +247,7 @@ export async function applyDraftSql(
   });
 
   if (diffLines.length === 0) {
-    return;
+    return null;
   }
 
   const body = await confirm({
@@ -257,7 +257,7 @@ export async function applyDraftSql(
     editable: true,
   });
   if (!body?.trim()) {
-    return;
+    return null;
   }
   if (!context.config.migrations) {
     throw new Error('sqlfu draft requires a `migrations` directory in sqlfu.config.ts');
@@ -269,8 +269,18 @@ export async function applyDraftSql(
     existing: migrations.map((migration) => basename(migration.path)),
   });
   const fileName = `${prefix}_${slugify(input?.name ?? migrationNickname(body))}.sql`;
+  const filePath = joinPath(migrationsDir, fileName);
   await context.host.fs.mkdir(migrationsDir);
-  await context.host.fs.writeFile(joinPath(migrationsDir, fileName), `${body.trim()}\n`);
+  await context.host.fs.writeFile(filePath, `${body.trim()}\n`);
+  return {path: projectRelativePath(context.config, filePath)};
+}
+
+function projectRelativePath(config: SqlfuProjectConfig, filePath: string) {
+  const root = config.projectRoot.endsWith('/') ? config.projectRoot.slice(0, -1) : config.projectRoot;
+  if (filePath.startsWith(`${root}/`)) {
+    return filePath.slice(root.length + 1);
+  }
+  return filePath;
 }
 
 export async function applySyncSql(context: SqlfuContext, confirm: SqlfuCommandConfirm) {

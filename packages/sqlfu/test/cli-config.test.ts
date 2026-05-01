@@ -40,6 +40,37 @@ test('the CLI accepts a non-default config file path', async () => {
   void cwd;
 });
 
+test('generate prints the files it updated', async () => {
+  const root = await createTempFixtureRoot('cli-generate-output');
+  await writeFixtureFiles(root, {
+    'sqlfu.config.ts': dedent`
+      export default {
+        definitions: './definitions.sql',
+        queries: './sql',
+      };
+    `,
+    'definitions.sql': dedent`
+      create table posts (
+        id integer primary key,
+        title text not null
+      );
+    `,
+    'sql/get-posts.sql': 'select id, title from posts order by id;',
+  });
+
+  using cwd = chdir(root);
+
+  const output = await runCli(['generate']);
+
+  expect(output).toContain('Updated generated files:');
+  expect(output).toContain('sql/.generated/get-posts.sql.ts');
+  expect(output).toContain('sql/.generated/index.ts');
+  expect(output).toContain('sql/.generated/tables.ts');
+  expect(output).toContain('.sqlfu/query-catalog.json');
+
+  void cwd;
+});
+
 test('commands that do not need config do not load the selected config file', async () => {
   const root = await createTempFixtureRoot('cli-config-lazy');
   using cwd = chdir(root);
@@ -104,11 +135,20 @@ test('loadProjectState resolves paths relative to the selected config file', asy
 });
 
 async function runCli(argv: string[], cli?: Awaited<ReturnType<typeof createSqlfuCli>>) {
+  const output: string[] = [];
+  const logger = {
+    info(...args: unknown[]) {
+      output.push(args.map(String).join(' '));
+    },
+    error(...args: unknown[]) {
+      output.push(args.map(String).join(' '));
+    },
+  };
   try {
     if (cli) {
       await cli.run({
         argv,
-        logger: {info() {}, error() {}},
+        logger,
         process: {
           exit(code) {
             throw new CliExit(code);
@@ -117,7 +157,7 @@ async function runCli(argv: string[], cli?: Awaited<ReturnType<typeof createSqlf
       });
     } else {
       await runSqlfuCli(argv, {
-        logger: {info() {}, error() {}},
+        logger,
         process: {
           exit(code) {
             throw new CliExit(code);
@@ -127,10 +167,12 @@ async function runCli(argv: string[], cli?: Awaited<ReturnType<typeof createSqlf
     }
   } catch (error) {
     if (error instanceof CliExit && error.code === 0) {
-      return;
+      return output.join('\n');
     }
     throw error;
   }
+
+  return output.join('\n');
 }
 
 function chdir(cwd: string) {

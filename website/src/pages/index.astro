@@ -76,102 +76,100 @@ import '../styles/landing.css';
 
       <h2 class="section-title">The path through a sqlfu project</h2>
       <section class="feature-stack" id="value-panels">
-        <article class="feature-row value-panel" data-animation-key="schema" data-walkthrough-step>
+        <article class="feature-row value-panel" data-animation-key="draft" data-walkthrough-step>
           <div class="feature-copy">
-            <div class="eyebrow">1. schema</div>
-            <h3>Describe the schema you want now.</h3>
+            <div class="eyebrow">1. schema + migration</div>
+            <h3>Change the schema; draft the SQL.</h3>
             <p>
-              <code>definitions.sql</code> is the current desired shape of the database. It is plain SQLite, so reviews stay about tables, indexes, views, and triggers rather than a TypeScript DSL.
+              Edit <code>definitions.sql</code> to the shape you want. <code>sqlfu draft</code> compares that desired schema with replayed migration history, shows the smart diff, then writes the reviewed migration file.
             </p>
-            <a href="/docs/getting-started#define-your-schema">Define a schema</a>
+            <a href="/docs/migration-model">Read the migration model</a>
           </div>
-          <div class="artifact-pair artifact-single" aria-label="Schema file">
-            <figure class="artifact artifact-wide">
+          <div class="artifact-pair feature-demo" aria-label="Schema edit and draft command">
+            <figure class="artifact artifact-tall">
               <figcaption>definitions.sql</figcaption>
               <pre><code data-type-speed="fast"><span class="tok-keyword">create table</span> <span class="tok-name">posts</span> (
   <span class="tok-name">id</span> <span class="tok-keyword">integer primary key autoincrement</span>,
   <span class="tok-name">slug</span> <span class="tok-keyword">text not null unique</span>,
   <span class="tok-name">title</span> <span class="tok-keyword">text not null</span>,
-  <span class="tok-name">published</span> <span class="tok-keyword">integer not null default</span> <span class="tok-number">0</span>
+  <span class="tok-name">published</span> <span class="tok-keyword">integer not null default</span> <span class="tok-number">0</span>,
+<span class="diff-line diff-added">+ <span class="tok-name">foo</span> <span class="tok-keyword">text</span></span>
 );</code></pre>
             </figure>
-          </div>
-        </article>
-
-        <article class="feature-row value-panel" data-animation-key="draft" data-walkthrough-step>
-          <div class="feature-copy">
-            <div class="eyebrow">2. migrations</div>
-            <h3>Let the diff engine write the first draft.</h3>
-            <p>
-              <code>sqlfu draft</code> replays migration history in a scratch database, compares it with <code>definitions.sql</code>, and writes the next migration file. You still review the SQL, especially for renames, backfills, and destructive changes.
-            </p>
-            <a href="/docs/migration-model">Read the migration model</a>
-          </div>
-          <div class="artifact-pair" aria-label="Draft command and reviewed migration">
-            <figure class="artifact terminal">
+            <figure class="artifact terminal artifact-tall">
               <figcaption>terminal</figcaption>
               <pre><code><span data-type-speed="command" data-run-command="true"><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu draft</span></span>
-<span class="terminal-output" data-terminal-output>created migrations/20260430103000_add_posts.sql</span></code></pre>
-            </figure>
-            <figure class="artifact" data-generated-artifact>
-              <figcaption>migrations/20260430103000_add_posts.sql</figcaption>
-              <pre><code><span class="tok-keyword">create table</span> <span class="tok-name">posts</span> (
-  <span class="tok-name">id</span> <span class="tok-keyword">integer primary key autoincrement</span>,
-  <span class="tok-name">slug</span> <span class="tok-keyword">text not null unique</span>,
-  <span class="tok-name">title</span> <span class="tok-keyword">text not null</span>,
-  <span class="tok-name">published</span> <span class="tok-keyword">integer not null default</span> <span class="tok-number">0</span>
-);</code></pre>
+<span class="terminal-output terminal-block" data-terminal-output data-output-pause="1150">│
+◇  Create migration file? ─────────────────╮
+│                                          │
+│  alter table posts add column foo text;  │
+│                                          │
+├──────────────────────────────────────────╯
+│
+◆  Continue with this body?
+│  ● Yes
+│  ○ No
+│  ○ Edit with code
+│  ○ Edit with vi
+│  ○ Edit with nano</span>
+<span class="terminal-output terminal-block" data-terminal-output data-output-pause="0">Wrote migrations/20260501090000_add_foo_to_posts.sql</span></code></pre>
             </figure>
           </div>
         </article>
 
         <article class="feature-row value-panel" data-animation-key="generate" data-walkthrough-step>
           <div class="feature-copy">
-            <div class="eyebrow">3. type generation</div>
+            <div class="eyebrow">2. type generation</div>
             <h3>Generate functions from checked-in queries.</h3>
             <p>
               Query files are the source. <code>sqlfu generate</code> reads the live schema and emits TypeScript wrappers with typed params, typed result rows, and the query name attached for runtime use.
             </p>
             <a href="/docs/typegen">See query shapes</a>
           </div>
-          <div class="artifact-pair artifact-pair-uneven" aria-label="Query file and generated wrapper">
-            <div class="artifact-stack">
-              <figure class="artifact artifact-compact">
-                <figcaption>sql/get-posts.sql</figcaption>
-                <pre><code data-type-speed="fast"><span class="tok-keyword">select</span> <span class="tok-name">id</span>, <span class="tok-name">slug</span>, <span class="tok-name">title</span>
+          <div class="artifact-pair feature-demo" aria-label="Query file and generated TypeScript">
+            <figure class="artifact artifact-tall">
+              <figcaption>sql/get-posts.sql</figcaption>
+              <pre><code data-type-speed="fast"><span class="tok-keyword">select</span> <span class="tok-name">id</span>, <span class="tok-name">slug</span>, <span class="tok-name">title</span>
 <span class="tok-keyword">from</span> <span class="tok-name">posts</span>
 <span class="tok-keyword">where</span> <span class="tok-name">published</span> = <span class="tok-number">1</span>
 <span class="tok-keyword">order by</span> <span class="tok-name">id</span> <span class="tok-keyword">desc</span>
 <span class="tok-keyword">limit</span> <span class="tok-param">:limit</span>;</code></pre>
-              </figure>
-              <figure class="artifact terminal artifact-compact">
+            </figure>
+            <div class="artifact-swap">
+              <figure class="artifact terminal artifact-tall" data-terminal-artifact>
                 <figcaption>terminal</figcaption>
                 <pre><code><span data-type-speed="command" data-run-command="true"><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu generate</span></span>
-<span class="terminal-output" data-terminal-output>wrote src/sqlfu.generated.ts</span></code></pre>
+<span class="terminal-output terminal-block" data-terminal-output data-output-pause="820">Updated generated files:
+  sql/.generated/get-posts.sql.ts
+  sql/.generated/index.ts
+  sql/.generated/tables.ts
+  .sqlfu/query-catalog.json</span></code></pre>
               </figure>
-            </div>
-            <figure class="artifact" data-generated-artifact>
-              <figcaption>generated wrapper</figcaption>
-              <pre><code><span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
+              <figure class="artifact artifact-tall" data-replacement-artifact>
+                <figcaption>src/posts.ts</figcaption>
+                <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
+
+<span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
 <span class="tok-comment">//    ^? Array&lt;&#123;id: number; slug: string; title: string&#125;&gt;</span>
 
 <span class="tok-name">getPosts</span>.<span class="tok-prop">query</span>.<span class="tok-prop">name</span>
 <span class="tok-comment">// </span><span class="tok-string">"getPosts"</span></code></pre>
-            </figure>
+              </figure>
+            </div>
           </div>
         </article>
 
         <article class="feature-row value-panel" data-animation-key="runtime" data-walkthrough-step>
           <div class="feature-copy">
-            <div class="eyebrow">4. runtime</div>
+            <div class="eyebrow">3. runtime</div>
             <h3>Keep the wrapper when the driver changes.</h3>
             <p>
               Bring the SQLite driver your runtime already uses. The adapter preserves sync or async behavior, and the same generated function can feed OpenTelemetry, Sentry, PostHog, or Datadog through <code>instrument()</code>.
             </p>
             <a href="/docs/adapters">Choose an adapter</a>
           </div>
-          <div class="artifact-pair" aria-label="Runtime client and query metadata">
-            <figure class="artifact">
+          <div class="artifact-pair feature-demo" aria-label="Runtime client and query metadata">
+            <figure class="artifact artifact-tall">
               <figcaption>application code</figcaption>
               <pre><code data-type-speed="fast"><span class="tok-keyword">const</span> <span class="tok-name">client</span> = <span class="tok-name">instrument</span>(
   <span class="tok-name">createNodeSqliteClient</span>(<span class="tok-name">db</span>),
@@ -180,7 +178,7 @@ import '../styles/landing.css';
 
 <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);</code></pre>
             </figure>
-            <figure class="artifact" data-generated-artifact>
+            <figure class="artifact artifact-tall" data-generated-artifact>
               <figcaption>query context</figcaption>
               <pre><code><span class="tok-prop">db.query.summary</span> = <span class="tok-string">"getPosts"</span>
 <span class="tok-prop">db.query.text</span> = <span class="tok-string">"select id, slug, title ..."</span>
@@ -237,42 +235,73 @@ import '../styles/landing.css';
             return Array.from(target.querySelectorAll('.typed-char'));
           };
 
-          const revealTyping = async target => {
-            const delay = target.dataset.typeSpeed === 'command' ? 26 : 3;
+          const resetRow = row => {
+            for (const character of row.querySelectorAll('.typed-char')) {
+              character.classList.toggle('is-visible', !character.textContent?.trim());
+            }
+            for (const output of row.querySelectorAll('[data-terminal-output]')) {
+              output.classList.remove('is-visible');
+            }
+            for (const artifact of row.querySelectorAll('[data-generated-artifact], [data-replacement-artifact]')) {
+              artifact.classList.remove('is-visible');
+            }
+            for (const terminal of row.querySelectorAll('.artifact.terminal')) {
+              terminal.classList.remove('is-running', 'is-done', 'is-replaced');
+            }
+          };
+
+          const revealTyping = async (target, isCurrent) => {
+            const delay = target.dataset.typeSpeed === 'command' ? 31 : 4;
             for (const character of prepareTyping(target)) {
+              if (!isCurrent()) return false;
               if (character.classList.contains('is-visible')) continue;
               character.classList.add('is-visible');
               await sleep(delay);
             }
+            return true;
           };
 
           const playRow = async row => {
-            if (row.dataset.walkthroughPlayed === 'true') return;
-            row.dataset.walkthroughPlayed = 'true';
+            const runId = String(Number(row.dataset.walkthroughRun || '0') + 1);
+            row.dataset.walkthroughRun = runId;
+            const isCurrent = () => row.dataset.walkthroughRun === runId;
+            resetRow(row);
 
             for (const target of row.querySelectorAll('[data-type-speed]')) {
-              await revealTyping(target);
+              const completed = await revealTyping(target, isCurrent);
+              if (!completed || !isCurrent()) return;
 
               if (target.dataset.runCommand === 'true') {
                 const terminal = target.closest('.artifact');
                 if (terminal) terminal.classList.add('is-running');
-                await sleep(420);
-                for (const output of row.querySelectorAll('[data-terminal-output]')) {
+                await sleep(500);
+                for (const output of terminal?.querySelectorAll('[data-terminal-output]') || []) {
+                  if (!isCurrent()) return;
                   output.classList.add('is-visible');
+                  await sleep(Number(output.dataset.outputPause || 260));
                 }
                 if (terminal) {
                   terminal.classList.remove('is-running');
                   terminal.classList.add('is-done');
                 }
-                await sleep(140);
+                await sleep(170);
+
+                const replacement = terminal
+                  ?.closest('.artifact-swap')
+                  ?.querySelector('[data-replacement-artifact]');
+                if (replacement) {
+                  terminal.classList.add('is-replaced');
+                  replacement.classList.add('is-visible');
+                }
               }
             }
 
             Array.from(row.querySelectorAll('[data-generated-artifact]')).forEach(
               (artifact, index) => {
                 window.setTimeout(() => {
+                  if (!isCurrent()) return;
                   artifact.classList.add('is-visible');
-                }, index * 90);
+                }, index * 110);
               },
             );
           };
@@ -283,6 +312,13 @@ import '../styles/landing.css';
             }
           }
           document.documentElement.classList.add('landing-anim-ready');
+          for (const row of rows) {
+            resetRow(row);
+            row.addEventListener('click', event => {
+              if (event.target instanceof Element && event.target.closest('a, button')) return;
+              void playRow(row);
+            });
+          }
 
           if (!('IntersectionObserver' in window)) {
             for (const row of rows) void playRow(row);
@@ -293,7 +329,6 @@ import '../styles/landing.css';
             entries => {
               for (const entry of entries) {
                 if (!entry.isIntersecting) continue;
-                observer.unobserve(entry.target);
                 void playRow(entry.target);
               }
             },

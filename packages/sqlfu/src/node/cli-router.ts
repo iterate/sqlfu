@@ -121,8 +121,8 @@ export const router = {
     })
     .handler(async ({context}) => {
       const sqlfuContext = await loadContextConfig(context);
-      await generateQueryTypesForConfig(sqlfuContext.config, sqlfuContext.host);
-      return 'Generated schema-derived database and TypeSQL outputs.';
+      const result = await generateQueryTypesForConfig(sqlfuContext.config, sqlfuContext.host);
+      return ['Updated generated files:', ...result.writtenFiles.map((filePath) => `  ${filePath}`)].join('\n');
     }),
 
   config: base.handler(async ({context}) => {
@@ -155,7 +155,8 @@ export const router = {
         .optional(),
     )
     .handler(async ({context, input}) => {
-      await applyDraftSql(await loadContextConfig(context), input, context.confirm);
+      const result = await applyDraftSql(await loadContextConfig(context), input, context.confirm);
+      return result ? `Wrote ${result.path}` : undefined;
     }),
 
   migrate: base

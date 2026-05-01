@@ -37,7 +37,14 @@ export async function generateQueryTypes(): Promise<void> {
   await generateQueryTypesForConfig(config, host);
 }
 
-export async function generateQueryTypesForConfig(config: SqlfuProjectConfig, host: SqlfuHost): Promise<void> {
+export type GenerateQueryTypesResult = {
+  writtenFiles: string[];
+};
+
+export async function generateQueryTypesForConfig(
+  config: SqlfuProjectConfig,
+  host: SqlfuHost,
+): Promise<GenerateQueryTypesResult> {
   const databasePath = await materializeTypegenDatabase(config, host);
   const schema = await loadSchema(databasePath);
   const queryDocuments = await loadQueryDocuments(config.queries);
@@ -54,6 +61,7 @@ export async function generateQueryTypesForConfig(config: SqlfuProjectConfig, ho
 
   const generatedDir = path.join(config.queries, '.generated');
   await fs.mkdir(generatedDir, {recursive: true});
+  const writtenFiles: string[] = [];
 
   await Promise.all(
     queryDocuments.map(async (queryDocument) => {
@@ -69,15 +77,22 @@ export async function generateQueryTypesForConfig(config: SqlfuProjectConfig, ho
         sync: config.generate.sync,
       });
       await fs.writeFile(wrapperPath, contents);
+      writtenFiles.push(projectRelativePath(config, wrapperPath));
     }),
   );
 
-  await writeTablesFile(generatedDir, schema);
-  await writeGeneratedBarrel(generatedDir, queryDocuments, config.generate.importExtension);
-  await writeQueryCatalog(config, querySources, queryAnalyses, schema);
+  writtenFiles.push(await writeTablesFile(config, generatedDir, schema));
+  writtenFiles.push(await writeGeneratedBarrel(config, generatedDir, queryDocuments, config.generate.importExtension));
+  writtenFiles.push(await writeQueryCatalog(config, querySources, queryAnalyses, schema));
   if (config.migrations) {
-    await writeMigrationsBundle(config);
+    writtenFiles.push(await writeMigrationsBundle(config));
   }
+
+  return {writtenFiles: writtenFiles.sort((left, right) => left.localeCompare(right))};
+}
+
+function projectRelativePath(config: SqlfuProjectConfig, filePath: string) {
+  return path.relative(config.projectRoot, filePath).split(path.sep).join('/');
 }
 
 function renderQueryDocument(input: {
@@ -1100,10 +1115,11 @@ function replaceSqlPatternOutsideCommentsAndStrings(
 }
 
 async function writeGeneratedBarrel(
+  config: SqlfuProjectConfig,
   generatedDir: string,
   queryFiles: QueryFile[],
   importExtension: '.js' | '.ts',
-): Promise<void> {
+): Promise<string> {
   const lines = [
     `export * from "./tables${importExtension}";`,
     ...queryFiles
@@ -1111,7 +1127,9 @@ async function writeGeneratedBarrel(
       .sort((left, right) => left.localeCompare(right))
       .map((relativePath) => `export * from "./${relativePath}.sql${importExtension}";`),
   ];
-  await fs.writeFile(path.join(generatedDir, 'index.ts'), lines.join('\n') + '\n');
+  const filePath = path.join(generatedDir, 'index.ts');
+  await fs.writeFile(filePath, lines.join('\n') + '\n');
+  return projectRelativePath(config, filePath);
 }
 
 /**
@@ -1126,9 +1144,10 @@ async function writeGeneratedBarrel(
  * SQLite hands back for `select * from <table>`.
  */
 async function writeTablesFile(
+  config: SqlfuProjectConfig,
   generatedDir: string,
   schema: ReadonlyMap<string, RelationInfo>,
-): Promise<void> {
+): Promise<string> {
   const relations = Array.from(schema.values()).sort((left, right) => left.name.localeCompare(right.name));
 
   const blocks = relations.map((relation) => {
@@ -1148,7 +1167,9 @@ async function writeTablesFile(
   ];
   const body = blocks.length === 0 ? [`export {};`] : blocks.flatMap((block, index) => (index === 0 ? [block] : ['', block]));
 
-  await fs.writeFile(path.join(generatedDir, 'tables.ts'), [...header, ...body, ``].join('\n'));
+  const filePath = path.join(generatedDir, 'tables.ts');
+  await fs.writeFile(filePath, [...header, ...body, ``].join('\n'));
+  return projectRelativePath(config, filePath);
 }
 
 function relationTypeName(relationName: string): string {
@@ -1159,8 +1180,8 @@ function relationTypeName(relationName: string): string {
     .join('');
 }
 
-async function writeMigrationsBundle(config: SqlfuProjectConfig): Promise<void> {
-  if (!config.migrations) return;
+async function writeMigrationsBundle(config: SqlfuProjectConfig): Promise<string> {
+  if (!config.migrations) throw new Error('writeMigrationsBundle requires migrations config');
   const migrationsDir = config.migrations.path;
 
   let fileNames: string[];
@@ -1210,7 +1231,9 @@ async function writeMigrationsBundle(config: SqlfuProjectConfig): Promise<void> 
     `export type MigrationBundle = typeof migrations;`,
     ``,
   ];
-  await fs.writeFile(path.join(bundleDir, 'migrations.ts'), bundleLines.join('\n'));
+  const filePath = path.join(bundleDir, 'migrations.ts');
+  await fs.writeFile(filePath, bundleLines.join('\n'));
+  return projectRelativePath(config, filePath);
 }
 
 async function writeQueryCatalog(
@@ -1218,7 +1241,7 @@ async function writeQueryCatalog(
   querySources: QuerySource[],
   queryAnalyses: Awaited<ReturnType<typeof analyzeVendoredTypesqlQueries>>,
   schema: ReadonlyMap<string, RelationInfo>,
-): Promise<void> {
+): Promise<string> {
   // DDL statements (e.g. `create table if not exists`) get trivial wrappers but have no
   // params / result columns / json schema — nothing to populate a form with. Leaving them out
   // of the catalog keeps UI consumers from rendering a meaningless "run" button for each one.
@@ -1289,6 +1312,7 @@ async function writeQueryCatalog(
   const outputPath = path.join(config.projectRoot, '.sqlfu', 'query-catalog.json');
   await fs.mkdir(path.dirname(outputPath), {recursive: true});
   await fs.writeFile(outputPath, JSON.stringify(catalog, null, 2) + '\n');
+  return projectRelativePath(config, outputPath);
 }
 
 function toAdHocQueryAnalysis(descriptor: GeneratedQueryDescriptor): AdHocQueryAnalysis {
