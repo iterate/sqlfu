@@ -1,8 +1,8 @@
-# sqlfu Migration Model
+# SQL migrations
 
 >tl;dr: if you don't want to remember a bunch of commands, just run `sqlfu check`. It will say "all good" or give you a recommend action.
 
-This document describes the current migration model in plain English.
+This document describes sqlfu's migration model in plain English.
 
 "What's the state of my database" is an ambiguous question, with many different answers. How do you *expect* your database to look? How do your migration files imply your database *should* look? How do your *applied* migrations imply it should look? How does it *actually* look? What does it mean when these questions have conflicting answers?
 

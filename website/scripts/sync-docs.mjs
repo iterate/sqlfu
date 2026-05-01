@@ -30,20 +30,34 @@ const docs = [
     title: 'Adapters',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'adapters.md'),
     description:
-      'Drivers sqlfu supports out of the box: better-sqlite3, libsql, Turso Cloud, Cloudflare D1, Durable Objects, Expo, sqlite-wasm, and more.',
+      'Client factories for better-sqlite3, node:sqlite, bun:sqlite, libsql, Cloudflare D1, Durable Objects, Expo, sqlite-wasm, and more.',
+  },
+  {
+    slug: 'client',
+    title: 'Runtime client',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'client.md'),
+    description:
+      'The lightweight Client interface your app runtime usually depends on, plus how adapters preserve sync and async drivers.',
+  },
+  {
+    slug: 'cli',
+    title: 'CLI',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'cli.md'),
+    description:
+      'What npx sqlfu does, what each subcommand is for, and how check, draft, migrate, generate, sync, and format fit together.',
   },
   {
     slug: 'ui',
-    title: 'UI',
+    title: 'Admin UI',
     sourcePath: path.join(repoRoot, 'packages', 'ui', 'README.md'),
     description:
-      'Hosted, demo, and embedded sqlfu UI modes, including partial-fetch mounting under your own auth and route prefix.',
+      'Hosted, demo, and embedded Admin UI modes for schema, migrations, queries, and live data.',
   },
   {
     slug: 'migration-model',
-    title: 'Migration Model',
+    title: 'SQL migrations',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'migration-model.md'),
-    description: 'Migration history, drift checks, and the intended production path.',
+    description: 'Migration history, drift checks, smart drafts, and the intended production path.',
   },
   {
     slug: 'observability',
@@ -59,7 +73,7 @@ const docs = [
   },
   {
     slug: 'typegen',
-    title: 'Type generation',
+    title: 'Type generation from SQL',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'typegen.md'),
     description:
       'Generated query wrappers, multi-query SQL files, and inferred parameter forms for lists and bulk inserts.',
@@ -86,14 +100,14 @@ const docs = [
   },
   {
     slug: 'outbox',
-    title: 'Outbox',
+    title: 'Outbox (experimental)',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'outbox.md'),
     description:
       'Transactional-outbox / job-queue built on sqlfu. Fan-out, retry, delayed dispatch, crash recovery, causation chains.',
   },
   {
     slug: 'schema-diff-model',
-    title: 'Schema Diff Model',
+    title: 'Schema diff internals',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'schema-diff-model.md'),
     description: 'How sqlfu models SQLite schema diffing and migration planning.',
   },
@@ -102,6 +116,18 @@ const docs = [
     title: 'Lint Plugin',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'lint-plugin.md'),
     description: 'ESLint rules for enforcing the SQL First model: query-naming and format-sql.',
+  },
+  {
+    slug: 'formatter',
+    title: 'Formatter',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'formatter.md'),
+    description: 'Format SQL files from the CLI, ESLint, or TypeScript.',
+  },
+  {
+    slug: 'agent-skill',
+    title: 'Agent skill',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'agent-skill.md'),
+    description: 'Install the sqlfu agent skill so coding agents edit SQL, migrations, and generated files coherently.',
   },
 ];
 

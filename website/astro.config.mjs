@@ -49,21 +49,29 @@ export default defineConfig({
         {
           label: 'Concepts',
           items: [
-            {label: 'Migration Model', slug: 'docs/migration-model'},
-            {label: 'Schema Diff Model', slug: 'docs/schema-diff-model'},
+            {label: 'Runtime client', slug: 'docs/client'},
+            {label: 'SQL migrations', slug: 'docs/migration-model'},
+            {label: 'Type generation from SQL', slug: 'docs/typegen'},
+            {label: 'Admin UI', slug: 'docs/ui'},
           ],
         },
         {
-          label: 'Guides',
+          label: 'Features',
           items: [
+            {label: 'CLI', slug: 'docs/cli'},
             {label: 'Adapters', slug: 'docs/adapters'},
-            {label: 'Type generation', slug: 'docs/typegen'},
             {label: 'Runtime validation', slug: 'docs/runtime-validation'},
-            {label: 'Dynamic queries', slug: 'docs/dynamic-queries'},
             {label: 'Observability', slug: 'docs/observability'},
-            {label: 'UI', slug: 'docs/ui'},
-            {label: 'Lint Plugin', slug: 'docs/lint-plugin'},
-            {label: 'Outbox', slug: 'docs/outbox'},
+            {label: 'Lint plugin', slug: 'docs/lint-plugin'},
+            {label: 'Formatter', slug: 'docs/formatter'},
+            {label: 'Agent skill', slug: 'docs/agent-skill'},
+            {label: 'Outbox (experimental)', slug: 'docs/outbox'},
+          ],
+        },
+        {
+          label: 'Recipes',
+          items: [
+            {label: 'Dynamic queries', slug: 'docs/dynamic-queries'},
             {label: 'Pure-SQL id generators', slug: 'docs/id-helpers'},
           ],
         },
@@ -71,6 +79,7 @@ export default defineConfig({
           label: 'Reference',
           items: [
             {label: 'Errors', slug: 'docs/errors'},
+            {label: 'Schema diff internals', slug: 'docs/schema-diff-model'},
             {
               label: 'Generate examples',
               items: [

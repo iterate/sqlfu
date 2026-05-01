@@ -1,8 +1,11 @@
-# Type generation
+# Type generation from SQL
 
 `sqlfu generate` reads checked-in `.sql` files and emits TypeScript wrappers under
 `sql/.generated/`. The generated function name normally comes from the file path:
 `sql/get-post.sql` becomes `getPost`.
+
+The goal is to write the data-access layer in plain SQL, then call it from
+TypeScript with inferred params and rows.
 
 ```sql
 -- sql/get-post.sql

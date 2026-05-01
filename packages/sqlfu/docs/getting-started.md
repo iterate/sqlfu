@@ -178,10 +178,10 @@ Review the file, commit it, then run `npx sqlfu migrate` and `npx sqlfu generate
 Pick the path that matches where you are:
 
 - **Need Turso, D1, Bun, or another driver?** [Adapters](/docs/adapters): copy-paste snippets for every supported runtime, plus guidance on sync vs async.
-- **Want to understand how migrations work?** [Migration Model](/docs/migration-model): the replay-based model, what `sqlfu check` verifies, and what to do when a migration fails.
+- **Want to understand how migrations work?** [SQL migrations](/docs/migration-model): the replay-based model, what `sqlfu check` verifies, and what to do when a migration fails.
 - **Want to handle adapter errors consistently?** [Errors](/docs/errors): normalized `SqlfuError.kind` values and handler examples.
 - **Need validated rows for tRPC or forms?** [Runtime validation](/docs/runtime-validation): opt-in validation with arktype, valibot, or zod baked into the generated wrappers.
-- **Need multiple queries per file or list params?** [Type generation](/docs/typegen): `@name`, inferred `IN (:ids)` lists, object dot paths, and inferred bulk inserts.
+- **Need multiple queries per file or list params?** [Type generation from SQL](/docs/typegen): `@name`, inferred `IN (:ids)` lists, object dot paths, and inferred bulk inserts.
 - **Need query telemetry?** [Observability](/docs/observability): query names in OpenTelemetry spans, Sentry errors, PostHog events, and Datadog metrics.
 - **Want to see more generated type shapes?** [Generate examples](/docs/examples): real query fixtures showing param and result types for common patterns.
-- **Want a visual interface for your database?** [UI](/docs/ui): run queries, inspect tables, and draft migrations in the browser.
+- **Want a visual interface for your database?** [Admin UI](/docs/ui): run queries, inspect tables, and draft migrations in the browser.
