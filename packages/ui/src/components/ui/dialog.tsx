@@ -7,6 +7,7 @@ import {cn} from '../../lib/utils.js';
 const Dialog = DialogPrimitive.Root;
 const DialogPortal = DialogPrimitive.Portal;
 const DialogClose = DialogPrimitive.Close;
+const DialogTrigger = DialogPrimitive.Trigger;
 
 const DialogOverlay = forwardRef<
   ElementRef<typeof DialogPrimitive.Overlay>,
@@ -51,4 +52,4 @@ const DialogDescription = forwardRef<
   return <DialogPrimitive.Description ref={ref} className={cn('shad-dialog-description', className)} {...props} />;
 });
 
-export {Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle};
+export {Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger};

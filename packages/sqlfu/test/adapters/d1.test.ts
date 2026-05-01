@@ -167,5 +167,5 @@ function toCallableFunctionSource(source: string): string {
 }
 
 interface WorkerFetcherLike {
-  fetch(input: string | URL | Request, init?: RequestInit): Promise<Response>;
+  fetch(input: string, init?: RequestInit): Promise<Response>;
 }

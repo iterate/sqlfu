@@ -21,6 +21,7 @@ import {normalizeComparableSql, sqlMentionsIdentifier} from './sqltext.js';
 import type {
   SqliteDependencyFact,
   SchemadiffOperation,
+  SchemadiffReason,
   SqliteInspectedColumn,
   SqliteInspectedDatabase,
   SqliteInspectedIndex,
@@ -28,6 +29,9 @@ import type {
   SqliteInspectedTrigger,
   SqliteInspectedView,
 } from './types.js';
+
+const formatReason = (reason: SchemadiffReason): string =>
+  `${reason.verb} ${reason.resourceType} "${reason.resourceName}": ${reason.explanation}`;
 
 export function planSchemaDiff(input: {
   baseline: SqliteInspectedDatabase;
@@ -108,7 +112,7 @@ export function planSchemaDiff(input: {
         throw new Error(`destructive schema change required for table ${tableName}`);
       }
       rebuiltTables.add(tableName);
-      pushStatements(statements, planTableRebuild(baselineTable, desiredTable));
+      pushStatements(statements, planTableRebuild(baselineTable, desiredTable, classification.reason));
     }
   }
 
@@ -134,6 +138,31 @@ export function planSchemaDiff(input: {
     )
     .map(([triggerName]) => triggerName)
     .sort((left, right) => left.localeCompare(right));
+
+  const viewCascadeExplanations = new Map<string, string>();
+  for (const tableName of [...rebuiltTables].sort((left, right) => left.localeCompare(right))) {
+    const dependents = transitiveViewDependents([tableName], baselineViewDependencyFacts, input.baseline.views);
+    for (const viewName of dependents) {
+      if (recreatedViewNames.includes(viewName) && !viewCascadeExplanations.has(viewName)) {
+        viewCascadeExplanations.set(viewName, `table "${tableName}" needs rebuild`);
+      }
+    }
+  }
+
+  const triggerCascadeExplanations = new Map<string, string>();
+  for (const triggerName of recreatedTriggerNames) {
+    if (modifiedTriggerNames.includes(triggerName)) {
+      continue;
+    }
+    const trigger = input.desired.triggers[triggerName]!;
+    if (rebuiltTables.has(trigger.onName)) {
+      triggerCascadeExplanations.set(triggerName, `table "${trigger.onName}" needs rebuild`);
+    } else if (modifiedViewNames.includes(trigger.onName)) {
+      triggerCascadeExplanations.set(triggerName, `view "${trigger.onName}" changing`);
+    } else if (recreatedViewNames.includes(trigger.onName)) {
+      triggerCascadeExplanations.set(triggerName, `view "${trigger.onName}" recreating`);
+    }
+  }
 
   for (const tableName of commonTableNames) {
     if (changedTables.has(tableName)) {
@@ -180,6 +209,12 @@ export function planSchemaDiff(input: {
     if (handledRemovedTriggerNames.has(triggerName)) {
       continue;
     }
+    const explanation = triggerCascadeExplanations.get(triggerName);
+    if (explanation) {
+      prefixes.push(
+        `-- ${formatReason({verb: 'dropping', resourceType: 'trigger', resourceName: triggerName, explanation})}`,
+      );
+    }
     prefixes.push(`drop trigger ${maybeQuoteIdentifier(triggerName)};`);
   }
 
@@ -188,6 +223,12 @@ export function planSchemaDiff(input: {
   )) {
     if (handledRemovedViewNames.has(viewName)) {
       continue;
+    }
+    const explanation = viewCascadeExplanations.get(viewName);
+    if (explanation) {
+      prefixes.push(
+        `-- ${formatReason({verb: 'dropping', resourceType: 'view', resourceName: viewName, explanation})}`,
+      );
     }
     prefixes.push(`drop view ${maybeQuoteIdentifier(viewName)};`);
   }
@@ -219,6 +260,12 @@ export function planSchemaDiff(input: {
     if (handledCreatedViewNames.has(viewName)) {
       continue;
     }
+    const explanation = viewCascadeExplanations.get(viewName);
+    if (explanation) {
+      statements.push(
+        `-- ${formatReason({verb: 'recreating', resourceType: 'view', resourceName: viewName, explanation})}`,
+      );
+    }
     statements.push(withSemicolon(input.desired.views[viewName]!.createSql));
   }
 
@@ -229,6 +276,12 @@ export function planSchemaDiff(input: {
   )) {
     if (handledCreatedTriggerNames.has(triggerName)) {
       continue;
+    }
+    const explanation = triggerCascadeExplanations.get(triggerName);
+    if (explanation) {
+      statements.push(
+        `-- ${formatReason({verb: 'recreating', resourceType: 'trigger', resourceName: triggerName, explanation})}`,
+      );
     }
     statements.push(withSemicolon(input.desired.triggers[triggerName]!.createSql));
   }
@@ -257,7 +310,7 @@ function classifyTableChange(input: {
       handledCreatedViewNames: string[];
       handledCreatedTriggerNames: string[];
     }
-  | {kind: 'rebuild'} {
+  | {kind: 'rebuild'; reason: SchemadiffReason} {
   const {
     tableName,
     baseline,
@@ -326,7 +379,91 @@ function classifyTableChange(input: {
     };
   }
 
-  return {kind: 'rebuild'};
+  return {
+    kind: 'rebuild',
+    reason: {
+      verb: 'rebuilding',
+      resourceType: 'table',
+      resourceName: desiredTable.name,
+      explanation: diagnoseRebuildExplanation(baselineTable, desiredTable),
+    },
+  };
+}
+
+function diagnoseRebuildExplanation(baseline: SqliteInspectedTable, desired: SqliteInspectedTable): string {
+  if (!arraysEqual(baseline.primaryKey, desired.primaryKey)) {
+    return 'primary key changed';
+  }
+  if (stableStringify(baseline.uniqueConstraints) !== stableStringify(desired.uniqueConstraints)) {
+    return 'unique constraints changed';
+  }
+  if (stableStringify(baseline.foreignKeys) !== stableStringify(desired.foreignKeys)) {
+    return 'foreign keys changed';
+  }
+
+  const baselineByName = new Map(baseline.columns.map((column) => [column.name, column]));
+  const desiredByName = new Map(desired.columns.map((column) => [column.name, column]));
+  const droppedNames = baseline.columns.filter((column) => !desiredByName.has(column.name)).map((column) => column.name);
+  const addedColumns = desired.columns.filter((column) => !baselineByName.has(column.name));
+
+  for (const desiredColumn of desired.columns) {
+    const baselineColumn = baselineByName.get(desiredColumn.name);
+    if (!baselineColumn || columnEquals(baselineColumn, desiredColumn)) {
+      continue;
+    }
+    return describeColumnChange(baselineColumn, desiredColumn);
+  }
+
+  if (droppedNames.length > 0) {
+    const quoted = droppedNames.map((name) => `"${name}"`).join(', ');
+    const noun = droppedNames.length === 1 ? 'column' : 'columns';
+    return `${noun} ${quoted} dropped (cannot drop in place)`;
+  }
+
+  for (const addedColumn of addedColumns) {
+    if (addedColumn.generated) {
+      return `new column "${addedColumn.name}" is generated`;
+    }
+    if (addedColumn.hidden !== 0) {
+      return `new column "${addedColumn.name}" is hidden`;
+    }
+  }
+
+  return 'columns reordered';
+}
+
+function columnRemovalExplanation(tableName: string, removedColumnNames: Set<string>): string {
+  const sorted = [...removedColumnNames].sort((left, right) => left.localeCompare(right));
+  const list = sorted.map((name) => `"${name}"`).join(', ');
+  const noun = sorted.length === 1 ? 'column' : 'columns';
+  return `table "${tableName}" removing ${noun} ${list}`;
+}
+
+function describeColumnChange(baseline: SqliteInspectedColumn, desired: SqliteInspectedColumn): string {
+  const name = desired.name;
+  if (baseline.declaredType !== desired.declaredType) {
+    const from = baseline.declaredType || '<none>';
+    const to = desired.declaredType || '<none>';
+    return `column "${name}" type changed from ${from} to ${to}`;
+  }
+  if ((baseline.collation || '') !== (desired.collation || '')) {
+    const from = baseline.collation || 'default';
+    const to = desired.collation || 'default';
+    return `column "${name}" collation changed from ${from} to ${to}`;
+  }
+  if (baseline.notNull !== desired.notNull) {
+    return `column "${name}" not-null ${desired.notNull ? 'added' : 'removed'}`;
+  }
+  if (baseline.defaultSql !== desired.defaultSql) {
+    return `column "${name}" default changed`;
+  }
+  if (Boolean(baseline.generated) !== Boolean(desired.generated)) {
+    return `column "${name}" generated expression ${desired.generated ? 'added' : 'removed'}`;
+  }
+  if (baseline.hidden !== desired.hidden) {
+    return `column "${name}" hidden status changed`;
+  }
+  return `column "${name}" definition changed`;
 }
 
 function canUseDirectDropColumn(input: {
@@ -420,6 +557,12 @@ function planDirectDropColumnOperations(input: {
     desiredTriggerDependencyFacts,
   } = input;
   const removedColumnNames = new Set(removedColumns.map((column) => column.name));
+  const cascadeExplanation = columnRemovalExplanation(tableName, removedColumnNames);
+  const cascadeReason = (
+    verb: 'dropping' | 'recreating',
+    resourceType: 'view' | 'trigger' | 'index',
+    resourceName: string,
+  ): SchemadiffReason => ({verb, resourceType, resourceName, explanation: cascadeExplanation});
   const operations: SchemadiffOperation[] = [];
   const blockerDropIds: string[] = [];
   const handledRemovedViewNames: string[] = [];
@@ -449,6 +592,7 @@ function planDirectDropColumnOperations(input: {
       id,
       kind: 'drop-index',
       sql: `drop index ${maybeQuoteIdentifier(index.name)};`,
+      reason: cascadeReason('dropping', 'index', index.name),
       dependencies: [],
     });
   }
@@ -466,6 +610,7 @@ function planDirectDropColumnOperations(input: {
       id,
       kind: 'drop-trigger',
       sql: `drop trigger ${maybeQuoteIdentifier(trigger.name)};`,
+      reason: cascadeReason('dropping', 'trigger', trigger.name),
       dependencies: [],
     });
   }
@@ -500,6 +645,7 @@ function planDirectDropColumnOperations(input: {
       id,
       kind: 'drop-view',
       sql: `drop view ${maybeQuoteIdentifier(view.name)};`,
+      reason: cascadeReason('dropping', 'view', view.name),
       dependencies: [...new Set(dependencies)].sort((left, right) => left.localeCompare(right)),
     });
   }
@@ -526,6 +672,7 @@ function planDirectDropColumnOperations(input: {
       id: `create-index:${tableName}:${index.name}`,
       kind: 'create-index',
       sql: withSemicolon(index.createSql),
+      reason: cascadeReason('recreating', 'index', index.name),
       dependencies: [dropColumnId],
     });
   }
@@ -544,6 +691,7 @@ function planDirectDropColumnOperations(input: {
       id: desiredCreateViewIds.get(view.name)!,
       kind: 'create-view',
       sql: withSemicolon(view.createSql),
+      reason: cascadeReason('recreating', 'view', view.name),
       dependencies: [...new Set(dependencies)].sort((left, right) => left.localeCompare(right)),
     });
   }
@@ -572,6 +720,7 @@ function planDirectDropColumnOperations(input: {
       id: `create-trigger:${trigger.name}`,
       kind: 'create-trigger',
       sql: withSemicolon(trigger.createSql),
+      reason: cascadeReason('recreating', 'trigger', trigger.name),
       dependencies,
     });
   }
@@ -601,7 +750,11 @@ function orderOperations(operations: SchemadiffOperation[]): string[] {
   }
 
   const orderedIds = result.chunks.flatMap((chunk) => [...chunk].sort((left, right) => left.localeCompare(right)));
-  return orderedIds.flatMap((id) => splitStatementForOutput(operationsById.get(id)!.sql));
+  return orderedIds.flatMap((id) => {
+    const operation = operationsById.get(id)!;
+    const lines = splitStatementForOutput(operation.sql);
+    return operation.reason ? [`-- ${formatReason(operation.reason)}`, ...lines] : lines;
+  });
 }
 
 function transitiveViewDependents(
@@ -665,7 +818,11 @@ function orderViewsForDrop(
   return [...orderViewsForCreate(views, schema)].reverse();
 }
 
-function planTableRebuild(baseline: SqliteInspectedTable, desired: SqliteInspectedTable): string[] {
+function planTableRebuild(
+  baseline: SqliteInspectedTable,
+  desired: SqliteInspectedTable,
+  reason: SchemadiffReason,
+): string[] {
   const tempName = `__sqlfu_old_${desired.name}`;
   const introducedPrimaryKeyColumns = desired.primaryKey.filter(
     (columnName) =>
@@ -686,7 +843,10 @@ function planTableRebuild(baseline: SqliteInspectedTable, desired: SqliteInspect
     );
   });
 
-  const statements = [`alter table ${renderTableName(baseline.name)} rename to ${renderTableName(tempName)};`];
+  const statements = [
+    `-- ${formatReason(reason)}`,
+    `alter table ${renderTableName(baseline.name)} rename to ${renderTableName(tempName)};`,
+  ];
   statements.push(withSemicolon(desired.createSql));
 
   if (copyableColumns.length > 0) {

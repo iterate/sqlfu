@@ -1,30 +1,69 @@
 # Adapters
 
-`sqlfu` doesn't ship its own database driver. It sits on top of whichever SQLite-compatible client you already use — local file, embedded engine, edge runtime, or a real remote database — and gives you the same typed client surface on top.
+`sqlfu` doesn't ship its own database driver. It sits on top of whichever
+SQLite-compatible client you already use (local file, embedded engine, edge
+runtime, or a real remote database) and gives you the same typed client surface
+on top.
 
 This page lists every adapter that ships in `sqlfu` today, with a copy-paste snippet for each.
 
-If you already know which driver you want to use, jump to the section below. If you're picking from scratch, see [Choosing an adapter](#choosing-an-adapter) at the bottom.
+If you already know which driver you want to use, jump to the section below. If
+you're picking from scratch, see [Choosing an adapter](#choosing-an-adapter) at
+the bottom. For the shared client contract, see [Runtime client](https://sqlfu.dev/docs/client).
 
 ## Sync stays sync
 
-Most query libraries force every database call to be `async`, even when the underlying driver is synchronous — the library is written async-first, and that colour leaks into your entire call stack.
+Most query libraries force every database call to be `async`, even when the
+underlying driver is synchronous. sqlfu preserves the sync or async nature of the
+driver you brought:
 
-`sqlfu` goes out of its way to preserve the sync-ness of the driver you bring:
+- Give it `better-sqlite3` and you get a `SyncClient`. `client.all(...)`
+  returns rows, not a `Promise<rows>`.
+- Give it `@libsql/client` and you get an `AsyncClient`. Same surface, but
+  promise-returning.
+- Generated wrappers and `applyMigrations()` follow the same split.
 
-- Give it `better-sqlite3` → you get a `SyncClient`. `client.all(...)` returns rows, not a `Promise<rows>`. `client.transaction(fn)` calls `fn` synchronously.
-- Give it `@libsql/client` → you get an `AsyncClient`. Same surface, but `Promise`-returning.
-- Generated wrappers follow suit. A query generated against a sync-backed client is a plain function that returns its rows. Generated against an async-backed client, it returns a `Promise`. No gratuitous `async` creeping up your call stack.
+That is why the matrix below has a Sync/Async column. Swapping from one sync
+driver to another is usually a one-line boundary change. Swapping from sync to
+async is a real application change, and sqlfu leaves that visible in the types.
 
-Concretely, that's why the Sync/Async column exists in the compatibility matrix below, and why the transaction helpers inside sqlfu have [two implementations](../src/core/sqlite.ts): `surroundWithBeginCommitRollbackSync` and `surroundWithBeginCommitRollbackAsync`. The [generator](../src/typegen/index.ts) reads `client.sync: true` / `false` and emits either a plain `function` returning `SyncClient`-flavored rows, or an `async function` returning a `Promise`.
+## Prepared statements
 
-Why this matters:
+Generated wrappers are still the main application path: put stable queries in `.sql` files, run `sqlfu generate`, and call the generated function. `client.prepare(sql)` is the lower-level client API for SQL that needs to stay dynamic or ad-hoc without reaching through to `client.driver`.
 
-- **Call sites stay honest.** `function saveUser(user)` calling a sync-backed sqlfu client doesn't silently become `async`. No "await-pollution" spreading through code that didn't actually do anything async.
-- **Runtimes that prefer sync stay fast.** Cloudflare Durable Objects' SQLite is synchronous by design. Scripts, CLI tools, and background jobs on `better-sqlite3` don't pay for microtask thrashing they don't need.
-- **Swapping drivers is a one-line change, as long as you stay in the same lane.** Going from `better-sqlite3` (sync) to `@tursodatabase/database` (async) does require awaiting, because the work actually did change. `sqlfu` doesn't hide that difference from the type system — it surfaces it.
+Use it when you want to reuse one statement handle, bind named parameters directly, or call `.all()` and `.run()` against the same SQL string. The handle follows the same sync/async split as the client:
 
-In short: the client you get matches the driver you brought. sqlfu doesn't pretend a sync driver is async, and it doesn't pretend an async driver is sync.
+```ts
+interface PostRow {
+  id: number;
+  title: string;
+}
+
+using stmt = syncClient.prepare<PostRow>(`
+  select id, title
+  from posts
+  where slug = :slug
+`);
+
+const rows = stmt.all({slug: 'hello-world'});
+```
+
+```ts
+interface PostRow {
+  id: number;
+  title: string;
+}
+
+await using stmt = asyncClient.prepare<PostRow>(`
+  select id, title
+  from posts
+  where slug = :slug
+`);
+
+const rows = await stmt.all({slug: 'hello-world'});
+```
+
+Prepared handles expose `.all(params)`, `.run(params)`, and `.iterate(params)`. `params` can be a positional array (`[id]`) or a named object (`{slug}`). Adapters that have native prepared statements hold the driver handle and dispose it when the `using` scope exits. Adapters whose driver only exposes an `exec`/`execute` API provide a compatible shim: the method still exists, but each call re-issues the SQL through the driver.
 
 
 ## Compatibility matrix
@@ -102,7 +141,7 @@ const client = createTursoDatabaseClient(db);
 
 ## Remote / cloud
 
-### `@libsql/client` — Turso Cloud (or local `file:`)
+### `@libsql/client`: Turso Cloud (or local `file:`)
 
 ```ts
 import {createClient} from '@libsql/client';
@@ -117,7 +156,7 @@ const client = createLibsqlClient(raw);
 
 The same adapter works against a local file when `url` is `file:app.db`.
 
-### `@tursodatabase/serverless` — HTTP, no native deps
+### `@tursodatabase/serverless`: HTTP, no native deps
 
 ```ts
 import {connect} from '@tursodatabase/serverless';
@@ -130,9 +169,9 @@ const conn = connect({
 const client = createTursoServerlessClient(conn);
 ```
 
-No native bindings — runs on any runtime with `fetch()` (Vercel Edge, Cloudflare Workers, Deno Deploy, AWS Lambda).
+No native bindings: runs on any runtime with `fetch()` (Vercel Edge, Cloudflare Workers, Deno Deploy, AWS Lambda).
 
-### `@tursodatabase/sync` — local file, synced to Turso
+### `@tursodatabase/sync`: local file, synced to Turso
 
 Same adapter as `@tursodatabase/database`; the difference is at the driver level (the driver keeps a local file and knows how to `push()`/`pull()` to a remote Turso DB).
 
@@ -148,7 +187,7 @@ const db = await connect({
 await db.connect();
 const client = createTursoDatabaseClient(db);
 
-// sync at your own cadence — sqlfu doesn't own this
+// sync at your own cadence; sqlfu doesn't own this
 await db.push();
 await db.pull();
 ```
@@ -169,15 +208,26 @@ export default {
 ### Cloudflare Durable Object (per-DO SQLite)
 
 ```ts
+import {DurableObject} from 'cloudflare:workers';
 import {createDurableObjectClient} from 'sqlfu';
+import {migrate} from '../migrations/.generated/migrations';
 
-export class Counter {
-  client;
-  constructor(state: DurableObjectState) {
-    this.client = createDurableObjectClient(state.storage.sql);
+export class Counter extends DurableObject {
+  client: ReturnType<typeof createDurableObjectClient>;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+
+    this.client = createDurableObjectClient(ctx.storage);
+
+    migrate(this.client);
   }
 }
 ```
+
+Pass `ctx.storage`, not `ctx.storage.sql`. The SQL handle is enough for queries, but the full storage object gives sqlfu access to Cloudflare's `transactionSync()` API, so each migration is applied inside a real Durable Object storage transaction. If you need a query-only escape hatch, pass `{sql: ctx.storage.sql}` explicitly.
+
+The generated migration module is emitted by `sqlfu generate` when `migrations` is configured. Commit `migrations/*.sql`; import `migrate` from `migrations/.generated/migrations.ts` into the Worker bundle; let every Durable Object instance call it during startup. `migrate()` is idempotent: once a given Durable Object's private SQLite database has a row in `sqlfu_migrations`, that migration is skipped on later starts.
 
 ## Mobile / browser
 
@@ -224,6 +274,9 @@ Each adapter is a thin function that wraps a driver into a `SyncClient` or `Asyn
 - `run(query)` → `{rowsAffected?, lastInsertRowid?}`
 - `raw(sql)` → multi-statement string execution
 - `iterate(query)` → row iterator
+- `prepare(sql)` → reusable statement handle with `.all`, `.run`, `.iterate`, and a dispose method
 - `transaction(fn)` → run `fn` inside a transaction (the `sqlfu/core/sqlite` helpers provide `surroundWithBeginCommitRollback{Sync,Async}` that implement this for you using `begin`/`commit`/`rollback`)
 
-If your driver is SQLite-compatible but not listed, opening a PR with a new adapter file + a test file in `test/adapters/` is usually a ~50-line change.
+If your driver has a native prepared statement, wrap it. If it does not, implement `prepare(sql)` as a small shim that captures the SQL string and calls the driver's normal execution method on each `.all`, `.run`, or `.iterate`. The method should still return a disposable handle so callers can use `using` / `await using` uniformly.
+
+If your driver is SQLite-compatible but not listed, opening a PR with a new adapter file + a test file in `test/adapters/` is usually a small change.

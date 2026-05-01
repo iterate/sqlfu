@@ -1,23 +1,22 @@
-import {createSqliteWasmClient} from 'sqlfu';
+import {createSqliteWasmClient, sqlReturnsRows} from 'sqlfu';
 import {
   analyzeVendoredTypesqlQueriesWithClient,
   isInternalUnsupportedSqlAnalysisError,
   toSqlEditorDiagnostic,
 } from 'sqlfu/analyze';
 import type {
-  AdHocSqlParams,
   AdHocSqlResult,
   DisposableAsyncClient,
   HostCatalog,
   HostFs,
   QueryCatalog,
-  ResultRow,
   SqlfuHost,
   SqlfuProjectConfig,
 } from 'sqlfu';
 import type {SqlAnalysisResponse} from 'sqlfu/ui/browser';
 
 import {buildQueryCatalog} from './catalog.js';
+import northwindData from './northwind/data.sql?raw';
 import {openWasmDatabase, type Database} from './sqlite-wasm-client.js';
 import {DemoVfs} from './vfs.js';
 
@@ -48,7 +47,7 @@ export function buildDemoConfig(): SqlfuProjectConfig {
     projectRoot: DEMO_PROJECT_ROOT,
     db: `${DEMO_PROJECT_ROOT}/app.db`,
     definitions: `${DEMO_PROJECT_ROOT}/definitions.sql`,
-    migrations: {path: `${DEMO_PROJECT_ROOT}/migrations`, prefix: 'iso'},
+    migrations: {path: `${DEMO_PROJECT_ROOT}/migrations`, prefix: 'iso', preset: 'sqlfu'},
     queries: `${DEMO_PROJECT_ROOT}/sql`,
     generate: {validator: null, prettyErrors: true, sync: false, importExtension: '.js', authority: 'desired_schema'},
   };
@@ -87,30 +86,27 @@ export async function createBrowserHost(input: {
       } as unknown as DisposableAsyncClient;
     },
     execAdHocSql: async (client, sqlText, params): Promise<AdHocSqlResult> => {
-      const db = client.driver as Database;
-      const bindings = normalizeAdHocParams(params);
-      const returnsRows = statementReturnsRows(db, sqlText);
-      if (returnsRows) {
-        const rows = db.exec({
-          sql: sqlText,
-          bind: bindings as never,
-          rowMode: 'object',
-          returnValue: 'resultRows',
-        }) as ResultRow[];
+      // Mirror the node host: route through `client.prepare` and use the
+      // shared `sqlReturnsRows` classifier to decide rows vs. metadata. The
+      // sqlite-wasm adapter handles named-param `Record` natively; we just
+      // pass `params` through.
+      await using stmt = client.prepare(sqlText);
+      if (sqlReturnsRows(sqlText)) {
         // SELECTs don't mutate the db; skip the schema-change broadcast. The
         // RelationQueryPanel's useQuery subscribes to this same endpoint, so
         // an invalidateQueries() here would re-fire the query and loop.
+        const rows = await stmt.all(params);
         return {mode: 'rows', rows};
       }
-      db.exec({sql: sqlText, bind: bindings as never});
+      const result = await stmt.run(params);
       input.onSchemaChange();
-      const rowsAffected = Number(db.changes(false, false) ?? 0);
-      const lastInsertRowidValue = db.selectValue('select last_insert_rowid() as value');
-      const lastInsertRowid =
-        typeof lastInsertRowidValue === 'bigint'
-          ? Number(lastInsertRowidValue)
-          : ((lastInsertRowidValue as number | null | undefined) ?? null);
-      return {mode: 'metadata', metadata: {rowsAffected, lastInsertRowid}};
+      return {
+        mode: 'metadata',
+        metadata: {
+          rowsAffected: result.rowsAffected,
+          lastInsertRowid: result.lastInsertRowid,
+        },
+      };
     },
     initializeProject: async () => {
       throw new Error('sqlfu init is not supported in demo mode');
@@ -131,15 +127,6 @@ export async function createBrowserHost(input: {
   };
 
   return {host, config, vfs, database};
-}
-
-function statementReturnsRows(db: Database, sqlText: string): boolean {
-  const stmt = db.prepare(sqlText);
-  try {
-    return stmt.columnCount > 0;
-  } finally {
-    stmt.finalize();
-  }
 }
 
 function createBrowserCatalog(vfs: DemoVfs, database: Database): HostCatalog {
@@ -290,14 +277,5 @@ function createVfsFs(vfs: DemoVfs, config: SqlfuProjectConfig, notify: () => voi
 
 function seedLiveDatabase(database: Database, definitionsSql: string) {
   database.exec(definitionsSql);
-  database.exec(`
-    insert into posts (slug, title, body, published) values
-      ('hello-world', 'Hello World', 'First post body', 1),
-      ('draft-notes', 'Draft Notes', 'Unpublished notes', 0);
-  `);
-}
-
-function normalizeAdHocParams(params: AdHocSqlParams): Record<string, unknown> | unknown[] {
-  if (params == null) return [];
-  return params as Record<string, unknown> | unknown[];
+  database.exec(northwindData);
 }

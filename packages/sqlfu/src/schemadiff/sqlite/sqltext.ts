@@ -2,19 +2,43 @@
  * SQLite-specific SQL text normalization and token scanning helpers.
  * This file intentionally stays SQLite-oriented; other dialects will likely need different tokenization rules.
  */
+import {tokenize, type Token} from '../../vendor/sqlfu-sqlite-parser/tokenizer.js';
+import {maybeQuoteIdentifier} from './identifiers.js';
 
 export function normalizeStoredSql(sql: string): string {
-  return sql.trim().replace(/;+$/u, '').toLowerCase();
+  return normalizeStoredSqlWithIdentifiers(sql, []);
+}
+
+export function normalizeStoredSqlWithIdentifiers(sql: string, identifiers: string[]): string {
+  const identifierByNormalizedName = new Map(identifiers.map((identifier) => [identifier.toLowerCase(), identifier]));
+  return rewriteSchemaSql(sql, (token) => {
+    if (token.kind === 'KEYWORD') {
+      return token.value.toLowerCase();
+    }
+
+    if (token.kind !== 'IDENTIFIER') {
+      return token.value;
+    }
+
+    const identifier = identifierByNormalizedName.get(unquoteIdentifierToken(token.value).toLowerCase());
+    return identifier ? maybeQuoteIdentifier(identifier) : token.value;
+  });
 }
 
 export function normalizeViewDefinition(createSql: string): string {
-  const normalized = createSql.replace(/\s+/gu, ' ').trim().toLowerCase();
+  const normalized = normalizeComparableSql(createSql);
   const match = normalized.match(/\bas\s+(.+)$/u);
   return match?.[1] ?? normalized;
 }
 
 export function normalizeComparableSql(sql: string): string {
-  return sql.replace(/\s+/gu, ' ').trim().toLowerCase();
+  return rewriteSchemaSql(sql, (token) =>
+    token.kind === 'KEYWORD' || token.kind === 'IDENTIFIER' ? token.value.toLowerCase() : token.value,
+  ).replace(/\s+/gu, ' ');
+}
+
+export function normalizeSchemaSqlForExtraction(sql: string): string {
+  return rewriteSchemaSql(sql, (token) => (token.kind === 'KEYWORD' ? token.value.toLowerCase() : token.value));
 }
 
 export function extractWhereClause(sql: string): string | null {
@@ -22,7 +46,7 @@ export function extractWhereClause(sql: string): string | null {
     return null;
   }
   const match = sql.match(/\bwhere\b([\s\S]+)$/iu);
-  return match?.[1]?.trim().replace(/\s+/gu, ' ') ?? null;
+  return match?.[1] ? normalizeComparableSql(match[1]) : null;
 }
 
 export function sqlMentionsIdentifier(sql: string, identifier: string): boolean {
@@ -243,4 +267,37 @@ function skipLineComment(sql: string, startIndex: number): number {
 function skipBlockComment(sql: string, startIndex: number): number {
   const endIndex = sql.indexOf('*/', startIndex + 2);
   return endIndex === -1 ? sql.length - 1 : endIndex + 1;
+}
+
+function rewriteSchemaSql(sql: string, rewriteToken: (token: Token) => string): string {
+  const trimmed = sql.trim().replace(/;+$/u, '');
+  if (!trimmed) {
+    return '';
+  }
+
+  const tokens = tokenize(trimmed);
+  let output = '';
+  let position = 0;
+
+  for (const token of tokens) {
+    output += trimmed.slice(position, token.start);
+    output += rewriteToken(token);
+    position = token.stop + 1;
+  }
+
+  output += trimmed.slice(position);
+  return output;
+}
+
+function unquoteIdentifierToken(value: string): string {
+  if (value.startsWith('"') && value.endsWith('"')) {
+    return value.slice(1, -1).replaceAll('""', '"');
+  }
+  if (value.startsWith('`') && value.endsWith('`')) {
+    return value.slice(1, -1).replaceAll('``', '`');
+  }
+  if (value.startsWith('[') && value.endsWith(']')) {
+    return value.slice(1, -1);
+  }
+  return value;
 }

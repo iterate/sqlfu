@@ -4,15 +4,23 @@ import path from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 
-import type {AsyncClient, DisposableAsyncClient, ResultRow, SqlfuProjectConfig, SqlQuery} from '../types.js';
+import type {
+  AsyncClient,
+  DisposableAsyncClient,
+  PreparedStatement,
+  PreparedStatementParams,
+  ResultRow,
+  SqlfuProjectConfig,
+  SqlQuery,
+} from '../types.js';
 import {bindAsyncSql} from '../sql.js';
-import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
+import {rawSqlWithSqlSplittingAsync, sqlReturnsRows, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
 import type {QueryCatalog} from '../typegen/query-catalog.js';
-import {initializeProject} from './config.js';
 import {analyzeAdHocSqlForConfig, generateQueryTypesForConfig} from '../typegen/index.js';
 import type {SqlAnalysisResponse} from '../ui/shared.js';
 import {isInternalUnsupportedSqlAnalysisError, toSqlEditorDiagnostic} from '../sql-editor-diagnostic.js';
-import type {AdHocSqlParams, AdHocSqlResult, HostCatalog, HostFs, SqlfuHost} from '../host.js';
+import type {AdHocSqlResult, HostCatalog, HostFs, SqlfuHost} from '../host.js';
+import {initializeProject} from './config.js';
 
 type NodeSqliteModule = {DatabaseSync: typeof DatabaseSync};
 
@@ -98,18 +106,23 @@ export async function createNodeHost(): Promise<SqlfuHost> {
     fs: nodeFs,
     openDb: (config) => openConfigDb(config.db),
     execAdHocSql: async (client, sql, params): Promise<AdHocSqlResult> => {
-      const database = client.driver as InstanceType<typeof DatabaseSync>;
-      const statement = database.prepare(sql);
-      try {
-        const rows = runPreparedAll(statement, params);
+      // Now that every adapter exposes `client.prepare`, execAdHocSql is a
+      // thin classifier-and-bind. The keyword classifier (`sqlReturnsRows`)
+      // stays — try/catch on `.all()` is unsafe because node:sqlite returns
+      // `[]` for writes silently and better-sqlite3 may execute partial side
+      // effects before throwing. Named-param translation is the adapter's
+      // job, not ours; we just pass `params` through.
+      await using stmt = client.prepare(sql);
+      if (sqlReturnsRows(sql)) {
+        const rows = await stmt.all(params);
         return {mode: 'rows', rows};
-      } catch {}
-      const result = runPreparedRun(statement, params);
+      }
+      const result = await stmt.run(params);
       return {
         mode: 'metadata',
         metadata: {
-          rowsAffected: result.changes == null ? undefined : Number(result.changes),
-          lastInsertRowid: result.lastInsertRowid as string | number | bigint | null,
+          rowsAffected: result.rowsAffected,
+          lastInsertRowid: result.lastInsertRowid,
         },
       };
     },
@@ -217,20 +230,7 @@ const nodeFs: HostFs = {
   },
 };
 
-
 type NodeSqliteDatabase = InstanceType<typeof DatabaseSync>;
-
-function runPreparedAll(statement: ReturnType<NodeSqliteDatabase['prepare']>, params: AdHocSqlParams): ResultRow[] {
-  if (params == null) return statement.all() as ResultRow[];
-  return (
-    Array.isArray(params) ? statement.all(...(params as never[])) : statement.all(params as never)
-  ) as ResultRow[];
-}
-
-function runPreparedRun(statement: ReturnType<NodeSqliteDatabase['prepare']>, params: AdHocSqlParams) {
-  if (params == null) return statement.run();
-  return Array.isArray(params) ? statement.run(...(params as never[])) : statement.run(params as never);
-}
 
 export function createAsyncNodeSqliteClient(database: NodeSqliteDatabase): AsyncClient<NodeSqliteDatabase> {
   const client: AsyncClient<NodeSqliteDatabase> = {
@@ -264,6 +264,40 @@ export function createAsyncNodeSqliteClient(database: NodeSqliteDatabase): Async
       }
       return gen();
     },
+    prepare<TRow extends ResultRow = ResultRow>(sql: string): PreparedStatement<TRow> {
+      // Async wrapper over the same `StatementSync` handle as
+      // `createNodeSqliteClient`. node:sqlite accepts either positional spread
+      // or a single named-param object as the only argument.
+      const statement = database.prepare(sql) as {
+        all(...params: unknown[]): unknown[];
+        run(...params: unknown[]): {
+          changes?: number | bigint;
+          lastInsertRowid?: string | number | bigint | null;
+        };
+        iterate(...params: unknown[]): IterableIterator<unknown>;
+        finalize?(): void;
+      };
+      return {
+        async all(params) {
+          return statement.all(...bindArgs(params)) as TRow[];
+        },
+        async run(params) {
+          const result = statement.run(...bindArgs(params));
+          return {
+            rowsAffected: result.changes == null ? undefined : Number(result.changes),
+            lastInsertRowid: result.lastInsertRowid ?? null,
+          };
+        },
+        async *iterate(params) {
+          for (const row of statement.iterate(...bindArgs(params))) {
+            yield row as TRow;
+          }
+        },
+        async [Symbol.asyncDispose]() {
+          statement.finalize?.();
+        },
+      };
+    },
     transaction: async <TResult>(fn: (tx: AsyncClient<NodeSqliteDatabase>) => Promise<TResult> | TResult) => {
       return surroundWithBeginCommitRollbackAsync(client, fn);
     },
@@ -272,4 +306,10 @@ export function createAsyncNodeSqliteClient(database: NodeSqliteDatabase): Async
 
   (client as {sql: AsyncClient<NodeSqliteDatabase>['sql']}).sql = bindAsyncSql(client);
   return client;
+}
+
+function bindArgs(params: PreparedStatementParams | undefined): unknown[] {
+  if (params == null) return [];
+  if (Array.isArray(params)) return params;
+  return [params];
 }

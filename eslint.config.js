@@ -32,6 +32,10 @@ export default [
       // blocks, malformed input) — linting them would fight the fixtures.
       'packages/sqlfu/test/formatter/**',
       'packages/sqlfu/test/schemadiff/fixtures/**',
+      // ID helper recipes keep copy-paste-oriented SQL layout and header
+      // comments; formatter output makes them harder to read as standalone
+      // recipes.
+      'packages/sqlfu/recipes/id-helpers/*.sql',
     ],
   },
   {

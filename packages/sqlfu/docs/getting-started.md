@@ -2,7 +2,7 @@
 
 This walkthrough builds a small posts app from scratch: schema in SQL, migrations drafted automatically, typed TypeScript wrappers generated from your query files. By the end you will have a working `getPosts(client, {limit: 10})` call with full IDE types.
 
-If you want to see the finished project running in your browser first, [open the demo](/ui?demo=1) -- same schema, same queries, no install.
+If you want to see the finished project running in your browser first, [open the demo](/ui?demo=1). It uses the same schema and queries with no install.
 
 ## What you will have
 
@@ -32,7 +32,7 @@ Optionally install the CLI globally so `sqlfu` is on your `PATH` anywhere:
 npm install -g sqlfu
 ```
 
-When you run `sqlfu` inside a project that already has it as a dependency, the global binary delegates to the project-local copy (`node_modules/sqlfu`). Each project runs the version it pinned — your global install never has to match, and upgrading globally is not required to unstick a project.
+When you run `sqlfu` inside a project that already has it as a dependency, the global binary delegates to the project-local copy (`node_modules/sqlfu`). Each project runs the version it pinned. Your global install never has to match, and upgrading globally is not required to unstick a project.
 
 ## Initialize the project
 
@@ -120,9 +120,16 @@ Query files live next to the code that calls them. The filename is the query's i
 npx sqlfu generate
 ```
 
-sqlfu reads your `.sql` files and emits typed wrappers into `sql/.generated/`. For `get-posts.sql` you get a `getPosts` function with typed params and a typed result row attached via a namespace (`getPosts.Params`, `getPosts.Result`). The function also carries `.sql` and `.query` (including `name: "getPosts"`) as static properties used by observability hooks.
+sqlfu reads your `.sql` files against `definitions.sql` by default and emits
+typed wrappers into `sql/.generated/`. For `get-posts.sql` you get a `getPosts`
+function with typed params and a typed result row attached via a namespace
+(`getPosts.Params`, `getPosts.Result`). The function also carries `.sql` and
+`.query` (including `name: "getPosts"`) as static properties used by
+observability hooks.
 
-Note: `generate` reads the live database schema, so `migrate` must have run first.
+Because the default `generate.authority` is `desired_schema`, generation does
+not need a live database. This walkthrough still runs `migrate` first so the
+next step can call the wrapper against `db/app.sqlite`.
 
 ## Call the wrapper
 
@@ -177,8 +184,11 @@ Review the file, commit it, then run `npx sqlfu migrate` and `npx sqlfu generate
 
 Pick the path that matches where you are:
 
-- **Need Turso, D1, Bun, or another driver?** [Adapters](/docs/adapters) -- copy-paste snippets for every supported runtime, plus guidance on sync vs async.
-- **Want to understand how migrations work?** [Migration Model](/docs/migration-model) -- the replay-based model, what `sqlfu check` verifies, and what to do when a migration fails.
-- **Need validated rows for tRPC or forms?** [Runtime validation](/docs/runtime-validation) -- opt-in validation with arktype, valibot, or zod baked into the generated wrappers.
-- **Want to see more generated type shapes?** [Generate examples](/docs/examples) -- real query fixtures showing param and result types for common patterns.
-- **Want a visual interface for your database?** [UI](/docs/ui) -- run queries, inspect tables, and draft migrations in the browser.
+- **Need Turso, D1, Bun, or another driver?** [Adapters](/docs/adapters): copy-paste snippets for every supported runtime, plus guidance on sync vs async.
+- **Want to understand how migrations work?** [SQL migrations](/docs/migration-model): the replay-based model, what `sqlfu check` verifies, and what to do when a migration fails.
+- **Want to handle adapter errors consistently?** [Errors](/docs/errors): normalized `SqlfuError.kind` values and handler examples.
+- **Need validated rows for tRPC or forms?** [Runtime validation](/docs/runtime-validation): opt-in validation with arktype, valibot, or zod baked into the generated wrappers.
+- **Need multiple queries per file or list params?** [Type generation from SQL](/docs/typegen): `@name`, inferred `IN (:ids)` lists, object dot paths, and inferred bulk inserts.
+- **Need query telemetry?** [Observability](/docs/observability): query names in OpenTelemetry spans, Sentry errors, PostHog events, and Datadog metrics.
+- **Want to see more generated type shapes?** [Generate examples](/docs/examples): real query fixtures showing param and result types for common patterns.
+- **Want a visual interface for your database?** [Admin UI](/docs/ui): run queries, inspect tables, and draft migrations in the browser.

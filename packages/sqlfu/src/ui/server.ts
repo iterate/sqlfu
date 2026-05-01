@@ -6,13 +6,14 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {RPCHandler} from '@orpc/server/fetch';
 import type {ViteDevServer} from 'vite';
 import {resolveProjectConfig} from '../config.js';
-import {loadProjectStateFrom} from '../node/config.js';
+import {loadProjectStateFrom, loadProjectStateFromConfigPath} from '../node/config.js';
 import {PortInUseError, getListeningProcesses} from '../node/port-process.js';
 import {generateQueryTypesForConfig} from '../typegen/index.js';
 import type {SqlfuHost} from '../host.js';
 import type {SqlfuProjectConfig} from '../types.js';
 import {createNodeHost} from '../node/host.js';
 import {uiRouter, type ResolvedUiProject} from './router.js';
+import {contentTypeForUiAssetPath} from './asset-content-type.js';
 
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(sourceDir, '..', '..');
@@ -23,20 +24,25 @@ type ProjectResolver = (request: {
 }) => Promise<ResolvedUiProject>;
 
 type UiAssetOptions = {
+  assets: Record<string, string>;
+};
+
+type UiDevOptions = {
   root: string;
-  distDir?: string;
   indexHtmlPath?: string;
 };
 
 export type StartSqlfuServerOptions = {
   port?: number;
   projectRoot?: string;
+  configPath?: string;
   defaultProjectName?: string;
   allowUnknownHosts?: boolean;
   projectsRoot?: string;
   templateRoot?: string;
   dev?: boolean;
   ui?: UiAssetOptions;
+  uiDev?: UiDevOptions;
   tls?: {
     key: string;
     cert: string;
@@ -48,16 +54,12 @@ export type * from './shared.js';
 export {ensureLocalhostCertificates} from './certs.js';
 
 export async function startSqlfuServer(input: StartSqlfuServerOptions = {}) {
+  if (input.projectRoot && input.configPath) {
+    throw new Error('Pass either projectRoot or configPath to startSqlfuServer, not both.');
+  }
+
   const host = await createNodeHost();
-  const resolveProject = input.projectRoot
-    ? createFixedProjectResolver(path.resolve(input.projectRoot))
-    : createSubdomainProjectResolver({
-        host,
-        projectsRoot: path.resolve(input.projectsRoot ?? path.join(packageRoot, 'test', 'projects')),
-        templateRoot: path.resolve(input.templateRoot ?? path.join(packageRoot, 'test', 'template-project')),
-        defaultProjectName: input.defaultProjectName ?? 'dev-project',
-        allowUnknownHosts: input.allowUnknownHosts || false,
-      });
+  const resolveProject = createProjectResolver(input, host);
   const rpcHandler = new RPCHandler(uiRouter);
   const httpServer = input.tls
     ? https.createServer({
@@ -65,8 +67,8 @@ export async function startSqlfuServer(input: StartSqlfuServerOptions = {}) {
         cert: input.tls.cert,
       })
     : http.createServer();
-  const uiAssets = input.ui ? resolveUiAssets(input.ui) : undefined;
-  const vite = input.dev && uiAssets ? await createUiDevServer(uiAssets.root, httpServer) : undefined;
+  const uiDev = input.uiDev ? resolveUiDev(input.uiDev) : undefined;
+  const vite = input.dev && uiDev ? await createUiDevServer(uiDev.root, httpServer) : undefined;
 
   httpServer.on('request', async (req, res) => {
     try {
@@ -93,13 +95,13 @@ export async function startSqlfuServer(input: StartSqlfuServerOptions = {}) {
         return;
       }
 
-      if (vite && uiAssets) {
-        await serveViteRequest(vite, req, res, url, uiAssets.indexHtmlPath);
+      if (vite && uiDev) {
+        await serveViteRequest(vite, req, res, url, uiDev.indexHtmlPath);
         return;
       }
 
-      if (uiAssets?.distDir) {
-        await serveBuiltUi(res, url, uiAssets.distDir);
+      if (input.ui) {
+        await serveSerializedUi(res, url, input.ui.assets);
         return;
       }
 
@@ -148,12 +150,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
 
 async function runCliServer() {
   const projectRoot = readOption('--project-root');
+  const configPath = readOption('--config');
   const port = readOption('--port');
   const dev = process.argv.includes('--dev');
   const tlsKeyPath = readOption('--tls-key');
   const tlsCertPath = readOption('--tls-cert');
   const server = await startSqlfuServer({
     projectRoot,
+    configPath,
     defaultProjectName: readOption('--default-project') ?? undefined,
     projectsRoot: readOption('--projects-root') ?? undefined,
     templateRoot: readOption('--template-root') ?? undefined,
@@ -189,8 +193,28 @@ export async function generateCatalogForProject(projectRoot: string) {
   await generateQueryTypesForConfig(config, host);
 }
 
+function createProjectResolver(input: StartSqlfuServerOptions, host: SqlfuHost): ProjectResolver {
+  if (input.configPath) {
+    return createFixedConfigResolver(input.configPath, process.cwd());
+  }
+  if (input.projectRoot) {
+    return createFixedProjectResolver(path.resolve(input.projectRoot));
+  }
+  return createSubdomainProjectResolver({
+    host,
+    projectsRoot: path.resolve(input.projectsRoot ?? path.join(packageRoot, 'test', 'projects')),
+    templateRoot: path.resolve(input.templateRoot ?? path.join(packageRoot, 'test', 'template-project')),
+    defaultProjectName: input.defaultProjectName ?? 'dev-project',
+    allowUnknownHosts: input.allowUnknownHosts || false,
+  });
+}
+
 function createFixedProjectResolver(projectRoot: string): ProjectResolver {
   return async () => await loadProjectStateFrom(projectRoot);
+}
+
+function createFixedConfigResolver(configPath: string, cwd: string): ProjectResolver {
+  return async () => await loadProjectStateFromConfigPath(configPath, cwd);
 }
 
 function createSubdomainProjectResolver(input: {
@@ -268,7 +292,7 @@ async function ensureDatabase(host: SqlfuHost, projectRoot: string) {
     projectRoot,
     db: dbPath,
     definitions: path.join(projectRoot, 'definitions.sql'),
-    migrations: {path: path.join(projectRoot, 'migrations'), prefix: 'iso'},
+    migrations: {path: path.join(projectRoot, 'migrations'), prefix: 'iso', preset: 'sqlfu'},
     queries: path.join(projectRoot, 'sql'),
     generate: {validator: null, prettyErrors: true, sync: false, importExtension: '.js', authority: 'desired_schema'},
   });
@@ -421,58 +445,49 @@ async function serveViteRequest(
   await sendWebResponse(res, htmlResponse(html, 200));
 }
 
-async function serveBuiltUi(res: http.ServerResponse, url: URL, distDir: string) {
-  const relativePath = url.pathname === '/' ? 'index.html' : url.pathname.replace(/^\/+/, '');
-  const candidatePath = path.join(distDir, relativePath);
+async function serveSerializedUi(res: http.ServerResponse, url: URL, assets: Record<string, string>) {
+  const assetPath = normalizeUiAssetPath(url.pathname === '/' ? '/index.html' : url.pathname);
+  const asset = getSerializedUiAsset(assets, assetPath);
+  const fallback = getSerializedUiAsset(assets, '/index.html');
+  const responseAsset = asset || fallback;
 
-  if (isInsideDist(candidatePath, distDir)) {
-    try {
-      const file = await fs.readFile(candidatePath);
-      await sendWebResponse(
-        res,
-        new Response(file, {
-          headers: {
-            'content-type': contentTypeForPath(candidatePath),
-          },
-        }),
-      );
-      return;
-    } catch {}
+  if (!responseAsset) {
+    await sendWebResponse(res, new Response('Not found', {status: 404}));
+    return;
   }
 
-  const indexHtml = await fs.readFile(path.join(distDir, 'index.html'), 'utf8');
-  await sendWebResponse(res, htmlResponse(indexHtml, 200));
+  await sendWebResponse(
+    res,
+    new Response(responseAsset.body, {
+      headers: {
+        'content-type': contentTypeForUiAssetPath(asset ? assetPath : '/index.html'),
+      },
+    }),
+  );
 }
 
-function isInsideDist(candidatePath: string, distDir: string) {
-  const relative = path.relative(distDir, candidatePath);
-  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+function getSerializedUiAsset(assets: Record<string, string>, assetPath: string) {
+  if (Object.prototype.hasOwnProperty.call(assets, assetPath)) {
+    return {body: assets[assetPath]};
+  }
+
+  const noSlashPath = assetPath.slice(1);
+  if (Object.prototype.hasOwnProperty.call(assets, noSlashPath)) {
+    return {body: assets[noSlashPath]};
+  }
+
+  return undefined;
 }
 
-function contentTypeForPath(filePath: string) {
-  if (filePath.endsWith('.js')) {
-    return 'text/javascript; charset=utf-8';
-  }
-  if (filePath.endsWith('.css')) {
-    return 'text/css; charset=utf-8';
-  }
-  if (filePath.endsWith('.html')) {
-    return 'text/html; charset=utf-8';
-  }
-  if (filePath.endsWith('.json')) {
-    return 'application/json; charset=utf-8';
-  }
-  if (filePath.endsWith('.svg')) {
-    return 'image/svg+xml';
-  }
-  return 'application/octet-stream';
+function normalizeUiAssetPath(assetPath: string) {
+  const withSlash = assetPath.startsWith('/') ? assetPath : `/${assetPath}`;
+  return withSlash.replace(/\/+/g, '/');
 }
 
-function resolveUiAssets(input: UiAssetOptions) {
+function resolveUiDev(input: UiDevOptions) {
   const root = path.resolve(input.root);
   return {
     root,
-    distDir: input.distDir ? path.resolve(input.distDir) : path.join(root, 'dist'),
     indexHtmlPath: path.resolve(input.indexHtmlPath ?? path.join(root, 'index.html')),
   };
 }

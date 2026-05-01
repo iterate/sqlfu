@@ -11,12 +11,17 @@ export * from './util.js';
 export * from './errors.js';
 export * from './instrument.js';
 export type {
-  ProcessResult,
+  AsyncQueryExecutionHook,
+  AsyncQueryExecutionHookArgs,
+  AsyncQueryExecutionHookInput,
   QueryErrorReport,
   QueryExecutionContext,
   QueryExecutionHook,
   QueryExecutionHookArgs,
   QueryOperation,
+  SyncQueryExecutionHook,
+  SyncQueryExecutionHookArgs,
+  SyncQueryExecutionHookInput,
 } from './instrument.js';
 export type {SpanLike, TracerLike} from './otel.js';
 export * from './adapters/d1.js';
@@ -40,7 +45,9 @@ export {
   extractSchema,
   rawSqlWithSqlSplittingAsync,
   rawSqlWithSqlSplittingSync,
+  rewriteNamedParamsToPositional,
   splitSqlStatements,
+  sqlReturnsRows,
   surroundWithBeginCommitRollbackAsync,
   surroundWithBeginCommitRollbackSync,
 } from './sqlite-text.js';
@@ -52,10 +59,12 @@ export type {
   AdHocSqlParams,
   AdHocSqlResult,
   DisposableAsyncClient,
+  DisposableClient,
   HostCatalog,
   HostFs,
   HostLogger,
   SqlfuHost,
+  SqlfuUiHost,
 } from './host.js';
 
 // Query-catalog shape types — what `sqlfu generate` emits. Consumed by

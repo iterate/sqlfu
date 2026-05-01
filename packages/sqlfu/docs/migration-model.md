@@ -1,8 +1,8 @@
-# sqlfu Migration Model
+# SQL migrations
 
 >tl;dr: if you don't want to remember a bunch of commands, just run `sqlfu check`. It will say "all good" or give you a recommend action.
 
-This document describes the current migration model in plain English.
+This document describes sqlfu's migration model in plain English.
 
 "What's the state of my database" is an ambiguous question, with many different answers. How do you *expect* your database to look? How do your migration files imply your database *should* look? How do your *applied* migrations imply it should look? How does it *actually* look? What does it mean when these questions have conflicting answers?
 
@@ -40,7 +40,7 @@ export default defineConfig({
 });
 ```
 
-With `prefix: 'four-digit'`, new migrations are named `0000_*.sql`, `0001_*.sql`, … — the next integer after the max of any existing files whose basename already starts with four digits. An empty directory starts at `0000`. Files that don't match `^\d{4}_` are ignored when picking the next integer, so a stray README or legacy timestamped migration won't push the counter up.
+With `prefix: 'four-digit'`, new migrations are named `0000_*.sql`, `0001_*.sql`, and so on. The next integer is one more than the max of any existing files whose basename already starts with four digits. An empty directory starts at `0000`. Files that don't match `^\d{4}_` are ignored when picking the next integer, so a stray README or legacy timestamped migration won't push the counter up.
 
 Don't mix prefix formats in the same directory. Lexicographic ordering between an ISO timestamp and a four-digit number isn't coherent; pick one.
 
@@ -80,15 +80,32 @@ That chain is useful, but only if you are clear about where a command is allowed
 
 That means `sync` is intentionally allowed to make Migration History and Live Schema disagree.
 
+## Durable Objects
+
+Cloudflare Durable Objects make the chain more visible because each Durable Object instance has its own private SQLite database. A code deploy updates the Worker bundle, but existing Durable Object storage is still whatever that one object has applied so far. On startup, the object has to reconcile its private database with the migrations bundled into the new code.
+
+The intended sqlfu flow is:
+
+1. Edit `definitions.sql`.
+2. Run `sqlfu draft` and commit the generated `migrations/*.sql`.
+3. Run `sqlfu generate` so `migrations/.generated/migrations.ts` contains those migration files as a plain TypeScript bundle.
+4. Import `migrate` from that generated module in the Durable Object, build the client with `createDurableObjectClient(ctx.storage)`, and run `migrate(client)` during constructor initialization.
+
+The sqlfu Durable Object migrator is synchronous, so running it directly in the constructor is enough: the object does not serve a request before the constructor returns. Pass the full `ctx.storage` object to `createDurableObjectClient`, not `ctx.storage.sql`, so sqlfu can use Durable Objects' `transactionSync()` API for per-migration rollback. If you need a query-only escape hatch, pass `{sql: ctx.storage.sql}` explicitly.
+
+Missing migrations are treated as an integrity problem, not as a cue to synthesize SQL at runtime. If a Durable Object database has recorded `sqlfu_migrations` rows that are not present in the generated bundle, `applyMigrations()` fails with a deleted-applied-migration error before applying newer migrations. Under the default `sqlfu` preset it also checks applied migration checksums, so editing an already-applied migration file is reported as history drift.
+
+The schema diff engine helps before deployment: `sqlfu draft` turns reviewed `definitions.sql` changes into migration files, and `sqlfu check` can explain repo drift, pending migrations, history drift, and schema drift. It should not be used as runtime magic inside a Durable Object to invent missing migrations from the current desired schema. Runtime schema changes still need reviewable migration files because renames, destructive changes, and backfills are product decisions.
+
 ## Authority Mismatches
 
-| Name | Comparison | Meaning | Usually Normal? | Likely Action |
-| --- | --- | --- | --- | --- |
-| Repo Drift | Desired Schema <> Migrations | Replaying migrations does not produce the desired current schema | Yes, during active schema work | `sqlfu draft` |
-| Pending Migrations | Migrations <> Migration History | The database has unapplied migrations | Yes | `sqlfu migrate` |
-| History Drift | Migrations <> Migration History | The database claims to have applied migrations that no longer match the known migration set | No | fix the repo first, or reconcile deliberately with `sqlfu baseline <target>` and `sqlfu goto <target>` |
-| Schema Drift | Migration History <> Live Schema | The database schema does not match what its recorded history implies | Normal on a dev db after `sqlfu sync` | `sqlfu baseline <target>` or `sqlfu goto <target>` |
-| Sync Drift | Desired Schema <> Live Schema | The database does not currently match the desired schema | Yes | depends on the other mismatches |
+| Name | Comparison | Direction | Meaning | Usually Normal? | Likely Action |
+| --- | --- | --- | --- | --- | --- |
+| Repo Drift | Desired Schema <> Migrations | n/a | Replaying migrations does not produce the desired current schema | Yes, during active schema work | `sqlfu draft` |
+| Pending Migrations | Migrations <> Migration History | new migrations not yet applied | The database has unapplied migrations | Yes | `sqlfu migrate` |
+| History Drift | Migrations <> Migration History | applied migrations no longer match the repo | The database claims to have applied migrations that no longer match the known migration set | No | fix the repo first, or reconcile deliberately with `sqlfu baseline <target>` and `sqlfu goto <target>` |
+| Schema Drift | Migration History <> Live Schema | n/a | The database schema does not match what its recorded history implies | Normal on a dev db after `sqlfu sync` | `sqlfu baseline <target>` or `sqlfu goto <target>` |
+| Sync Drift | Desired Schema <> Live Schema | n/a | The database does not currently match the desired schema | Yes | depends on the other mismatches |
 
 ## What Each Disagreement Means
 
@@ -127,7 +144,7 @@ A database can have a perfectly usable Live Schema and still have bad Migration 
 
 This is why `Pending Migrations` and `History Drift` need to be treated differently.
 
-- `Pending Migrations` is usually routine and should recommend `sqlfu migrate`.
+- `Pending Migrations` is usually routine and recommends `sqlfu migrate`.
 - `History Drift` is usually a serious integrity problem and may not have a single safe automatic recommendation.
 
 Two common causes of `History Drift` are:
@@ -262,37 +279,23 @@ Mutates:
 
 It verifies relationships between the four authorities.
 
-At minimum, it should validate:
+It computes these comparisons:
 
 - Desired Schema vs Migrations
-
-Later, database-targeted checks may also validate:
-
 - Migrations vs Migration History
 - Migration History vs Live Schema
 - Desired Schema vs Live Schema
 
-`sqlfu check` may also recommend a target migration when it can prove that the Live Schema exactly matches some replayed migration prefix.
-
-That recommendation should be derived mechanically by replaying:
-
-- migrations `1..1`
-- migrations `1..2`
-- migrations `1..3`
-- and so on
-
-and checking whether any of those resulting schemas exactly matches the Live Schema.
-
-If so, `sqlfu check` can recommend:
+`sqlfu check` also recommends a target migration when the Live Schema exactly matches some replayed migration prefix. The check replays migrations `1..1`, `1..2`, `1..3`, and so on, comparing each replayed schema to the live one (see `findRecommendedTarget` in `src/api.ts`). When a match is found, the recommendation is:
 
 - a Baseline target, when the database is ahead of Migration History
 - a Goto target, when the database should be reconciled to a known migration prefix
 
 ## `sqlfu check` Recommendations
 
-`sqlfu check` should recommend the least-destructive next step it can justify from the evidence it has.
+`sqlfu check` recommends the least-destructive next step it can justify from the evidence it has.
 
-Recommendations should be based on named mismatch types, not generic failure text.
+Recommendations are based on named mismatch types, not generic failure text.
 
 - Repo Drift only
   Recommend `sqlfu draft`.
@@ -302,28 +305,28 @@ Recommendations should be based on named mismatch types, not generic failure tex
 
 - Schema Drift only
   Recommend `sqlfu baseline <target>` or `sqlfu goto <target>`.
-  If `sqlfu check` can prove that the Live Schema matches a replayed migration prefix exactly, it should recommend that exact target.
+  If `sqlfu check` can prove that the Live Schema matches a replayed migration prefix exactly, it recommends that exact target.
 
 - Sync Drift only
   If the database is otherwise history-clean, recommend:
   - `sqlfu migrate`, if migrations are pending
   - `sqlfu sync`, if the user is intentionally choosing a fast local-development path
-  If the database is not otherwise history-clean, the recommendation should defer to the more specific mismatch, especially Schema Drift or History Drift.
+  If the database is not otherwise history-clean, the recommendation defers to the more specific mismatch, especially Schema Drift or History Drift.
 
 - Pending Migrations plus Sync Drift
   Recommend `sqlfu migrate`.
-  The Sync Drift card's recommendation should defer to that same step rather than suggesting `sqlfu sync`.
+  The Sync Drift card's recommendation defers to that same step rather than suggesting `sqlfu sync`.
 
 - Repo Drift plus Sync Drift
   Recommend `sqlfu draft`.
   The repo needs a migration before the database can become migration-current honestly.
-  The Sync Drift card's recommendation should point back to Repo Drift.
+  The Sync Drift card's recommendation points back to Repo Drift.
 
 - Repo Drift plus Schema Drift
   Recommend:
   1. `sqlfu draft`
   2. then `sqlfu baseline <target>` or `sqlfu goto <target>`
-  `sqlfu check` should not pretend the database can be reconciled cleanly before the repo itself is coherent.
+  `sqlfu check` does not pretend the database can be reconciled cleanly before the repo itself is coherent.
 
 - History Drift only
   Do not give a single automatic recommendation.
@@ -336,7 +339,7 @@ Recommendations should be based on named mismatch types, not generic failure tex
   Recommend:
   1. `sqlfu draft`, if needed, to make Desired Schema and Migrations agree
   2. then resolve History Drift deliberately
-  This should be presented as a serious integrity problem, not a routine workflow step.
+  This is presented as a serious integrity problem, not a routine workflow step.
 
 - Multiple mismatch types with no clearly dominant cause
   Prefer the most upstream mismatch first:
@@ -346,7 +349,7 @@ Recommendations should be based on named mismatch types, not generic failure tex
   4. Schema Drift
   5. Sync Drift
   This keeps `sqlfu check` from recommending database reconciliation before the repo itself is coherent.
-  Downstream cards may still be shown, but their recommendation text should defer to the highest-priority unresolved mismatch.
+  Downstream cards may still be shown, but their recommendation text defers to the highest-priority unresolved mismatch.
 
 ## Healthy States
 
@@ -478,16 +481,73 @@ If a migration fails partway through, `sqlfu migrate` reruns that same check aga
 
 No row is ever written to `sqlfu_migrations` for a failed migration. That table only ever contains migrations `sqlfu` trusts to have fully applied.
 
+## Migration Presets
+
+`sqlfu` tracks applied migrations in a bookkeeping table. By default that table is `sqlfu_migrations` with columns `(name, checksum, applied_at)`. Some projects want sqlfu to play nicely with an existing convention. The most common case is Cloudflare D1 projects where alchemy or wrangler already owns a `d1_migrations` table.
+
+The `migrations.preset` knob lets you switch the bookkeeping format without rewriting any migrations:
+
+```ts
+// sqlfu.config.ts
+export default defineConfig({
+  db: async () => /* ... your D1 / miniflare client factory ... */,
+  migrations: { path: 'migrations', preset: 'd1' },
+  definitions: 'definitions.sql',
+  queries: 'sql',
+});
+```
+
+### The two presets
+
+| Preset           | Table             | Columns                                                | Filename prefix default | Checksum tracking |
+|------------------|-------------------|--------------------------------------------------------|-------------------------|-------------------|
+| `'sqlfu'` (default) | `sqlfu_migrations`| `name text pk, checksum text, applied_at text`         | `iso`                   | Yes               |
+| `'d1'`           | `d1_migrations`   | `id text pk, name text, applied_at text` (alchemy-compatible) | `four-digit`            | No                |
+
+`prefix` is defaulted from the preset but can still be set explicitly to override. For example, `{ preset: 'd1', prefix: 'iso' }` is valid if you want alchemy's table with ISO-prefixed filenames.
+
+### D1 and alchemy interoperability
+
+Under `preset: 'd1'` sqlfu reads and writes the same `d1_migrations` table alchemy and wrangler manage. The usual flow:
+
+1. Alchemy provisions the D1 database and runs its first migrations, creating `d1_migrations`.
+2. You add sqlfu to the project with `preset: 'd1'`. Keep every alchemy-era migration file in sqlfu's migrations directory; sqlfu uses them for drift detection and replay, even though alchemy already applied them.
+3. From this point on, `sqlfu migrate` is what applies new migrations. Alchemy's existing rows stay put; sqlfu appends new ones with alchemy-compatible id sequencing (`00001`, `00002`, …).
+
+Alchemy uses two different `d1_migrations` schemas: a 3-column remote shape in production D1 and a 4-column local shape (with a `type` column) when running against miniflare. Sqlfu introspects the existing table on first use and adapts its inserts, so the same `preset: 'd1'` config works in both environments.
+
+If you want sqlfu to operate on Alchemy's local dev database, use the Miniflare path helper from `sqlfu/api`:
+
+```ts
+import {defineConfig} from 'sqlfu';
+import {findMiniflareD1Path} from 'sqlfu/api';
+
+export default defineConfig({
+  db: findMiniflareD1Path('my-dev-app-slug'),
+  migrations: {path: './src/server/db/migrations', preset: 'd1'},
+  definitions: './src/server/db/definitions.sql',
+  queries: './src/server/db/queries',
+});
+```
+
+The helper walks up from `process.cwd()` looking for a supported Miniflare v3 persist root. Today that means Alchemy's `.alchemy/miniflare/v3` layout. It then derives the D1 sqlite filename from the Alchemy app slug. If the config is evaluated from somewhere else, pass `{miniflareV3Root: '/absolute/path/to/.alchemy/miniflare/v3'}`.
+
+#### Checksum downgrade
+
+Alchemy's `d1_migrations` schema has no checksum column, so under `preset: 'd1'` sqlfu cannot detect that an applied migration's content was edited after the fact. This is a deliberate tradeoff of alchemy compatibility: if you edit an already-applied migration file, `sqlfu migrate` and `sqlfu check` will treat it as a no-op rather than throwing.
+
+Under `preset: 'sqlfu'` (the default) edited-after-apply is caught and reported as a checksum mismatch.
+
 ## Non-Goals
 
 This document intentionally does not answer every implementation question yet.
 
-For example, it does not yet pin down:
+For example, it does not pin down:
 
 - what repair commands should exist
 - whether `migrate` should ever allow forcing past history drift
 
-Those should be decided after this conceptual model is stable.
+Those decisions should be made at the product-command layer, not hidden inside the migration model.
 
 ## Related Reading
 

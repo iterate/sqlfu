@@ -80,10 +80,18 @@ export type SchemadiffOperationKind =
   | 'drop-trigger'
   | 'create-trigger';
 
+export type SchemadiffReason = {
+  verb: 'rebuilding' | 'recreating' | 'dropping';
+  resourceType: 'table' | 'view' | 'trigger' | 'index';
+  resourceName: string;
+  explanation: string;
+};
+
 export type SchemadiffOperation = {
   id: string;
   kind: SchemadiffOperationKind;
   sql: string;
+  reason?: SchemadiffReason;
   dependencies: string[];
 };
 

@@ -10,7 +10,7 @@ import '../styles/landing.css';
     <title>sqlfu</title>
     <meta
       name="description"
-      content="All you need is sql. sqlfu lets you (or your agent) write schema, migrations, and queries as .sql files, and generates typed TypeScript wrappers next to them."
+      content="sqlfu keeps schema, migrations, and queries in SQL files, then generates typed TypeScript wrappers, migration drafts, and named runtime calls."
     />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
@@ -32,7 +32,7 @@ import '../styles/landing.css';
   </head>
   <body>
     <div class="prealpha-notice">
-      <strong>pre-alpha</strong> — the TypeScript API may still shift. The SQL won't.
+      <strong>pre-alpha.</strong> The TypeScript API may still shift. The SQL won't.
     </div>
     <div class="site-shell">
       <header class="topbar">
@@ -61,10 +61,10 @@ import '../styles/landing.css';
           <div class="eyebrow lowercase">npm install sqlfu</div>
           <h1>all you need is sql.</h1>
           <p class="lede">
-            sqlfu lets you (or your agent) write schema, migrations, and queries as <code>.sql</code> files, and generates typed TypeScript wrappers next to them. Not the abstraction of the month.
+            Put the data layer in files your team can review: <code>definitions.sql</code> for the schema, <code>migrations/*.sql</code> for history, and <code>sql/*.sql</code> for queries. sqlfu turns those files into typed wrappers, migration drafts, and named runtime calls.
           </p>
           <div class="cta-row">
-            <a class="button primary" href="/docs/getting-started">Get started</a>
+            <a class="button primary" href="/docs/getting-started">Start tutorial</a>
             <a class="button" href="/ui?demo=1">Try in browser</a>
           </div>
         </article>
@@ -74,43 +74,627 @@ import '../styles/landing.css';
         <img src="/docs/assets/packages/sqlfu/docs/i-know-sqlfu.webp" alt="I know sqlfu" />
       </figure>
 
-      <h2 class="section-title">SQL first. TypeScript second.</h2>
-      <section class="section-grid" id="value-panels">
-        <article class="panel value-panel" data-animation-key="schema">
-          <div class="eyebrow">source of truth</div>
-          <h3>Schema, migrations, queries. All <code>.sql</code>.</h3>
-          <p>Your schema lives in <code>definitions.sql</code>. Migrations are ordered SQL files. Queries are <code>.sql</code> files checked in next to the code that calls them. No DSL, no runtime builder to fight.</p>
+      <h2 class="section-title">what sqlfu provides</h2>
+      <section class="feature-stack" id="value-panels">
+        <article class="feature-row value-panel" data-animation-key="draft" data-walkthrough-step>
+          <div class="feature-copy">
+            <div class="eyebrow">1. schema + migration</div>
+            <h3>Your schema as SQL</h3>
+            <p>
+              Edit <code>definitions.sql</code> to the shape you want. <code>sqlfu draft</code> compares that desired schema with replayed migration history, shows the smart diff, then writes the reviewed migration file.
+            </p>
+            <a href="/docs/migration-model">Read about the migration model</a>
+          </div>
+          <div class="artifact-pair feature-demo" aria-label="Schema edit and draft command">
+            <figure class="artifact artifact-tall">
+              <figcaption>definitions.sql</figcaption>
+              <pre><code><span class="tok-keyword">create table</span> <span class="tok-name">posts</span> (
+  <span class="tok-name">id</span> <span class="tok-keyword">integer primary key autoincrement</span>,
+  <span class="tok-name">slug</span> <span class="tok-keyword">text not null unique</span>,
+  <span class="tok-name">title</span> <span class="tok-keyword">text not null</span>
+<span class="diff-line diff-added" data-type-speed="schema-add" data-reveal-line data-reveal-pause="620" data-hide-typing-whitespace>+ <span class="tok-name">published</span> <span class="tok-keyword">integer</span></span>);</code></pre>
+            </figure>
+            <figure class="artifact terminal artifact-tall">
+              <figcaption class="artifact-caption-actions">
+                <span>terminal</span>
+                <button class="demo-replay" type="button" data-replay-demo aria-label="Replay schema and migration animation" title="Replay animation">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+                    <path d="M20 4v7h-7" />
+                  </svg>
+                </button>
+              </figcaption>
+              <pre><code><span data-type-speed="command" data-run-command="true"><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu draft</span></span>
+<span class="terminal-output terminal-block" data-terminal-output data-output-pause="1450">│
+◇  Create migration file? ─────────────────╮
+│                                          │
+│  alter table posts                       │
+│  add column published integer;           │
+│                                          │
+<span data-corner-before-next>├──────────────────────────────────────────╯
+</span><span data-corner-after-next>╰──────────────────────────────────────────╯
+</span><span data-dismiss-before-next>│
+◆  Continue with this body?
+│  ● Yes
+│  ○ No
+│  ○ Edit with code
+│  ○ Edit with vi
+│  ○ Edit with nano</span>
+<span class="terminal-output terminal-block" data-terminal-output data-output-pause="0">Wrote migrations/20260501090000_add_published_to_posts.sql</span></code></pre>
+            </figure>
+          </div>
         </article>
-        <article class="panel value-panel" data-animation-key="generate">
-          <div class="eyebrow">types, generated</div>
-          <h3>TypeScript wrappers <i>from</i> your SQL</h3>
-          <p>
-            <code>sqlfu generate</code> reads your <code>.sql</code> files and emits typed wrappers next to them: typed params, typed rows, and a client you can call from application code. Your query names travel with them: to <a href="/docs/observability">OpenTelemetry, Sentry, Datadog, PostHog</a>, whatever.
-          </p>
+
+        <article class="feature-row value-panel" data-animation-key="generate" data-walkthrough-step>
+          <div class="feature-copy">
+            <div class="eyebrow">2. typescript generation</div>
+            <h3>Your queries as SQL</h3>
+            <p>
+              Query files are the source. <code>sqlfu generate</code> determines their types base on <code>definitions.sql</code>, then emits TypeScript wrappers with typed params, typed result rows, and the query name attached for runtime use.
+            </p>
+            <a href="/docs/typegen">Read about type generation</a>
+          </div>
+          <div class="artifact-pair feature-demo" aria-label="Query file and generated TypeScript">
+            <figure class="artifact artifact-tall">
+              <figcaption>sql/get-posts.sql</figcaption>
+              <pre><code data-type-speed="fast"><span class="tok-keyword">select</span> <span class="tok-name">id</span>, <span class="tok-name">slug</span>, <span class="tok-name">title</span>
+<span class="tok-keyword">from</span> <span class="tok-name">posts</span>
+<span class="tok-keyword">where</span> <span class="tok-name">published</span> = <span class="tok-number">1</span>
+<span class="tok-keyword">order by</span> <span class="tok-name">id</span> <span class="tok-keyword">desc</span>
+<span class="tok-keyword">limit</span> <span class="tok-param">:limit</span>;</code></pre>
+            </figure>
+            <div class="artifact artifact-tall artifact-tabs" data-tabbed-artifact>
+              <div class="artifact-tablist" role="tablist" aria-label="Type generation output">
+                <button class="artifact-tab is-active" type="button" role="tab" aria-selected="true" data-tab-for="terminal">terminal</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="src">src/app.ts</button>
+                <button class="demo-replay artifact-tab-replay" type="button" data-replay-demo aria-label="Replay type generation animation" title="Replay animation">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+                    <path d="M20 4v7h-7" />
+                  </svg>
+                </button>
+              </div>
+              <div class="artifact-tab-panel terminal is-active" role="tabpanel" data-terminal-artifact data-tab-panel="terminal">
+                <pre><code><span data-type-speed="command" data-run-command="true"><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu generate</span></span>
+
+<span class="terminal-output terminal-block" data-terminal-output data-output-pause="820">Updated generated file:
+  ./.generated/get-posts.sql.ts</span></code></pre>
+              </div>
+              <div class="artifact-tab-panel" role="tabpanel" data-replacement-artifact data-tab-panel="src">
+                <pre><code><span data-type-speed="medium"><span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
+
+<span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
+</span><span class="tok-comment generated-type-hint" data-pop-after-typing>//    ^? Array&lt;&#123;id: number; slug: string; title: string&#125;&gt;</span><span data-type-speed="medium">
+
+<span class="tok-name">posts</span>.<span class="tok-prop">forEach</span>((<span class="tok-name">post</span>) =&gt; &#123;
+  <span class="tok-name">console</span>.<span class="tok-prop">log</span>(<span class="tok-name">post</span>.<span class="tok-prop">slug</span> + <span class="tok-string">": "</span> + <span class="tok-name">post</span>.<span class="tok-prop">title</span>);
+&#125;);</span></code></pre>
+              </div>
+            </div>
+          </div>
         </article>
-        <article class="panel value-panel" data-animation-key="draft">
-          <div class="eyebrow">diff-driven migrations</div>
-          <h3>Drafts your next migration</h3>
-          <p>The native SQLite diff engine compares replayed migration history against <code>definitions.sql</code> and writes the next migration for you. You review, edit for renames or backfills, and commit.</p>
+
+        <article class="feature-row value-panel" data-animation-key="runtime" data-walkthrough-step>
+          <div class="feature-copy">
+            <div class="eyebrow">3. runtime</div>
+            <h3>One client interface, many drivers.</h3>
+            <p>
+              Your app code takes the sqlfu <code>Client</code> interface. <code>sqlfu</code> ships with many (very thin!) adapaters, with graceful fallback for features like prepared statements depending on client support, and proper handling of synchronous clients. Pick from Node, Bun, better-sqlite3, libsql, expo, browser via wasm, Durable Object storage, and more.
+            </p>
+            <a href="/docs/adapters">Choose an adapter</a>
+          </div>
+          <div class="artifact-pair feature-demo" aria-label="Runtime client adapters">
+            <figure class="artifact artifact-tall">
+              <figcaption>src/app.ts</figcaption>
+              <pre><code data-type-speed="fast"><span class="tok-keyword">import type</span> &#123;<span class="tok-name">Client</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
+
+<span class="tok-keyword">export async function</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">client</span>: <span class="tok-name">Client</span>) &#123;
+  <span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
+
+  <span class="tok-keyword">return</span> <span class="tok-name">posts</span>.<span class="tok-prop">map</span>((<span class="tok-name">post</span>) =&gt; &#123;
+    <span class="tok-keyword">return</span> <span class="tok-string">"&lt;article&gt;&lt;h2&gt;"</span> + <span class="tok-name">post</span>.<span class="tok-prop">title</span> + <span class="tok-string">"&lt;/h2&gt;&lt;/article&gt;"</span>;
+  &#125;).<span class="tok-prop">join</span>(<span class="tok-string">""</span>);
+&#125;</code></pre>
+            </figure>
+            <div class="artifact artifact-tall artifact-tabs runtime-tabs" data-tabbed-artifact data-default-tab="node">
+              <div class="artifact-tablist" role="tablist" aria-label="Runtime adapter examples">
+                <button class="artifact-tab is-active" type="button" role="tab" aria-selected="true" data-tab-for="node">node:sqlite</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="bun">bun:sqlite</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="better">better-sqlite3</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="libsql">libsql</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="wasm">sqlite-wasm</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="expo">expo-sqlite</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="do">durable object</button>
+                <button class="demo-replay" type="button" data-replay-demo aria-label="Replay runtime animation" title="Replay animation">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+                    <path d="M20 4v7h-7" />
+                  </svg>
+                </button>
+              </div>
+              <div class="artifact-tab-panel is-active" role="tabpanel" data-tab-panel="node">
+                <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">DatabaseSync</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"node:sqlite"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">createNodeSqliteClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
+
+<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createNodeSqliteClient</span>(
+  <span class="tok-keyword">new</span> <span class="tok-name">DatabaseSync</span>(<span class="tok-string">"app.db"</span>),
+);
+<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
+              </div>
+              <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="bun">
+                <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">Database</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"bun:sqlite"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">createBunClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
+
+<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createBunClient</span>(
+  <span class="tok-keyword">new</span> <span class="tok-name">Database</span>(<span class="tok-string">"app.db"</span>),
+);
+<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
+              </div>
+              <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="better">
+                <pre><code><span class="tok-keyword">import</span> <span class="tok-name">Database</span> <span class="tok-keyword">from</span> <span class="tok-string">"better-sqlite3"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">createBetterSqlite3Client</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
+
+<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createBetterSqlite3Client</span>(
+  <span class="tok-keyword">new</span> <span class="tok-name">Database</span>(<span class="tok-string">"app.db"</span>),
+);
+<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
+              </div>
+              <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="libsql">
+                <pre><code><span class="tok-keyword">import</span> <span class="tok-name">Database</span> <span class="tok-keyword">from</span> <span class="tok-string">"libsql"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">createLibsqlSyncClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
+
+<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createLibsqlSyncClient</span>(
+  <span class="tok-keyword">new</span> <span class="tok-name">Database</span>(<span class="tok-string">"app.db"</span>),
+);
+<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
+              </div>
+              <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="wasm">
+                <pre><code><span class="tok-keyword">import</span> <span class="tok-name">sqlite3InitModule</span> <span class="tok-keyword">from</span> <span class="tok-string">"@sqlite.org/sqlite-wasm"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">createSqliteWasmClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
+
+<span class="tok-keyword">const</span> <span class="tok-name">sqlite3</span> = <span class="tok-keyword">await</span> <span class="tok-name">sqlite3InitModule</span>();
+<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createSqliteWasmClient</span>(
+  <span class="tok-keyword">new</span> <span class="tok-name">sqlite3</span>.<span class="tok-prop">oo1</span>.<span class="tok-name">DB</span>(<span class="tok-string">":memory:"</span>),
+);
+<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
+              </div>
+              <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="expo">
+                <pre><code><span class="tok-keyword">import</span> * <span class="tok-keyword">as</span> <span class="tok-name">SQLite</span> <span class="tok-keyword">from</span> <span class="tok-string">"expo-sqlite"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">createExpoSqliteClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
+
+<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createExpoSqliteClient</span>(
+  <span class="tok-keyword">await</span> <span class="tok-name">SQLite</span>.<span class="tok-prop">openDatabaseAsync</span>(<span class="tok-string">"app.db"</span>),
+);
+<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
+              </div>
+              <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="do">
+                <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">DurableObject</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"cloudflare:workers"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">createDurableObjectClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
+
+<span class="tok-keyword">export class</span> <span class="tok-name">Blog</span> <span class="tok-keyword">extends</span> <span class="tok-name">DurableObject</span> &#123;
+  <span class="tok-keyword">async</span> <span class="tok-prop">fetch</span>() &#123;
+    <span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createDurableObjectClient</span>(<span class="tok-keyword">this</span>.<span class="tok-prop">ctx</span>.<span class="tok-prop">storage</span>);
+    <span class="tok-keyword">return new</span> <span class="tok-name">Response</span>(<span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>));
+  &#125;
+&#125;</code></pre>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="feature-row value-panel feature-showcase-row">
+          <div class="feature-copy">
+            <div class="eyebrow">4. batteries</div>
+            <h3>Built-in goodies (if you want them)</h3>
+            <p>
+              Mostly you just need to ask your agent to write normal SQL files. <code>sqlfu</code> has great DX for covering review, tracing, linting, agent handoff, and more.
+            </p>
+          </div>
+          <div class="feature-showcase feature-demo" data-feature-showcase aria-label="sqlfu workflow features">
+            <div class="feature-switcher" role="tablist" aria-label="Workflow features">
+              <button class="feature-option is-active" type="button" role="tab" aria-selected="true" data-feature-for="cli">CLI</button>
+              <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="admin">Admin UI</button>
+              <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="lint">Lint plugin</button>
+              <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="formatter">Formatter</button>
+              <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="tracing">Built-in tracing</button>
+              <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="skill">Agent skill</button>
+            </div>
+            <div class="feature-showcase-stage">
+              <section class="feature-showcase-panel is-active" role="tabpanel" data-feature-panel="cli">
+                <figure class="artifact terminal">
+                  <figcaption>terminal</figcaption>
+                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu check</span>
+<span class="terminal-output">definitions.sql, migrations, and database agree</span>
+
+<span class="term-prompt">$</span> <span class="tok-command">npx sqlfu migrate</span>
+<span class="terminal-output">Applied 20260501090000_add_published_to_posts.sql</span>
+
+<span class="term-prompt">$</span> <span class="tok-command">npx sqlfu sync</span>
+<span class="terminal-output">Database already matches definitions.sql</span></code></pre>
+                </figure>
+              </section>
+              <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="admin">
+                <figure class="artifact terminal artifact-compact">
+                  <figcaption>terminal</figcaption>
+                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu</span>
+<span class="terminal-output">sqlfu ready at https://sqlfu.dev/ui</span></code></pre>
+                </figure>
+                <figure class="ui-shot">
+                  <img src="/assets/landing/sqlfu-ui-crop.png" alt="sqlfu UI showing a customers table" loading="lazy" />
+                </figure>
+              </section>
+              <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="tracing">
+                <div class="artifact-pair artifact-pair-uneven">
+                  <figure class="artifact">
+                    <figcaption>src/server.ts</figcaption>
+                    <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">instrument</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
+
+<span class="tok-keyword">const</span> <span class="tok-name">client</span> = <span class="tok-name">instrument</span>(
+  <span class="tok-name">baseClient</span>,
+  <span class="tok-name">instrument</span>.<span class="tok-prop">otel</span>(&#123;<span class="tok-prop">tracer</span>&#125;),
+);
+
+<span class="tok-name">app</span>.<span class="tok-prop">get</span>(<span class="tok-string">"/posts"</span>, <span class="tok-keyword">async</span> (<span class="tok-name">c</span>) =&gt; &#123;
+  <span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
+  <span class="tok-keyword">return</span> <span class="tok-name">c</span>.<span class="tok-prop">json</span>(<span class="tok-name">posts</span>);
+&#125;);</code></pre>
+                  </figure>
+                  <div class="trace-shot" aria-label="Example trace view">
+                    <div class="trace-shot-header">
+                      <span>GET /posts</span>
+                      <strong>42 ms</strong>
+                    </div>
+                    <div class="trace-row trace-row-root">
+                      <span class="trace-label">GET /posts</span>
+                      <span class="trace-bar"></span>
+                      <span class="trace-time">42 ms</span>
+                    </div>
+                    <div class="trace-row trace-row-child">
+                      <span class="trace-label">getPosts</span>
+                      <span class="trace-bar"></span>
+                      <span class="trace-time">8 ms</span>
+                    </div>
+                    <div class="trace-row trace-row-child trace-row-short">
+                      <span class="trace-label">sqlite all</span>
+                      <span class="trace-bar"></span>
+                      <span class="trace-time">5 ms</span>
+                    </div>
+                    <dl>
+                      <div><dt>db.query.summary</dt><dd>getPosts</dd></div>
+                      <div><dt>db.system.name</dt><dd>sqlite</dd></div>
+                    </dl>
+                  </div>
+                </div>
+              </section>
+              <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="lint">
+                <figure class="artifact terminal">
+                  <figcaption>terminal</figcaption>
+                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx eslint sql/get-posts.sql src/app.ts</span>
+
+<span class="terminal-output">sql/get-posts.sql
+  1:1  error  generated wrapper is stale; run npx sqlfu generate
+       sqlfu/generated-query-freshness
+
+src/app.ts
+  8:21 error  use ./sql/.generated/get-posts.sql.ts instead
+       sqlfu/query-naming</span></code></pre>
+                </figure>
+              </section>
+              <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="formatter">
+                <figure class="artifact terminal">
+                  <figcaption>terminal</figcaption>
+                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu format "sql/**/*.sql"</span>
+
+<span class="terminal-output">Formatted files:
+  sql/get-posts.sql
+  sql/get-comments.sql</span></code></pre>
+                </figure>
+              </section>
+              <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="skill">
+                <figure class="artifact terminal">
+                  <figcaption>terminal</figcaption>
+                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx skills add mmkal/sqlfu/skills/using-sqlfu</span>
+
+<span class="terminal-output">Installed using-sqlfu
+Agents now know to edit SQL first, run sqlfu draft, and regenerate wrappers.</span></code></pre>
+                </figure>
+              </section>
+            </div>
+          </div>
         </article>
       </section>
 
       <p class="works-with">
-        Bring your own driver. sqlfu runs on top of <code>better-sqlite3</code>, <code>node:sqlite</code>, <code>bun:sqlite</code>, <code>@libsql/client</code>, <code>@tursodatabase/database</code> / <code>serverless</code> / <code>sync</code>, Cloudflare D1, Durable Objects, Expo SQLite, and <code>sqlite-wasm</code>. <a href="/docs/adapters">Full list →</a>
+        Driver support today: <code>better-sqlite3</code>, <code>node:sqlite</code>, <code>bun:sqlite</code>, <code>@libsql/client</code>, <code>@tursodatabase/database</code> / <code>serverless</code> / <code>sync</code>, Cloudflare D1, Durable Objects, Expo SQLite, and <code>sqlite-wasm</code>. <a href="/docs/adapters">Full list</a>
       </p>
 
+      <script is:inline>
+        (() => {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get('animation')) return;
+          if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+          const rows = Array.from(document.querySelectorAll('[data-walkthrough-step]'));
+          if (rows.length === 0) return;
+
+          const sleep = milliseconds =>
+            new Promise(resolve => {
+              window.setTimeout(resolve, milliseconds);
+            });
+
+          const prepareTyping = target => {
+            if (target.dataset.typingPrepared === 'true') {
+              return Array.from(target.querySelectorAll('.typed-char'));
+            }
+
+            const textNodes = [];
+            const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
+            let node = walker.nextNode();
+            while (node) {
+              if (node.nodeValue) textNodes.push(node);
+              node = walker.nextNode();
+            }
+
+            for (const textNode of textNodes) {
+              const fragment = document.createDocumentFragment();
+              for (const character of textNode.nodeValue) {
+                const span = document.createElement('span');
+                span.className = 'typed-char';
+                span.textContent = character;
+                if (!character.trim() && !target.hasAttribute('data-hide-typing-whitespace')) {
+                  span.classList.add('is-visible');
+                }
+                fragment.append(span);
+              }
+              textNode.replaceWith(fragment);
+            }
+
+            target.dataset.typingPrepared = 'true';
+            return Array.from(target.querySelectorAll('.typed-char'));
+          };
+
+          const resetRow = row => {
+            for (const character of row.querySelectorAll('.typed-char')) {
+              const target = character.closest('[data-type-speed]');
+              const hideWhitespace = target?.hasAttribute('data-hide-typing-whitespace');
+              character.classList.toggle(
+                'is-visible',
+                !hideWhitespace && !character.textContent?.trim(),
+              );
+            }
+            for (const revealLine of row.querySelectorAll('[data-reveal-line]')) {
+              revealLine.classList.remove('is-visible');
+            }
+            for (const pop of row.querySelectorAll('[data-pop-after-typing]')) {
+              pop.classList.remove('is-visible');
+            }
+            for (const output of row.querySelectorAll('[data-terminal-output]')) {
+              output.classList.remove('is-visible', 'is-dismissed');
+            }
+            for (const promptPart of row.querySelectorAll('[data-dismiss-before-next], [data-corner-before-next], [data-corner-after-next]')) {
+              promptPart.classList.remove('is-visible', 'is-dismissed');
+            }
+            for (const artifact of row.querySelectorAll('[data-generated-artifact], [data-replacement-artifact]')) {
+              artifact.classList.remove('is-visible');
+            }
+            for (const terminal of row.querySelectorAll('.artifact.terminal')) {
+              terminal.classList.remove('is-running', 'is-done', 'is-replaced');
+            }
+            for (const tabbed of row.querySelectorAll('[data-tabbed-artifact]')) {
+              switchArtifactTab(tabbed, tabbed.dataset.defaultTab || 'terminal');
+              tabbed.classList.remove('is-running', 'is-done');
+            }
+          };
+
+          const revealTyping = async (target, isCurrent) => {
+            if (target.hasAttribute('data-reveal-line')) {
+              target.classList.add('is-visible');
+              await sleep(Number(target.dataset.revealPause || 0));
+              if (!isCurrent()) return false;
+            }
+            const delayBySpeed = {
+              command: 50,
+              medium: 25,
+              fast: 14,
+              'generated-file': 5,
+              'schema-add': 58,
+            };
+            const delay = delayBySpeed[target.dataset.typeSpeed] || 14;
+            for (const character of prepareTyping(target)) {
+              if (!isCurrent()) return false;
+              if (character.classList.contains('is-visible')) continue;
+              character.classList.add('is-visible');
+              await sleep(delay);
+            }
+            return true;
+          };
+
+          const switchArtifactTab = (tabbed, activeTab) => {
+            for (const tab of tabbed.querySelectorAll('[data-tab-for]')) {
+              tab.classList.toggle('is-active', tab.dataset.tabFor === activeTab);
+              tab.setAttribute('aria-selected', String(tab.dataset.tabFor === activeTab));
+            }
+            for (const panel of tabbed.querySelectorAll('[data-tab-panel]')) {
+              panel.classList.toggle('is-active', panel.dataset.tabPanel === activeTab);
+            }
+          };
+
+          const setReplayState = (row, state) => {
+            row.dataset.walkthroughState = state;
+            for (const button of row.querySelectorAll('[data-replay-demo]')) {
+              button.dataset.replayState = state;
+            }
+          };
+
+          const playRow = async row => {
+            const runId = String(Number(row.dataset.walkthroughRun || '0') + 1);
+            row.dataset.walkthroughRun = runId;
+            const isCurrent = () => row.dataset.walkthroughRun === runId;
+            resetRow(row);
+            setReplayState(row, 'running');
+
+            try {
+              for (const target of row.querySelectorAll('[data-type-speed]')) {
+                const completed = await revealTyping(target, isCurrent);
+                if (!completed || !isCurrent()) return;
+
+                if (target.dataset.runCommand === 'true') {
+                  const terminal = target.closest('.artifact');
+                  if (terminal) terminal.classList.add('is-running');
+                  await sleep(650);
+                  let previousOutput = null;
+                  for (const output of terminal?.querySelectorAll('[data-terminal-output]') || []) {
+                    if (!isCurrent()) return;
+                    if (previousOutput) {
+                      if (previousOutput.hasAttribute('data-dismiss-before-next')) {
+                        previousOutput.classList.add('is-dismissed');
+                      }
+                      for (const promptPart of previousOutput.querySelectorAll('[data-dismiss-before-next], [data-corner-before-next]')) {
+                        promptPart.classList.add('is-dismissed');
+                      }
+                      for (const promptPart of previousOutput.querySelectorAll('[data-corner-after-next]')) {
+                        promptPart.classList.add('is-visible');
+                      }
+                    }
+                    output.classList.add('is-visible');
+                    previousOutput = output;
+                    await sleep(Number(output.dataset.outputPause || 260));
+                  }
+                  if (terminal) {
+                    terminal.classList.remove('is-running');
+                    terminal.classList.add('is-done');
+                  }
+                  await sleep(170);
+
+                  const replacement = terminal
+                    ?.closest('.artifact-swap')
+                    ?.querySelector('[data-replacement-artifact]');
+                  const tabbedReplacement = terminal
+                    ?.closest('[data-tabbed-artifact]')
+                    ?.querySelector('[data-replacement-artifact]');
+                  const tabbed = terminal?.closest('[data-tabbed-artifact]');
+                  if (replacement) {
+                    terminal.classList.add('is-replaced');
+                    replacement.classList.add('is-visible');
+                  }
+                  if (tabbed && tabbedReplacement) {
+                    switchArtifactTab(tabbed, 'src');
+                    tabbedReplacement.classList.add('is-visible');
+                  }
+                }
+              }
+
+              for (const pop of row.querySelectorAll('[data-pop-after-typing]')) {
+                if (!isCurrent()) return;
+                pop.classList.add('is-visible');
+                await sleep(Number(pop.dataset.popPause || 120));
+              }
+
+              for (const artifact of row.querySelectorAll('[data-generated-artifact]')) {
+                if (!isCurrent()) return;
+                artifact.classList.add('is-visible');
+                await sleep(110);
+              }
+            } finally {
+              if (isCurrent()) setReplayState(row, 'done');
+            }
+          };
+
+          for (const row of rows) {
+            for (const target of row.querySelectorAll('[data-type-speed]')) {
+              prepareTyping(target);
+            }
+          }
+          document.documentElement.classList.add('landing-anim-ready');
+          for (const row of rows) {
+            resetRow(row);
+            setReplayState(row, 'idle');
+            for (const replayButton of row.querySelectorAll('[data-replay-demo]')) {
+              replayButton.addEventListener('click', () => void playRow(row));
+            }
+            for (const tabbed of row.querySelectorAll('[data-tabbed-artifact]')) {
+              for (const tab of tabbed.querySelectorAll('[data-tab-for]')) {
+                tab.addEventListener('click', () => {
+                  switchArtifactTab(tabbed, tab.dataset.tabFor || 'terminal');
+                });
+              }
+            }
+          }
+
+          if (!('IntersectionObserver' in window)) {
+            for (const row of rows) void playRow(row);
+            return;
+          }
+
+          const observer = new IntersectionObserver(
+            entries => {
+              for (const entry of entries) {
+                const row = entry.target.closest('[data-walkthrough-step]');
+                if (!row) continue;
+                const fullyVisible = entry.isIntersecting && entry.intersectionRatio >= 0.98;
+                if (!fullyVisible) {
+                  row.dataset.walkthroughFullyVisible = 'false';
+                  continue;
+                }
+                if (row.dataset.walkthroughFullyVisible === 'true') continue;
+                row.dataset.walkthroughFullyVisible = 'true';
+                void playRow(row);
+              }
+            },
+            { rootMargin: '0px', threshold: [0, 0.98, 1] },
+          );
+
+          for (const row of rows) {
+            observer.observe(row.querySelector('.feature-demo') || row);
+          }
+        })();
+      </script>
+
+      <script is:inline>
+        (() => {
+          for (const showcase of document.querySelectorAll('[data-feature-showcase]')) {
+            const switchFeature = feature => {
+              for (const option of showcase.querySelectorAll('[data-feature-for]')) {
+                const active = option.dataset.featureFor === feature;
+                option.classList.toggle('is-active', active);
+                option.setAttribute('aria-selected', String(active));
+              }
+              for (const panel of showcase.querySelectorAll('[data-feature-panel]')) {
+                panel.classList.toggle('is-active', panel.dataset.featurePanel === feature);
+              }
+            };
+
+            for (const option of showcase.querySelectorAll('[data-feature-for]')) {
+              option.addEventListener('click', () => {
+                switchFeature(option.dataset.featureFor || 'admin');
+              });
+            }
+          }
+        })();
+      </script>
+
       {/*
-        Animations are off by default. They are enabled with `?animation=<name>`:
+        Video animation variants are enabled with `?animation=<name>`:
 
           - `?animation=sequential`: a single large stage that plays the three
-            beats (schema → generate → draft) in sequence, replacing the
-            three-card grid. This is the main animated treatment.
+            beats (schema, generate, draft) in sequence, replacing the
+            feature walkthrough. This is the main animated treatment.
           - `?animation=a|b|c|d`: the original three-panel alternatives,
-            each card keeps its copy but its body gets swapped for the
+            each supported feature keeps its copy but its body gets swapped for the
             matching `alt-<letter>-<key>` video.
 
-        When no `animation` param is set, the page ships the plain static
-        value panels above (same as main).
+        When no `animation` param is set, the page keeps the feature
+        walkthrough above and progressively enhances it with lightweight DOM
+        typing/reveal animation.
       */}
       <script is:inline>
         (() => {
@@ -150,11 +734,12 @@ import '../styles/landing.css';
           }
 
           if (['a', 'b', 'c', 'd'].includes(name)) {
-            // Alternative three-card treatments: inject a `<video>` inside
-            // each value-panel, alongside the existing heading + copy.
+            const animatedKeys = new Set(['schema', 'generate', 'draft']);
+            // Alternative three-panel treatments: inject a `<video>` inside
+            // each feature that already has a matching animation asset.
             for (const panel of grid.querySelectorAll('.value-panel')) {
               const key = panel.dataset.animationKey;
-              if (!key) continue;
+              if (!key || !animatedKeys.has(key)) continue;
               const slug = `alt-${name}-${key}`;
               const media = document.createElement('div');
               media.className = 'value-media';

@@ -11,13 +11,16 @@ import {
   analyzeDatabase,
   autoAcceptConfirm,
   formatCheckFailure,
-  requireContextConfig,
+  loadContextConfig,
+  loadContextProjectState,
+  migrationsPresetOf,
 } from '../api.js';
 import {createDefaultInitPreview} from '../init-preview.js';
 import {migrationName, readMigrationHistory} from '../migrations/index.js';
+import {formatSqlFiles} from './format-files.js';
 import {stopProcessesListeningOnPort} from './port-process.js';
-import {generateQueryTypes} from '../typegen/index.js';
-import {watchGenerateQueryTypes} from '../typegen/watch.js';
+import {generateQueryTypesForConfig} from '../typegen/index.js';
+import {watchGenerateQueryTypesForConfig} from '../typegen/watch.js';
 import {startSqlfuServer} from '../ui/server.js';
 import {resolveSqlfuUi} from '../ui/resolve-sqlfu-ui.js';
 import packageJson from '../../package.json' with {type: 'json'};
@@ -50,17 +53,16 @@ export const router = {
         .optional(),
     )
     .handler(async ({context, input}) => {
-      const ui = input?.ui ? resolveSqlfuUi({sqlfuVersion: packageJson.version}) : undefined;
-
-      await startSqlfuServer({
-        port: input?.port,
-        projectRoot: context.projectRoot,
-        ui: ui ? {root: ui.root} : undefined,
-      });
-
-      context.host.logger.log(
-        ui ? `sqlfu ready (UI + backend on the same origin)` : 'sqlfu ready at https://sqlfu.dev/ui',
-      );
+      const project = await loadContextProjectState(context);
+      const params = {port: input?.port, configPath: project.configPath};
+      if (input?.ui) {
+        const ui = await resolveSqlfuUi({sqlfuVersion: packageJson.version});
+        await startSqlfuServer({...params, ui});
+        context.host.logger.log(`sqlfu ready at http://localhost:${params.port || 56081}`);
+      } else {
+        await startSqlfuServer(params);
+        context.host.logger.log('sqlfu ready at https://sqlfu.dev/ui');
+      }
 
       await new Promise(() => {});
     }),
@@ -70,7 +72,8 @@ export const router = {
       description: `Initialize a new sqlfu project in the current directory.`,
     })
     .handler(async ({context}) => {
-      const preview = createDefaultInitPreview(context.projectRoot);
+      const project = await loadContextProjectState(context);
+      const preview = createDefaultInitPreview(project.projectRoot, {configPath: project.configPath});
       const configContents = await context.confirm({
         title: 'Create sqlfu.config.ts?',
         body: preview.configContents,
@@ -83,11 +86,12 @@ export const router = {
       }
 
       await context.host.initializeProject({
-        projectRoot: context.projectRoot,
+        projectRoot: project.projectRoot,
+        configPath: project.configPath,
         configContents,
       });
 
-      return `Initialized sqlfu project in ${context.projectRoot}.`;
+      return `Initialized sqlfu project in ${project.projectRoot}.`;
     }),
 
   kill: base
@@ -129,17 +133,43 @@ export const router = {
         .partial()
         .optional(),
     )
-    .handler(async ({input}) => {
+    .handler(async ({context, input}) => {
+      const sqlfuContext = await loadContextConfig(context);
       if (input?.watch) {
-        await watchGenerateQueryTypes();
+        await watchGenerateQueryTypesForConfig(sqlfuContext.config, sqlfuContext.host);
         return;
       }
-      await generateQueryTypes();
-      return 'Generated schema-derived database and TypeSQL outputs.';
+      const result = await generateQueryTypesForConfig(sqlfuContext.config, sqlfuContext.host);
+      return ['Updated generated files:', ...result.writtenFiles.map((filePath) => `  ${filePath}`)].join('\n');
+    }),
+
+  format: base
+    .meta({
+      description: `Format .sql files in place.`,
+    })
+    .input(
+      z.object({
+        paths: z
+          .array(z.string().min(1))
+          .min(1)
+          .meta({positional: true})
+          .describe('One or more .sql file paths or glob patterns.'),
+      }),
+    )
+    .handler(async ({input}) => {
+      const result = await formatSqlFiles(input.paths, process.cwd());
+      const lines: string[] = [];
+      if (result.formatted.length > 0) {
+        lines.push('Formatted files:', ...result.formatted.map((filePath) => `  ${filePath}`));
+      }
+      if (result.unchanged.length > 0) {
+        lines.push('Already formatted:', ...result.unchanged.map((filePath) => `  ${filePath}`));
+      }
+      return lines.join('\n');
     }),
 
   config: base.handler(async ({context}) => {
-    return requireContextConfig(context).config;
+    return (await loadContextConfig(context)).config;
   }),
 
   sync: base
@@ -149,7 +179,7 @@ export const router = {
         `This command fails if semantic changes are required. You can run 'sqlfu draft' to create a migration file with the necessary changes.`,
     })
     .handler(async ({context}) => {
-      await applySyncSql(requireContextConfig(context), context.confirm);
+      await applySyncSql(await loadContextConfig(context), context.confirm);
     }),
 
   draft: base
@@ -168,7 +198,8 @@ export const router = {
         .optional(),
     )
     .handler(async ({context, input}) => {
-      await applyDraftSql(requireContextConfig(context), input, context.confirm);
+      const result = await applyDraftSql(await loadContextConfig(context), input, context.confirm);
+      return result ? `Wrote ${result.path}` : undefined;
     }),
 
   migrate: base
@@ -190,7 +221,7 @@ export const router = {
     )
     .handler(async ({context, input}) => {
       const yes = input?.yes ?? !process.stdin.isTTY;
-      await applyMigrateSql(requireContextConfig(context), yes ? autoAcceptConfirm : context.confirm);
+      await applyMigrateSql(await loadContextConfig(context), yes ? autoAcceptConfirm : context.confirm);
     }),
 
   pending: base
@@ -198,10 +229,10 @@ export const router = {
       description: `List migrations that exist but have not been applied to the configured database.`,
     })
     .handler(async ({context}) => {
-      const initializedContext = requireContextConfig(context);
+      const initializedContext = await loadContextConfig(context);
       const migrations = await readMigrationsFromContext(initializedContext);
       await using database = await initializedContext.host.openDb(initializedContext.config);
-      const applied = await readMigrationHistory(database.client);
+      const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(initializedContext)});
       const appliedNames = new Set(applied.map((migration) => migration.name));
       return migrations.map((migration) => migrationName(migration)).filter((name) => !appliedNames.has(name));
     }),
@@ -211,9 +242,9 @@ export const router = {
       description: `List migrations recorded in the configured database history.`,
     })
     .handler(async ({context}) => {
-      const initializedContext = requireContextConfig(context);
+      const initializedContext = await loadContextConfig(context);
       await using database = await initializedContext.host.openDb(initializedContext.config);
-      const applied = await readMigrationHistory(database.client);
+      const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(initializedContext)});
       return applied.map((migration) => migration.name);
     }),
 
@@ -227,10 +258,10 @@ export const router = {
       }),
     )
     .handler(async ({context, input}) => {
-      const initializedContext = requireContextConfig(context);
+      const initializedContext = await loadContextConfig(context);
       const migrations = await readMigrationsFromContext(initializedContext);
       await using database = await initializedContext.host.openDb(initializedContext.config);
-      const applied = await readMigrationHistory(database.client);
+      const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(initializedContext)});
       const appliedNames = new Set(applied.map((migration) => migration.name));
       return migrations
         .map((migration) => migrationName(migration))
@@ -251,7 +282,7 @@ export const router = {
       }),
     )
     .handler(async ({context, input}) => {
-      await applyBaselineSql(requireContextConfig(context), input, context.confirm);
+      await applyBaselineSql(await loadContextConfig(context), input, context.confirm);
     }),
 
   goto: base
@@ -264,29 +295,33 @@ export const router = {
       }),
     )
     .handler(async ({context, input}) => {
-      await applyGotoSql(requireContextConfig(context), input, context.confirm);
+      await applyGotoSql(await loadContextConfig(context), input, context.confirm);
     }),
 
   check: {
     all: base
       .meta({
         description: `Run all checks and recommend the next action.`,
+        // `default: true` makes `sqlfu check` (with no leaf specified)
+        // auto-dispatch here, instead of opening a clack picker that hangs
+        // when stdin isn't a TTY (CI, package.json scripts, piped invocations).
+        default: true,
       })
       .handler(async ({context}) => {
-        const analysis = await analyzeDatabase(requireContextConfig(context));
+        const analysis = await analyzeDatabase(await loadContextConfig(context));
         if (analysis.mismatches.length > 0) {
           throw new Error(formatCheckFailure(analysis));
         }
       }),
     migrationsMatchDefinitions: base.handler(async ({context}) => {
-      const sqlfuContext = requireContextConfig(context);
+      const sqlfuContext = await loadContextConfig(context);
       const [definitionsSql, migrations] = await Promise.all([
         sqlfuContext.host.fs.readFile(sqlfuContext.config.definitions),
         readMigrationsFromContext(sqlfuContext),
       ]);
       const [definitionsSchema, migrationsSchema] = await Promise.all([
-        materializeDefinitionsSchemaForContext(sqlfuContext.host, definitionsSql),
-        materializeMigrationsSchemaForContext(sqlfuContext.host, migrations),
+        materializeDefinitionsSchemaForContext(sqlfuContext, definitionsSql),
+        materializeMigrationsSchemaForContext(sqlfuContext, migrations),
       ]);
       if ((await compareSchemasForContext(sqlfuContext.host, definitionsSchema, migrationsSchema)).isDifferent) {
         throw new Error('replayed migrations do not match definitions.sql');

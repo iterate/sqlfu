@@ -265,6 +265,12 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^5.1.0
         version: 5.2.0(vite@7.3.2(@types/node@24.12.0)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
+      miniflare:
+        specifier: ^4.20260409.0
+        version: 4.20260415.0
       sqlfu:
         specifier: workspace:*
         version: link:../sqlfu

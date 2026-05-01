@@ -28,6 +28,7 @@ export type RelationRowEditing = {
   editable: boolean;
   dirty: boolean;
   saving: boolean;
+  onConfirmDiscard: () => Promise<boolean>;
   onSave: () => void;
   onDiscard: () => void;
 };
@@ -75,18 +76,40 @@ export function RelationQueryPanel(input: RelationQueryPanelProps) {
     placeholderData: (previous) => previous,
   });
 
-  const mutate = (updater: (previous: RelationQueryState) => RelationQueryState) => {
+  const confirmBeforeReadOnlyMode = async (willEnterReadOnlyMode: boolean) => {
+    const rowEditing = input.rowEditing;
+    if (!willEnterReadOnlyMode || !isDefault || !rowEditing || !rowEditing.editable || !rowEditing.dirty) {
+      return true;
+    }
+    if (rowEditing.saving) {
+      return false;
+    }
+    const confirmed = await rowEditing.onConfirmDiscard();
+    if (!confirmed) {
+      return false;
+    }
+    rowEditing.onDiscard();
+    return true;
+  };
+
+  const mutate = async (updater: (previous: RelationQueryState) => RelationQueryState) => {
+    const previous = reconcileState(state, relation.name, allColumns);
+    const next = updater(previous);
+    const willEnterReadOnlyMode = isDefaultRelationQueryState(previous) && !isDefaultRelationQueryState(next);
+    if (!(await confirmBeforeReadOnlyMode(willEnterReadOnlyMode))) {
+      return;
+    }
     if (!isStructured) setCustomSql(null);
-    setState((previous) => updater(reconcileState(previous, relation.name, allColumns)));
+    setState(next);
   };
 
   const handleSortToggle = (column: string) => {
-    mutate((s) => ({...s, sorts: toggleSort(s.sorts, column)}));
+    void mutate((s) => ({...s, sorts: toggleSort(s.sorts, column)}));
   };
-  const handleSortClear = () => mutate((s) => ({...s, sorts: []}));
+  const handleSortClear = () => void mutate((s) => ({...s, sorts: []}));
 
   const handleFilterApply = (filter: RelationQueryFilter) => {
-    mutate((s) => {
+    void mutate((s) => {
       const index = s.filters.findIndex((f) => f.column === filter.column);
       return {
         ...s,
@@ -95,29 +118,35 @@ export function RelationQueryPanel(input: RelationQueryPanelProps) {
     });
   };
   const handleFilterRemove = (column: string) => {
-    mutate((s) => ({...s, filters: s.filters.filter((f) => f.column !== column)}));
+    void mutate((s) => ({...s, filters: s.filters.filter((f) => f.column !== column)}));
   };
-  const handleFilterClearAll = () => mutate((s) => ({...s, filters: []}));
+  const handleFilterClearAll = () => void mutate((s) => ({...s, filters: []}));
 
   const handleColumnToggle = (column: string) => {
-    mutate((s) => {
+    void mutate((s) => {
       const hidden = new Set(s.hiddenColumns);
       if (hidden.has(column)) hidden.delete(column);
       else hidden.add(column);
       return {...s, hiddenColumns: allColumns.filter((c) => hidden.has(c))};
     });
   };
-  const handleColumnsShowAll = () => mutate((s) => ({...s, hiddenColumns: []}));
+  const handleColumnsShowAll = () => void mutate((s) => ({...s, hiddenColumns: []}));
 
-  const handleLimitChange = (value: number) => mutate((s) => ({...s, limit: Math.max(1, value), offset: 0}));
-  const handlePrev = () => mutate((s) => ({...s, offset: Math.max(0, s.offset - s.limit)}));
-  const handleNext = () => mutate((s) => ({...s, offset: s.offset + s.limit}));
+  const handleLimitChange = (value: number) => {
+    void mutate((s) => ({...s, limit: Math.max(1, value), offset: 0}));
+  };
+  const handlePrev = () => void mutate((s) => ({...s, offset: Math.max(0, s.offset - s.limit)}));
+  const handleNext = () => void mutate((s) => ({...s, offset: s.offset + s.limit}));
   const handleReset = () => {
     setState(defaultRelationQueryState({tableName: relation.name, allColumns}));
     setCustomSql(null);
   };
-  const handleSqlApply = (value: string) => {
-    setCustomSql(value === generatedSql ? null : value);
+  const handleSqlApply = async (value: string) => {
+    const nextCustomSql = value === generatedSql ? null : value;
+    if (!(await confirmBeforeReadOnlyMode(nextCustomSql !== null))) {
+      return;
+    }
+    setCustomSql(nextCustomSql);
   };
 
   const toolbar = (
@@ -214,7 +243,7 @@ function RelationToolbar(input: {
             disabled={!input.isStructured}
           >
             <span className="rqp-pill-icon" aria-hidden="true">
-              ⚡
+              <FilterIcon />
             </span>
             <span>Filter</span>
             {input.activeFilterCount > 0 ? <span className="rqp-pill-badge">{input.activeFilterCount}</span> : null}
@@ -242,7 +271,7 @@ function RelationToolbar(input: {
             disabled={!input.isStructured}
           >
             <span className="rqp-pill-icon" aria-hidden="true">
-              ⇅
+              <SortIcon />
             </span>
             <span>{sortLabel ?? 'Sort'}</span>
           </button>
@@ -268,7 +297,7 @@ function RelationToolbar(input: {
             disabled={!input.isStructured}
           >
             <span className="rqp-pill-icon" aria-hidden="true">
-              👁
+              <ColumnsIcon />
             </span>
             <span>
               Columns {input.visibleColumnCount}/{input.allColumns.length}
@@ -297,7 +326,7 @@ function RelationToolbar(input: {
             aria-label="Query SQL"
           >
             <span className="rqp-pill-icon" aria-hidden="true">
-              ⟨⟩
+              <SqlIcon />
             </span>
             <span>Query</span>
           </button>
@@ -325,21 +354,43 @@ function RelationToolbar(input: {
             disabled={!input.relation.sql}
           >
             <span className="rqp-pill-icon" aria-hidden="true">
-              📐
+              <DefinitionIcon />
             </span>
             <span>Definition</span>
           </button>
         </Popover.Trigger>
         <Popover.Portal>
           <Popover.Content className="rqp-popover rqp-popover-wide" align="start" sideOffset={6}>
-            <SqlCodeMirror
-              value={input.relation.sql ?? ''}
-              ariaLabel="Relation definition editor"
-              relations={[input.relation]}
-              onChange={() => {}}
-              readOnly
-              height="12rem"
-            />
+            <div className="rqp-popover-body">
+              <div className="card-title-row">
+                <div className="card-title">Definition</div>
+                <a
+                  className="rqp-icon-button"
+                  href="#schema"
+                  aria-label="Edit in Desired Schema"
+                  title="Edit in Desired Schema"
+                >
+                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                    <path
+                      d="M11.5 1.8 14.2 4.5 5.6 13.1 2.5 13.5 2.9 10.4z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.2"
+                      strokeLinejoin="round"
+                    />
+                    <line x1="10.4" y1="2.9" x2="13.1" y2="5.6" stroke="currentColor" strokeWidth="1.2" />
+                  </svg>
+                </a>
+              </div>
+              <SqlCodeMirror
+                value={input.relation.sql ?? ''}
+                ariaLabel="Relation definition editor"
+                relations={[input.relation]}
+                onChange={() => {}}
+                readOnly
+                height="12rem"
+              />
+            </div>
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
@@ -377,7 +428,7 @@ function RelationToolbar(input: {
         disabled={input.state.offset === 0}
         onClick={input.onPrev}
       >
-        ←
+        <ChevronLeftIcon />
       </button>
       <button
         type="button"
@@ -385,7 +436,7 @@ function RelationToolbar(input: {
         aria-label="Next page"
         onClick={input.onNext}
       >
-        →
+        <ChevronRightIcon />
       </button>
       <PerPageMenu value={input.state.limit} onChange={input.onLimitChange} />
       <button
@@ -405,7 +456,7 @@ function QueryPopoverBody(input: {
   relation: StudioRelation;
   committedSql: string;
   generatedSql: string;
-  onApply: (value: string) => void;
+  onApply: (value: string) => void | Promise<void>;
 }) {
   const [draft, setDraft] = useState(input.committedSql);
   useEffect(() => {
@@ -415,8 +466,8 @@ function QueryPopoverBody(input: {
   const limitMissing = !hasLimitClause(draft);
   const simpleShapeMatch = isSimpleSelectFromTable(draft, input.relation.name);
   const dirty = draft !== input.committedSql;
-  const apply = () => {
-    if (!limitMissing) input.onApply(draft);
+  const apply = async () => {
+    if (!limitMissing) await input.onApply(draft);
   };
   return (
     <div className="rqp-query-body">
@@ -491,7 +542,7 @@ function FilterManager(input: {
                 aria-label={`Remove filter on ${filter.column}`}
                 onClick={() => input.onRemove(filter.column)}
               >
-                ✕
+                <CloseIcon />
               </button>
             </div>
           ))}
@@ -574,7 +625,7 @@ function SortManager(input: {
               <span className="rqp-sort-meta">
                 {index != null ? <span className="rqp-sort-position">{index + 1}</span> : null}
                 <span className="rqp-sort-direction" aria-hidden="true">
-                  {direction === 'asc' ? '↑' : direction === 'desc' ? '↓' : '↕'}
+                  <SortDirectionIcon direction={direction} />
                 </span>
               </span>
             </button>
@@ -631,7 +682,7 @@ function PerPageMenu(input: {value: number; onChange: (value: number) => void}) 
         <button type="button" className="rqp-pill-button" aria-label={`${input.value} rows per page`}>
           {input.value}/page
           <span className="rqp-pill-chevron" aria-hidden="true">
-            ▾
+            <ChevronDownIcon />
           </span>
         </button>
       </Popover.Trigger>
@@ -653,6 +704,196 @@ function PerPageMenu(input: {value: number; onChange: (value: number) => void}) 
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+function FilterIcon() {
+  return (
+    <svg className="rqp-svg-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2.5 3.5h11L9.4 8.1v4.1l-2.8 1.1V8.1z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function SortIcon() {
+  return (
+    <svg className="rqp-svg-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M5 3v10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path
+        d="M2.8 5.2 5 3l2.2 2.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M11 13V3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path
+        d="M8.8 10.8 11 13l2.2-2.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ColumnsIcon() {
+  return (
+    <svg className="rqp-svg-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2.5" y="3" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M6.1 3v10M9.9 3v10" fill="none" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+function SqlIcon() {
+  return (
+    <svg className="rqp-svg-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M6 4 2.8 8 6 12M10 4l3.2 4L10 12"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M8.8 3.2 7.2 12.8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function DefinitionIcon() {
+  return (
+    <svg className="rqp-svg-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4 2.8h8v10.4H4z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M6 5.5h4M6 8h4M6 10.5h2.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ChevronLeftIcon() {
+  return (
+    <svg className="rqp-svg-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M10 3.5 5.5 8l4.5 4.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg className="rqp-svg-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M6 3.5 10.5 8 6 12.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg className="rqp-svg-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M4 6.2 8 10l4-3.8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg className="rqp-svg-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function SortDirectionIcon(input: {direction: 'asc' | 'desc' | null}) {
+  if (input.direction === 'asc') {
+    return <SortAscendingIcon />;
+  }
+  if (input.direction === 'desc') {
+    return <SortDescendingIcon />;
+  }
+  return <SortNoneIcon />;
+}
+
+function SortAscendingIcon() {
+  return (
+    <svg className="rqp-svg-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 13V3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path
+        d="M4.8 6.2 8 3l3.2 3.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function SortDescendingIcon() {
+  return (
+    <svg className="rqp-svg-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 3v10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path
+        d="M4.8 9.8 8 13l3.2-3.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function SortNoneIcon() {
+  return (
+    <svg className="rqp-svg-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 3v10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <path
+        d="M5.8 5.2 8 3l2.2 2.2M5.8 10.8 8 13l2.2-2.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

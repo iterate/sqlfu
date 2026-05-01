@@ -61,6 +61,15 @@
 // `FOLLOWING`, `CURRENT`, `TIES`, `OTHERS`, `EXCLUDE`, `NO`, `WINDOW`, `OVER`)
 // appear only inside OVER (...) where the parser currently brace-matches, so
 // their reserved-status doesn't affect expression parsing.
+//
+// `NON_RESERVED_KEYWORDS` (below) is a subset of KEYWORDS that real SQLite
+// (per https://www.sqlite.org/lang_keywords.html) lets you use as a bare
+// identifier in identifier positions — column names, table names, aliases.
+// `select offset from events` parses fine in actual SQLite even though
+// OFFSET is a keyword; the parser only treats it AS the OFFSET clause when
+// it appears after `LIMIT expr`. We mirror that fallback rule by checking
+// this set wherever identifiers are accepted (see select_stmt.ts /
+// dml_stmt.ts: `isIdentLike`).
 const KEYWORDS = new Set([
 	'ABORT', 'ACTION', 'ADD', 'AFTER', 'ALL', 'ALTER', 'ALWAYS', 'ANALYZE', 'AND', 'AS', 'ASC',
 	'ATTACH', 'AUTOINCREMENT', 'BEFORE', 'BEGIN', 'BETWEEN', 'BY', 'CASCADE', 'CASE', 'CAST',
@@ -81,6 +90,31 @@ const KEYWORDS = new Set([
 	'UNION', 'UNIQUE', 'UPDATE', 'USING', 'VACUUM', 'VALUES', 'VIEW', 'VIRTUAL', 'WHEN',
 	'WHERE', 'WITH', 'WITHOUT',
 ]);
+
+/** Keywords that real SQLite accepts as bare identifiers in identifier
+ *  positions (column names, table names, aliases). The parser treats these
+ *  as the keyword in their reserved syntactic context (e.g. `OFFSET` after
+ *  `LIMIT expr`) and as an identifier elsewhere. Sourced from
+ *  https://www.sqlite.org/lang_keywords.html (the FALLBACK list). */
+export const NON_RESERVED_KEYWORDS = new Set([
+	'ABORT', 'ACTION', 'AFTER', 'ANALYZE', 'ASC', 'ATTACH', 'BEFORE', 'BEGIN', 'BY',
+	'CASCADE', 'CAST', 'COLUMN', 'CONFLICT', 'DATABASE', 'DEFERRED', 'DESC', 'DETACH',
+	'DO', 'EACH', 'END', 'EXCLUSIVE', 'EXPLAIN', 'FAIL', 'FILTER', 'FIRST', 'FOR',
+	'GENERATED', 'IF', 'IGNORE', 'IMMEDIATE', 'INITIALLY', 'INSTEAD', 'KEY', 'LAST',
+	'MATCH', 'NULLS', 'OF', 'OFFSET', 'OVER', 'PLAN', 'PRAGMA', 'QUERY', 'RAISE',
+	'RECURSIVE', 'REINDEX', 'RELEASE', 'RENAME', 'REPLACE', 'RESTRICT', 'ROLLBACK',
+	'ROW', 'SAVEPOINT', 'STORED', 'TEMP', 'TEMPORARY', 'TRIGGER', 'VACUUM', 'VIEW',
+	'VIRTUAL', 'WITH', 'WITHOUT',
+]);
+
+/** True when `tok` may stand in for an IDENTIFIER in an identifier-position
+ *  context (column name, table name, alias). Used by the parser at every
+ *  point where it would otherwise demand `kind === 'IDENTIFIER'`. */
+export function isIdentLike(tok: Token | null | undefined): boolean {
+	if (!tok) return false;
+	if (tok.kind === 'IDENTIFIER') return true;
+	return tok.kind === 'KEYWORD' && NON_RESERVED_KEYWORDS.has(tok.value);
+}
 
 export type TokenKind =
 	// literals

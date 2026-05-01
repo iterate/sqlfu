@@ -1,4 +1,4 @@
-import {Component, Suspense, useRef, useSyncExternalStore} from 'react';
+import {Component, Suspense, useCallback, useRef, useState, useSyncExternalStore} from 'react';
 import type {ReactNode} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createORPCClient} from '@orpc/client';
@@ -54,6 +54,42 @@ import {initThemeOnLoad, useThemePreference} from './theme.js';
 import './styles.css';
 
 initThemeOnLoad();
+
+/**
+ * Session-scoped counterpart to `useLocalStorageState` — the library doesn't
+ * expose a backend switch, so this is a small hand-roll. Values live in
+ * `sessionStorage` (cleared on tab close) and are written through the setter
+ * synchronously, no effect needed. Not a drop-in for every localStorage use —
+ * no cross-tab sync, no `isPersistent` / `removeItem` affordances — but fine
+ * for scratch drafts where cross-tab sync is actively undesirable.
+ */
+function useSessionStorageState<T>(
+  key: string,
+  defaultValue: T,
+): [T, (next: T | ((current: T) => T)) => void] {
+  const [value, setValue] = useState<T>(() => {
+    if (typeof window === 'undefined') return defaultValue;
+    const raw = window.sessionStorage.getItem(key);
+    if (raw === null) return defaultValue;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return defaultValue;
+    }
+  });
+  const set = (next: T | ((current: T) => T)) => {
+    setValue((current) => {
+      const resolved = typeof next === 'function' ? (next as (current: T) => T)(current) : next;
+      if (typeof window !== 'undefined') {
+        try {
+          window.sessionStorage.setItem(key, JSON.stringify(resolved));
+        } catch {}
+      }
+      return resolved;
+    });
+  };
+  return [value, set];
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -521,6 +557,8 @@ function Studio() {
 
   const selectedTable = selectTable(route, schemaQuery.data.relations);
   const selectedQuery = selectQuery(route, catalogQuery.data.queries);
+  const isTableView =
+    route.kind !== 'schema' && route.kind !== 'sql' && !(route.kind === 'query' && selectedQuery) && !!selectedTable;
 
   return (
     <Shell>
@@ -549,14 +587,18 @@ function Studio() {
             <a
               key={relation.name}
               className={
-                selectedTable?.name === relation.name && route.kind !== 'query' && route.kind !== 'sql'
+                route.kind === 'table' && selectedTable?.name === relation.name
                   ? 'nav-link active'
                   : 'nav-link'
               }
               href={`#table/${encodeURIComponent(relation.name)}`}
+              title={relation.name}
             >
-              <span>{relation.name}</span>
-              <small>{relation.kind}</small>
+              <RelationKindIcon kind={relation.kind} />
+              <span className="nav-link-label">{relation.name}</span>
+              {typeof relation.rowCount === 'number' ? (
+                <span className="nav-link-count">{formatRowCount(relation.rowCount)}</span>
+              ) : null}
             </a>
           ))}
         </nav>
@@ -566,17 +608,23 @@ function Studio() {
           {catalogQuery.data.queries.map((query) => (
             <a
               key={query.id}
-              className={selectedQuery?.id === query.id ? 'nav-link active' : 'nav-link'}
+              className={
+                route.kind === 'query' && selectedQuery?.id === query.id
+                  ? 'nav-link active'
+                  : 'nav-link'
+              }
               href={`#query/${encodeURIComponent(query.id)}`}
+              title={query.id}
             >
-              <span>{query.id}</span>
-              <small>{query.kind === 'query' ? query.queryType.toLowerCase() : 'error'}</small>
+              <QueryIcon />
+              <span className="nav-link-label">{query.id}</span>
+              {query.kind !== 'query' ? <small>error</small> : null}
             </a>
           ))}
         </nav>
       </aside>
 
-      <main className="main">
+      <main className={isTableView ? 'main table-main' : 'main'}>
         {route.kind === 'schema' ? (
           <SchemaPanel
             projectName={schemaQuery.data.projectName}
@@ -660,17 +708,13 @@ function abbreviateHomeDirectory(path: string) {
 }
 
 function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; authorities: SchemaAuthoritiesResponse}) {
-  const [commandErrors, setCommandErrors] = useLocalStorageState<Record<string, string>>(
+  const [commandErrors, setCommandErrors] = useSessionStorageState<Record<string, string>>(
     `sqlfu-ui/schema-command-errors/${input.projectName}`,
-    {
-      defaultValue: {},
-    },
+    {},
   );
-  const [desiredSchemaDraft, setDesiredSchemaDraft] = useLocalStorageState(
+  const [desiredSchemaDraft, setDesiredSchemaDraft] = useSessionStorageState<string>(
     `sqlfu-ui/schema-desired/${input.projectName}`,
-    {
-      defaultValue: input.authorities.desiredSchemaSql,
-    },
+    input.authorities.desiredSchemaSql,
   );
   const runCommandMutation = useMutation({
     mutationFn: async (variables: {command: string}) => await runSchemaCommand(variables.command),
@@ -699,7 +743,7 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
       await queryClient.refetchQueries({queryKey: orpc.schema.key()});
     },
   });
-  const desiredSchemaSql = desiredSchemaDraft ?? input.authorities.desiredSchemaSql;
+  const desiredSchemaSql = desiredSchemaDraft;
   const desiredSchemaDirty =
     normalizeSqlDraft(desiredSchemaSql) !== normalizeSqlDraft(input.authorities.desiredSchemaSql);
   const handleSchemaCommand = async (command: [string, ...string[]]) => {
@@ -812,14 +856,26 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
             <div className="card-title-row authority-card-toolbar">
               <div />
               {desiredSchemaDirty ? (
-                <button
-                  className="icon-button"
-                  type="button"
-                  aria-label="Save Desired Schema"
-                  onClick={() => saveDesiredSchemaMutation.mutate({sql: desiredSchemaSql})}
-                >
-                  💾
-                </button>
+                <div className="inline-editor">
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="Discard Desired Schema edits"
+                    title="Discard edits"
+                    onClick={() => setDesiredSchemaDraft(input.authorities.desiredSchemaSql)}
+                  >
+                    ↩
+                  </button>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="Save Desired Schema"
+                    title="Save"
+                    onClick={() => saveDesiredSchemaMutation.mutate({sql: desiredSchemaSql})}
+                  >
+                    💾
+                  </button>
+                </div>
               ) : null}
             </div>
             <SqlCodeMirror
@@ -1030,12 +1086,26 @@ function TablePanel(input: {relation: StudioRelation}) {
       page: 0,
     },
   });
-  const rowsQuery = useSuspenseQuery(tableListOptions);
-  const [draftRows, setDraftRows] = useLocalStorageState<Record<string, unknown>[]>(
+  const fallbackRows: TableRowsResponse = {
+    relation: input.relation.name,
+    page: 0,
+    pageSize: 25,
+    editable: false,
+    rowKeys: [],
+    rows: [],
+    columns: input.relation.columns.map((column) => column.name),
+  };
+  // useQuery (not useSuspenseQuery): switching between tables shouldn't blank
+  // the page on a Suspense fallback. Until rows arrive we render the new
+  // relation's column headers with an empty body, which feels far snappier.
+  const rowsResult = useQuery(tableListOptions);
+  const rowsData = rowsResult.data ?? fallbackRows;
+  // sessionStorage (not localStorage): unsaved table edits are per-tab scratch
+  // work. Persisting across browser sessions surfaces stale drafts against
+  // potentially-changed schema/data, which is more confusing than helpful.
+  const [draftRows, setDraftRows] = useSessionStorageState<Record<string, unknown>[]>(
     `sqlfu-ui/table-draft/${input.relation.name}/0`,
-    {
-      defaultValue: rowsQuery.data.rows,
-    },
+    rowsData.rows,
   );
   const saveRowsMutation = useMutation({
     ...orpc.table.save.mutationOptions(),
@@ -1054,14 +1124,14 @@ function TablePanel(input: {relation: StudioRelation}) {
     },
   });
   const emptyRowTemplate = Object.fromEntries(input.relation.columns.map((column) => [column.name, null]));
-  const displayedRows = normalizeStoredTableDraft(draftRows, rowsQuery.data.rows, rowsQuery.data.columns);
+  const displayedRows = normalizeStoredTableDraft(draftRows, rowsData.rows, rowsData.columns);
   const displayedOriginalRows = [
-    ...rowsQuery.data.rows,
-    ...displayedRows.slice(rowsQuery.data.rows.length).map(() => ({...emptyRowTemplate})),
+    ...rowsData.rows,
+    ...displayedRows.slice(rowsData.rows.length).map(() => ({...emptyRowTemplate})),
   ];
   const displayedRowKeys = [
-    ...rowsQuery.data.rowKeys,
-    ...displayedRows.slice(rowsQuery.data.rows.length).map((_, index) => ({
+    ...rowsData.rowKeys,
+    ...displayedRows.slice(rowsData.rows.length).map((_, index) => ({
       kind: 'new' as const,
       value: `new-${input.relation.name}-0-${index}`,
     })),
@@ -1069,7 +1139,7 @@ function TablePanel(input: {relation: StudioRelation}) {
   const rowsDirty = JSON.stringify(displayedRows) !== JSON.stringify(displayedOriginalRows);
   const tableMutationError = saveRowsMutation.error ?? deleteRowMutation.error;
   const handleDiscardRows = () => {
-    setDraftRows(rowsQuery.data.rows);
+    setDraftRows(rowsData.rows);
   };
   const handleSaveRows = () => {
     saveRowsMutation.mutate({
@@ -1118,40 +1188,35 @@ function TablePanel(input: {relation: StudioRelation}) {
   };
 
   return (
-    <section className="panel">
-      <header className="panel-header">
-        <div>
-          <div className="eyebrow">{input.relation.kind}</div>
-          <h2>{input.relation.name}</h2>
-        </div>
-        <div className="pill-row">
-          <span className="pill">{input.relation.columns.length} columns</span>
-          {typeof input.relation.rowCount === 'number' ? (
-            <span className="pill">{input.relation.rowCount} rows</span>
-          ) : null}
-        </div>
-      </header>
-
-      <section className="card">
+    <section className="panel table-panel">
+      <section className="table-view">
         {tableMutationError ? <ErrorView error={tableMutationError} /> : null}
         <RelationQueryPanel
           relation={input.relation}
           runSql={(runInput) => orpcClient.sql.run(runInput)}
           rowEditing={{
-            editable: rowsQuery.data.editable,
+            editable: rowsData.editable,
             dirty: rowsDirty,
             saving: saveRowsMutation.isPending,
+            onConfirmDiscard: async () => {
+              const result = await confirmationDialogStore.confirm({
+                title: 'Discard unsaved row edits?',
+                body: 'This query action switches the table into read-only SQL results. Discard the unsaved row edits and continue?',
+                bodyType: 'markdown',
+              });
+              return result.confirmed;
+            },
             onSave: handleSaveRows,
             onDiscard: handleDiscardRows,
           }}
           renderDefaultDataTable={({toolbar}) => (
             <DataTable
               storageKey={`relation/${input.relation.name}`}
-              columns={rowsQuery.data.columns}
+              columns={rowsData.columns}
               rowKeys={displayedRowKeys}
               originalRows={displayedOriginalRows}
               rows={displayedRows}
-              editable={rowsQuery.data.editable}
+              editable={rowsData.editable}
               editableColumns={Object.fromEntries(
                 input.relation.columns.map((column) => [column.name, !column.primaryKey]),
               )}
@@ -1178,11 +1243,9 @@ function TablePanel(input: {relation: StudioRelation}) {
 }
 
 function SqlRunnerPanel(input: {relations: StudioRelation[]}) {
-  const [draft, setDraft] = useLocalStorageState<SqlRunnerDraft>('sqlfu-ui/sql-runner-draft', {
-    defaultValue: {
-      sql: `select name, type\nfrom sqlite_schema\nwhere name not like 'sqlite_%'\norder by type, name;`,
-      params: {},
-    },
+  const [draft, setDraft] = useSessionStorageState<SqlRunnerDraft>('sqlfu-ui/sql-runner-draft', {
+    sql: `select name, type\nfrom sqlite_schema\nwhere name not like 'sqlite_%'\norder by type, name;`,
+    params: {},
   });
   const analysisQuery = useQuery({
     ...orpc.sql.analyze.queryOptions({
@@ -1264,12 +1327,14 @@ function QueryPanel(input: {entry: QueryCatalogEntry; relations: StudioRelation[
       await invalidateSchemaContent();
     },
   });
-  const [renameDraft, setRenameDraft] = useLocalStorageState(`sqlfu-ui/query-rename/${entry.id}`, {
-    defaultValue: entry.id,
-  });
-  const [sqlDraft, setSqlDraft] = useLocalStorageState(`sqlfu-ui/query-sql/${entry.id}`, {
-    defaultValue: entry.sqlFileContent,
-  });
+  const [renameDraft, setRenameDraft] = useSessionStorageState<string>(
+    `sqlfu-ui/query-rename/${entry.id}`,
+    entry.id,
+  );
+  const [sqlDraft, setSqlDraft] = useSessionStorageState<string>(
+    `sqlfu-ui/query-sql/${entry.id}`,
+    entry.sqlFileContent,
+  );
   const [renameMode, setRenameMode] = useLocalStorageState(`sqlfu-ui/query-rename-mode/${entry.id}`, {
     defaultValue: false,
   });
@@ -1490,7 +1555,7 @@ function QueryWorkbench(input: {
           ) : null}
           {input.editable ? (
             <div className="stack">
-              <label className="form-label">
+              <div className="form-label">
                 <SqlCodeMirror
                   value={input.sql}
                   ariaLabel={input.sqlEditorLabel ?? 'SQL editor'}
@@ -1500,7 +1565,7 @@ function QueryWorkbench(input: {
                   onSave={input.sqlEditorOnSave}
                   onChange={(value) => input.onSqlChange?.(value)}
                 />
-              </label>
+              </div>
               {input.sqlEditorActions}
             </div>
           ) : (
@@ -1625,6 +1690,10 @@ const rowActionCellTemplate: reactGrid.CellTemplate<RowActionCell> = {
   },
 };
 
+const customCellTemplates = {rowAction: rowActionCellTemplate};
+const ROW_ACTION_COLUMN_WIDTH = 42;
+const GRID_ROW_HEIGHT = 34;
+
 function DataTable(input: {
   storageKey: string;
   columns: string[];
@@ -1673,9 +1742,10 @@ function DataTable(input: {
       defaultValue: null,
     },
   );
+  const [hoveredCell, setHoveredCell] = useState<{rowId: number; columnId: string} | null>(null);
   const pendingFocusRef = useRef<{rowId: number; columnId: string} | null>(null);
   const computedColumnWidths = columnWidthAlgorithm({
-    availableWidth: Math.max(0, containerWidth - 64),
+    availableWidth: Math.max(0, containerWidth - ROW_ACTION_COLUMN_WIDTH),
     columns: input.columns.map((column) => ({
       key: column,
       header: column,
@@ -1683,7 +1753,7 @@ function DataTable(input: {
     })),
   });
   const gridColumns: reactGrid.Column[] = [
-    {columnId: '__row__', width: 64, reorderable: false, resizable: false},
+    {columnId: '__row__', width: ROW_ACTION_COLUMN_WIDTH, reorderable: false, resizable: false},
     ...computedColumnWidths.map((column) => ({
       columnId: column.key,
       width: columnWidthOverrides?.[column.key] ?? column.width,
@@ -1694,8 +1764,9 @@ function DataTable(input: {
   const gridRows: reactGrid.Row<reactGrid.DefaultCellTypes | RowActionCell>[] = [
     {
       rowId: 'header',
+      height: GRID_ROW_HEIGHT,
       cells: [
-        {type: 'header', text: '#'},
+        {type: 'header', text: ''},
         ...input.columns.map((column) => ({
           type: 'header' as const,
           text: column,
@@ -1704,10 +1775,11 @@ function DataTable(input: {
     },
     ...input.rows.map((row, rowIndex) => ({
       rowId: rowIndex,
+      height: GRID_ROW_HEIGHT,
       cells: [
         {
           type: 'rowAction' as const,
-          text: selectedRowIndex === rowIndex ? '🗑' : String(rowIndex + 1),
+          text: selectedRowIndex === rowIndex ? '🗑' : '',
           className: joinCellClassNames('row-action-cell', selectedRowIndex === rowIndex ? 'selected-row' : undefined),
           ariaLabel: selectedRowIndex === rowIndex ? `Delete row ${rowIndex + 1}` : `Select row ${rowIndex + 1}`,
           onClick: () => {
@@ -1737,6 +1809,7 @@ function DataTable(input: {
       ? [
           {
             rowId: '__append__',
+            height: GRID_ROW_HEIGHT,
             cells: [
               {type: 'header' as const, text: '+'},
               ...input.columns.map(() => ({
@@ -1750,46 +1823,57 @@ function DataTable(input: {
         ]
       : []),
   ];
-  const selectedOriginalValue =
-    selectedCell && typeof selectedCell.rowId === 'number' && typeof selectedCell.columnId === 'string'
-      ? formatCellText(input.originalRows?.[selectedCell.rowId]?.[selectedCell.columnId])
+  const expandCell = selectedCell ?? hoveredCell;
+  const expandOriginalValue =
+    expandCell && typeof expandCell.rowId === 'number' && typeof expandCell.columnId === 'string'
+      ? formatCellText(input.originalRows?.[expandCell.rowId]?.[expandCell.columnId])
       : '';
-  const selectedDraftValue =
-    selectedCell && typeof selectedCell.rowId === 'number' && typeof selectedCell.columnId === 'string'
-      ? formatCellText(input.rows[selectedCell.rowId]?.[selectedCell.columnId])
+  const expandDraftValue =
+    expandCell && typeof expandCell.rowId === 'number' && typeof expandCell.columnId === 'string'
+      ? formatCellText(input.rows[expandCell.rowId]?.[expandCell.columnId])
       : '';
-  const selectedCellDirty =
-    selectedCell != null &&
-    isDirtyDataCell(
-      input.originalRows,
-      selectedCell.rowId,
-      selectedCell.columnId,
-      input.rows[selectedCell.rowId]?.[selectedCell.columnId],
-    );
-  const showSelectedCellDiffTabs =
-    selectedCellDirty && selectedOriginalValue !== 'null' && selectedOriginalValue !== '';
+  const expandCellDirty =
+    expandCell != null &&
+    isDirtyDataCell(input.originalRows, expandCell.rowId, expandCell.columnId, input.rows[expandCell.rowId]?.[expandCell.columnId]);
+  const showExpandDiffTabs = expandCellDirty && expandOriginalValue !== 'null' && expandOriginalValue !== '';
+
+  const handleCellMouseOver = (event: React.MouseEvent<HTMLDivElement>) => {
+    const cellEl = (event.target as HTMLElement).closest('.rg-cell') as HTMLElement | null;
+    if (!cellEl) {
+      setHoveredCell(null);
+      return;
+    }
+    const rowAttr = cellEl.getAttribute('data-cell-rowidx');
+    const colAttr = cellEl.getAttribute('data-cell-colidx');
+    if (rowAttr === null || colAttr === null) {
+      setHoveredCell(null);
+      return;
+    }
+    const dataRowId = Number(rowAttr) - 1; // header is rowidx=0; data rows start at 1
+    const colIdx = Number(colAttr);
+    if (dataRowId < 0 || dataRowId >= input.rows.length) {
+      setHoveredCell(null);
+      return;
+    }
+    const columnId = gridColumns[colIdx]?.columnId;
+    if (typeof columnId !== 'string' || columnId === '__row__') {
+      setHoveredCell(null);
+      return;
+    }
+    setHoveredCell({rowId: dataRowId, columnId});
+  };
+
   return (
     <div className="stack">
-      {input.toolbar || input.showSelectedCellDetail ? (
-        <div className="data-toolbar">
-          {input.toolbar}
-          {input.showSelectedCellDetail ? (
-            <div className="data-toolbar-trailing">
-              <CellDetailPopoverButton
-                selectedCell={selectedCell}
-                selectedOriginalValue={selectedOriginalValue}
-                selectedDraftValue={selectedDraftValue}
-                showDiffTabs={showSelectedCellDiffTabs}
-                selectedCellMode={selectedCellMode}
-                setSelectedCellMode={setSelectedCellMode}
-              />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      <div className="table-scroll" ref={containerRef}>
+      {input.toolbar ? <div className="data-toolbar">{input.toolbar}</div> : null}
+      <div
+        className="table-scroll"
+        ref={containerRef}
+        onMouseOver={handleCellMouseOver}
+        onMouseLeave={() => setHoveredCell(null)}
+      >
         <reactGrid.ReactGrid
-          customCellTemplates={{rowAction: rowActionCellTemplate}}
+          customCellTemplates={customCellTemplates}
           columns={gridColumns}
           rows={gridRows}
           focusLocation={
@@ -1802,6 +1886,7 @@ function DataTable(input: {
           }
           stickyTopRows={1}
           stickyLeftColumns={1}
+          enableColumnResizeOnAllHeaders
           enableRangeSelection
           enableColumnSelection
           enableRowSelection
@@ -1864,106 +1949,150 @@ function DataTable(input: {
               : undefined
           }
         />
+        {input.showSelectedCellDetail && expandCell ? (
+          <CellExpandFloatingButton
+            selectedCell={expandCell}
+            gridColumns={gridColumns}
+            rowHeight={GRID_ROW_HEIGHT}
+            selectedOriginalValue={expandOriginalValue}
+            selectedDraftValue={expandDraftValue}
+            showDiffTabs={showExpandDiffTabs}
+            selectedCellMode={selectedCellMode}
+            setSelectedCellMode={setSelectedCellMode}
+          />
+        ) : null}
       </div>
 
     </div>
   );
 }
 
-function CellDetailPopoverButton(input: {
-  selectedCell: {rowId: number; columnId: string} | null | undefined;
+function CellExpandFloatingButton(input: {
+  selectedCell: {rowId: number; columnId: string};
+  gridColumns: reactGrid.Column[];
+  rowHeight: number;
   selectedOriginalValue: string;
   selectedDraftValue: string;
   showDiffTabs: boolean;
   selectedCellMode: 'diff' | 'original' | 'draft';
   setSelectedCellMode: (mode: 'diff' | 'original' | 'draft') => void;
 }) {
-  const cell = input.selectedCell;
-  const disabled = !cell || typeof cell.rowId !== 'number' || typeof cell.columnId !== 'string';
-  const label = disabled ? 'Cell (no selection)' : `Cell: ${cell!.columnId}, row ${cell!.rowId + 1}`;
+  const colIndex = input.gridColumns.findIndex((c) => c.columnId === input.selectedCell.columnId);
+  if (colIndex < 0) return null;
+  const colLeft = input.gridColumns.slice(0, colIndex).reduce((sum, c) => sum + (c.width ?? 0), 0);
+  const colWidth = input.gridColumns[colIndex]?.width ?? 100;
+  const rowTop = (1 + input.selectedCell.rowId) * input.rowHeight;
+  const label = `Cell: ${input.selectedCell.columnId}, row ${input.selectedCell.rowId + 1}`;
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
         <button
           type="button"
-          className="rqp-pill-button"
+          className="cell-expand-button"
           aria-label={label}
-          disabled={disabled}
+          style={{
+            position: 'absolute',
+            left: colLeft + colWidth - 28,
+            top: rowTop + 6,
+          }}
         >
-          <span className="rqp-pill-icon" aria-hidden="true">
-            ⊡
-          </span>
-          <span>Cell</span>
+          <CellExpandIcon />
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content className="rqp-popover rqp-popover-wide" align="end" sideOffset={6}>
-          <div className="rqp-popover-body" role="dialog" aria-label="Cell detail">
-            <div className="card-title-row">
-              <div className="card-title">{label}</div>
-            </div>
-            {input.showDiffTabs ? (
-              <div className="stack">
-                <div className="cell-panel-tabs" role="tablist" aria-label="Cell versions">
-                  <button
-                    className={input.selectedCellMode === 'diff' ? 'cell-panel-tab active' : 'cell-panel-tab'}
-                    type="button"
-                    role="tab"
-                    aria-selected={input.selectedCellMode === 'diff'}
-                    onClick={() => input.setSelectedCellMode('diff')}
-                  >
-                    Diff
-                  </button>
-                  <button
-                    className={input.selectedCellMode === 'original' ? 'cell-panel-tab active' : 'cell-panel-tab'}
-                    type="button"
-                    role="tab"
-                    aria-selected={input.selectedCellMode === 'original'}
-                    onClick={() => input.setSelectedCellMode('original')}
-                  >
-                    Original
-                  </button>
-                  <button
-                    className={input.selectedCellMode === 'draft' ? 'cell-panel-tab active' : 'cell-panel-tab'}
-                    type="button"
-                    role="tab"
-                    aria-selected={input.selectedCellMode === 'draft'}
-                    onClick={() => input.setSelectedCellMode('draft')}
-                  >
-                    Draft
-                  </button>
-                </div>
-                {input.selectedCellMode === 'original' ? (
-                  <TextCodeMirror
-                    value={input.selectedOriginalValue}
-                    ariaLabel="Original cell value"
-                    readOnly
-                    height="12rem"
-                  />
-                ) : null}
-                {input.selectedCellMode === 'draft' ? (
-                  <TextCodeMirror
-                    value={input.selectedDraftValue}
-                    ariaLabel="Draft cell value"
-                    readOnly
-                    height="12rem"
-                  />
-                ) : null}
-                {input.selectedCellMode === 'diff' ? (
-                  <TextDiffCodeMirror
-                    original={input.selectedOriginalValue}
-                    draft={input.selectedDraftValue}
-                    ariaLabel="Diff cell value"
-                  />
-                ) : null}
-              </div>
-            ) : (
-              <TextCodeMirror value={input.selectedDraftValue} ariaLabel="Cell value" readOnly height="12rem" />
-            )}
-          </div>
+          <CellDetailPopoverBody
+            label={label}
+            selectedOriginalValue={input.selectedOriginalValue}
+            selectedDraftValue={input.selectedDraftValue}
+            showDiffTabs={input.showDiffTabs}
+            selectedCellMode={input.selectedCellMode}
+            setSelectedCellMode={input.setSelectedCellMode}
+          />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+function CellExpandIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+      <path d="M3 6V3h3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M13 10v3h-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M6 13H3v-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M10 3h3v3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CellDetailPopoverBody(input: {
+  label: string;
+  selectedOriginalValue: string;
+  selectedDraftValue: string;
+  showDiffTabs: boolean;
+  selectedCellMode: 'diff' | 'original' | 'draft';
+  setSelectedCellMode: (mode: 'diff' | 'original' | 'draft') => void;
+}) {
+  return (
+    <div className="rqp-popover-body" role="dialog" aria-label="Cell detail">
+      <div className="card-title-row">
+        <div className="card-title">{input.label}</div>
+      </div>
+      {input.showDiffTabs ? (
+        <div className="stack">
+          <div className="cell-panel-tabs" role="tablist" aria-label="Cell versions">
+            <button
+              className={input.selectedCellMode === 'diff' ? 'cell-panel-tab active' : 'cell-panel-tab'}
+              type="button"
+              role="tab"
+              aria-selected={input.selectedCellMode === 'diff'}
+              onClick={() => input.setSelectedCellMode('diff')}
+            >
+              Diff
+            </button>
+            <button
+              className={input.selectedCellMode === 'original' ? 'cell-panel-tab active' : 'cell-panel-tab'}
+              type="button"
+              role="tab"
+              aria-selected={input.selectedCellMode === 'original'}
+              onClick={() => input.setSelectedCellMode('original')}
+            >
+              Original
+            </button>
+            <button
+              className={input.selectedCellMode === 'draft' ? 'cell-panel-tab active' : 'cell-panel-tab'}
+              type="button"
+              role="tab"
+              aria-selected={input.selectedCellMode === 'draft'}
+              onClick={() => input.setSelectedCellMode('draft')}
+            >
+              Draft
+            </button>
+          </div>
+          {input.selectedCellMode === 'original' ? (
+            <TextCodeMirror
+              value={input.selectedOriginalValue}
+              ariaLabel="Original cell value"
+              readOnly
+              height="12rem"
+            />
+          ) : null}
+          {input.selectedCellMode === 'draft' ? (
+            <TextCodeMirror value={input.selectedDraftValue} ariaLabel="Draft cell value" readOnly height="12rem" />
+          ) : null}
+          {input.selectedCellMode === 'diff' ? (
+            <TextDiffCodeMirror
+              original={input.selectedOriginalValue}
+              draft={input.selectedDraftValue}
+              ariaLabel="Diff cell value"
+            />
+          ) : null}
+        </div>
+      ) : (
+        <TextCodeMirror value={input.selectedDraftValue} ariaLabel="Cell value" readOnly height="12rem" />
+      )}
+    </div>
   );
 }
 
@@ -2210,6 +2339,43 @@ function getSchemaCardStatusIcon(card: SchemaCheckResponse['cards'][number]) {
   }
 }
 
+function RelationKindIcon(input: {kind: 'table' | 'view'}) {
+  // Tables are a 3×3 grid; views are an eye centered inside a rounded box (a derived view of a table).
+  if (input.kind === 'view') {
+    return (
+      <svg className="nav-link-icon" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        <path d="M4.5 8c1-2 5-2 6 0c-1 2-5 2-6 0z" fill="none" stroke="currentColor" strokeWidth="1.1" />
+        <circle cx="8" cy="8" r="1.1" fill="currentColor" />
+      </svg>
+    );
+  }
+  return (
+    <svg className="nav-link-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <line x1="2" y1="6.5" x2="14" y2="6.5" stroke="currentColor" strokeWidth="1.2" />
+      <line x1="6" y1="6.5" x2="6" y2="13" stroke="currentColor" strokeWidth="1.2" />
+      <line x1="10" y1="6.5" x2="10" y2="13" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+function QueryIcon() {
+  return (
+    <svg className="nav-link-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <ellipse cx="8" cy="4" rx="5" ry="2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M3 4v8c0 1.1 2.24 2 5 2s5-.9 5-2V4" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M3 8c0 1.1 2.24 2 5 2s5-.9 5-2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+const compactNumberFormatter = new Intl.NumberFormat('en', {notation: 'compact', maximumFractionDigits: 1});
+function formatRowCount(count: number) {
+  if (count < 1000) return String(count);
+  return compactNumberFormatter.format(count);
+}
+
 function isSameValue(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -2284,47 +2450,48 @@ function useElementWidth<TElement extends HTMLElement>() {
     listeners: new Set(),
   });
 
-  const subscribe = (listener: () => void) => {
+  const subscribe = useCallback((listener: () => void) => {
     storeRef.current.listeners.add(listener);
     return () => {
       storeRef.current.listeners.delete(listener);
     };
-  };
-  const getSnapshot = () => storeRef.current.width;
+  }, []);
+  const getSnapshot = useCallback(() => storeRef.current.width, []);
   const width = useSyncExternalStore(subscribe, getSnapshot, () => 0);
+  const ref = useCallback((element: TElement | null) => {
+    const store = storeRef.current;
+    if (store.element === element) {
+      return;
+    }
 
-  return {
-    width,
-    ref: (element: TElement | null) => {
-      const store = storeRef.current;
-      if (store.element === element) {
+    store.observer?.disconnect();
+    store.element = element;
+    store.width = element?.clientWidth ?? 0;
+    for (const listener of store.listeners) {
+      listener();
+    }
+
+    if (!element || typeof ResizeObserver === 'undefined') {
+      store.observer = null;
+      return;
+    }
+
+    store.observer = new ResizeObserver((entries) => {
+      const nextWidth = Math.floor(entries[0]?.contentRect.width ?? element.clientWidth);
+      if (nextWidth === store.width) {
         return;
       }
-
-      store.observer?.disconnect();
-      store.element = element;
-      store.width = element?.clientWidth ?? 0;
+      store.width = nextWidth;
       for (const listener of store.listeners) {
         listener();
       }
+    });
+    store.observer.observe(element);
+  }, []);
 
-      if (!element || typeof ResizeObserver === 'undefined') {
-        store.observer = null;
-        return;
-      }
-
-      store.observer = new ResizeObserver((entries) => {
-        const nextWidth = Math.floor(entries[0]?.contentRect.width ?? element.clientWidth);
-        if (nextWidth === store.width) {
-          return;
-        }
-        store.width = nextWidth;
-        for (const listener of store.listeners) {
-          listener();
-        }
-      });
-      store.observer.observe(element);
-    },
+  return {
+    width,
+    ref,
   };
 }
 
