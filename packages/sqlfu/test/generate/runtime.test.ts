@@ -36,13 +36,13 @@ test('generate omits the migrations bundle when migrations is not configured', a
   expect(await project.fileExists('sql/.generated/index.ts')).toBe(true);
 });
 
-test('generate with validator: arktype validates params and rows at runtime', async () => {
+test('generate with validator: zod validates params and rows at runtime', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: `create table posts (id integer primary key, slug text not null, title text);`,
     files: {
       'sql/find-post-by-slug.sql': `select id, slug, title from posts where slug = :slug limit 1;`,
     },
-    config: {generate: {validator: 'arktype'}},
+    config: {generate: {validator: 'zod'}},
   });
 
   await project.generate();
@@ -51,8 +51,8 @@ test('generate with validator: arktype validates params and rows at runtime', as
   const mod = await project.importTranspiledModule<{
     findPostBySlug: {
       (client: unknown, params: {slug: string}): Promise<{id: number; slug: string; title: string | null} | null>;
-      Params: {infer: unknown};
-      Result: {infer: unknown};
+      Params: {parse: (value: unknown) => unknown};
+      Result: {parse: (value: unknown) => unknown};
       sql: string;
     };
   }>('sql/.generated/find-post-by-slug.sql.ts');
@@ -66,7 +66,11 @@ test('generate with validator: arktype validates params and rows at runtime', as
     title: 'Hello',
   });
 
-  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(/slug/);
+  // zod's `prettifyError` formats the issue list into a readable per-line message; the test
+  // just checks that the slug issue makes it to the thrown Error's message.
+  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(
+    /Invalid input[\s\S]+slug/,
+  );
 
   // Result-schema parse path — feed the wrapper a client that returns rows with a bogus `id`
   // so the post-query validation fires.
@@ -74,7 +78,9 @@ test('generate with validator: arktype validates params and rows at runtime', as
     ...client,
     all: async () => [{id: 'not-a-number', slug: 'oops', title: null}],
   };
-  await expect(mod.findPostBySlug(badClient as never, {slug: 'x'})).rejects.toThrow(/id/);
+  await expect(mod.findPostBySlug(badClient as never, {slug: 'x'})).rejects.toThrow(
+    /Invalid input[\s\S]+id/,
+  );
 
   expect(typeof mod.findPostBySlug.sql).toBe('string');
   expect(mod.findPostBySlug.sql).toContain('from posts where slug = ?');
@@ -348,6 +354,35 @@ test('generate with validator: valibot validates inputs at runtime via standard 
   );
 });
 
+test('generate with validator: zod-mini validates at runtime via standard schema', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: `create table posts (id integer primary key, slug text not null, title text);`,
+    files: {
+      'sql/find-post-by-slug.sql': `select id, slug, title from posts where slug = :slug limit 1;`,
+    },
+    config: {generate: {validator: 'zod-mini'}},
+  });
+
+  await project.generate();
+  await project.applyStatements(`insert into posts (id, slug, title) values (1, 'hello', 'Hello');`);
+
+  const mod = await project.importTranspiledModule<{
+    findPostBySlug: (client: unknown, params: {slug: string}) => Promise<unknown>;
+  }>('sql/.generated/find-post-by-slug.sql.ts');
+
+  using database = project.openDatabase();
+  const client = createNodeSqliteClient(database.database);
+
+  await expect(mod.findPostBySlug(client, {slug: 'hello'})).resolves.toMatchObject({
+    id: 1,
+    slug: 'hello',
+    title: 'Hello',
+  });
+  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(
+    /Invalid input[\s\S]+slug/,
+  );
+});
+
 test('generate with validator: arktype validates at runtime via standard schema', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
@@ -379,11 +414,38 @@ test('generate with validator: arktype validates at runtime via standard schema'
     status: 'draft',
   });
   // Arktype's standard-schema output feeds through the same prettifyStandardSchemaError
-  // helper as valibot, so the message is also a per-issue formatted string.
+  // helper as valibot / zod-mini, so the message is also a per-issue formatted string.
   await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(/slug/);
 });
 
-for (const validator of ['valibot', 'arktype'] as const) {
+test('generate with prettyErrors: false + validator: zod lets the raw ZodError propagate', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: `create table posts (id integer primary key, slug text not null);`,
+    files: {
+      'sql/find-post-by-slug.sql': `select id, slug from posts where slug = :slug limit 1;`,
+    },
+    config: {generate: {validator: 'zod', prettyErrors: false}},
+  });
+
+  await project.generate();
+
+  const mod = await project.importTranspiledModule<{
+    findPostBySlug: (client: unknown, params: {slug: string}) => Promise<unknown>;
+  }>('sql/.generated/find-post-by-slug.sql.ts');
+
+  using database = project.openDatabase();
+  const client = createNodeSqliteClient(database.database);
+
+  // Without pretty errors we're calling `Schema.parse(...)` directly, so the failure surfaces
+  // as a raw ZodError with `.issues` — no prettified "Validation failed" wrapper string.
+  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toSatisfy((error: unknown) => {
+    if (!(error instanceof Error)) return false;
+    if (error.message.includes('Validation failed')) return false;
+    return Array.isArray((error as unknown as {issues?: unknown}).issues);
+  });
+});
+
+for (const validator of ['valibot', 'zod-mini', 'arktype'] as const) {
   test(`generate with prettyErrors: false + validator: ${validator} throws raw issues inline`, async () => {
     await using project = await createRuntimeFixture({
       definitionsSql: `create table posts (id integer primary key, slug text not null);`,
@@ -416,7 +478,7 @@ async function createRuntimeFixture(input: {
   files: Record<string, string>;
   config?: {
     generate?: {
-      validator?: 'arktype' | 'valibot' | null;
+      validator?: 'arktype' | 'valibot' | 'zod' | 'zod-mini' | null;
       prettyErrors?: boolean;
       sync?: boolean;
       importExtension?: '.js' | '.ts';
@@ -474,7 +536,7 @@ async function createRuntimeFixture(input: {
     },
     /**
      * Transpile the generated .ts to .mjs with esnext module + target, rewrite bare
-     * specifiers (`'sqlfu'`, `'arktype'`, …) to absolute file URLs so Node's ESM loader can
+     * specifiers (`'sqlfu'`, `'zod'`, …) to absolute file URLs so Node's ESM loader can
      * resolve them outside the workspace node_modules, then import the rewritten file.
      */
     async importTranspiledModule<TModule>(relativePath: string): Promise<TModule> {
@@ -518,7 +580,7 @@ async function applyDefinitionsToDatabase(dbPath: string, definitionsSql: string
 }
 
 /**
- * The transpiled .mjs lives in os.tmpdir() where `import 'arktype'` / `import 'sqlfu'` etc.
+ * The transpiled .mjs lives in os.tmpdir() where `import 'zod'` / `import 'sqlfu'` etc.
  * can't be resolved by Node's default ESM walk. Rewrite bare specifiers in `from "…"`
  * clauses to absolute file URLs pointing at the packages the workspace already resolved.
  * sqlfu specifically points at the `.ts` source — the vitest process has a TS loader in
@@ -527,6 +589,8 @@ async function applyDefinitionsToDatabase(dbPath: string, definitionsSql: string
 function rewriteBareImports(source: string): string {
   const mapping: Record<string, string> = {
     sqlfu: pathToFileURL(path.join(packageRoot, 'src', 'index.ts')).href,
+    zod: pathToFileURL(path.join(packageRoot, 'node_modules', 'zod', 'index.js')).href,
+    'zod/mini': pathToFileURL(path.join(packageRoot, 'node_modules', 'zod', 'mini', 'index.js')).href,
     valibot: pathToFileURL(path.join(packageRoot, 'node_modules', 'valibot', 'dist', 'index.mjs')).href,
     arktype: pathToFileURL(path.join(packageRoot, 'node_modules', 'arktype', 'out', 'index.js')).href,
   };

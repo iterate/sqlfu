@@ -47,7 +47,7 @@ select id from posts;
 <details>
 <summary>error</summary>
 
-"generate\.validator" must be one of 'arktype', 'valibot', null, or undefined
+"generate\.validator" must be one of 'arktype', 'valibot', 'zod', 'zod-mini', null, or undefined
 
 </details>
 

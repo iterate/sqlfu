@@ -409,7 +409,7 @@ Inferred INSERT values parameter "posts" does not support RETURNING yet
 
 </details>
 
-## emits arktype validator schemas for inferred insert values params
+## emits validator schemas for inferred insert values params
 
 <details data-outputs="sql/.generated/**/*.ts,.sqlfu/query-catalog.json">
 <summary>input</summary>
@@ -429,7 +429,7 @@ export default {
   definitions: './definitions.sql',
   queries: './sql',
   generate: {
-    validator: 'arktype',
+    validator: 'zod',
   },
 };
 ```
@@ -450,11 +450,11 @@ export * from "./insert-posts.sql.js";
 ```
 
 ```ts (sql/.generated/insert-posts.sql.ts)
-import {type Client, prettifyStandardSchemaError} from 'sqlfu';
-import {type} from 'arktype';
+import type {Client} from 'sqlfu';
+import {z} from 'zod';
 
-const Params = type({
-	posts: type(type({ slug: "string", title: "string" }), '|', type({ slug: "string", title: "string" }).array()),
+const Params = z.object({
+	posts: z.union([z.object({ slug: z.string(), title: z.string() }), z.array(z.object({ slug: z.string(), title: z.string() }))]),
 });
 const sql = `insert into posts (slug, title) values (?, ?);`;
 const query = (params: insertPosts.Params) => {
@@ -467,16 +467,15 @@ const query = (params: insertPosts.Params) => {
 
 export const insertPosts = Object.assign(
 	async function insertPosts(client: Client, params: insertPosts.Params) {
-		const parsedParamsResult = Params['~standard'].validate(params);
-		if ('then' in parsedParamsResult) throw new Error('Unexpected async validation from Params.');
-		if ('issues' in parsedParamsResult) throw new Error(prettifyStandardSchemaError(parsedParamsResult) || 'Validation failed');
-		return client.run(query(parsedParamsResult.value));
+		const parsedParams = Params.safeParse(params);
+		if (!parsedParams.success) throw new Error(z.prettifyError(parsedParams.error));
+		return client.run(query(parsedParams.data));
 	},
 	{ Params, sql, query },
 );
 
 export namespace insertPosts {
-	export type Params = typeof insertPosts.Params.infer;
+	export type Params = z.infer<typeof insertPosts.Params>;
 }
 ```
 
@@ -493,7 +492,7 @@ export type PostsRow = {
 
 </details>
 
-## emits arktype validator schemas for expanded params
+## emits validator schemas for expanded params
 
 <details data-outputs="sql/.generated/**/*.ts,.sqlfu/query-catalog.json">
 <summary>input</summary>
@@ -512,7 +511,7 @@ export default {
   definitions: './definitions.sql',
   queries: './sql',
   generate: {
-    validator: 'arktype',
+    validator: 'zod',
   },
 };
 ```
@@ -533,15 +532,15 @@ export * from "./posts-by-ids.sql.js";
 ```
 
 ```ts (sql/.generated/posts-by-ids.sql.ts)
-import {type Client, prettifyStandardSchemaError} from 'sqlfu';
-import {type} from 'arktype';
+import type {Client} from 'sqlfu';
+import {z} from 'zod';
 
-const Params = type({
-	ids: "number[]",
+const Params = z.object({
+	ids: z.array(z.number()),
 });
-const Result = type({
-	id: "number",
-	slug: "string",
+const Result = z.object({
+	id: z.number(),
+	slug: z.string(),
 });
 const sql = `select id, slug from posts where id in (?) order by id;`;
 const query = (params: listPostsByIds.Params) => {
@@ -554,23 +553,21 @@ const query = (params: listPostsByIds.Params) => {
 
 export const listPostsByIds = Object.assign(
 	async function listPostsByIds(client: Client, params: listPostsByIds.Params): Promise<listPostsByIds.Result[]> {
-		const parsedParamsResult = Params['~standard'].validate(params);
-		if ('then' in parsedParamsResult) throw new Error('Unexpected async validation from Params.');
-		if ('issues' in parsedParamsResult) throw new Error(prettifyStandardSchemaError(parsedParamsResult) || 'Validation failed');
-		const rows = await client.all(query(parsedParamsResult.value));
+		const parsedParams = Params.safeParse(params);
+		if (!parsedParams.success) throw new Error(z.prettifyError(parsedParams.error));
+		const rows = await client.all(query(parsedParams.data));
 		return rows.map((row) => {
-			const parsed = Result['~standard'].validate(row);
-			if ('then' in parsed) throw new Error('Unexpected async validation from Result.');
-			if ('issues' in parsed) throw new Error(prettifyStandardSchemaError(parsed) || 'Validation failed');
-			return parsed.value;
+			const parsed = Result.safeParse(row);
+			if (!parsed.success) throw new Error(z.prettifyError(parsed.error));
+			return parsed.data;
 		});
 	},
 	{ Params, Result, sql, query },
 );
 
 export namespace listPostsByIds {
-	export type Params = typeof listPostsByIds.Params.infer;
-	export type Result = typeof listPostsByIds.Result.infer;
+	export type Params = z.infer<typeof listPostsByIds.Params>;
+	export type Result = z.infer<typeof listPostsByIds.Result>;
 }
 ```
 

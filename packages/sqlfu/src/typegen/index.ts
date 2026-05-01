@@ -1603,13 +1603,18 @@ function buildQueryReference(
  * overall file layout (schemas as module-scoped consts, namespace merging, Object.assign)
  * is identical across all of them.
  *
- * Arktype and Valibot both expose the Standard Schema `~standard.validate` entry point.
- * The generated wrapper inlines the result-guard (promise-check, issues-check) and, when
- * pretty errors are on, calls sqlfu's re-export of `prettifyStandardSchemaError` on the
- * failure result. When pretty errors are off, nothing is imported from sqlfu.
+ * The emission split between `'zod'` and `'standard'` flavours mirrors the real divide:
+ * zod has a first-class `safeParse` + `z.prettifyError`, so it doesn't need anything from
+ * sqlfu at runtime. Valibot, zod-mini, and arktype share the Standard Schema
+ * `~standard.validate` entry point — the generated wrapper inlines the result-guard
+ * (promise-check, issues-check) and, when pretty errors are on, calls sqlfu's re-export of
+ * `prettifyStandardSchemaError` on the failure result. When pretty errors are off, nothing
+ * is imported from sqlfu.
  */
 type ValidatorEmitter = {
   importLine: string;
+  /** `'zod'` uses safeParse/z.prettifyError; `'standard'` uses `~standard.validate` + sqlfu helper. */
+  parseFlavour: 'zod' | 'standard';
   /**
    * Render a single `"  name: expression,"` line for a schema object. Controls both the
    * key (for validators like arktype that express optionality via `"name?"`) and the value
@@ -1622,7 +1627,7 @@ type ValidatorEmitter = {
   inferExpression: (schemaName: string) => string;
 };
 
-/** Default field-line rendering for value-wrapped emitters — key is plain, value is wrapped. */
+/** Default field-line rendering for the zod/valibot/zod-mini emitters — key is plain, value is wrapped. */
 function valueWrappedFieldLine(
   expressionForField: (field: GeneratedField) => string,
   nullable: (expression: string) => string,
@@ -1640,8 +1645,43 @@ function valueWrappedFieldLine(
   };
 }
 
+const zodEmitter: ValidatorEmitter = {
+  importLine: `import {z} from 'zod';`,
+  parseFlavour: 'zod',
+  renderFieldLine: valueWrappedFieldLine(
+    (field) => zodExpressionForField(field, 'z'),
+    (expression) => `${expression}.nullable()`,
+    (expression) => `${expression}.optional()`,
+  ),
+  objectSchemaDeclaration: ({schemaName, fieldLines}) => [
+    `const ${schemaName} = z.object({`,
+    ...fieldLines,
+    `});`,
+  ],
+  inferExpression: (schemaName) => `z.infer<typeof ${schemaName}>`,
+};
+
+const zodMiniEmitter: ValidatorEmitter = {
+  importLine: `import * as z from 'zod/mini';`,
+  parseFlavour: 'standard',
+  // zod-mini keeps the same nullable/optional wrapper calls as standard zod — the same schema
+  // object, a smaller bundle path.
+  renderFieldLine: valueWrappedFieldLine(
+    (field) => zodExpressionForField(field, 'z'),
+    (expression) => `z.nullable(${expression})`,
+    (expression) => `z.optional(${expression})`,
+  ),
+  objectSchemaDeclaration: ({schemaName, fieldLines}) => [
+    `const ${schemaName} = z.object({`,
+    ...fieldLines,
+    `});`,
+  ],
+  inferExpression: (schemaName) => `z.infer<typeof ${schemaName}>`,
+};
+
 const valibotEmitter: ValidatorEmitter = {
   importLine: `import * as v from 'valibot';`,
+  parseFlavour: 'standard',
   renderFieldLine: valueWrappedFieldLine(
     (field) => valibotExpressionForField(field),
     (expression) => `v.nullable(${expression})`,
@@ -1664,6 +1704,7 @@ const valibotEmitter: ValidatorEmitter = {
  */
 const arktypeEmitter: ValidatorEmitter = {
   importLine: `import {type} from 'arktype';`,
+  parseFlavour: 'standard',
   renderFieldLine: (field, fieldKind) => {
     const keySuffix = fieldKind === 'parameter' && Boolean(field.optional) ? '?' : '';
     const keyText = keySuffix
@@ -1680,6 +1721,8 @@ const arktypeEmitter: ValidatorEmitter = {
 };
 
 function getValidatorEmitter(validator: SqlfuValidator): ValidatorEmitter {
+  if (validator === 'zod') return zodEmitter;
+  if (validator === 'zod-mini') return zodMiniEmitter;
   if (validator === 'valibot') return valibotEmitter;
   return arktypeEmitter;
 }
@@ -1904,13 +1947,14 @@ function renderValidatorQueryWrapper(input: {
 
 /**
  * What to import from `'sqlfu'` in the generated wrapper:
- *  - standard-schema validators pull in `prettifyStandardSchemaError` when pretty errors are on,
+ *  - zod path never needs a runtime helper (uses `z.prettifyError` directly).
+ *  - standard-schema path pulls in `prettifyStandardSchemaError` when pretty errors are on,
  *    so the inline failure branch can turn issues into a readable message.
- *  - with pretty errors off, no runtime value is imported from sqlfu — the
+ *  - with pretty errors off, no runtime value is imported from sqlfu in either path — the
  *    generated file is fully self-contained apart from its validator library.
  */
-function buildRuntimeImports(_emitter: ValidatorEmitter, prettyErrors: boolean, clientType: string): string {
-  if (prettyErrors) {
+function buildRuntimeImports(emitter: ValidatorEmitter, prettyErrors: boolean, clientType: string): string {
+  if (emitter.parseFlavour === 'standard' && prettyErrors) {
     return `import {type ${clientType}, prettifyStandardSchemaError} from 'sqlfu';`;
   }
   return `import type {${clientType}} from 'sqlfu';`;
@@ -1929,6 +1973,42 @@ function renderObjectSchemaDeclaration(
   // see tasks/typegen-extensibility.md — future user-provided validator plugins and per-column overrides would hook in here.
   const fieldLines = fields.map((field) => emitter.renderFieldLine(field, fieldKind));
   return emitter.objectSchemaDeclaration({schemaName, fieldLines});
+}
+
+function zodExpressionForField(field: GeneratedField, namespace: 'z'): string {
+  if (field.objectFields) {
+    const objectExpression = `${namespace}.object({ ${field.objectFields
+      .map((objectField) => {
+        let expression = zodExpressionForField(objectField, namespace);
+        if (!objectField.notNull) expression = `${expression}.nullable()`;
+        return `${objectField.name}: ${expression}`;
+      })
+      .join(', ')} })`;
+    if (field.acceptsSingleOrArray) {
+      return `${namespace}.union([${objectExpression}, ${namespace}.array(${objectExpression})])`;
+    }
+    return field.isArray ? `${namespace}.array(${objectExpression})` : objectExpression;
+  }
+  return zodExpressionForTsType(field.tsType, namespace);
+}
+
+function zodExpressionForTsType(tsType: string, namespace: 'z'): string {
+  if (tsType === 'string') return `${namespace}.string()`;
+  if (tsType === 'number') return `${namespace}.number()`;
+  if (tsType === 'boolean') return `${namespace}.boolean()`;
+  if (tsType === 'Date') return `${namespace}.date()`;
+  if (tsType === 'Uint8Array' || tsType === 'ArrayBuffer') return `${namespace}.instanceof(Uint8Array)`;
+  if (tsType === 'any') return `${namespace}.unknown()`;
+  if (tsType.endsWith('[]')) {
+    return `${namespace}.array(${zodExpressionForTsType(tsType.slice(0, -2), namespace)})`;
+  }
+
+  const enumValues = parseStringLiteralUnion(tsType);
+  if (enumValues) {
+    return `${namespace}.enum([${enumValues.map((value) => JSON.stringify(value)).join(', ')}])`;
+  }
+
+  return `${namespace}.unknown()`;
 }
 
 function valibotExpressionForField(field: GeneratedField): string {
@@ -1976,17 +2056,41 @@ type InputValidation = {
 
 /**
  * Build the statements that validate a wrapper input (`data`, `params`) and the expression
- * that yields the validated value. The caller splices `statements` into the function body
- * and uses `expression` directly in the `query(...)` call, so there's no single-use
- * `validatedX` intermediate.
+ * that yields the validated value. Shape depends on the validator flavour and whether
+ * pretty errors are on:
+ *
+ *   - zod + pretty: `safeParse` guard + `parsedX.data` expression.
+ *   - zod + !pretty: no guard statements, expression is `Schema.parse(x)` itself.
+ *   - standard + either: inline promise/issues guard + `parsedXResult.value` expression.
+ *
+ * The caller splices `statements` into the function body and uses `expression` directly in
+ * the `query(...)` call, so there's no single-use `validatedX` intermediate.
  */
 function buildInputValidation(
-  _emitter: ValidatorEmitter,
+  emitter: ValidatorEmitter,
   schemaName: string,
   rawVariable: string,
   prettyErrors: boolean,
   indent: string = '\t\t',
 ): InputValidation {
+  if (emitter.parseFlavour === 'zod') {
+    if (!prettyErrors) {
+      return {
+        statements: [],
+        expression: `${schemaName}.parse(${rawVariable})`,
+      };
+    }
+    const parsedName = `parsed${schemaName}`;
+    return {
+      statements: [
+        `${indent}const ${parsedName} = ${schemaName}.safeParse(${rawVariable});`,
+        `${indent}if (!${parsedName}.success) throw new Error(z.prettifyError(${parsedName}.error));`,
+      ],
+      expression: `${parsedName}.data`,
+    };
+  }
+
+  // Standard Schema flavour (valibot, zod-mini). Inline result-guard either way.
   const resultName = `parsed${schemaName}Result`;
   return {
     statements: [
@@ -2000,12 +2104,43 @@ function buildInputValidation(
   };
 }
 
+/**
+ * The row-parsing expression for validator flavours where a single-expression form exists
+ * (zod + no pretty errors). Returns `null` when the flavour needs a multi-statement form.
+ * Standard Schema always needs the multi-statement form now — the promise-check +
+ * issues-check is inline in the generated file, so there's no one-liner for it.
+ */
+function rowParseExpressionOrNull(
+  emitter: ValidatorEmitter,
+  rowExpression: string,
+  prettyErrors: boolean,
+): string | null {
+  if (emitter.parseFlavour === 'zod' && !prettyErrors) {
+    return `Result.parse(${rowExpression})`;
+  }
+  return null;
+}
+
+/**
+ * Multi-statement body for parsing a row into its validated form. Used for zod + pretty
+ * (safeParse/prettifyError) and both standard-flavour variants (always — since there is no
+ * one-liner helper on the standard path anymore). The last statement is `return <value>;`.
+ */
 function rowParseStatements(
-  _emitter: ValidatorEmitter,
+  emitter: ValidatorEmitter,
   rowExpression: string,
   prettyErrors: boolean,
   indent: string,
 ): string[] {
+  if (emitter.parseFlavour === 'zod') {
+    // zod + pretty.
+    return [
+      `${indent}const parsed = Result.safeParse(${rowExpression});`,
+      `${indent}if (!parsed.success) throw new Error(z.prettifyError(parsed.error));`,
+      `${indent}return parsed.data;`,
+    ];
+  }
+  // Standard Schema — same inline 3-step guard as for params, flipped to prettyErrors.
   return [
     `${indent}const parsed = Result['~standard'].validate(${rowExpression});`,
     `${indent}if ('then' in parsed) throw new Error('Unexpected async validation from Result.');`,
@@ -2042,6 +2177,12 @@ function buildValidatorImplementation(input: {
   const {emitter, prettyErrors, queryReference, sync} = input;
   const maybeAwait = sync ? '' : 'await ';
   const q = queryReference;
+  const rowExpr = (rowExpression: string) =>
+    rowParseExpressionOrNull(
+      emitter,
+      jsonDecodedRowExpression(rowExpression, input.resultFields, input.jsonParseFunctionName),
+      prettyErrors,
+    );
   const rowBlock = (rowExpression: string, indent: string) =>
     rowParseStatements(
       emitter,
@@ -2051,6 +2192,13 @@ function buildValidatorImplementation(input: {
     );
 
   if (input.resultMode === 'many') {
+    const expr = rowExpr('row');
+    if (expr) {
+      return [
+        `\t\tconst rows = ${maybeAwait}client.all(${q});`,
+        `\t\treturn rows.map((row) => ${expr});`,
+      ];
+    }
     return [
       `\t\tconst rows = ${maybeAwait}client.all(${q});`,
       `\t\treturn rows.map((row) => {`,
@@ -2060,6 +2208,13 @@ function buildValidatorImplementation(input: {
   }
 
   if (input.resultMode === 'nullableOne') {
+    const expr = rowExpr('rows[0]');
+    if (expr) {
+      return [
+        `\t\tconst rows = ${maybeAwait}client.all(${q});`,
+        `\t\treturn rows.length > 0 ? ${expr} : null;`,
+      ];
+    }
     return [
       `\t\tconst rows = ${maybeAwait}client.all(${q});`,
       `\t\tif (rows.length === 0) return null;`,
@@ -2068,6 +2223,13 @@ function buildValidatorImplementation(input: {
   }
 
   if (input.resultMode === 'one') {
+    const expr = rowExpr('rows[0]');
+    if (expr) {
+      return [
+        `\t\tconst rows = ${maybeAwait}client.all(${q});`,
+        `\t\treturn ${expr};`,
+      ];
+    }
     return [
       `\t\tconst rows = ${maybeAwait}client.all(${q});`,
       ...rowBlock('rows[0]', '\t\t'),
@@ -2100,11 +2262,14 @@ function buildValidatorImplementation(input: {
     `\t\t};`,
   ];
 
+  const metadataExpr = rowExpr('rawResult');
+  const resultReturnLines = metadataExpr ? [`\t\treturn ${metadataExpr};`] : rowBlock('rawResult', '\t\t');
+
   return [
     `\t\tconst result = ${maybeAwait}client.run(${q});`,
     ...guards,
     ...rawResultLines,
-    ...rowBlock('rawResult', '\t\t'),
+    ...resultReturnLines,
   ];
 }
 
