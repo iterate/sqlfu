@@ -153,8 +153,6 @@ async function ensureTypecheckProject(): Promise<Project> {
       paths: {
         sqlfu: [path.join(packageRoot, 'src', 'index.ts')],
         'better-sqlite3': [path.join(packageRoot, 'node_modules', 'better-sqlite3')],
-        zod: [path.join(packageRoot, 'node_modules', 'zod')],
-        'zod/mini': [path.join(packageRoot, 'node_modules', 'zod', 'mini')],
         valibot: [path.join(packageRoot, 'node_modules', 'valibot')],
         arktype: [path.join(packageRoot, 'node_modules', 'arktype')],
       },

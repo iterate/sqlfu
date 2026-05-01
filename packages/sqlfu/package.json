@@ -70,8 +70,8 @@
   "dependencies": {
     "@clack/prompts": "^1.2.0",
     "@orpc/server": "^1.13.13",
-    "trpc-cli": "^0.14.0",
-    "zod": "^4.3.6"
+    "arktype": "^2.2.0",
+    "trpc-cli": "^0.14.0"
   },
   "peerDependencies": {
     "@sqlfu/ui": "workspace:*"
@@ -97,7 +97,6 @@
     "@types/estree": "^1.0.8",
     "@types/node": "^24.5.2",
     "@typescript/native-preview": "^7.0.0-dev.20260414.1",
-    "arktype": "^2.2.0",
     "better-sqlite3": "^12.8.0",
     "dedent": "^1.7.2",
     "devalue": "^5.7.1",

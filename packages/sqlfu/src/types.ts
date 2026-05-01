@@ -106,7 +106,7 @@ export interface SqlRowsPromise<TRow extends ResultRow = ResultRow> extends Prom
 
 export type SqlValue = QueryArg | SqlFragment;
 
-export type SqlfuValidator = 'arktype' | 'valibot' | 'zod' | 'zod-mini';
+export type SqlfuValidator = 'arktype' | 'valibot';
 
 /**
  * Schema source of truth for `sqlfu generate`. Controls where typegen reads
@@ -144,9 +144,6 @@ export interface SqlfuGenerateConfig {
    * - `'arktype'` = generated wrappers declare [arktype](https://arktype.io) schemas via the
    *   `type(...)` constructor, validate through Standard Schema, and derive types from `Schema.infer`.
    * - `'valibot'` = [valibot](https://valibot.dev) schemas (smaller bundle, functional API).
-   * - `'zod'` = [zod](https://zod.dev) schemas with `.parse()` / `.safeParse()` and `z.infer`.
-   * - `'zod-mini'` = same schema primitives as zod, imported from `zod/mini` and called via the
-   *   functional `z.parse(Schema, input)` API (smaller bundle than standard zod).
    */
   validator?: SqlfuValidator | null;
   /**

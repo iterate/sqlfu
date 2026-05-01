@@ -139,7 +139,7 @@ Scalar params stay `:id`; scalar lists are inferred from `IN (:ids)` / `NOT IN (
 row-value lists from `(slug, title) in (:keys)`; INSERT objects from `values :posts`;
 object fields use dot paths like `:post.slug`; and empty runtime-expanded arrays throw before SQLite sees the query. See [Type generation](https://sqlfu.dev/docs/typegen).
 
-Opt in to runtime validation by setting `generate.validator` to `'arktype'`, `'valibot'`, `'zod'`, or `'zod-mini'`. Wrappers then validate params on the way in and rows on the way out, and derive types via the validator's native inference. See [Runtime validation](https://sqlfu.dev/docs/runtime-validation).
+Opt in to runtime validation by setting `generate.validator` to `'arktype'` or `'valibot'`. Wrappers then validate params on the way in and rows on the way out, and derive types via the validator's native inference. See [Runtime validation](https://sqlfu.dev/docs/runtime-validation).
 
 ### Formatter
 

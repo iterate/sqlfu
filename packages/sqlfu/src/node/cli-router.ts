@@ -1,5 +1,5 @@
 import {os} from '@orpc/server';
-import {z} from 'zod';
+import {type} from 'arktype';
 
 import {
   type SqlfuCommandRouterContext,
@@ -30,6 +30,41 @@ import {
 } from '../api.js';
 
 const base = os.$context<SqlfuCommandRouterContext>();
+const positionalMetadata = {positional: true} as unknown as {description?: string};
+
+function withCliJsonSchema<T extends {toJsonSchema: (...args: any[]) => unknown}>(
+  schema: T,
+  jsonSchemaSource: {toJsonSchema: (...args: any[]) => unknown},
+): T {
+  // The runtime schema accepts `undefined`, but trpc-cli needs the object schema
+  // so it can discover option names, descriptions, and aliases.
+  schema.toJsonSchema = jsonSchemaSource.toJsonSchema.bind(jsonSchemaSource) as typeof schema.toJsonSchema;
+  return schema;
+}
+
+const serveInput = type({
+  'port?': 'number.integer > 0',
+  'ui?': type('boolean').describe(
+    `Also serve @sqlfu/ui on the same port. Requires @sqlfu/ui@${packageJson.version} to be installed.`,
+  ),
+});
+const optionalServeInput = withCliJsonSchema(serveInput.or('undefined'), serveInput);
+const killInput = type({
+  'port?': 'number.integer > 0',
+});
+const optionalKillInput = withCliJsonSchema(killInput.or('undefined'), killInput);
+const draftInput = type({
+  'name?': type('string > 0').describe(
+    'The name of the migration to create. If omitted one is derived from the drafted SQL.',
+  ),
+});
+const optionalDraftInput = withCliJsonSchema(draftInput.or('undefined'), draftInput);
+const migrateInput = type({
+  'yes?': type('boolean').describe(
+    `Skip the confirmation prompt and apply pending migrations. Defaults to true when stdin is not a TTY (e.g. CI, piped invocations), false otherwise.`,
+  ),
+});
+const optionalMigrateInput = withCliJsonSchema(migrateInput.or('undefined'), migrateInput);
 
 export const router = {
   serve: base
@@ -38,17 +73,7 @@ export const router = {
       description: `Start the local sqlfu backend server used by the hosted studio at sqlfu.dev/ui.`,
     })
     .input(
-      z
-        .object({
-          port: z.number().int().positive(),
-          ui: z
-            .boolean()
-            .describe(
-              `Also serve @sqlfu/ui on the same port. Requires @sqlfu/ui@${packageJson.version} to be installed.`,
-            ),
-        })
-        .partial()
-        .optional(),
+      optionalServeInput,
     )
     .handler(async ({context, input}) => {
       const project = await loadContextProjectState(context);
@@ -97,12 +122,7 @@ export const router = {
       description: `Stop the process listening on the local sqlfu backend port.`,
     })
     .input(
-      z
-        .object({
-          port: z.number().int().positive(),
-        })
-        .partial()
-        .optional(),
+      optionalKillInput,
     )
     .handler(async ({input}) => {
       const port = input?.port || 56081;
@@ -144,15 +164,7 @@ export const router = {
       description: `Create a migration file from the diff between replayed migrations and definitions.sql.`,
     })
     .input(
-      z
-        .object({
-          name: z
-            .string()
-            .min(1)
-            .describe('The name of the migration to create. If omitted one is derived from the drafted SQL.'),
-        })
-        .partial()
-        .optional(),
+      optionalDraftInput,
     )
     .handler(async ({context, input}) => {
       await applyDraftSql(await loadContextConfig(context), input, context.confirm);
@@ -164,16 +176,7 @@ export const router = {
       aliases: {options: {yes: 'y'}},
     })
     .input(
-      z
-        .object({
-          yes: z
-            .boolean()
-            .describe(
-              `Skip the confirmation prompt and apply pending migrations. Defaults to true when stdin is not a TTY (e.g. CI, piped invocations), false otherwise.`,
-            ),
-        })
-        .partial()
-        .optional(),
+      optionalMigrateInput,
     )
     .handler(async ({context, input}) => {
       const yes = input?.yes ?? !process.stdin.isTTY;
@@ -209,8 +212,8 @@ export const router = {
       description: `Find migrations by substring and show whether each one is applied.`,
     })
     .input(
-      z.object({
-        text: z.string().min(1),
+      type({
+        text: 'string > 0',
       }),
     )
     .handler(async ({context, input}) => {
@@ -233,8 +236,8 @@ export const router = {
       description: `Set migration history to an exact target without changing the live schema.`,
     })
     .input(
-      z.object({
-        target: z.string().min(1),
+      type({
+        target: 'string > 0',
       }),
     )
     .handler(async ({context, input}) => {
@@ -246,8 +249,8 @@ export const router = {
       description: `Change the database schema and migration history to match an exact migration target.`,
     })
     .input(
-      z.object({
-        target: z.string().min(1).meta({positional: true}),
+      type({
+        target: type('string > 0').configure(positionalMetadata),
       }),
     )
     .handler(async ({context, input}) => {

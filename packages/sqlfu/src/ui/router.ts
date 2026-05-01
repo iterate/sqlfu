@@ -1,5 +1,5 @@
 import {ORPCError, os} from '@orpc/server';
-import {z} from 'zod';
+import {type} from 'arktype';
 
 import packageJson from '../../package.json' with {type: 'json'};
 import {
@@ -88,21 +88,19 @@ const uiBase = os.$context<UiRouterContext>().use(async ({next, context}) => {
     throw toOrpcError(error);
   }
 });
-const rowRecordSchema = z.record(z.string(), z.unknown());
-const tableRowKeySchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('primaryKey'),
-    values: z.record(z.string(), z.unknown()),
-  }),
-  z.object({
-    kind: z.literal('new'),
-    value: z.string(),
-  }),
-  z.object({
-    kind: z.literal('rowid'),
-    value: z.number(),
-  }),
-]) satisfies z.ZodType<TableRowKey>;
+const rowRecordSchema = type('Record<string, unknown>');
+const tableRowKeySchema = type({
+  kind: "'primaryKey'",
+  values: rowRecordSchema,
+})
+  .or({
+    kind: "'new'",
+    value: 'string',
+  })
+  .or({
+    kind: "'rowid'",
+    value: 'number',
+  });
 
 type SqlRunnerParams = PreparedStatementParams | undefined;
 
@@ -289,9 +287,9 @@ export const uiRouter = {
       }),
       resultantSchema: uiBase
         .input(
-          z.object({
-            source: z.enum(['migrations', 'history']),
-            id: z.string(),
+          type({
+            source: "'migrations' | 'history'",
+            id: 'string',
           }),
         )
         .handler(async ({context, input}) => {
@@ -309,8 +307,8 @@ export const uiRouter = {
     },
     command: uiBase
       .input(
-        z.object({
-          command: z.string(),
+        type({
+          command: 'string',
         }),
       )
       .handler(async function* ({context, input}): AsyncGenerator<CommandEvent> {
@@ -347,9 +345,9 @@ export const uiRouter = {
       }),
     submitConfirmation: uiBase
       .input(
-        z.object({
-          id: z.string(),
-          body: z.string().nullable(),
+        type({
+          id: 'string',
+          body: 'string | null',
         }),
       )
       .handler(({input}) => {
@@ -358,8 +356,8 @@ export const uiRouter = {
       }),
     definitions: uiBase
       .input(
-        z.object({
-          sql: z.string(),
+        type({
+          sql: 'string',
         }),
       )
       .handler(async ({context, input}) => {
@@ -378,9 +376,9 @@ export const uiRouter = {
   table: {
     list: uiBase
       .input(
-        z.object({
-          relationName: z.string(),
-          page: z.number().int(),
+        type({
+          relationName: 'string',
+          page: 'number.integer',
         }),
       )
       .handler(async ({context, input}) => {
@@ -390,12 +388,12 @@ export const uiRouter = {
       }),
     save: uiBase
       .input(
-        z.object({
-          relationName: z.string(),
-          page: z.number().int(),
-          originalRows: z.array(rowRecordSchema),
-          rows: z.array(rowRecordSchema),
-          rowKeys: z.array(tableRowKeySchema),
+        type({
+          relationName: 'string',
+          page: 'number.integer',
+          originalRows: rowRecordSchema.array(),
+          rows: rowRecordSchema.array(),
+          rowKeys: tableRowKeySchema.array(),
         }),
       )
       .handler(async ({context, input}) => {
@@ -405,9 +403,9 @@ export const uiRouter = {
       }),
     delete: uiBase
       .input(
-        z.object({
-          relationName: z.string(),
-          page: z.number().int(),
+        type({
+          relationName: 'string',
+          page: 'number.integer',
           originalRow: rowRecordSchema,
           rowKey: tableRowKeySchema,
         }),
@@ -421,9 +419,9 @@ export const uiRouter = {
   sql: {
     run: uiBase
       .input(
-        z.object({
-          sql: z.string(),
-          params: z.unknown().optional(),
+        type({
+          sql: 'string',
+          'params?': 'unknown',
         }),
       )
       .handler(async ({context, input}) => {
@@ -455,16 +453,16 @@ export const uiRouter = {
       }),
     analyze: uiBase
       .input(
-        z.object({
-          sql: z.string(),
+        type({
+          sql: 'string',
         }),
       )
       .handler(({context, input}) => context.host.catalog.analyzeSql(requireProjectConfig(context.project), input.sql)),
     save: uiBase
       .input(
-        z.object({
-          sql: z.string(),
-          name: z.string(),
+        type({
+          sql: 'string',
+          name: 'string',
         }),
       )
       .handler(async ({context, input}) => {
@@ -489,10 +487,10 @@ export const uiRouter = {
   query: {
     execute: uiBase
       .input(
-        z.object({
-          queryId: z.string(),
-          data: z.record(z.string(), z.unknown()).optional(),
-          params: z.record(z.string(), z.unknown()).optional(),
+        type({
+          queryId: 'string',
+          'data?': rowRecordSchema,
+          'params?': rowRecordSchema,
         }),
       )
       .handler(async ({context, input}): Promise<QueryExecutionResponse> => {
@@ -522,9 +520,9 @@ export const uiRouter = {
       }),
     update: uiBase
       .input(
-        z.object({
-          queryId: z.string(),
-          sql: z.string(),
+        type({
+          queryId: 'string',
+          sql: 'string',
         }),
       )
       .handler(async ({context, input}) => {
@@ -548,9 +546,9 @@ export const uiRouter = {
       }),
     rename: uiBase
       .input(
-        z.object({
-          queryId: z.string(),
-          name: z.string(),
+        type({
+          queryId: 'string',
+          name: 'string',
         }),
       )
       .handler(async ({context, input}) => {
@@ -576,8 +574,8 @@ export const uiRouter = {
       }),
     delete: uiBase
       .input(
-        z.object({
-          queryId: z.string(),
+        type({
+          queryId: 'string',
         }),
       )
       .handler(async ({context, input}) => {
