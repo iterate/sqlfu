@@ -1,4 +1,15 @@
-need to write an "introducing sqlfu" blogpost with:
+---
+status: needs-grilling
+size: small
+---
+
+# Introducing sqlfu blog post
+
+## Status summary
+
+Not started. This is a rough content outline for an introductory blog post and still needs a short product/editorial pass before drafting.
+
+Need to write an "introducing sqlfu" blogpost with:
 
 - why it exists
 - why not an ORM
