@@ -620,8 +620,29 @@ a {
   min-height: 0;
 }
 
+.runtime-tabs {
+  position: relative;
+}
+
+.runtime-tabs::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1.8rem;
+  height: 2.65rem;
+  background: linear-gradient(90deg, transparent, var(--surface));
+  pointer-events: none;
+}
+
 .runtime-tabs .artifact-tablist {
   overflow-x: auto;
+  padding-right: 1.8rem;
+  scrollbar-width: thin;
+}
+
+.runtime-tabs .artifact-tablist::-webkit-scrollbar {
+  height: 0.25rem;
 }
 
 .artifact.terminal figcaption {

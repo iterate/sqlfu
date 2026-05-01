@@ -200,12 +200,12 @@ import '../styles/landing.css';
             <div class="artifact artifact-tall artifact-tabs runtime-tabs" data-tabbed-artifact data-default-tab="node">
               <div class="artifact-tablist" role="tablist" aria-label="Runtime adapter examples">
                 <button class="artifact-tab is-active" type="button" role="tab" aria-selected="true" data-tab-for="node">node:sqlite</button>
-                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="bun">bun</button>
-                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="better">better</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="bun">bun:sqlite</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="better">better-sqlite3</button>
                 <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="libsql">libsql</button>
-                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="wasm">wasm</button>
-                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="expo">expo</button>
-                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="do">durable</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="wasm">sqlite-wasm</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="expo">expo-sqlite</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="do">durable object</button>
                 <button class="demo-replay" type="button" data-replay-demo aria-label="Replay runtime animation" title="Replay animation">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M20 11a8 8 0 1 0-2.34 5.66" />
@@ -218,32 +218,40 @@ import '../styles/landing.css';
 <span class="tok-keyword">import</span> &#123;<span class="tok-name">createNodeSqliteClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
 <span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
 
-<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-keyword">new</span> <span class="tok-name">DatabaseSync</span>(<span class="tok-string">"app.db"</span>);
-<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">createNodeSqliteClient</span>(<span class="tok-name">db</span>));</code></pre>
+<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createNodeSqliteClient</span>(
+  <span class="tok-keyword">new</span> <span class="tok-name">DatabaseSync</span>(<span class="tok-string">"app.db"</span>),
+);
+<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="bun">
                 <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">Database</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"bun:sqlite"</span>;
 <span class="tok-keyword">import</span> &#123;<span class="tok-name">createBunClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
 <span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
 
-<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-keyword">new</span> <span class="tok-name">Database</span>(<span class="tok-string">"app.db"</span>);
-<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">createBunClient</span>(<span class="tok-name">db</span>));</code></pre>
+<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createBunClient</span>(
+  <span class="tok-keyword">new</span> <span class="tok-name">Database</span>(<span class="tok-string">"app.db"</span>),
+);
+<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="better">
                 <pre><code><span class="tok-keyword">import</span> <span class="tok-name">Database</span> <span class="tok-keyword">from</span> <span class="tok-string">"better-sqlite3"</span>;
 <span class="tok-keyword">import</span> &#123;<span class="tok-name">createBetterSqlite3Client</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
 <span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
 
-<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-keyword">new</span> <span class="tok-name">Database</span>(<span class="tok-string">"app.db"</span>);
-<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">createBetterSqlite3Client</span>(<span class="tok-name">db</span>));</code></pre>
+<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createBetterSqlite3Client</span>(
+  <span class="tok-keyword">new</span> <span class="tok-name">Database</span>(<span class="tok-string">"app.db"</span>),
+);
+<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="libsql">
                 <pre><code><span class="tok-keyword">import</span> <span class="tok-name">Database</span> <span class="tok-keyword">from</span> <span class="tok-string">"libsql"</span>;
 <span class="tok-keyword">import</span> &#123;<span class="tok-name">createLibsqlSyncClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
 <span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
 
-<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-keyword">new</span> <span class="tok-name">Database</span>(<span class="tok-string">"app.db"</span>);
-<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">createLibsqlSyncClient</span>(<span class="tok-name">db</span>));</code></pre>
+<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createLibsqlSyncClient</span>(
+  <span class="tok-keyword">new</span> <span class="tok-name">Database</span>(<span class="tok-string">"app.db"</span>),
+);
+<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="wasm">
                 <pre><code><span class="tok-keyword">import</span> <span class="tok-name">sqlite3InitModule</span> <span class="tok-keyword">from</span> <span class="tok-string">"@sqlite.org/sqlite-wasm"</span>;
@@ -251,16 +259,20 @@ import '../styles/landing.css';
 <span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
 
 <span class="tok-keyword">const</span> <span class="tok-name">sqlite3</span> = <span class="tok-keyword">await</span> <span class="tok-name">sqlite3InitModule</span>();
-<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-keyword">new</span> <span class="tok-name">sqlite3</span>.<span class="tok-prop">oo1</span>.<span class="tok-name">DB</span>(<span class="tok-string">":memory:"</span>);
-<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">createSqliteWasmClient</span>(<span class="tok-name">db</span>));</code></pre>
+<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createSqliteWasmClient</span>(
+  <span class="tok-keyword">new</span> <span class="tok-name">sqlite3</span>.<span class="tok-prop">oo1</span>.<span class="tok-name">DB</span>(<span class="tok-string">":memory:"</span>),
+);
+<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="expo">
                 <pre><code><span class="tok-keyword">import</span> * <span class="tok-keyword">as</span> <span class="tok-name">SQLite</span> <span class="tok-keyword">from</span> <span class="tok-string">"expo-sqlite"</span>;
 <span class="tok-keyword">import</span> &#123;<span class="tok-name">createExpoSqliteClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
 <span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
 
-<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-keyword">await</span> <span class="tok-name">SQLite</span>.<span class="tok-prop">openDatabaseAsync</span>(<span class="tok-string">"app.db"</span>);
-<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">createExpoSqliteClient</span>(<span class="tok-name">db</span>));</code></pre>
+<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createExpoSqliteClient</span>(
+  <span class="tok-keyword">await</span> <span class="tok-name">SQLite</span>.<span class="tok-prop">openDatabaseAsync</span>(<span class="tok-string">"app.db"</span>),
+);
+<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="do">
                 <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">DurableObject</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"cloudflare:workers"</span>;
@@ -269,8 +281,8 @@ import '../styles/landing.css';
 
 <span class="tok-keyword">export class</span> <span class="tok-name">Blog</span> <span class="tok-keyword">extends</span> <span class="tok-name">DurableObject</span> &#123;
   <span class="tok-keyword">async</span> <span class="tok-prop">fetch</span>() &#123;
-    <span class="tok-keyword">const</span> <span class="tok-name">client</span> = <span class="tok-name">createDurableObjectClient</span>(<span class="tok-keyword">this</span>.<span class="tok-prop">ctx</span>.<span class="tok-prop">storage</span>);
-    <span class="tok-keyword">return new</span> <span class="tok-name">Response</span>(<span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">client</span>));
+    <span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createDurableObjectClient</span>(<span class="tok-keyword">this</span>.<span class="tok-prop">ctx</span>.<span class="tok-prop">storage</span>);
+    <span class="tok-keyword">return new</span> <span class="tok-name">Response</span>(<span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>));
   &#125;
 &#125;</code></pre>
               </div>
