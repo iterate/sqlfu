@@ -2,7 +2,7 @@ import BetterSqlite3 from 'better-sqlite3';
 import path from 'node:path';
 import {expect, test} from 'vitest';
 
-import {applyMigrateSql, autoAcceptConfirm} from '../src/api.js';
+import {autoAcceptConfirm, createSqlfuApi} from '../src/api/core.js';
 import {createBetterSqlite3Client} from '../src/index.js';
 import {createNodeHost, openLocalSqliteFile} from '../src/node/host.js';
 import {generateQueryTypesForConfig} from '../src/typegen/index.js';
@@ -48,7 +48,7 @@ test("authority 'live_schema' opens the factory-provided DB and extracts its sch
     },
   });
 
-  await applyMigrateSql({config: fixture.config, host: fixture.host}, autoAcceptConfirm);
+  await createSqlfuApi({config: fixture.config, host: fixture.host}).migrate({confirm: autoAcceptConfirm});
 
   const invocationsAfterMigrate = fixture.factoryInvocations();
   await generateQueryTypesForConfig(fixture.config, fixture.host);
@@ -67,7 +67,7 @@ test("authority 'migration_history' replays only applied migrations recorded in 
     },
   });
 
-  await applyMigrateSql({config: fixture.config, host: fixture.host}, autoAcceptConfirm);
+  await createSqlfuApi({config: fixture.config, host: fixture.host}).migrate({confirm: autoAcceptConfirm});
 
   await generateQueryTypesForConfig(fixture.config, fixture.host);
   expect(await fixture.typegenDbTables()).toEqual(['person', 'pet']);

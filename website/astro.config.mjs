@@ -5,7 +5,7 @@ export default defineConfig({
   site: 'https://sqlfu.dev',
   // build.format: 'file' emits `docs/runtime-validation.html` (not
   // `docs/runtime-validation/index.html`) so artifact.ci's "strip trailing slash"
-  // 308 redirect doesn't change how the browser resolves relative asset URLs —
+  // 308 redirect doesn't change how the browser resolves relative asset URLs:
   // the last path segment is always treated as a filename either way.
   trailingSlash: 'ignore',
   build: {
@@ -39,31 +39,63 @@ export default defineConfig({
         Banner: './src/starlight-overrides/Banner.astro',
       },
       sidebar: [
-        {label: 'Getting Started', slug: 'docs/getting-started'},
-        {label: 'Overview', slug: 'docs/sqlfu'},
-        {label: 'Adapters', slug: 'docs/adapters'},
-        {label: 'UI', slug: 'docs/ui'},
-        {label: 'Migration Model', slug: 'docs/migration-model'},
-        {label: 'Type generation', slug: 'docs/typegen'},
-        {label: 'Runtime validation', slug: 'docs/runtime-validation'},
-        {label: 'Dynamic queries', slug: 'docs/dynamic-queries'},
-        {label: 'Outbox', slug: 'docs/outbox'},
         {
-          label: 'Generate examples',
+          label: 'Start here',
           items: [
-            {label: 'Overview', slug: 'docs/examples'},
-            {label: 'Basics', slug: 'docs/examples/basics'},
-            {label: 'Config', slug: 'docs/examples/config'},
-            {label: 'Errors', slug: 'docs/examples/errors'},
-            {label: 'Query annotations', slug: 'docs/examples/query-annotations'},
-            {label: 'Query shapes', slug: 'docs/examples/query-shapes'},
-            {label: 'Result types', slug: 'docs/examples/result-types'},
-            {label: 'Validators', slug: 'docs/examples/validators'},
+            {label: 'Getting Started', slug: 'docs/getting-started'},
+            {label: 'Overview', slug: 'docs/sqlfu'},
           ],
         },
-        {label: 'Observability', slug: 'docs/observability'},
-        {label: 'Lint Plugin', slug: 'docs/lint-plugin'},
-        {label: 'Schema Diff Model', slug: 'docs/schema-diff-model'},
+        {
+          label: 'Concepts',
+          items: [
+            {label: 'Runtime client', slug: 'docs/client'},
+            {label: 'SQL migrations', slug: 'docs/migration-model'},
+            {label: 'Type generation from SQL', slug: 'docs/typegen'},
+            {label: 'Admin UI', slug: 'docs/ui'},
+          ],
+        },
+        {
+          label: 'Features',
+          items: [
+            {label: 'CLI', slug: 'docs/cli'},
+            {label: 'Adapters', slug: 'docs/adapters'},
+            {label: 'Runtime validation', slug: 'docs/runtime-validation'},
+            {label: 'Observability', slug: 'docs/observability'},
+            {label: 'Lint plugin', slug: 'docs/lint-plugin'},
+            {label: 'Formatter', slug: 'docs/formatter'},
+            {label: 'Agent skill', slug: 'docs/agent-skill'},
+            {label: 'Outbox (experimental)', slug: 'docs/outbox'},
+          ],
+        },
+        {
+          label: 'Recipes',
+          items: [
+            {label: 'Dynamic queries', slug: 'docs/dynamic-queries'},
+            {label: 'Pure-SQL id generators', slug: 'docs/id-helpers'},
+          ],
+        },
+        {
+          label: 'Reference',
+          items: [
+            {label: 'Import surface', slug: 'docs/imports'},
+            {label: 'Errors', slug: 'docs/errors'},
+            {label: 'Schema diff internals', slug: 'docs/schema-diff-model'},
+            {
+              label: 'Generate examples',
+              items: [
+                {label: 'Overview', slug: 'docs/examples'},
+                {label: 'Basics', slug: 'docs/examples/basics'},
+                {label: 'Config', slug: 'docs/examples/config'},
+                {label: 'Errors', slug: 'docs/examples/errors'},
+                {label: 'Query annotations', slug: 'docs/examples/query-annotations'},
+                {label: 'Query shapes', slug: 'docs/examples/query-shapes'},
+                {label: 'Result types', slug: 'docs/examples/result-types'},
+                {label: 'Validators', slug: 'docs/examples/validators'},
+              ],
+            },
+          ],
+        },
       ],
       social: [{icon: 'github', label: 'GitHub', href: 'https://github.com/mmkal/sqlfu'}],
     }),

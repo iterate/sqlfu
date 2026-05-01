@@ -30,20 +30,40 @@ const docs = [
     title: 'Adapters',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'adapters.md'),
     description:
-      'Drivers sqlfu supports out of the box: better-sqlite3, libsql, Turso Cloud, Cloudflare D1, Durable Objects, Expo, sqlite-wasm, and more.',
+      'Client factories for better-sqlite3, node:sqlite, bun:sqlite, libsql, Cloudflare D1, Durable Objects, Expo, sqlite-wasm, and more.',
+  },
+  {
+    slug: 'imports',
+    title: 'Import surface',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'imports.md'),
+    description:
+      'What each sqlfu import path is for: runtime client, command API, Node helpers, analysis, UI, lint plugin, and outbox.',
+  },
+  {
+    slug: 'client',
+    title: 'Runtime client',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'client.md'),
+    description:
+      'The lightweight Client interface your app runtime usually depends on, plus how adapters preserve sync and async drivers.',
+  },
+  {
+    slug: 'cli',
+    title: 'CLI',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'cli.md'),
+    description:
+      'What npx sqlfu does, what each subcommand is for, and how check, draft, migrate, generate, sync, and format fit together.',
   },
   {
     slug: 'ui',
-    title: 'UI',
+    title: 'Admin UI',
     sourcePath: path.join(repoRoot, 'packages', 'ui', 'README.md'),
-    description:
-      'Hosted, demo, and embedded sqlfu UI modes, including partial-fetch mounting under your own auth and route prefix.',
+    description: 'Hosted, demo, and embedded Admin UI modes for schema, migrations, queries, and live data.',
   },
   {
     slug: 'migration-model',
-    title: 'Migration Model',
+    title: 'SQL migrations',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'migration-model.md'),
-    description: 'Migration history, drift checks, and the intended production path.',
+    description: 'Migration history, drift checks, smart drafts, and the intended production path.',
   },
   {
     slug: 'observability',
@@ -52,8 +72,14 @@ const docs = [
     description: 'Named queries reach OpenTelemetry, Sentry, PostHog, Datadog via a single instrument() hook.',
   },
   {
+    slug: 'errors',
+    title: 'Errors',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'errors.md'),
+    description: 'SqlfuError kinds, normalized adapter errors, and application handler examples.',
+  },
+  {
     slug: 'typegen',
-    title: 'Type generation',
+    title: 'Type generation from SQL',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'typegen.md'),
     description:
       'Generated query wrappers, multi-query SQL files, and inferred parameter forms for lists and bulk inserts.',
@@ -69,25 +95,25 @@ const docs = [
     slug: 'id-helpers',
     title: 'Pure-SQL id generators (ulid, ksuid, nanoid, cuid2)',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'id-helpers.md'),
-    description: 'Copy-paste sqlite views for ULID, KSUID, nanoid, and cuid2-shaped ids — pure SQL, no extensions.',
+    description: 'Copy-paste sqlite views for ULID, KSUID, nanoid, and cuid2-shaped ids. Pure SQL, no extensions.',
   },
   {
     slug: 'dynamic-queries',
     title: 'Dynamic queries',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'dynamic-queries.md'),
     description:
-      'How to handle optional filters and other runtime-composition shapes in a SQL-first project — with IS NULL patterns, JSON lists, and honest advice on when to reach for a query builder instead.',
+      'How to handle optional filters and other runtime-composition shapes in a SQL-first project, with IS NULL patterns, JSON lists, and honest advice on when to reach for a query builder instead.',
   },
   {
     slug: 'outbox',
-    title: 'Outbox',
+    title: 'Outbox (experimental)',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'outbox.md'),
     description:
       'Transactional-outbox / job-queue built on sqlfu. Fan-out, retry, delayed dispatch, crash recovery, causation chains.',
   },
   {
     slug: 'schema-diff-model',
-    title: 'Schema Diff Model',
+    title: 'Schema diff internals',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'schema-diff-model.md'),
     description: 'How sqlfu models SQLite schema diffing and migration planning.',
   },
@@ -96,6 +122,18 @@ const docs = [
     title: 'Lint Plugin',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'lint-plugin.md'),
     description: 'ESLint rules for enforcing the SQL First model: query-naming and format-sql.',
+  },
+  {
+    slug: 'formatter',
+    title: 'Formatter',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'formatter.md'),
+    description: 'Format SQL files from the CLI, ESLint, or TypeScript.',
+  },
+  {
+    slug: 'agent-skill',
+    title: 'Agent skill',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'agent-skill.md'),
+    description: 'Install the sqlfu agent skill so coding agents edit SQL, migrations, and generated files coherently.',
   },
 ];
 
@@ -201,7 +239,7 @@ async function writeExamplesOverview(overviewEntries) {
   ].join('\n');
 
   const pageLinks = overviewEntries
-    .map(({slug, title, description}) => `- **[${title}](/docs/examples/${slug})** — ${description}`)
+    .map(({slug, title, description}) => `- **[${title}](/docs/examples/${slug})**: ${description}`)
     .join('\n');
 
   const body =
@@ -210,7 +248,7 @@ async function writeExamplesOverview(overviewEntries) {
     heading you'll find inside is a real test: the test harness parses the same markdown,
     runs \`sqlfu generate\` against the declared inputs, and asserts the outputs match what's
     shown. That means every TypeScript file under an **output** block on these pages is
-    exactly what you'd find in your checkout after running the CLI — there is no drift.
+    exactly what you'd find in your checkout after running the CLI. There is no drift.
 
     Start here if you want to see what \`sqlfu generate\` produces for a given schema shape,
     query style, or config knob, before you try it in your own project.
@@ -238,7 +276,7 @@ function splitIntroAndBody(markdown) {
 
 function descriptionForIntro(intro, slug) {
   if (!intro) {
-    return `Generate fixtures — ${slug}`;
+    return `Generate fixtures: ${slug}`;
   }
 
   // Collapse newlines so YAML on a single line isn't forced to wrap, and trim to one sentence
@@ -290,7 +328,7 @@ async function transformMarkdown(markdown, currentDoc) {
   });
 
   // Rewrite HTML <img src="..."> with a relative src. We don't rewrite the
-  // surrounding tag — `align`, `width`, etc. pass through for rendering.
+  // surrounding tag. `align`, `width`, etc. pass through for rendering.
   out = out.replace(/<img\b([^>]*?)\bsrc\s*=\s*"([^"]+)"([^>]*)>/g, (match, before, rawSrc, after) => {
     const src = rawSrc.trim();
     if (/^(https?:|data:|#|\/)/.test(src)) {
@@ -319,8 +357,9 @@ async function transformMarkdown(markdown, currentDoc) {
 }
 
 function stripLeadingH1(markdown) {
-  // Starlight renders title from frontmatter, so drop the first h1 to avoid duplication.
-  return markdown.replace(/^#\s+[^\n]*\n+/, '');
+  // Starlight renders title from frontmatter, so drop the source h1 to avoid duplication.
+  // MDX files may need ESM imports before the first markdown heading; preserve those.
+  return markdown.replace(/^((?:(?:import|export)\s+[^\n]*\n|\s*\n)*)#\s+[^\n]*\n+/, '$1');
 }
 
 function rewriteHref(href, currentSourcePath) {

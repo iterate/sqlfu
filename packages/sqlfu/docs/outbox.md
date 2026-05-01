@@ -1,6 +1,6 @@
 # Outbox
 
->⚠️ Extra-experimental warning! The shape of this module is still in flux and will likely change. The basic principle of events + consumers will remain, so migrations will be easy but will be needed if you use this as-is.
+>⚠️ Experimental warning: the shape of this module is still in flux and will likely change. The basic principle of events + consumers will remain, so migrations will be easy but will be needed if you use this as-is.
 
 `sqlfu/outbox` is a small transactional-outbox / job-queue built on top of the same sqlfu client you already use. It's a single-file implementation that gives you:
 

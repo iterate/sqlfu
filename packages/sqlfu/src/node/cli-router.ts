@@ -14,11 +14,13 @@ import {
   loadContextConfig,
   loadContextProjectState,
   migrationsPresetOf,
-} from '../api.js';
+} from '../api/internal.js';
 import {createDefaultInitPreview} from '../init-preview.js';
 import {migrationName, readMigrationHistory} from '../migrations/index.js';
+import {formatSqlFiles} from './format-files.js';
 import {stopProcessesListeningOnPort} from './port-process.js';
 import {generateQueryTypesForConfig} from '../typegen/index.js';
+import {watchGenerateQueryTypesForConfig} from '../typegen/watch.js';
 import {startSqlfuServer} from '../ui/server.js';
 import {resolveSqlfuUi} from '../ui/resolve-sqlfu-ui.js';
 import packageJson from '../../package.json' with {type: 'json'};
@@ -27,7 +29,7 @@ import {
   materializeMigrationsSchemaForContext,
   compareSchemasForContext,
   readMigrationsFromContext,
-} from '../api.js';
+} from '../api/internal.js';
 
 const base = os.$context<SqlfuCommandRouterContext>();
 
@@ -119,10 +121,51 @@ export const router = {
     .meta({
       description: `Generate TypeScript functions for all queries in the sql/ directory.`,
     })
-    .handler(async ({context}) => {
+    .input(
+      z
+        .object({
+          watch: z
+            .boolean()
+            .describe(
+              `Run generate once, then re-run whenever a query, definitions.sql, or migration file changes. Exits on SIGINT.`,
+            ),
+        })
+        .partial()
+        .optional(),
+    )
+    .handler(async ({context, input}) => {
       const sqlfuContext = await loadContextConfig(context);
-      await generateQueryTypesForConfig(sqlfuContext.config, sqlfuContext.host);
-      return 'Generated schema-derived database and TypeSQL outputs.';
+      if (input?.watch) {
+        await watchGenerateQueryTypesForConfig(sqlfuContext.config, sqlfuContext.host);
+        return;
+      }
+      const result = await generateQueryTypesForConfig(sqlfuContext.config, sqlfuContext.host);
+      return ['Updated generated files:', ...result.writtenFiles.map((filePath) => `  ${filePath}`)].join('\n');
+    }),
+
+  format: base
+    .meta({
+      description: `Format .sql files in place.`,
+    })
+    .input(
+      z.object({
+        paths: z
+          .array(z.string().min(1))
+          .min(1)
+          .meta({positional: true})
+          .describe('One or more .sql file paths or glob patterns.'),
+      }),
+    )
+    .handler(async ({input}) => {
+      const result = await formatSqlFiles(input.paths, process.cwd());
+      const lines: string[] = [];
+      if (result.formatted.length > 0) {
+        lines.push('Formatted files:', ...result.formatted.map((filePath) => `  ${filePath}`));
+      }
+      if (result.unchanged.length > 0) {
+        lines.push('Already formatted:', ...result.unchanged.map((filePath) => `  ${filePath}`));
+      }
+      return lines.join('\n');
     }),
 
   config: base.handler(async ({context}) => {
@@ -155,7 +198,8 @@ export const router = {
         .optional(),
     )
     .handler(async ({context, input}) => {
-      await applyDraftSql(await loadContextConfig(context), input, context.confirm);
+      const result = await applyDraftSql(await loadContextConfig(context), input, context.confirm);
+      return result ? `Wrote ${result.path}` : undefined;
     }),
 
   migrate: base

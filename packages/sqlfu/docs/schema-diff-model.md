@@ -1,4 +1,4 @@
-# sqlfu Schema Diff Model
+# Schema diff internals
 
 This document describes what `diffSchemaSql` does today for SQLite, and how the native implementation is put together.
 
@@ -147,7 +147,7 @@ Supporting pieces live in:
   the stable public `diffSchemaSql(...)` wrapper
 - [src/core/sqlite.ts](../src/core/sqlite.ts)
   shared SQLite helpers, including trigger-aware SQL statement splitting
-- [src/api.ts](../src/api.ts)
+- [src/api/internal.ts](../src/api/internal.ts)
   command integration for `check`, `draft`, `sync`, and `goto`
 
 The `src/schemadiff/sqlite/` folder is the core engine, but it leans on shared SQLite parsing/execution helpers and API-level integration points elsewhere in the tree.

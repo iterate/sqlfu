@@ -6,7 +6,7 @@ import path from 'node:path';
 import * as prompts from '@clack/prompts';
 import {createCli, getCliContext, yamlTableConsoleLogger, type TrpcCliRunParams} from 'trpc-cli';
 
-import type {SqlfuCommandConfirm} from '../api.js';
+import type {Confirm} from '../api/core.js';
 import {router} from './cli-router.js';
 import {loadProjectState} from './config.js';
 import {createNodeHost} from './host.js';
@@ -101,7 +101,7 @@ function readConfigPathFromCliContext() {
   return value;
 }
 
-export const confirm: SqlfuCommandConfirm = async (params) => {
+export const confirm: Confirm = async (params) => {
   let currentBody = params.body.trim();
 
   while (currentBody) {

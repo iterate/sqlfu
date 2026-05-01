@@ -125,3 +125,14 @@ function compactClause(
 function isStandaloneComment(line: string): boolean {
   return line.startsWith('--') || line.startsWith('/*') || line.startsWith('*/') || /^\*\s/.test(line);
 }
+
+/**
+ * Format a standalone `.sql` file's contents the same way the `format-sql`
+ * rule formats inline SQL templates. Pure string-in, string-out; preserves a
+ * trailing newline if the input had one.
+ */
+export function formatSqlFileContents(contents: string): string {
+  if (!contents.trim()) return contents;
+  const formatted = formatSql(contents, {style: 'sqlfu'}).trim();
+  return formatted + (contents.match(/\s*$/)?.[0] || '');
+}

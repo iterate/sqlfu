@@ -304,9 +304,18 @@ importers:
       dedent:
         specifier: ^1.7.2
         version: 1.7.2
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
+      shiki:
+        specifier: ^3.23.0
+        version: 3.23.0
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
 
   website/animations:
     dependencies:

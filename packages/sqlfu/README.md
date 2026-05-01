@@ -16,13 +16,14 @@ It is built around a simple idea: SQL should be the source language for schema, 
   - [TypeScript Second](#typescript-second)
 - [Core Concepts](#core-concepts)
 - [Capabilities](#capabilities)
-  - [Client](#client)
-  - [Migrator](#migrator)
-  - [Type Generator](#type-generator)
+  - [Runtime Client](#runtime-client)
+  - [SQL Migrations](#sql-migrations)
+  - [Type Generation from SQL](#type-generation-from-sql)
   - [Formatter](#formatter)
   - [Observability](#observability)
+  - [Typed Errors](#typed-errors)
   - [Outbox (experimental)](#outbox-experimental)
-  - [UI](#ui)
+  - [Admin UI](#admin-ui)
   - [Lint Plugin](#lint-plugin)
   - [Agent Skill](#agent-skill)
 - [Quick Start](#quick-start)
@@ -40,7 +41,7 @@ It is built around a simple idea: SQL should be the source language for schema, 
 - a SQLite schema diff engine
 - a type generator for `.sql` queries
 - a SQL formatter
-- a UI for inspecting and working with the project
+- an Admin UI for inspecting and working with the project
 
 The intended shape is simple:
 
@@ -73,6 +74,22 @@ You should still get strong TypeScript output from SQL: generated wrappers, type
 
 ## Core Concepts
 
+- **Runtime client.**
+  The lightweight `Client` interface is usually the only sqlfu runtime surface
+  your app depends on. Adapter factories create it from the SQLite driver you
+  already use.
+- **SQL migrations.**
+  Schema history is a sequence of reviewed SQL files, with `sqlfu draft`
+  helping turn `definitions.sql` changes into best-effort migration drafts.
+- **Type generation from SQL.**
+  Checked-in `.sql` query files become TypeScript wrappers with inferred params
+  and result rows.
+- **Admin UI.**
+  The browser interface gives you a view of schema, migrations, queries,
+  generated metadata, and live data.
+
+The main repo artifacts behind those concepts are:
+
 - `definitions.sql`
   The desired schema now. Tables, views, triggers, and (if you want them) copy-paste id generators (ULID, KSUID, nanoid, cuid2-shaped) live here alongside your schema. See [docs/id-helpers.md](./docs/id-helpers.md).
 - `migrations/`
@@ -95,7 +112,7 @@ Those pieces give `sqlfu` enough information to answer the important questions:
 
 ## Capabilities
 
-### Client
+### Runtime Client
 
 `sqlfu` includes a lightweight client layer for executing SQL directly. It works with checked-in SQL rather than replacing it with a query builder.
 
@@ -105,21 +122,23 @@ That sync/async distinction carries through generated query wrappers and the mig
 
 When you need to run SQL outside a generated wrapper, the same client surface gives you `client.all(...)`, `client.run(...)`, `client.iterate(...)`, and `client.prepare(sql)`. Prepared statements are the low-level path for reusable ad-hoc SQL and named parameters without reaching through to `client.driver`. See [Prepared statements](https://sqlfu.dev/docs/adapters#prepared-statements).
 
-See [Adapters](https://sqlfu.dev/docs/adapters) for the full driver table, copy-paste snippets, and guidance on which to pick.
+See [Runtime client](https://sqlfu.dev/docs/client) for the shared interface and [Adapters](https://sqlfu.dev/docs/adapters) for the full driver table, copy-paste snippets, and guidance on which to pick.
 
-### Migrator
+### SQL Migrations
 
 The migrator is SQL-only. Migrations are applied in filename order, recorded in `sqlfu_migrations`, and treated as explicit history. The production path is replayed migrations, not direct declarative apply.
 
-The diff engine powers `draft`, `goto`, and `sync` by comparing replayed migration state against `definitions.sql` and producing the SQL statements that describe the difference. See [Migration Model](https://sqlfu.dev/docs/migration-model) for the full model.
+The diff engine powers `draft`, `goto`, and `sync` by comparing replayed migration state against `definitions.sql` and producing the SQL statements that describe the difference. See [SQL migrations](https://sqlfu.dev/docs/migration-model) for the full model.
 
 For Cloudflare D1 projects already using alchemy or wrangler, set `migrations.preset: 'd1'` and sqlfu reads and writes the same `d1_migrations` table alchemy does. See [Migration Presets](https://sqlfu.dev/docs/migration-model#migration-presets) for the schema detection and checksum tradeoff.
 
-### Type Generator
+### Type Generation from SQL
 
 `sqlfu generate` reads checked-in `.sql` files and generates TypeScript wrappers into a `.generated/` subdirectory. The implementation uses vendored TypeSQL analysis, with a small sqlfu post-pass to improve some SQLite result types.
 
-Note: `generate` reads the live database schema, so migrations must be applied first.
+By default, `generate` reads `definitions.sql`, so no live database is required.
+Switch `generate.authority` when generated types should follow replayed
+migrations, migration history, or live schema instead.
 
 Use `/** @name listPosts */` comments when one `.sql` file contains multiple queries.
 Parameter placeholders can also describe the runtime SQL shape directly:
@@ -137,13 +156,21 @@ where id in (:ids);
 
 Scalar params stay `:id`; scalar lists are inferred from `IN (:ids)` / `NOT IN (:ids)`;
 row-value lists from `(slug, title) in (:keys)`; INSERT objects from `values :posts`;
-object fields use dot paths like `:post.slug`; and empty runtime-expanded arrays throw before SQLite sees the query. See [Type generation](https://sqlfu.dev/docs/typegen).
+object fields use dot paths like `:post.slug`; and empty runtime-expanded arrays throw before SQLite sees the query. See [Type generation from SQL](https://sqlfu.dev/docs/typegen).
 
 Opt in to runtime validation by setting `generate.validator` to `'arktype'`, `'valibot'`, `'zod'`, or `'zod-mini'`. Wrappers then validate params on the way in and rows on the way out, and derive types via the validator's native inference. See [Runtime validation](https://sqlfu.dev/docs/runtime-validation).
 
 ### Formatter
 
-`sqlfu` includes a SQL formatter via `formatSql()`. It started from a vendored copy of [`sql-formatter`](https://github.com/sql-formatter-org/sql-formatter), then diverged because upstream formatting is more newline-heavy than we want. The current sqlfu defaults are intentionally opinionated: SQLite-first, lowercase by default, and biased toward keeping simple clause bodies inline when they still read well.
+`sqlfu` includes a SQL formatter. It started from a vendored copy of [`sql-formatter`](https://github.com/sql-formatter-org/sql-formatter), then diverged because upstream formatting is more newline-heavy than we want. The current sqlfu defaults are intentionally opinionated: SQLite-first, lowercase by default, and biased toward keeping simple clause bodies inline when they still read well.
+
+How to use:
+
+- `npx sqlfu format 'queries/**/*.sql'`: rewrite files in place
+- `import {format} from 'sqlfu/api'`: programmatically format a sql string
+- `sqlfu/format-sql` eslint rule: have your editor/CI enforce formatting
+
+[Formatter docs](https://sqlfu.dev/docs/formatter).
 
 ### Observability
 
@@ -187,11 +214,11 @@ The driver error is preserved byte-identical on `.cause`; `.query` and `.system`
 
 A small transactional-outbox / job-queue sits at `sqlfu/outbox`. Emit events in the same transaction as your domain writes; register consumers with retry, delay, `when` filter, and visibility timeout; drive a worker loop by calling `tick()` on a timer. Fan-out, crash recovery, and causation chains all work the way you'd expect, built on the fact that SQLite serialises writers so the queue doesn't need row-locks. See [Outbox](https://sqlfu.dev/docs/outbox).
 
-### UI
+### Admin UI
 
-`sqlfu` also has a UI package for working with the project interactively. To use it with your DB, run: `npx sqlfu`. This will start a server on your machine, and print a link to the hosted UI at `sqlfu.dev/ui`. The hosted UI talk to the backend running on your dev machine.
+`sqlfu` also has an Admin UI package for working with the project interactively. To use it with your DB, run: `npx sqlfu`. This will start a server on your machine, and print a link to the hosted UI at `sqlfu.dev/ui`. The hosted UI talks to the backend running on your dev machine.
 
-The same UI can be embedded in a fetch server with `@sqlfu/ui` when you want your own auth, route prefix, or Worker/Durable Object database binding. See [UI](https://sqlfu.dev/docs/ui).
+The same UI can be embedded in a fetch server with `@sqlfu/ui` when you want your own auth, route prefix, or Worker/Durable Object database binding. See [Admin UI](https://sqlfu.dev/docs/ui).
 
 ### Lint Plugin
 
@@ -209,7 +236,7 @@ See [Lint Plugin](https://sqlfu.dev/docs/lint-plugin) for setup and configuratio
 Install it into a project:
 
 ```sh
-npx skills@latest add mmkal/sqlfu/skills/using-sqlfu
+npx skills add mmkal/sqlfu/skills/using-sqlfu
 ```
 
 The skill is self-contained: it does not depend on the `sqlfu` package itself, and the `SKILL.md` format is agent-agnostic.
@@ -259,7 +286,7 @@ Relative paths inside that config are resolved from the config file's directory,
 
 ### Pluggable `db`
 
-When your app talks to an adapter-mediated database (Cloudflare D1, Turso, libsql, a miniflare binding), point sqlfu at the same client your app uses by giving `db` a factory instead of a path. Every sqlfu command that touches the DB -- `migrate`, `check`, `sync`, `goto`, `baseline`, `generate`, the UI -- will then operate on the *real* database, not a scratch file.
+When your app talks to an adapter-mediated database (Cloudflare D1, Turso, libsql, a miniflare binding), point sqlfu at the same client your app uses by giving `db` a factory instead of a path. Every sqlfu command that touches the DB -- `migrate`, `check`, `sync`, `goto`, `baseline`, the UI, and `generate` when its authority needs a DB -- will then operate on the *real* database, not a scratch file.
 
 ```ts
 import {defineConfig, createD1Client} from 'sqlfu';
@@ -287,6 +314,22 @@ export default defineConfig({
 
 The factory is invoked on every `openDb` call; sqlfu calls `[Symbol.asyncDispose]` when the command scope exits. Memoize inside the factory if the setup is expensive (e.g. spinning up miniflare once per process).
 
+For an Alchemy-managed local D1 database, sqlfu can talk directly to Alchemy's persisted Miniflare sqlite file:
+
+```ts
+import {defineConfig} from 'sqlfu';
+import {findMiniflareD1Path} from 'sqlfu/node';
+
+export default defineConfig({
+  db: findMiniflareD1Path('my-dev-app-slug'),
+  migrations: {path: './src/server/db/migrations', preset: 'd1'},
+  definitions: './src/server/db/definitions.sql',
+  queries: './src/server/db/queries',
+});
+```
+
+`findMiniflareD1Path()` walks up from `process.cwd()` until it finds a supported Miniflare v3 persist root. Today that means Alchemy's `.alchemy/miniflare/v3` layout. It then derives the same D1 object sqlite filename Miniflare uses for the slug. Pass `{miniflareV3Root}` as the second argument if your config runs outside that project tree.
+
 ### `generate.authority`
 
 `sqlfu generate` needs to know your schema to produce typed query wrappers. The `generate.authority` option controls where it reads the schema from:
@@ -307,6 +350,12 @@ export default defineConfig({
 ```
 
 ## Command Reference
+
+Start the local backend used by the hosted Admin UI:
+
+```sh
+sqlfu
+```
 
 Generate query wrappers:
 
@@ -358,6 +407,12 @@ Check the important repo/database mismatches:
 sqlfu check
 ```
 
+Format SQL files in place:
+
+```sh
+sqlfu format "sql/**/*.sql"
+```
+
 ## Limitations and Non-Goals
 
 `sqlfu` deliberately leaves out a few common migration features:
@@ -383,7 +438,7 @@ Current limits also matter:
 - [prettier-plugin-sql-cst](https://github.com/nene/prettier-plugin-sql-cst) by Rene Saarsoo (MIT). The target output shape for `formatSql()` draws on this project's style, and a large set of its upstream tests are imported into sqlfu's formatter fixtures under [`test/formatter/generated-prettier-plugin-sql-cst-*.fixture.sql`](./test/formatter/).
 - [antlr4](https://github.com/antlr/antlr4) JavaScript runtime (BSD-3-Clause). Vendored under [`src/vendor/antlr4`](./src/vendor/antlr4) so TypeSQL's parser can run without loading from `node_modules`.
 - [code-block-writer](https://github.com/dsherret/code-block-writer) by David Sherret (MIT). Vendored under [`src/vendor/code-block-writer`](./src/vendor/code-block-writer) and used by TypeSQL's code generator.
-- [Drizzle](https://orm.drizzle.team/). The [`local.drizzle.studio`](https://local.drizzle.studio/) product model -- hosted UI shell talking to a local backend via a permissioned localhost API -- is the direct inspiration for `sqlfu.dev/ui` and the shape of the sqlfu UI package. More generally, Drizzle raised the bar for what modern SQL-oriented tooling should feel like, and sqlfu is trying to meet that bar for a different slice of the workflow.
+- [Drizzle](https://orm.drizzle.team/). The [`local.drizzle.studio`](https://local.drizzle.studio/) product model -- hosted UI shell talking to a local backend via a permissioned localhost API -- is the direct inspiration for `sqlfu.dev/ui` and the shape of the sqlfu UI package.
 - [`@pgkit/schemainspect`](https://github.com/mmkal/pgkit/tree/main/packages/schemainspect) and [`@pgkit/migra`](https://github.com/mmkal/pgkit/tree/main/packages/migra). The sqlfu schemadiff engine under [`src/schemadiff`](./src/schemadiff) is structurally inspired by these libraries: materialize both schemas into scratch databases, inspect them into a typed model, diff the inspected models, and emit an ordered statement plan. The SQLite-specific implementation does not copy their code, but the shape is taken from them. See [`src/schemadiff/CLAUDE.md`](./src/schemadiff/CLAUDE.md) for more detail.
 - [`djrobstep/schemainspect`](https://github.com/djrobstep/schemainspect) and [`djrobstep/migra`](https://github.com/djrobstep/migra) by Robert Lechte. These are the Python originals that the `@pgkit/*` packages ported to TypeScript, and therefore the upstream lineage of the sqlfu diff engine.
 - [pgkit](https://github.com/mmkal/pgkit) (same author). pgkit is sqlfu's Postgres-focused prior art. A lot of the mental model for sqlfu -- "SQL as the authored source, generated types next to queries, schema-diff-driven migrations, a web UI that sits on the real client" -- comes from trying that approach in pgkit first. sqlfu is the SQLite-first version of that idea, with the goal of eventually growing back to Postgres.

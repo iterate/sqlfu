@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 
 import {createRouterClient} from '@orpc/server';
 
-import {getMigrationPrefix} from '../../src/api.js';
+import {getMigrationPrefix} from '../../src/api/internal.js';
 import {router} from '../../src/node/cli-router.js';
 import {createNodeSqliteClient} from '../../src/index.js';
 import {createNodeHost} from '../../src/node/host.js';
@@ -47,8 +47,7 @@ export async function createMigrationsFixture(
   const host = {...baseHost, now: fakeNow};
 
   const seededFileNames: string[] = [];
-  const nextPrefix = () =>
-    getMigrationPrefix({kind: migrationPrefix, now: fakeNow(), existing: [...seededFileNames]});
+  const nextPrefix = () => getMigrationPrefix({kind: migrationPrefix, now: fakeNow(), existing: [...seededFileNames]});
 
   const migrations = Object.fromEntries(
     Object.entries(input.migrations ?? {}).map(([name, content]) => {

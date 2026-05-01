@@ -17,7 +17,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./analyze": "./src/analyze.ts",
-    "./api": "./src/api.ts",
+    "./api": "./src/api/exports.ts",
+    "./api/core": "./src/api/core.ts",
+    "./node": "./src/node/exports.ts",
     "./better-auth": "./src/better-auth.ts",
     "./lint-plugin": "./src/lint-plugin.ts",
     "./outbox": "./src/outbox/index.ts",
@@ -35,8 +37,16 @@
         "default": "./dist/analyze.js"
       },
       "./api": {
-        "types": "./dist/api.d.ts",
-        "default": "./dist/api.js"
+        "types": "./dist/api/exports.d.ts",
+        "default": "./dist/api/exports.js"
+      },
+      "./api/core": {
+        "types": "./dist/api/core.d.ts",
+        "default": "./dist/api/core.js"
+      },
+      "./node": {
+        "types": "./dist/node/exports.d.ts",
+        "default": "./dist/node/exports.js"
       },
       "./better-auth": {
         "types": "./dist/better-auth.d.ts",
@@ -62,7 +72,7 @@
   },
   "scripts": {
     "build": "pnpm run build:runtime && pnpm run build:vendor-typesql && pnpm run build:bundle-vendor",
-    "build:runtime": "tsgo -p tsconfig.build.json",
+    "build:runtime": "rm -f dist/api.js dist/api.d.ts dist/node.js dist/node.d.ts && tsgo -p tsconfig.build.json",
     "build:vendor-typesql": "rm -rf dist/vendor/code-block-writer dist/vendor/sqlfu-sqlite-parser dist/vendor/typesql && tsgo -p src/vendor/typesql/tsconfig.json",
     "build:bundle-vendor": "tsx scripts/bundle-vendor.ts",
     "typecheck": "tsgo -p tsconfig.typecheck.json && pnpm run typecheck:vendor-typesql",
@@ -77,18 +87,6 @@
     "@orpc/server": "^1.13.13",
     "trpc-cli": "^0.14.0",
     "zod": "^4.3.6"
-  },
-  "peerDependencies": {
-    "@sqlfu/ui": "workspace:*",
-    "better-auth": "^1.6.9"
-  },
-  "peerDependenciesMeta": {
-    "@sqlfu/ui": {
-      "optional": true
-    },
-    "better-auth": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@hono/node-server": "^1.19.14",
@@ -127,5 +125,17 @@
     "valibot": "^1.3.1",
     "vite": "^7.1.12",
     "vitest": "^4.1.1"
+  },
+  "peerDependencies": {
+    "@sqlfu/ui": "workspace:*",
+    "better-auth": "^1.6.9"
+  },
+  "peerDependenciesMeta": {
+    "@sqlfu/ui": {
+      "optional": true
+    },
+    "better-auth": {
+      "optional": true
+    }
   }
 }

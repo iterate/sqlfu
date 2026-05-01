@@ -1,31 +1,31 @@
 # Adapters
 
-`sqlfu` doesn't ship its own database driver. It sits on top of whichever SQLite-compatible client you already use (local file, embedded engine, edge runtime, or a real remote database) and gives you the same typed client surface on top.
+`sqlfu` doesn't ship its own database driver. It sits on top of whichever
+SQLite-compatible client you already use (local file, embedded engine, edge
+runtime, or a real remote database) and gives you the same typed client surface
+on top.
 
 This page lists every adapter that ships in `sqlfu` today, with a copy-paste snippet for each.
 
-If you already know which driver you want to use, jump to the section below. If you're picking from scratch, see [Choosing an adapter](#choosing-an-adapter) at the bottom.
+If you already know which driver you want to use, jump to the section below. If
+you're picking from scratch, see [Choosing an adapter](#choosing-an-adapter) at
+the bottom. For the shared client contract, see [Runtime client](https://sqlfu.dev/docs/client).
 
 ## Sync stays sync
 
-Most query libraries force every database call to be `async`, even when the underlying driver is synchronous. The library is written async-first, and that colour leaks into your entire call stack.
+Most query libraries force every database call to be `async`, even when the
+underlying driver is synchronous. sqlfu preserves the sync or async nature of the
+driver you brought:
 
-`sqlfu` goes out of its way to preserve the sync-ness of the driver you bring:
+- Give it `better-sqlite3` and you get a `SyncClient`. `client.all(...)`
+  returns rows, not a `Promise<rows>`.
+- Give it `@libsql/client` and you get an `AsyncClient`. Same surface, but
+  promise-returning.
+- Generated wrappers and `applyMigrations()` follow the same split.
 
-- Give it `better-sqlite3` → you get a `SyncClient`. `client.all(...)` returns rows, not a `Promise<rows>`. `client.transaction(fn)` calls `fn` synchronously.
-- Give it `@libsql/client` → you get an `AsyncClient`. Same surface, but `Promise`-returning.
-- Generated wrappers follow suit. A query generated against a sync-backed client is a plain function that returns its rows. Generated against an async-backed client, it returns a `Promise`. No gratuitous `async` creeping up your call stack.
-- The migrator follows suit too. `applyMigrations(syncClient, ...)` runs synchronously; `applyMigrations(asyncClient, ...)` returns a promise. This is why Durable Object startup migrations can run directly in the constructor.
-
-Concretely, that's why the Sync/Async column exists in the compatibility matrix below, why the transaction helpers inside sqlfu have [two implementations](../src/sqlite-text.ts): `surroundWithBeginCommitRollbackSync` and `surroundWithBeginCommitRollbackAsync`, and why the migrator uses the same sync/async dual-dispatch internally. The [generator](../src/typegen/index.ts) reads `client.sync: true` / `false` and emits either a plain `function` returning `SyncClient`-flavored rows, or an `async function` returning a `Promise`.
-
-Why this matters:
-
-- **Call sites stay honest.** `function saveUser(user)` calling a sync-backed sqlfu client doesn't silently become `async`. No "await-pollution" spreading through code that didn't actually do anything async.
-- **Runtimes that prefer sync stay fast.** Cloudflare Durable Objects' SQLite is synchronous by design. Scripts, CLI tools, and background jobs on `better-sqlite3` don't pay for microtask thrashing they don't need.
-- **Swapping drivers is a one-line change, as long as you stay in the same lane.** Going from `better-sqlite3` (sync) to `@tursodatabase/database` (async) does require awaiting, because the work actually did change. `sqlfu` doesn't hide that difference from the type system; it surfaces it.
-
-In short: the client you get matches the driver you brought. sqlfu doesn't pretend a sync driver is async, and it doesn't pretend an async driver is sync.
+That is why the matrix below has a Sync/Async column. Swapping from one sync
+driver to another is usually a one-line boundary change. Swapping from sync to
+async is a real application change, and sqlfu leaves that visible in the types.
 
 ## Prepared statements
 

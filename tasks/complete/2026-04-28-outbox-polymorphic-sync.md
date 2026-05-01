@@ -85,4 +85,3 @@ Checklist:
 - [x] async tests still green _existing `outbox.test.ts` continues to pass unchanged._
 - [x] sync sibling test asserting non-Promise returns lands and passes _at `packages/sqlfu/test/outbox/outbox.sync.test.ts`. Mirrors the async file's scenario shape; uses `expect(...).not.toBeInstanceOf(Promise)` on the polymorphic methods (`setup`, `emit`, `claim`) plus a runtime `instanceof Promise` guard inside `signUp` to keep the contract observable from the test code itself._
 - [x] typecheck clean _`pnpm --filter sqlfu typecheck` passes._
-
