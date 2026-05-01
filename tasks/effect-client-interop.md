@@ -8,7 +8,7 @@ new_pr: https://github.com/mmkal/sqlfu/pull/83
 
 # Thin Effect Client Interop
 
-Status summary: implementation mostly complete. PR #82 was closed because it made Effect support look more Drizzle-like than it really was. Draft PR #83 now tracks the smaller replacement: optional `sqlfu/effect` interop for existing sqlfu clients, covering `all`, `run`, `raw`, `prepare`, failures-as-values, and Context/Layer wiring; transaction support is deliberately left out of this thin adapter until it has a safer design.
+Status summary: implementation complete and PR left in draft for review. PR #82 was closed because it made Effect support look more Drizzle-like than it really was. Draft PR #83 now tracks the smaller replacement: optional `sqlfu/effect` interop for existing sqlfu clients, covering `all`, `run`, `raw`, `prepare`, failures-as-values, and Context/Layer wiring; transaction support is deliberately left out of this thin adapter until it has a safer design.
 
 ## Context
 
@@ -75,11 +75,12 @@ const DB = SqlfuClient.make().pipe(Effect.provide(SqlfuClient.layer(client)));
 - [x] Extend the wrapper so async clients pass through the same Effect API. _`runOperation` uses sync `Effect.try` for sync clients and `Effect.tryPromise` for async clients._
 - [x] Add tests for query failure surfacing in the Effect error channel. _The missing-table query test matches the `SqlfuError` fields through `Effect.match`._
 - [x] Export the optional Effect interop through a subpath that does not import Effect from the main `sqlfu` entrypoint. _Added `sqlfu/effect` package exports and a packed-package import test._
-- [ ] Document the deliberately limited scope in the PR body.
-- [ ] Decide whether to mark the PR ready or leave it draft after review of the transaction omission.
+- [x] Document the deliberately limited scope in the PR body. _PR #83 explains that this is interop, not native Effect support, and shows abbreviated `toEffectClient` usage._
+- [x] Decide whether to mark the PR ready or leave it draft after review of the transaction omission. _Left PR #83 as draft per the user request._
 
 ## Implementation Notes
 
 - 2026-05-01: Closed PR #82. Started fresh from updated `main` in `../worktrees/sqlfu/effect-client-interop`.
 - 2026-05-01: Opened draft PR #83 after the task-only commit.
 - 2026-05-01: Implemented `sqlfu/effect` as an optional interop subpath. It intentionally exposes no `transaction` wrapper yet: a naive transaction callback would have to run nested Effects inside the underlying transaction callback, which risks turning typed Effect failures back into Effect runtime exceptions. That belongs in a follow-up design if the thin adapter is accepted.
+- 2026-05-01: Updated PR #83 body with reviewer-facing summary, sample code, scope notes, and verification commands.
