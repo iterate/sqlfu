@@ -351,8 +351,9 @@ async function transformMarkdown(markdown, currentDoc) {
 }
 
 function stripLeadingH1(markdown) {
-  // Starlight renders title from frontmatter, so drop the first h1 to avoid duplication.
-  return markdown.replace(/^#\s+[^\n]*\n+/, '');
+  // Starlight renders title from frontmatter, so drop the source h1 to avoid duplication.
+  // MDX files may need ESM imports before the first markdown heading; preserve those.
+  return markdown.replace(/^((?:(?:import|export)\s+[^\n]*\n|\s*\n)*)#\s+[^\n]*\n+/, '$1');
 }
 
 function rewriteHref(href, currentSourcePath) {
