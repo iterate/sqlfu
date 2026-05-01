@@ -22,7 +22,7 @@ Terminal transcripts use the custom `term` fence language. They are rendered by 
 
 ## Line Directives
 
-Line-level directives live in `{...}` at the end of a line. They are stripped before highlighting.
+Line-level directives usually live in `{...}` at the end of a line. They are stripped before highlighting. A directive may be followed by static suffix text only when the suffix must stay outside the animated span, as in the schema demo's closing `);`.
 
 - `speed=<name>`: add `data-type-speed` to that line.
 - `run-command`: mark a command line as the trigger for terminal output reveal.

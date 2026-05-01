@@ -7,15 +7,13 @@ create table posts (
   id integer primary key autoincrement,
   slug text not null unique,
   title text not null
-+ published integer {diff-add speed=schema-add reveal-pause=620 hide-typing-whitespace}
-);
++ published integer {diff-add speed=schema-add reveal-pause=620 hide-typing-whitespace});
 ```
 
 ## terminal
 
 ```term artifact=terminal
 $ npx sqlfu draft {speed=command run-command}
-
 │ {terminal-output=prompt output-pause=1450}
 ◇  Create migration file? ─────────────────╮ {terminal-output=prompt}
 │                                          │ {terminal-output=prompt}

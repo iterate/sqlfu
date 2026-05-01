@@ -13,6 +13,7 @@ type Artifact = {
 
 type ParsedLine = {
   text: string;
+  suffix: string;
   annotations: Record<string, string | true>;
 };
 
@@ -100,7 +101,9 @@ async function renderCodeBlock(lang: string, source: string, meta: Record<string
   }
 
   const attrs = blockSpeed ? ` data-type-speed="${escapeAttribute(blockSpeed)}"` : '';
-  return `<pre><code${attrs}>${renderedLines.map((line, index) => renderLine(line, lines[index].annotations)).join('\n')}</code></pre>`;
+  return `<pre><code${attrs}>${renderedLines
+    .map((line, index) => renderLine(line, lines[index].annotations, lines[index].suffix))
+    .join('\n')}</code></pre>`;
 }
 
 async function renderHighlightedLines(lang: string, lines: ParsedLine[]) {
@@ -127,7 +130,7 @@ function renderAnimatedRegions(renderedLines: string[], lines: ParsedLine[], blo
   };
 
   for (let index = 0; index < lines.length; index++) {
-    const line = renderLine(renderedLines[index], lines[index].annotations);
+    const line = renderLine(renderedLines[index], lines[index].annotations, lines[index].suffix);
     if (lines[index].annotations['pop-after-typing']) {
       flushTyping();
       parts.push(line);
@@ -140,10 +143,10 @@ function renderAnimatedRegions(renderedLines: string[], lines: ParsedLine[], blo
   return parts.join('\n');
 }
 
-function renderLine(inner: string, annotations: Record<string, string | true>) {
+function renderLine(inner: string, annotations: Record<string, string | true>, suffix = '') {
   const attrs = attrsForAnnotations(annotations);
-  if (!attrs) return inner;
-  return `<span${attrs}>${inner}</span>`;
+  if (!attrs) return inner + escapeHtml(suffix);
+  return `<span${attrs}>${inner}</span>${escapeHtml(suffix)}`;
 }
 
 function renderTerminal(source: string) {
@@ -167,7 +170,7 @@ function renderTerminal(source: string) {
       continue;
     }
 
-    const rendered = renderTerminalInline(line.text);
+    const rendered = renderTerminalInline(line.text) + escapeHtml(line.suffix);
     const attrs = attrsForAnnotations(line.annotations);
     parts.push(attrs ? `<span${attrs}>${rendered}</span>` : rendered);
   }
@@ -186,13 +189,14 @@ function renderTerminalOutput(lines: ParsedLine[]) {
     .filter(Boolean)
     .join(' ');
 
-  const inner = lines
-    .map((line) => {
-      const rendered = renderTerminalInline(line.text);
-      const nestedAttrs = attrsForAnnotations(line.annotations, new Set(['terminal-output', 'output-pause']));
-      return nestedAttrs ? `<span${nestedAttrs}>${rendered}</span>` : rendered;
-    })
-    .join('\n');
+  let inner = '';
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const rendered = renderTerminalInline(line.text) + escapeHtml(line.suffix);
+    const nestedAttrs = attrsForAnnotations(line.annotations, new Set(['terminal-output', 'output-pause']));
+    const lineBreak = index === lines.length - 1 ? '' : '\n';
+    inner += nestedAttrs ? `<span${nestedAttrs}>${rendered}${lineBreak}</span>` : `${rendered}${lineBreak}`;
+  }
 
   return `<span ${attrs}>${inner}</span>`;
 }
@@ -208,13 +212,26 @@ function renderToken(token: any, lang: string) {
   const content = String(token.content || '');
   if (!content) return '';
 
-  if (lang === 'sql' && content.includes('SQLFU_PARAM_')) {
-    return renderSqlParamToken(content);
+  if (lang === 'sql') {
+    return renderSqlToken(token, content);
   }
 
   const className = classForToken(token);
   const escaped = escapeHtml(content);
   return className ? `<span class="${className}">${escaped}</span>` : escaped;
+}
+
+function renderSqlToken(token: any, content: string) {
+  if (content.includes('SQLFU_PARAM_')) {
+    return renderSqlParamToken(content);
+  }
+
+  const className = classForToken(token);
+  if (className) {
+    return `<span class="${className}">${escapeHtml(content)}</span>`;
+  }
+
+  return renderSqlPlainContent(content);
 }
 
 function renderSqlParamToken(content: string) {
@@ -223,7 +240,42 @@ function renderSqlParamToken(content: string) {
     .map((part) => {
       const match = /^SQLFU_PARAM_([A-Za-z_][A-Za-z0-9_]*)$/.exec(part);
       if (match) return `<span class="tok-param">:${escapeHtml(match[1])}</span>`;
-      return escapeHtml(part);
+      return renderSqlPlainContent(part);
+    })
+    .join('');
+}
+
+function renderSqlPlainContent(content: string) {
+  const sqlKeywords = new Set([
+    'add',
+    'alter',
+    'asc',
+    'autoincrement',
+    'by',
+    'column',
+    'create',
+    'desc',
+    'from',
+    'integer',
+    'key',
+    'limit',
+    'not',
+    'null',
+    'order',
+    'primary',
+    'select',
+    'table',
+    'text',
+    'unique',
+    'where',
+  ]);
+
+  return content
+    .split(/([A-Za-z_][A-Za-z0-9_]*)/g)
+    .map((part) => {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(part)) return escapeHtml(part);
+      const className = sqlKeywords.has(part.toLowerCase()) ? 'tok-keyword' : 'tok-name';
+      return `<span class="${className}">${escapeHtml(part)}</span>`;
     })
     .join('');
 }
@@ -251,14 +303,29 @@ function splitAnnotatedLines(source: string) {
 }
 
 function parseLineAnnotation(line: string): ParsedLine {
-  const match =
+  const endMatch =
     /^(.*?)(?:\s+\{([A-Za-z0-9_.:-]+(?:=(?:"[^"]*"|'[^']*'|[^\s{}]+))?(?:\s+[A-Za-z0-9_.:-]+(?:=(?:"[^"]*"|'[^']*'|[^\s{}]+))?)*)\})$/.exec(
       line,
     );
-  if (!match) return {text: line, annotations: {}};
+  if (endMatch) {
+    const annotations = parseAnnotations(endMatch[2]);
+    if (usesKnownAnnotations(annotations)) {
+      return {text: endMatch[1], suffix: '', annotations};
+    }
+  }
 
-  const annotations = parseAnnotations(match[2]);
-  return {text: match[1], annotations};
+  const suffixMatch =
+    /^(.*?)(?:\s+\{([A-Za-z0-9_.:-]+(?:=(?:"[^"]*"|'[^']*'|[^\s{}]+))?(?:\s+[A-Za-z0-9_.:-]+(?:=(?:"[^"]*"|'[^']*'|[^\s{}]+))?)*)\})(.*)$/.exec(
+      line,
+    );
+  if (suffixMatch) {
+    const annotations = parseAnnotations(suffixMatch[2]);
+    if (usesKnownAnnotations(annotations)) {
+      return {text: suffixMatch[1], suffix: suffixMatch[3], annotations};
+    }
+  }
+
+  return {text: line, suffix: '', annotations: {}};
 }
 
 function parseAnnotations(source: string) {
@@ -272,6 +339,27 @@ function parseAnnotations(source: string) {
     annotations[key] = valueParts.join('=').replace(/^["']|["']$/g, '');
   }
   return annotations;
+}
+
+function usesKnownAnnotations(annotations: Record<string, string | true>) {
+  const known = new Set([
+    'artifact',
+    'corner-after-next',
+    'corner-before-next',
+    'diff-add',
+    'dismiss-before-next',
+    'generated-type-hint',
+    'hide-typing-whitespace',
+    'output-pause',
+    'pop-after-typing',
+    'pop-pause',
+    'reveal-line',
+    'reveal-pause',
+    'run-command',
+    'speed',
+    'terminal-output',
+  ]);
+  return Object.keys(annotations).every((key) => known.has(key));
 }
 
 function attrsForAnnotations(annotations: Record<string, string | true>, skip = new Set<string>()) {
