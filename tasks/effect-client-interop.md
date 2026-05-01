@@ -3,12 +3,12 @@ status: ready
 size: small
 branch: effect-client-interop
 old_pr: https://github.com/mmkal/sqlfu/pull/82
-new_pr: pending
+new_pr: https://github.com/mmkal/sqlfu/pull/83
 ---
 
 # Thin Effect Client Interop
 
-Status summary: 0% implemented. PR #82 was closed because it made Effect support look more Drizzle-like than it really was. This replacement task keeps the scope deliberately small: provide optional Effect interop for existing sqlfu clients, without adding generated-code support or pretending sqlfu execution is Effect-native.
+Status summary: setup complete, implementation not started. PR #82 was closed because it made Effect support look more Drizzle-like than it really was. Draft PR #83 now tracks the smaller replacement: optional Effect interop for existing sqlfu clients, without generated-code support or claims that sqlfu execution is Effect-native.
 
 ## Context
 
@@ -67,8 +67,8 @@ const DB = SqlfuClient.make().pipe(Effect.provide(SqlfuClient.layer(client)));
 
 ## Checklist
 
-- [ ] Commit this task file before implementation.
-- [ ] Open a draft PR after the task-file commit.
+- [x] Commit this task file before implementation. _Initial task committed in `c5bc520` before product-code edits._
+- [x] Open a draft PR after the task-file commit. _Opened draft PR #83: https://github.com/mmkal/sqlfu/pull/83._
 - [ ] Add a red integration-style test for wrapping sync clients in Effects.
 - [ ] Add the smallest implementation that makes the sync-client Effect wrapper pass.
 - [ ] Add a red integration-style test for wrapping async clients in Effects.
@@ -79,4 +79,5 @@ const DB = SqlfuClient.make().pipe(Effect.provide(SqlfuClient.layer(client)));
 
 ## Implementation Notes
 
-- 2026-05-01: Closed PR #82. Starting fresh from updated `main` in `../worktrees/sqlfu/effect-client-interop`.
+- 2026-05-01: Closed PR #82. Started fresh from updated `main` in `../worktrees/sqlfu/effect-client-interop`.
+- 2026-05-01: Opened draft PR #83 after the task-only commit.
