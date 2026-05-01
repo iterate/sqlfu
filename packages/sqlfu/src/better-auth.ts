@@ -27,6 +27,17 @@ export interface SqlfuBetterAuthAdapterInput<Options extends BetterAuthOptions =
   projectRoot?: string;
 }
 
+/**
+ * Wraps a Better Auth adapter so Better Auth's `auth generate` command updates
+ * sqlfu's configured `definitions.sql` instead of asking Better Auth to own
+ * migration files or database diffs.
+ *
+ * This adapter is currently intended and tested for schema generation. Runtime
+ * create/read/update/delete methods are delegated to the adapter you pass in,
+ * but sqlfu does not currently claim deeper runtime adapter coverage beyond that
+ * delegation. After running `auth generate`, keep sqlfu as the migration owner
+ * by running `sqlfu draft` and `sqlfu migrate`.
+ */
 export function sqlfuBetterAuthAdapter<Options extends BetterAuthOptions = BetterAuthOptions>(
   input: SqlfuBetterAuthAdapterInput<Options>,
 ): DBAdapterInstance<Options> {

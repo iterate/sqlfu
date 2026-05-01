@@ -85,6 +85,42 @@ Prepared handles expose `.all(params)`, `.run(params)`, and `.iterate(params)`. 
 
 Every factory takes the underlying driver's database/connection object as its single argument and returns a `sqlfu` client. None of these drivers are peer dependencies: install only the one you actually use.
 
+## Better Auth schema generation
+
+`sqlfu/better-auth` is a Better Auth adapter wrapper, not a sqlfu database driver adapter. It exists so Better Auth's `auth generate` command can replace the Better Auth-owned section in sqlfu's configured `definitions.sql`. sqlfu still owns database diffs and migrations: after generation changes the desired schema, run `sqlfu draft` and `sqlfu migrate`.
+
+This wrapper is currently intended and tested for the schema-generation path. Runtime create/read/update/delete methods are delegated to the Better Auth adapter you pass in, but runtime auth behavior should still be validated through that underlying adapter in your app. If your production auth config already works with Better Auth's direct D1 support (`database: env.DB`) or another runtime path, it can stay that way; use a small CLI-only auth config with `sqlfu/better-auth` for `auth generate`.
+
+```ts
+import {betterAuth} from 'better-auth';
+import {kyselyAdapter} from 'better-auth/adapters/kysely';
+import {sqlfuBetterAuthAdapter} from 'sqlfu/better-auth';
+import sqlfuConfig from './sqlfu.config';
+import {db} from './db';
+
+export const auth = betterAuth({
+  database: sqlfuBetterAuthAdapter({
+    sqlfu: sqlfuConfig,
+    adapter: kyselyAdapter(db, {type: 'sqlite'}),
+  }),
+});
+```
+
+Then run generation against the configured definitions file:
+
+```sh
+npx auth@latest generate --output definitions.sql --yes
+npx sqlfu draft
+npx sqlfu migrate
+```
+
+The `--output` path must resolve to `sqlfuConfig.definitions`. The definitions file may be empty, or it must contain exactly one managed section:
+
+```sql
+-- sqlfu:better-auth begin
+-- sqlfu:better-auth end
+```
+
 ## Local and embedded
 
 ### `node:sqlite` (Node)
