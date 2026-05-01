@@ -7,7 +7,7 @@ pr: https://github.com/mmkal/sqlfu/pull/73
 
 # Better Auth adapter that lets sqlfu own schema diffs
 
-**Status:** Wrapper MVP is implemented and covered by focused integration tests. The new `sqlfu/better-auth` export wraps a passed Better Auth adapter, changes its id to `sqlfu`, and replaces a fenced Better Auth section in `definitions.sql`. Tests cover strict file validation, fenced replacement, Better Auth CLI `auth generate`, reconfiguration, and `sqlfu draft`/`migrate`. The schema section is now rendered by Better Auth's own Kysely migration compiler against an empty in-memory SQLite database, so `auth generate` gets a full Better Auth schema while sqlfu still owns real database diffs. Runtime CRUD is delegated to the wrapped adapter but still needs deeper runtime validation with Better Auth's adapter tester or a real Kysely-backed app.
+**Status:** Wrapper MVP is implemented and covered by focused integration tests. The new `sqlfu/better-auth` export can be called as `sqlfuBetterAuthAdapter()` for CLI-only schema generation: it resolves `sqlfu.config.*`, changes Better Auth's adapter id to `sqlfu`, and replaces a fenced Better Auth section in `definitions.sql`. Tests cover strict file validation, fenced replacement, Better Auth CLI `auth generate` with and without `--output`, reconfiguration, and `sqlfu draft`/`migrate`. The schema section is rendered by Better Auth's own Kysely migration compiler against an empty in-memory SQLite database, so `auth generate` gets a full Better Auth schema while sqlfu still owns real database diffs. Runtime CRUD is delegated when a wrapped adapter is provided, but still needs deeper runtime validation with Better Auth's adapter tester or a real Kysely-backed app.
 
 ## Problem
 
@@ -38,25 +38,21 @@ Sources checked:
 
 ## Proposed Public Surface
 
-The desired callsite is now a wrapper around a real Better Auth runtime adapter:
+The desired CLI-only schema generation callsite is now:
 
 ```ts
 import {betterAuth} from 'better-auth';
-import {kyselyAdapter} from 'better-auth/adapters/kysely';
 import {sqlfuBetterAuthAdapter} from 'sqlfu/better-auth';
-import sqlfuConfig from './sqlfu.config';
-import {db} from './db';
 
 export const auth = betterAuth({
-  database: sqlfuBetterAuthAdapter({
-    sqlfu: sqlfuConfig,
-    adapter: kyselyAdapter(db, {type: 'sqlite'}),
-  }),
+  database: sqlfuBetterAuthAdapter(),
   plugins: [
     // Better Auth plugins that affect schema.
   ],
 });
 ```
+
+`sqlfuBetterAuthAdapter()` resolves `sqlfu.config.*` from the current working directory. A real Better Auth runtime adapter can still be passed when a project wants this wrapper to delegate CRUD, but the tested happy path is `auth generate`.
 
 The implementation should wrap the adapter factory, not try to spread the factory itself:
 
@@ -209,3 +205,4 @@ await fixture.exec('auth generate --output definitions.sql --yes');
 - 2026-05-01: Added JSDoc and adapter docs clarifying that `sqlfu/better-auth` is intended and tested for the Better Auth `auth generate` schema flow. Runtime CRUD remains delegated to the wrapped Better Auth adapter.
 - 2026-05-01: Replaced sqlfu's local Better Auth SQL renderer with Better Auth's own Kysely migration compiler pointed at an empty `node:sqlite` database. This intentionally drops the wrapper's previous `usePlural` schema-generation behavior; a main-repo ignoreme task tracks filing that as an upstream Better Auth bug.
 - 2026-05-01: Changed the fence syntax to generic `#region` / `#endregion` SQL comments with a `sqlfu:better-auth` region name, leaving room for future sqlfu-managed sections.
+- 2026-05-01: Made `sqlfuBetterAuthAdapter()` usable with no input for CLI-only `auth generate`. It resolves `sqlfu.config.*`, uses the configured definitions path when `--output` is omitted, and leaves runtime CRUD available only when an underlying Better Auth adapter is passed.

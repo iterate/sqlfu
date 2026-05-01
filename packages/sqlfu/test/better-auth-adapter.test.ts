@@ -316,9 +316,31 @@ test('createBetterAuthFixture runs auth generate and can reconfigure auth.ts', a
   expect(secondDefinitionsSql).toContain('"handle" text not null unique');
 });
 
+test('auth generate can rely on sqlfu config when no adapter input or output file is passed', async () => {
+  await using fixture = await createBetterAuthFixture(() => {
+    return fixtureBetterAuth({
+      database: fixtureSqlfuBetterAuthAdapter(),
+    });
+  });
+
+  await fixture.exec('auth generate --yes');
+
+  const definitionsSql = await fixture.readText('definitions.sql');
+  expect(definitionsSql).toContain('-- #region sqlfu:better-auth');
+  expect(definitionsSql).toContain('create table "user"');
+  expect(definitionsSql).toContain('-- #endregion sqlfu:better-auth');
+});
+
 async function createBetterAuthFixture(input: BetterAuthFixtureInput) {
   const root = await createTempFixtureRoot('better-auth-adapter');
-  const files = typeof input === 'function' ? {'definitions.sql': '', 'sql/.gitkeep': ''} : input.files;
+  const files =
+    typeof input === 'function'
+      ? {
+          'definitions.sql': '',
+          'sql/.gitkeep': '',
+          'sqlfu.config.js': "export default {definitions: './definitions.sql', queries: './sql'};\n",
+        }
+      : input.files;
   await writeFixtureFiles(root, {
     'package.json': '{"type":"module"}\n',
     ...files,

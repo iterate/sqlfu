@@ -11,6 +11,7 @@ import {
   type DBTransactionAdapter,
 } from 'better-auth/adapters';
 
+import {loadProjectConfig} from './node/config.js';
 import type {SqlfuConfig, SqlfuProjectConfig} from './types.js';
 
 const adapterId = 'sqlfu';
@@ -20,9 +21,10 @@ const beginMarker = `-- #region ${managedSectionName}`;
 const endMarker = `-- #endregion ${managedSectionName}`;
 
 export interface SqlfuBetterAuthAdapterInput<Options extends BetterAuthOptions = BetterAuthOptions> {
-  sqlfu: SqlfuConfig | SqlfuProjectConfig;
-  adapter: DBAdapterInstance<Options>;
+  sqlfu?: SqlfuConfig | SqlfuProjectConfig;
+  adapter?: DBAdapterInstance<Options>;
   projectRoot?: string;
+  configPath?: string;
 }
 
 /**
@@ -30,9 +32,12 @@ export interface SqlfuBetterAuthAdapterInput<Options extends BetterAuthOptions =
  * sqlfu's configured `definitions.sql` instead of asking Better Auth to own
  * migration files or database diffs.
  *
- * This adapter is currently intended and tested for schema generation. Runtime
- * create/read/update/delete methods are delegated to the adapter you pass in,
- * but sqlfu does not currently claim deeper runtime adapter coverage beyond that
+ * This adapter is currently intended and tested for schema generation. If you
+ * call `sqlfuBetterAuthAdapter()` with no input, it resolves `sqlfu.config.*`
+ * from the current working directory and installs schema-only runtime methods
+ * that throw if used outside `auth generate`. If you pass `adapter`, runtime
+ * create/read/update/delete methods are delegated to that adapter, but sqlfu
+ * does not currently claim deeper runtime adapter coverage beyond that
  * delegation. After running `auth generate`, keep sqlfu as the migration owner
  * by running `sqlfu draft` and `sqlfu migrate`.
  *
@@ -43,9 +48,9 @@ export interface SqlfuBetterAuthAdapterInput<Options extends BetterAuthOptions =
  * schema-generation contract.
  */
 export function sqlfuBetterAuthAdapter<Options extends BetterAuthOptions = BetterAuthOptions>(
-  input: SqlfuBetterAuthAdapterInput<Options>,
+  input: SqlfuBetterAuthAdapterInput<Options> = {},
 ): DBAdapterInstance<Options> {
-  return (options) => wrapAdapter(input, input.adapter(options));
+  return (options) => wrapAdapter(input, input.adapter ? input.adapter(options) : createSchemaOnlyAdapter<Options>());
 }
 
 function wrapAdapter<Options extends BetterAuthOptions>(
@@ -70,6 +75,56 @@ function wrapAdapter<Options extends BetterAuthOptions>(
       return createSqlfuBetterAuthSchema(input, options, file);
     },
   };
+}
+
+function createSchemaOnlyAdapter<Options extends BetterAuthOptions>(): DBAdapter<Options> {
+  return {
+    id: adapterId,
+    options: {
+      adapterConfig: {
+        adapterId,
+        adapterName,
+      },
+    },
+    create: unsupportedRuntimeMethod,
+    findOne: unsupportedRuntimeMethod,
+    findMany: unsupportedRuntimeMethod,
+    count: unsupportedRuntimeMethod,
+    update: unsupportedRuntimeMethod,
+    updateMany: unsupportedRuntimeMethod,
+    delete: unsupportedRuntimeMethod,
+    deleteMany: unsupportedRuntimeMethod,
+    async transaction(callback) {
+      return callback(createSchemaOnlyTransactionAdapter<Options>());
+    },
+  };
+}
+
+function createSchemaOnlyTransactionAdapter<Options extends BetterAuthOptions>(): DBTransactionAdapter<Options> {
+  return {
+    id: adapterId,
+    options: {
+      adapterConfig: {
+        adapterId,
+        adapterName,
+      },
+    },
+    create: unsupportedRuntimeMethod,
+    findOne: unsupportedRuntimeMethod,
+    findMany: unsupportedRuntimeMethod,
+    count: unsupportedRuntimeMethod,
+    update: unsupportedRuntimeMethod,
+    updateMany: unsupportedRuntimeMethod,
+    delete: unsupportedRuntimeMethod,
+    deleteMany: unsupportedRuntimeMethod,
+  };
+}
+
+async function unsupportedRuntimeMethod(): Promise<never> {
+  throw new Error(
+    'sqlfuBetterAuthAdapter() without an underlying Better Auth adapter is only intended for `auth generate`. ' +
+      'Pass `adapter` to delegate Better Auth runtime database operations.',
+  );
 }
 
 function wrapTransactionAdapter<Options extends BetterAuthOptions>(
@@ -98,8 +153,9 @@ async function createSqlfuBetterAuthSchema<Options extends BetterAuthOptions>(
   options: Options,
   file: string | undefined,
 ): Promise<DBAdapterSchemaCreation> {
-  const projectRoot = resolveProjectRoot(input);
-  const definitionsPath = path.resolve(projectRoot, input.sqlfu.definitions);
+  const sqlfuConfig = await resolveSqlfuConfig(input);
+  const projectRoot = resolveProjectRoot(input, sqlfuConfig);
+  const definitionsPath = path.resolve(projectRoot, sqlfuConfig.definitions);
   const requestedPath = file ? path.resolve(projectRoot, file) : definitionsPath;
 
   if (requestedPath !== definitionsPath) {
@@ -123,8 +179,18 @@ async function createSqlfuBetterAuthSchema<Options extends BetterAuthOptions>(
   };
 }
 
-function resolveProjectRoot<Options extends BetterAuthOptions>(input: SqlfuBetterAuthAdapterInput<Options>) {
-  if ('projectRoot' in input.sqlfu) return input.sqlfu.projectRoot;
+async function resolveSqlfuConfig<Options extends BetterAuthOptions>(
+  input: SqlfuBetterAuthAdapterInput<Options>,
+): Promise<SqlfuConfig | SqlfuProjectConfig> {
+  if (input.sqlfu) return input.sqlfu;
+  return loadProjectConfig({configPath: input.configPath});
+}
+
+function resolveProjectRoot<Options extends BetterAuthOptions>(
+  input: SqlfuBetterAuthAdapterInput<Options>,
+  sqlfuConfig: SqlfuConfig | SqlfuProjectConfig,
+) {
+  if ('projectRoot' in sqlfuConfig) return sqlfuConfig.projectRoot;
   return input.projectRoot || process.cwd();
 }
 
