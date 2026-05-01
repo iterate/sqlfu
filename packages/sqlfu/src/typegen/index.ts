@@ -75,6 +75,8 @@ export async function generateQueryTypesForConfig(
         validator: config.generate.validator,
         prettyErrors: config.generate.prettyErrors,
         sync: config.generate.sync,
+        effect: config.generate.effect,
+        importExtension: config.generate.importExtension,
       });
       await fs.writeFile(wrapperPath, contents);
       writtenFiles.push(projectRelativePath(config, wrapperPath));
@@ -88,9 +90,6 @@ export async function generateQueryTypesForConfig(
       await writeGeneratedEffectFile(
         config,
         generatedDir,
-        querySources,
-        queryAnalyses,
-        config.generate.importExtension,
       ),
     );
   }
@@ -114,6 +113,8 @@ function renderQueryDocument(input: {
   validator: SqlfuValidator | null;
   prettyErrors: boolean;
   sync: boolean;
+  effect: boolean;
+  importExtension: '.js' | '.ts';
 }): string {
   const renderedQueries = input.queryDocument.queries.map((querySource) => {
     const analysis = input.queryAnalyses.find((query) => query.sqlPath === querySource.sqlPath);
@@ -145,6 +146,8 @@ function renderQueryDocument(input: {
         functionName: querySource.functionName,
         sql: querySource.sqlContent,
         sync: input.sync,
+        effect: input.effect,
+        effectImportSpecifier: effectImportSpecifierForQuery(input.queryDocument.relativePath, input.importExtension),
         localNames,
       });
     }
@@ -162,6 +165,8 @@ function renderQueryDocument(input: {
       validator: input.validator,
       prettyErrors: input.prettyErrors,
       sync: input.sync,
+      effect: input.effect,
+      effectImportSpecifier: effectImportSpecifierForQuery(input.queryDocument.relativePath, input.importExtension),
       localNames,
     });
   });
@@ -205,6 +210,8 @@ function renderDdlWrapper(input: {
   functionName: string;
   sql: string;
   sync: boolean;
+  effect: boolean;
+  effectImportSpecifier: string;
   localNames?: LocalNames;
 }): string {
   const functionName = input.functionName;
@@ -212,6 +219,32 @@ function renderDdlWrapper(input: {
   const queryName = input.localNames?.query || 'query';
   const clientType = input.sync ? 'SyncClient' : 'Client';
   const maybeAsync = input.sync ? '' : 'async ';
+  if (input.effect) {
+    return [
+      `import * as Effect from 'effect/Effect';`,
+      `import type {${clientType}, RunResult} from 'sqlfu';`,
+      `import type {EffectClient} from ${JSON.stringify(input.effectImportSpecifier)};`,
+      ``,
+      ...renderSqlConstant(input.sql, sqlName),
+      `const ${queryName} = { ${objectProperty('sql', sqlName)}, args: [], name: ${JSON.stringify(functionName)} };`,
+      ``,
+      `type ${functionName}Fn = {`,
+      `\t(client: EffectClient): Effect.Effect<RunResult, unknown>;`,
+      `\t(client: ${clientType}): ${input.sync ? 'RunResult' : 'Promise<RunResult>'};`,
+      `};`,
+      ``,
+      `export const ${functionName} = Object.assign(`,
+      `\tfunction ${functionName}(client: ${clientType} | EffectClient) {`,
+      `\t\tif ((client as EffectClient).effect === true) return (client as EffectClient).run(${queryName});`,
+      input.sync
+        ? `\t\treturn (client as ${clientType}).run(${queryName});`
+        : `\t\treturn Promise.resolve((client as ${clientType}).run(${queryName}));`,
+      `\t} as ${functionName}Fn,`,
+      `\t{ ${objectProperty('sql', sqlName)}, ${objectProperty('query', queryName)} },`,
+      `);`,
+      ``,
+    ].join('\n');
+  }
 
   return [
     `import type {${clientType}} from 'sqlfu';`,
@@ -1168,63 +1201,45 @@ async function writeGeneratedBarrel(
 async function writeGeneratedEffectFile(
   config: SqlfuProjectConfig,
   generatedDir: string,
-  querySources: QuerySource[],
-  queryAnalyses: Awaited<ReturnType<typeof analyzeVendoredTypesqlQueries>>,
-  importExtension: '.js' | '.ts',
 ): Promise<string> {
-  const exportedQueries = querySources
-    .filter((querySource) => {
-      const analysis = queryAnalyses.find((query) => query.sqlPath === querySource.sqlPath);
-      return Boolean(analysis?.ok);
-    })
-    .sort((left, right) => left.functionName.localeCompare(right.functionName));
-  const clientType = config.generate.sync ? 'SyncClient' : 'Client';
-  const importedNames = exportedQueries.map((querySource) => querySource.functionName);
-  const importLines = importedNames.length
-    ? [`import {${importedNames.join(', ')}} from "./queries${importExtension}";`, ``]
-    : [];
-  const serviceObjectLines = importedNames.length
-    ? [
-        `\t\treturn {`,
-        ...importedNames.map((name) => `\t\t\t${name}: (...args) => ${name}(client, ...args),`),
-        `\t\t};`,
-      ]
-    : [`\t\tvoid client;`, `\t\treturn {};`];
-  const serviceTypeLines = importedNames.length
-    ? [
-        `\texport type Service = {`,
-        ...importedNames.map((name) => `\t\t${name}: BindSqlfuClient<typeof ${name}>;`),
-        `\t};`,
-      ]
-    : [`\texport type Service = {};`];
   const lines = [
     `import * as Context from 'effect/Context';`,
+    `import * as Effect from 'effect/Effect';`,
     `import * as Layer from 'effect/Layer';`,
-    `import type {${clientType}} from 'sqlfu';`,
-    ...importLines,
-    `type BindSqlfuClient<TQuery> = TQuery extends (client: ${clientType}, ...args: infer TArgs) => infer TResult ? (...args: TArgs) => TResult : never;`,
+    `import type {Client, ResultRow, RunResult, SqlQuery} from 'sqlfu';`,
     ``,
-    `export class SqlfuQueries extends Context.Tag("sqlfu/SqlfuQueries")<SqlfuQueries, SqlfuQueries.Service>() {`,
+    `export type EffectClient = {`,
+    `\teffect: true;`,
+    `\tall<TRow extends ResultRow = ResultRow>(query: SqlQuery): Effect.Effect<TRow[], unknown>;`,
+    `\trun(query: SqlQuery): Effect.Effect<RunResult, unknown>;`,
+    `};`,
+    ``,
+    `export class SqlfuClient extends Context.Tag("sqlfu/SqlfuClient")<SqlfuClient, EffectClient>() {`,
     `\tstatic make() {`,
-    `\t\treturn SqlfuQueries;`,
+    `\t\treturn SqlfuClient;`,
     `\t}`,
     ``,
-    `\tstatic fromClient(client: ${clientType}): SqlfuQueries.Service {`,
-    ...serviceObjectLines,
+    `\tstatic fromClient(client: Client): EffectClient {`,
+    `\t\treturn {`,
+    `\t\t\teffect: true,`,
+    `\t\t\tall: (query) => Effect.promise(() => Promise.resolve(client.all(query))),`,
+    `\t\t\trun: (query) => Effect.promise(() => Promise.resolve(client.run(query))),`,
+    `\t\t};`,
     `\t}`,
     ``,
-    `\tstatic DefaultServices(client: ${clientType}) {`,
-    `\t\treturn Layer.succeed(SqlfuQueries, SqlfuQueries.fromClient(client));`,
+    `\tstatic DefaultServices(client: Client) {`,
+    `\t\treturn Layer.succeed(SqlfuClient, SqlfuClient.fromClient(client));`,
     `\t}`,
-    `}`,
-    ``,
-    `export namespace SqlfuQueries {`,
-    ...serviceTypeLines,
     `}`,
   ];
   const filePath = path.join(generatedDir, 'effect.ts');
   await fs.writeFile(filePath, lines.join('\n') + '\n');
   return projectRelativePath(config, filePath);
+}
+
+function effectImportSpecifierForQuery(relativePath: string, importExtension: '.js' | '.ts'): string {
+  const depth = relativePath.split('/').length - 1;
+  return `${depth === 0 ? './' : '../'.repeat(depth)}effect${importExtension}`;
 }
 
 /**
@@ -1438,6 +1453,8 @@ function renderQueryWrapper(input: {
   validator: SqlfuValidator | null;
   prettyErrors: boolean;
   sync: boolean;
+  effect: boolean;
+  effectImportSpecifier: string;
   localNames?: LocalNames;
 }): string {
   if (input.validator !== null) {
@@ -1449,6 +1466,8 @@ function renderQueryWrapper(input: {
       emitter: getValidatorEmitter(input.validator),
       prettyErrors: input.prettyErrors,
       sync: input.sync,
+      effect: input.effect,
+      effectImportSpecifier: input.effectImportSpecifier,
       localNames: input.localNames,
     });
   }
@@ -1473,7 +1492,7 @@ function renderQueryWrapper(input: {
 
   const queryArgs = buildQueryArgs(input.descriptor);
 
-  const functionSignatureArgs: string[] = [`client: ${clientType}`];
+  const functionSignatureArgs: string[] = [`client: ${input.effect ? `${clientType} | EffectClient` : clientType}`];
   if (hasData) functionSignatureArgs.push(`data: ${dataTypeRef}`);
   if (hasParams) functionSignatureArgs.push(`params: ${paramsTypeRef}`);
 
@@ -1502,11 +1521,15 @@ function renderQueryWrapper(input: {
         });
 
   const signatureReturnAnnotation = emitResultType
-    ? input.sync
+    ? input.effect
+      ? ''
+      : input.sync
       ? `: ${getReturnType(input.descriptor, resultTypeRef)}`
       : `: Promise<${getReturnType(input.descriptor, resultTypeRef)}>`
     : '';
-  const functionDeclaration = `\t${maybeAsync}function ${functionName}(${functionSignatureArgs.join(', ')})${signatureReturnAnnotation} {`;
+  const functionDeclaration = input.effect
+    ? `\tfunction ${functionName}(${functionSignatureArgs.join(', ')})${signatureReturnAnnotation} {`
+    : `\t${maybeAsync}function ${functionName}(${functionSignatureArgs.join(', ')})${signatureReturnAnnotation} {`;
 
   const namespaceLines: string[] = [];
   if (hasData) {
@@ -1525,20 +1548,44 @@ function renderQueryWrapper(input: {
         resultType: resultTypeRef,
         queryReference,
         sync: input.sync,
+        effect: input.effect,
         indent: '\t\t',
       })
-    : [`\t\treturn client.run(${queryReference});`];
+    : buildGeneratedRunImplementation({
+        queryReference,
+        sync: input.sync,
+        effect: input.effect,
+        indent: '\t\t',
+      });
+  const callableTypeName = `${functionName}Fn`;
+  const callableTypeLines =
+    input.effect
+      ? [
+          `type ${callableTypeName} = {`,
+          `\t(${functionSignatureArgs.map((arg) => arg.replace(`${clientType} | EffectClient`, 'EffectClient')).join(', ')}): Effect.Effect<${emitResultType ? getReturnType(input.descriptor, resultTypeRef) : 'RunResult'}, unknown>;`,
+          `\t(${functionSignatureArgs.map((arg) => arg.replace(`${clientType} | EffectClient`, clientType)).join(', ')}): ${input.sync ? emitResultType ? getReturnType(input.descriptor, resultTypeRef) : 'RunResult' : `Promise<${emitResultType ? getReturnType(input.descriptor, resultTypeRef) : 'RunResult'}>`};`,
+          `};`,
+          ``,
+        ]
+      : [];
 
   return [
-    `import type {${clientType}} from 'sqlfu';`,
+    ...(input.effect
+      ? [
+          `import * as Effect from 'effect/Effect';`,
+          `import type {${emitResultType ? clientType : `${clientType}, RunResult`}} from 'sqlfu';`,
+          `import type {EffectClient} from ${JSON.stringify(input.effectImportSpecifier)};`,
+        ]
+      : [`import type {${clientType}} from 'sqlfu';`]),
     ``,
     ...renderSqlConstant(input.descriptor.sql, sqlName),
     queryDeclaration,
     ``,
+    ...callableTypeLines,
     `export const ${functionName} = Object.assign(`,
     functionDeclaration,
     ...implementationLines,
-    `\t},`,
+    `\t}${input.effect ? ` as ${callableTypeName}` : ''},`,
     `\t{ ${objectProperty('sql', sqlName)}, ${objectProperty('query', queryName)} },`,
     `);`,
     ``,
@@ -1903,6 +1950,8 @@ function renderValidatorQueryWrapper(input: {
   emitter: ValidatorEmitter;
   prettyErrors: boolean;
   sync: boolean;
+  effect: boolean;
+  effectImportSpecifier: string;
   localNames?: LocalNames;
 }): string {
   const functionName = input.functionName;
@@ -2925,6 +2974,7 @@ function buildGeneratedImplementation(input: {
   resultType: string;
   queryReference: string;
   sync: boolean;
+  effect: boolean;
   indent: string;
 }): string[] {
   const maybeAwait = input.sync ? '' : 'await ';
@@ -2934,17 +2984,65 @@ function buildGeneratedImplementation(input: {
   if (input.resultMode === 'many') {
     // `many` returns the client's result directly — the outer function's Promise<T[]> / T[] return
     // type already matches client.all's return type, so there's no need to await and re-wrap.
+    if (input.effect) {
+      return [
+        `${i}if ((client as EffectClient).effect === true) return (client as EffectClient).all<${input.resultType}>(${q});`,
+        input.sync
+          ? `${i}return (client as SyncClient).all<${input.resultType}>(${q});`
+          : `${i}return Promise.resolve((client as Client).all<${input.resultType}>(${q}));`,
+      ];
+    }
     return [`${i}return client.all<${input.resultType}>(${q});`];
   }
 
   if (input.resultMode === 'nullableOne') {
+    if (input.effect) {
+      return [
+        `${i}if ((client as EffectClient).effect === true) {`,
+        `${i}\treturn Effect.map((client as EffectClient).all<${input.resultType}>(${q}), (rows) => rows.length > 0 ? rows[0] : null);`,
+        `${i}}`,
+        input.sync
+          ? `${i}const rows = (client as SyncClient).all<${input.resultType}>(${q});`
+          : `${i}return Promise.resolve((client as Client).all<${input.resultType}>(${q})).then((rows) => rows.length > 0 ? rows[0] : null);`,
+        ...(input.sync ? [`${i}return rows.length > 0 ? rows[0] : null;`] : []),
+      ];
+    }
     return [
       `${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`,
       `${i}return rows.length > 0 ? rows[0] : null;`,
     ];
   }
 
+  if (input.effect) {
+    return [
+      `${i}if ((client as EffectClient).effect === true) {`,
+      `${i}\treturn Effect.map((client as EffectClient).all<${input.resultType}>(${q}), (rows) => rows[0]);`,
+      `${i}}`,
+      input.sync
+        ? `${i}const rows = (client as SyncClient).all<${input.resultType}>(${q});`
+        : `${i}return Promise.resolve((client as Client).all<${input.resultType}>(${q})).then((rows) => rows[0]);`,
+      ...(input.sync ? [`${i}return rows[0];`] : []),
+    ];
+  }
   return [`${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`, `${i}return rows[0];`];
+}
+
+function buildGeneratedRunImplementation(input: {
+  queryReference: string;
+  sync: boolean;
+  effect: boolean;
+  indent: string;
+}): string[] {
+  const i = input.indent;
+  if (input.effect) {
+    return [
+      `${i}if ((client as EffectClient).effect === true) return (client as EffectClient).run(${input.queryReference});`,
+      input.sync
+        ? `${i}return (client as SyncClient).run(${input.queryReference});`
+        : `${i}return Promise.resolve((client as Client).run(${input.queryReference}));`,
+    ];
+  }
+  return [`${i}return client.run(${input.queryReference});`];
 }
 
 async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, RelationInfo>> {

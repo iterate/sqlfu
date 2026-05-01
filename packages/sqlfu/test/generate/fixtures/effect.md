@@ -39,33 +39,66 @@ select id, slug, title from posts where slug = :slug limit 1;
 
 ```ts (sql/.generated/effect.ts)
 import * as Context from 'effect/Context';
+import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
-import type {Client} from 'sqlfu';
-import {findPostBySlug, listPosts} from "./queries.js";
+import type {Client, ResultRow, RunResult, SqlQuery} from 'sqlfu';
 
-type BindSqlfuClient<TQuery> = TQuery extends (client: Client, ...args: infer TArgs) => infer TResult ? (...args: TArgs) => TResult : never;
+export type EffectClient = {
+	effect: true;
+	all<TRow extends ResultRow = ResultRow>(query: SqlQuery): Effect.Effect<TRow[], unknown>;
+	run(query: SqlQuery): Effect.Effect<RunResult, unknown>;
+};
 
-export class SqlfuQueries extends Context.Tag("sqlfu/SqlfuQueries")<SqlfuQueries, SqlfuQueries.Service>() {
+export class SqlfuClient extends Context.Tag("sqlfu/SqlfuClient")<SqlfuClient, EffectClient>() {
 	static make() {
-		return SqlfuQueries;
+		return SqlfuClient;
 	}
 
-	static fromClient(client: Client): SqlfuQueries.Service {
+	static fromClient(client: Client): EffectClient {
 		return {
-			findPostBySlug: (...args) => findPostBySlug(client, ...args),
-			listPosts: (...args) => listPosts(client, ...args),
+			effect: true,
+			all: (query) => Effect.promise(() => Promise.resolve(client.all(query))),
+			run: (query) => Effect.promise(() => Promise.resolve(client.run(query))),
 		};
 	}
 
 	static DefaultServices(client: Client) {
-		return Layer.succeed(SqlfuQueries, SqlfuQueries.fromClient(client));
+		return Layer.succeed(SqlfuClient, SqlfuClient.fromClient(client));
 	}
 }
+```
 
-export namespace SqlfuQueries {
-	export type Service = {
-		findPostBySlug: BindSqlfuClient<typeof findPostBySlug>;
-		listPosts: BindSqlfuClient<typeof listPosts>;
+```ts (sql/.generated/find-post-by-slug.sql.ts)
+import * as Effect from 'effect/Effect';
+import type {Client} from 'sqlfu';
+import type {EffectClient} from "./effect.js";
+
+const sql = `select id, slug, title from posts where slug = ? limit 1;`;
+const query = (params: findPostBySlug.Params) => ({ sql, args: [params.slug], name: "findPostBySlug" });
+
+type findPostBySlugFn = {
+	(client: EffectClient, params: findPostBySlug.Params): Effect.Effect<findPostBySlug.Result | null, unknown>;
+	(client: Client, params: findPostBySlug.Params): Promise<findPostBySlug.Result | null>;
+};
+
+export const findPostBySlug = Object.assign(
+	function findPostBySlug(client: Client | EffectClient, params: findPostBySlug.Params) {
+		if ((client as EffectClient).effect === true) {
+			return Effect.map((client as EffectClient).all<findPostBySlug.Result>(query(params)), (rows) => rows.length > 0 ? rows[0] : null);
+		}
+		return Promise.resolve((client as Client).all<findPostBySlug.Result>(query(params))).then((rows) => rows.length > 0 ? rows[0] : null);
+	} as findPostBySlugFn,
+	{ sql, query },
+);
+
+export namespace findPostBySlug {
+	export type Params = {
+		slug: string;
+	};
+	export type Result = {
+		id: number;
+		slug: string;
+		title?: string;
 	};
 }
 ```
