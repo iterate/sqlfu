@@ -1,9 +1,9 @@
-import chokidar from 'chokidar';
 import path from 'node:path';
 
 import {generateQueryTypesForConfig} from './index.js';
 import {loadProjectConfig} from '../node/config.js';
 import {createNodeHost} from '../node/host.js';
+import {watch} from '../node/watcher.js';
 import type {SqlfuHost} from '../host.js';
 import type {SqlfuProjectConfig} from '../types.js';
 
@@ -79,17 +79,18 @@ export async function watchGenerateQueryTypesForConfig(
 
   const debounce = createDebouncer(DEBOUNCE_MS);
 
-  const watcher = chokidar.watch(watchPaths, {
-    ignoreInitial: true,
-    ignored: (watchedPath) => isInsideGenerated(watchedPath, generatedDir),
-  });
-
   const onEvent = (eventName: string, eventPath: string) => {
+    if (isInsideGenerated(eventPath, generatedDir)) return;
     debounce(() => {
       const relative = path.relative(config.projectRoot, eventPath) || eventPath;
       void runGenerate(`${eventName}: ${relative}`);
     });
   };
+
+  const watcher = watch(watchPaths, {
+    ignoreInitial: true,
+    ignored: (watchedPath) => isInsideGenerated(watchedPath, generatedDir),
+  });
 
   watcher.on('add', (eventPath) => onEvent('add', eventPath));
   watcher.on('change', (eventPath) => onEvent('change', eventPath));
@@ -100,15 +101,17 @@ export async function watchGenerateQueryTypesForConfig(
   logger.log(`sqlfu watching for changes in:\n${watchPaths.map((value) => `  ${value}`).join('\n')}`);
   options.onReady?.();
 
-  await new Promise<void>((resolve) => {
-    if (options.signal?.aborted) {
-      resolve();
-      return;
-    }
-    options.signal?.addEventListener('abort', () => resolve(), {once: true});
-  });
-
-  await watcher.close();
+  try {
+    await new Promise<void>((resolve) => {
+      if (options.signal?.aborted) {
+        resolve();
+        return;
+      }
+      options.signal?.addEventListener('abort', () => resolve(), {once: true});
+    });
+  } finally {
+    await watcher.close();
+  }
 }
 
 function collectWatchPaths(config: SqlfuProjectConfig): string[] {

@@ -9,7 +9,7 @@ size: small
 
 Regenerate the typegen output (wrappers under `queries/.generated/`, tables file, barrel, query catalog, migrations bundle) whenever an input file changes. Today the dev loop is "edit SQL → run `sqlfu generate` → look at types → repeat"; watch mode closes that loop so the user keeps typing and `.generated/` stays fresh.
 
-**Executive summary:** implementation landed. `--watch` flag wired into the CLI; `watchGenerateQueryTypesForConfig` is a reusable entry-point that takes an `AbortSignal` so tests shut it down cleanly. Chokidar v4 watches `config.queries/`, plus `definitions.sql` or `migrations/` depending on `generate.authority`. `.generated/` is ignored so regen output doesn't re-trigger regen. Errors are logged and the watcher keeps running. 4 integration tests plus a manual smoke test against `template-project` all pass.
+**Executive summary:** implementation landed. `--watch` flag wired into the CLI; `watchGenerateQueryTypesForConfig` is a reusable entry-point that takes an `AbortSignal` so tests shut it down cleanly. Current branch tip is a plain Node watcher experiment: `src/node/watcher.ts` exposes the small chokidar-shaped API this PR uses, backed by `fs.watch` plus full `fs.glob`/file-content snapshots on every native event. `.generated/` is ignored so regen output doesn't re-trigger regen. Errors are logged and the watcher keeps running. 5 integration tests and package typecheck pass.
 
 ## Scope
 
@@ -49,9 +49,16 @@ Batch rapid-fire events (e.g., a save-all from the editor, or git operations tou
 
 ### Watcher choice
 
-Use `chokidar`. It's the de facto standard for this exact problem in Node, handles cross-platform gotchas (macOS fsevents, Windows recursion, atomic-save rename dances) that `fs.watch` gets wrong, and is already a transitive dependency of most JS tooling — adding it directly is ~zero blast radius. Add to `packages/sqlfu`'s `dependencies`.
+Current experiment uses a small `packages/sqlfu/src/node/watcher.ts` shim backed by Node's built-in `fs.watch` and `fs.glob`, assuming a modern stable Node runtime. This removes the direct chokidar dependency while keeping the typegen code close to the previous chokidar-shaped call site:
 
-(Node 20.x+ has `fs.promises.watch` with `recursive: true` on Linux/macOS/Windows, but the event stream is raw and debouncing/dedup is on us. Chokidar is worth the dep.)
+- Native `fs.watch` only reports `rename` and `change`, so the shim synthesizes `add` / `change` / `unlink` by re-globbing every watched path and comparing file contents.
+- The shim is intentionally inefficient: any native event can re-read every watched file. This is acceptable for the pre-alpha CLI loop and can be optimized later.
+- It has only a local notion of readiness: initial snapshot read, native watchers registered, then `ready`.
+- Native watcher behavior is still platform-dependent. Modern Node supports recursive directory watching across the major platforms, but it does less normalization than chokidar around editor atomic saves and missing watch roots.
+
+Original recommendation was `chokidar`, because it normalizes cross-platform watcher behavior and handles editor save edge cases. This commit is intentionally structured as a revertable comparison point.
+
+(Node 22+ has `fs.glob`; this experiment uses callback-style `fs.watch` because it exposes `FSWatcher.close()` directly and keeps shutdown simple.)
 
 ### Where it lives
 
@@ -115,7 +122,7 @@ Fixtures use `Symbol.asyncDispose` per project conventions. Test should use real
 
 ## Implementation log
 
-- Added `chokidar@^4.0.3` as a direct dependency of `packages/sqlfu`.
+- Replaced the direct chokidar implementation with a native `src/node/watcher.ts` experiment and removed the direct `packages/sqlfu` dependency. Chokidar still exists transitively elsewhere in the workspace via other tools.
 - New file: `packages/sqlfu/src/typegen/watch.ts`. Exports `watchGenerateQueryTypes()` (CLI entry, wires up SIGINT/SIGTERM) and `watchGenerateQueryTypesForConfig(config, host, options)` (reusable; takes `AbortSignal`, `onReady`, `logger`).
 - Wired `--watch` into the `generate` command in `packages/sqlfu/src/node/cli-router.ts`.
 - Paths watched: `config.queries/` always; `config.definitions` for `desired_schema`; `config.migrations.path` for `migrations` / `migration_history`; `.generated/` ignored to avoid feedback loop.

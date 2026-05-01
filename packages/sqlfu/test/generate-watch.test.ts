@@ -30,6 +30,23 @@ test('regenerates query wrapper when the SQL file changes', async () => {
   });
 });
 
+test('generates a query wrapper when a SQL file is added', async () => {
+  await using fixture = await createWatchFixture({
+    definitionsSql: `create table person(name text not null);`,
+    queries: {},
+  });
+
+  await using _watcher = await fixture.startWatcher();
+
+  await fixture.writeQuery('get_person.sql', 'select name from person where name = :name');
+
+  await waitFor(async () => {
+    const wrapperPath = path.join(fixture.root, 'sql', '.generated', 'get_person.sql.ts');
+    const wrapper = await fs.readFile(wrapperPath, 'utf8');
+    expect(wrapper).toMatch(/name: string/);
+  });
+});
+
 test('regenerates tables file when definitions.sql changes', async () => {
   await using fixture = await createWatchFixture({
     definitionsSql: `create table person(name text not null);`,
@@ -45,9 +62,7 @@ test('regenerates tables file when definitions.sql changes', async () => {
   expect(initial).toMatch(/PersonRow/);
   expect(initial).not.toMatch(/PetRow/);
 
-  await fixture.writeDefinitions(
-    `create table person(name text not null);\ncreate table pet(name text not null);`,
-  );
+  await fixture.writeDefinitions(`create table person(name text not null);\ncreate table pet(name text not null);`);
 
   await waitFor(async () => {
     const updated = await fs.readFile(tablesPath, 'utf8');
@@ -119,9 +134,7 @@ async function createWatchFixture(input: {
   await writeFixtureFiles(root, {
     'definitions.sql': input.definitionsSql,
     'sql/.gitkeep': '',
-    ...Object.fromEntries(
-      Object.entries(input.queries).map(([name, content]) => [`sql/${name}`, content]),
-    ),
+    ...Object.fromEntries(Object.entries(input.queries).map(([name, content]) => [`sql/${name}`, content])),
   });
 
   const host = await createNodeHost();
