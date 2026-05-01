@@ -100,8 +100,7 @@ import '../styles/landing.css';
   <span class="tok-name">id</span> <span class="tok-keyword">integer primary key autoincrement</span>,
   <span class="tok-name">slug</span> <span class="tok-keyword">text not null unique</span>,
   <span class="tok-name">title</span> <span class="tok-keyword">text not null</span>
-<span class="diff-line diff-added" data-type-speed="schema-add" data-reveal-line data-reveal-pause="620" data-hide-typing-whitespace>+ <span class="tok-name">published</span> <span class="tok-keyword">integer not null default</span> <span class="tok-number">0</span></span>
-);</code></pre>
+<span class="diff-line diff-added" data-type-speed="schema-add" data-reveal-line data-reveal-pause="620" data-hide-typing-whitespace>+ <span class="tok-name">published</span> <span class="tok-keyword">integer not null default</span> <span class="tok-number">0</span></span>);</code></pre>
             </figure>
             <figure class="artifact terminal artifact-tall">
               <figcaption>terminal</figcaption>
@@ -113,7 +112,13 @@ import '../styles/landing.css';
 │    integer not null default 0;           │
 │                                          │
 ├──────────────────────────────────────────╯
-│</span>
+│</span><span class="terminal-output terminal-block" data-terminal-output data-output-pause="950" data-dismiss-before-next>│
+◆  Continue with this body?
+│  ● Yes
+│  ○ No
+│  ○ Edit with code
+│  ○ Edit with vi
+│  ○ Edit with nano</span>
 <span class="terminal-output terminal-block" data-terminal-output data-output-pause="0">Wrote migrations/20260501090000_add_published_to_posts.sql</span></code></pre>
             </figure>
           </div>

@@ -598,11 +598,13 @@ a {
   grid-area: 2 / 1;
   min-width: 0;
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
 }
 
 .artifact-tab-panel.is-active {
   opacity: 1;
+  visibility: visible;
   pointer-events: auto;
 }
 
@@ -660,6 +662,21 @@ a {
     opacity 180ms ease,
     transform 180ms ease,
     filter 180ms ease;
+}
+
+.landing-anim-ready .artifact-tab-panel:not(.is-active) {
+  opacity: 0;
+  visibility: hidden;
+  transform: none;
+  filter: none;
+  pointer-events: none;
+  transition: none;
+}
+
+.landing-anim-ready .artifact-tab-panel.is-active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .landing-anim-ready .artifact-swap {
