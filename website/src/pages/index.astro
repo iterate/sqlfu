@@ -92,7 +92,7 @@ import '../styles/landing.css';
   <span class="tok-name">id</span> <span class="tok-keyword">integer primary key autoincrement</span>,
   <span class="tok-name">slug</span> <span class="tok-keyword">text not null unique</span>,
   <span class="tok-name">title</span> <span class="tok-keyword">text not null</span>
-<span class="diff-line diff-added" data-type-speed="schema-add" data-reveal-line data-reveal-pause="620" data-hide-typing-whitespace>+ <span class="tok-name">published</span> <span class="tok-keyword">integer not null default</span> <span class="tok-number">0</span></span>);</code></pre>
+<span class="diff-line diff-added" data-type-speed="schema-add" data-reveal-line data-reveal-pause="620" data-hide-typing-whitespace>+ <span class="tok-name">published</span> <span class="tok-keyword">integer</span></span>);</code></pre>
             </figure>
             <figure class="artifact terminal artifact-tall">
               <figcaption class="artifact-caption-actions">
@@ -108,8 +108,8 @@ import '../styles/landing.css';
 <span class="terminal-output terminal-block" data-terminal-output data-output-pause="1450">│
 ◇  Create migration file? ─────────────────╮
 │                                          │
-│  alter table posts add column published  │
-│    integer not null default 0;           │
+│  alter table posts add column           │
+│    published integer;                   │
 │                                          │
 <span data-corner-before-next>├──────────────────────────────────────────╯
 </span><span data-corner-after-next>╰──────────────────────────────────────────╯
@@ -164,7 +164,7 @@ import '../styles/landing.css';
   .sqlfu/query-catalog.json</span></code></pre>
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-replacement-artifact data-tab-panel="src">
-                <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
+                <pre><code data-type-speed="generated-file"><span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
 
 <span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
 <span class="tok-comment">//    ^? Array&lt;&#123;id: number; slug: string; title: string&#125;&gt;</span>
@@ -302,6 +302,7 @@ import '../styles/landing.css';
             const delayBySpeed = {
               command: 78,
               fast: 14,
+              'generated-file': 5,
               'schema-add': 58,
             };
             const delay = delayBySpeed[target.dataset.typeSpeed] || 14;
