@@ -113,8 +113,21 @@ npx sqlfu migrate
 If you pass `--output`, the path must resolve to `sqlfuConfig.definitions`. If you omit `--output`, sqlfu uses the definitions file from `sqlfu.config.*`. The definitions file may be empty, or it must contain exactly one managed section:
 
 ```sql
+create table "posts" ("id" integer primary key not null); -- kept: outside the managed section
+
+create table "comments" ( -- kept: outside the managed section
+  "id" integer primary key not null,
+  "postId" integer not null references "posts" ("id") on delete cascade
+);
+
 -- #region sqlfu:better-auth
+-- replaced: npx auth generate rewrites this whole region from your Better Auth config
+create table "user" ("id" text primary key not null, "email" text not null unique);
+create table "session" ("id" text primary key not null, "userId" text not null);
+create index "session_userId_idx" on "session" ("userId");
 -- #endregion sqlfu:better-auth
+
+create table "audit_log" ("id" integer primary key not null); -- kept: outside the managed section
 ```
 
 ## Local and embedded
