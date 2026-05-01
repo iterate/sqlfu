@@ -1198,6 +1198,14 @@ function TablePanel(input: {relation: StudioRelation}) {
             editable: rowsData.editable,
             dirty: rowsDirty,
             saving: saveRowsMutation.isPending,
+            onConfirmDiscard: async () => {
+              const result = await confirmationDialogStore.confirm({
+                title: 'Discard unsaved row edits?',
+                body: 'This query action switches the table into read-only SQL results. Discard the unsaved row edits and continue?',
+                bodyType: 'markdown',
+              });
+              return result.confirmed;
+            },
             onSave: handleSaveRows,
             onDiscard: handleDiscardRows,
           }}
@@ -1815,7 +1823,7 @@ function DataTable(input: {
         ]
       : []),
   ];
-  const expandCell = hoveredCell ?? selectedCell;
+  const expandCell = selectedCell ?? hoveredCell;
   const expandOriginalValue =
     expandCell && typeof expandCell.rowId === 'number' && typeof expandCell.columnId === 'string'
       ? formatCellText(input.originalRows?.[expandCell.rowId]?.[expandCell.columnId])

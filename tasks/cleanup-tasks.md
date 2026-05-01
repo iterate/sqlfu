@@ -1,8 +1,54 @@
+---
 status: evergreen
+size: small
+---
+
+# Cleanup Tasks
+
+## Status summary
+
+2026-04-30 pass is done pending PR review. The pass refreshed this evergreen task, normalized one low-risk bare task file, and removed four clean merged worktrees. No root task files needed filing into `tasks/complete/`; the merged PRs surveyed had already handled their task files or were evergreen passes.
 
 Sometimes agents forget to move their task files to "done". Look at recent commits and see if that's happened. If it has, open a housekeeping PR to do just that. While you're there, you can also add to Implementation Notes if there's anything you spot in the change that wasn't tidied up properly that also wasn't documented in the task file.
 
 Make sure local worktrees are cleaned up too.
+
+## 2026-04-30 pass
+
+Branch: `cleanup-tasks-2026-04-30`.
+Base branch: `nightly/2026-04-30`.
+Base PR: #75.
+
+Scope:
+- File task files into `tasks/complete/` with date prefixes only when the matching work is clearly merged/done.
+- Normalize obviously stale frontmatter or status summaries when the task state is clear from current PR history.
+- Prune only clean local worktrees whose PRs are merged or safely closed.
+- Leave evergreen tasks open and append this pass instead of moving them to `complete/`.
+
+Assumptions:
+- PR #75 has merged into `main`, but `origin/nightly/2026-04-30` still exists at the same tip; per the handoff, this pass still targets `nightly/2026-04-30`.
+- Open PR worktrees stay in place: `detect-spurious-definitions`, `generate-watch`, `lint-generated-queries`, `outbox-polymorphic-sync`, `sql-runner-named-params`, `target-safety-design`, plus current open Better Auth worktrees.
+- Tonight's named active worktrees stay in place even if they have no PR yet: `affinity-types`, `relations-query-builder-polish`, `improve-docs-2026-04-30`, and this cleanup worktree.
+- Closed but not merged/revisit-able worktrees such as `api-extractor` and `typesql-ddl-support` stay in place; `typesql-ddl-support` still has an uncommitted task-file edit in its own worktree.
+
+Checklist:
+- [x] Read this evergreen task and prior cleanup passes. _surveyed the 2026-04-20 and 2026-04-28 pass notes before choosing the 2026-04-30 scope._
+- [x] Inspect current open/merged PRs. _open PRs: #2, #43, #60, #65, #67, #69, #73, #74; newly merged since the last cleanup pass include #68, #70, #71, #72, and #75._
+- [x] Inspect local worktrees and cleanliness. _all current worktrees are clean except the pre-existing `typesql-ddl-support` task-file edit; clean merged candidates are `cleanup-tasks-2026-04-28`, `improve-docs-2026-04-28`, `partial-fetch-ui-durable-object`, and `process-result-sync-async`._
+- [x] Commit this task-file update before implementation. _first commit `316d419` only touched `tasks/cleanup-tasks.md`._
+- [x] Open a PR targeting `nightly/2026-04-30` before implementation. _PR #77 opened against `nightly/2026-04-30` after the first commit._
+- [x] File any clearly completed task files into `tasks/complete/` with date-prefixed filenames. _none needed this pass: #68 and #72 had already filed their task files; #70/#71 are evergreen pass logs; #75 is the nightly base PR._
+- [x] Normalize stale task frontmatter/status summaries when the state is unambiguous. _`tasks/intro-blog.md` now has YAML frontmatter, a title, and a short status summary; active/ambiguous bare files were left alone._
+- [x] Remove only safe, clean, merged/closed local worktrees. _removed clean merged worktrees for `cleanup-tasks-2026-04-28`, `improve-docs-2026-04-28`, `partial-fetch-ui-durable-object`, and `process-result-sync-async`._
+- [x] Verify final task tree and worktree list. _`git status` only shows this pass's intended task-file edits; `git worktree list --porcelain` matches the directories still present under `/Users/mmkal/src/worktrees/sqlfu`._
+
+Implementation notes:
+- Initial survey found `tasks/complete/2026-04-30-process-result-sync-async.md` already filed for PR #72 and `tasks/complete/2026-04-28-partial-fetch-ui.md` already filed for PR #68. No root task file has been moved yet in this pass.
+- `cleanup-tasks-2026-04-28` (#71) and `improve-docs-2026-04-28` (#70) are merged and their local worktrees are clean.
+- `partial-fetch-ui-durable-object` (#68) and `process-result-sync-async` (#72) are merged and their local worktrees are clean.
+- Removed those four clean merged local worktrees with `git worktree remove`; remote branches were left alone.
+- Left open-PR worktrees and tonight's active worktrees in place. Also left `api-extractor` and `typesql-ddl-support` in place because those were already called out as closed/revisit-able, and `typesql-ddl-support` still has a pre-existing uncommitted task-file edit.
+- Left `tasks/affinity-types.md` and `tasks/ui-relations.md` bare because their work is active or ambiguous. Left `tasks/improve-docs.md` untouched because `improve-docs-2026-04-30` is an active worktree tonight and evergreen docs passes append there.
 
 ## 2026-04-20 pass
 
@@ -43,4 +89,3 @@ Plan:
 Things flagged for follow-up (not actioned):
 - `typesql-ddl-support` worktree has an uncommitted edit to `tasks/complete/2026-04-20-typesql-ddl-support.md`. Per CLAUDE.md, never delete work the user might want; left in place for the user to either commit or stash.
 - `landing-page-animations.md` task file is keeping `status: in-progress` despite PR #14 having merged — the task captures unfinished follow-up (pacing review, alt-composition cleanup decision). If the user is happy with what shipped, this is a one-line move-to-complete next pass.
-

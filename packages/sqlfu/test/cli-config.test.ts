@@ -65,6 +65,7 @@ test('generate prints the files it updated', async () => {
   expect(output).toContain('Updated generated files:');
   expect(output).toContain('sql/.generated/get-posts.sql.ts');
   expect(output).toContain('sql/.generated/index.ts');
+  expect(output).toContain('sql/.generated/queries.ts');
   expect(output).toContain('sql/.generated/tables.ts');
   expect(output).toContain('.sqlfu/query-catalog.json');
 
