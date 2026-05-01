@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2022"
+  },
+  "include": [
+    "src/cpu-usage.ts",
+    "src/sqlfu-server-node.ts",
+    "src/sqlfu/**/*.ts"
+  ]
+}
