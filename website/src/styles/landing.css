@@ -19,6 +19,13 @@
   --button-text-primary: #fff9f2;
   --code-bg: rgba(121, 73, 24, 0.08);
   --showreel-filter: none;
+  --syntax-keyword: #8a4d00;
+  --syntax-name: #0f6470;
+  --syntax-string: #8a3550;
+  --syntax-number: #674fa3;
+  --syntax-comment: #76685d;
+  --syntax-command: #006b58;
+  --syntax-output: #3d6b2b;
 }
 
 :root[data-theme='dark'] {
@@ -42,6 +49,13 @@
   --button-text-primary: #1a1410;
   --code-bg: rgba(232, 155, 102, 0.14);
   --showreel-filter: brightness(0.88) contrast(0.95);
+  --syntax-keyword: #ffb86c;
+  --syntax-name: #78dce8;
+  --syntax-string: #ff87ab;
+  --syntax-number: #c6a0ff;
+  --syntax-comment: #a99a8d;
+  --syntax-command: #7ee0c4;
+  --syntax-output: #a6d982;
 }
 
 * {
@@ -318,6 +332,19 @@ a {
   gap: 0.8rem;
 }
 
+.artifact-pair.artifact-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.artifact-pair.artifact-pair-uneven {
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+}
+
+.artifact-stack {
+  display: grid;
+  gap: 0.8rem;
+}
+
 .artifact {
   min-width: 0;
   margin: 0;
@@ -358,15 +385,125 @@ a {
   font: inherit;
 }
 
-/* Animation surfaces. Only injected by the `?animation=...` script on the
- * landing page; the default landing page ships no video. Two modes:
+.artifact-wide pre {
+  min-height: 10rem;
+}
+
+.artifact-compact pre,
+.artifact.terminal pre {
+  min-height: 5.75rem;
+}
+
+.tok-keyword {
+  color: var(--syntax-keyword);
+  font-weight: 650;
+}
+
+.tok-name {
+  color: var(--syntax-name);
+}
+
+.tok-string {
+  color: var(--syntax-string);
+}
+
+.tok-number {
+  color: var(--syntax-number);
+}
+
+.tok-comment {
+  color: var(--syntax-comment);
+}
+
+.tok-param,
+.tok-prop {
+  color: var(--syntax-number);
+}
+
+.tok-command {
+  color: var(--syntax-command);
+  font-weight: 650;
+}
+
+.term-prompt {
+  color: var(--muted);
+}
+
+.terminal-output {
+  display: inline-block;
+  color: var(--syntax-output);
+}
+
+.artifact.terminal figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.landing-anim-ready .typed-char {
+  opacity: 0;
+}
+
+.landing-anim-ready .typed-char.is-visible {
+  opacity: 1;
+}
+
+.landing-anim-ready [data-terminal-output] {
+  opacity: 0;
+  transform: translateY(0.25rem);
+}
+
+.landing-anim-ready [data-terminal-output].is-visible {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.landing-anim-ready [data-generated-artifact] {
+  opacity: 0;
+  transform: scale(0.98) translateY(0.35rem);
+  filter: blur(1px);
+}
+
+.landing-anim-ready [data-generated-artifact].is-visible {
+  opacity: 1;
+  transform: none;
+  filter: none;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    filter 180ms ease;
+}
+
+.landing-anim-ready .artifact.terminal.is-running figcaption::after,
+.landing-anim-ready .artifact.terminal.is-done figcaption::after {
+  color: var(--syntax-command);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.landing-anim-ready .artifact.terminal.is-running figcaption::after {
+  content: 'running';
+}
+
+.landing-anim-ready .artifact.terminal.is-done figcaption::after {
+  content: 'done';
+}
+
+/* Video animation surfaces. Only injected by the `?animation=...` script on the
+ * landing page; the default landing page uses DOM typing/reveal animation. Two modes:
  *
  *   `.value-media`: a 16:9 video slotted inside each value-panel alongside
  *   the heading and copy. Used by `?animation=a|b|c|d` for legacy alternatives.
  *
  *   `.animation-stage`: a single full-width 16:9 video that replaces the
- *   feature walkthrough entirely. Used by `?animation=sequential` (the default
- *   sequential showreel). */
+ *   feature walkthrough entirely. Used by `?animation=sequential`. */
 
 .value-media {
   position: relative;
@@ -508,7 +645,8 @@ a {
 @media (max-width: 900px) {
   .hero,
   .feature-row,
-  .artifact-pair {
+  .artifact-pair,
+  .artifact-pair.artifact-pair-uneven {
     grid-template-columns: 1fr;
   }
 

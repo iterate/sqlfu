@@ -6,7 +6,7 @@ I want you to think holistically about the docs, as mentioned in your agent inst
 
 ## 2026-04-30 pass
 
-Status: done for this pass. Landing-page pacing now walks through schema, migration drafting, type generation, and runtime observability one feature at a time. Docs navigation is grouped into Start here, Concepts, Guides, and Reference, and the existing Errors page is now synced and linked. Website build is green after installing dependencies in the worktree and prebuilding `@sqlfu/ui`; no product behavior changes were made.
+Status: done for this pass. Landing-page pacing now walks through schema, migration drafting, type generation, and runtime observability one feature at a time. Follow-up review added syntax-highlighted, lightweight typed/run/reveal animation to the walkthrough and removed the duplicated schema artifact. Docs navigation is grouped into Start here, Concepts, Guides, and Reference, and the existing Errors page is now synced and linked. Website build is green after installing dependencies in the worktree and prebuilding `@sqlfu/ui`; no product behavior changes were made.
 
 Scope:
 
@@ -26,6 +26,7 @@ Checklist:
 - [x] Land this 2026-04-30 pass as the first commit and open the PR against `nightly/2026-04-30`. _first commit `02fbb89`; PR #79 targets `nightly/2026-04-30`_
 - [x] `website/src/pages/index.astro`: replace the current broad value grid with a sequential feature walkthrough that pairs SQL/code with the generated or operational artifact. _four feature beats now pair prose with schema/migration/query/runtime snippets_
 - [x] `website/src/styles/landing.css`: support the new landing layout responsively without adding decorative-only visuals. _added the `feature-stack`, `feature-row`, and `artifact` layout; mobile collapses to one column_
+- [x] `website/src/pages/index.astro` + `website/src/styles/landing.css`: apply PR feedback to the landing walkthrough with syntax highlighting, typed commands/files, run-state terminal output, generated-artifact reveals, and a single schema artifact. _follow-up commit after docs PR review; implemented with progressive DOM enhancement instead of Remotion; website build stayed green_
 - [x] `website/astro.config.mjs`: nest the docs sidebar into onboarding, concepts, guides, examples, and reference. _sidebar now groups Start here, Concepts, Guides, and Reference_
 - [x] `website/scripts/sync-docs.mjs`: keep synced docs metadata aligned with the sidebar, including any reference pages surfaced by the new nav. _added `docs/errors` to the synced docs set and removed em-dash prose from generated examples metadata_
 - [x] Apply the `writing-well` checklist: cut inflated framing, prefer concrete examples, avoid templated phrasing and em-dashes, keep headings natural. _touched-file scan is clean for em-dashes and common filler patterns; runtime-validation prose lost a templated contrast_

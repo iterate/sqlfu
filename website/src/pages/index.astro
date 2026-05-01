@@ -76,7 +76,7 @@ import '../styles/landing.css';
 
       <h2 class="section-title">The path through a sqlfu project</h2>
       <section class="feature-stack" id="value-panels">
-        <article class="feature-row value-panel" data-animation-key="schema">
+        <article class="feature-row value-panel" data-animation-key="schema" data-walkthrough-step>
           <div class="feature-copy">
             <div class="eyebrow">1. schema</div>
             <h3>Describe the schema you want now.</h3>
@@ -85,29 +85,20 @@ import '../styles/landing.css';
             </p>
             <a href="/docs/getting-started#define-your-schema">Define a schema</a>
           </div>
-          <div class="artifact-pair" aria-label="Schema file and drafted migration">
-            <figure class="artifact">
+          <div class="artifact-pair artifact-single" aria-label="Schema file">
+            <figure class="artifact artifact-wide">
               <figcaption>definitions.sql</figcaption>
-              <pre><code>create table posts (
-  id integer primary key autoincrement,
-  slug text not null unique,
-  title text not null,
-  published integer not null default 0
-);</code></pre>
-            </figure>
-            <figure class="artifact">
-              <figcaption>drafted migration</figcaption>
-              <pre><code>create table posts (
-  id integer primary key autoincrement,
-  slug text not null unique,
-  title text not null,
-  published integer not null default 0
+              <pre><code data-type-speed="fast"><span class="tok-keyword">create table</span> <span class="tok-name">posts</span> (
+  <span class="tok-name">id</span> <span class="tok-keyword">integer primary key autoincrement</span>,
+  <span class="tok-name">slug</span> <span class="tok-keyword">text not null unique</span>,
+  <span class="tok-name">title</span> <span class="tok-keyword">text not null</span>,
+  <span class="tok-name">published</span> <span class="tok-keyword">integer not null default</span> <span class="tok-number">0</span>
 );</code></pre>
             </figure>
           </div>
         </article>
 
-        <article class="feature-row value-panel" data-animation-key="draft">
+        <article class="feature-row value-panel" data-animation-key="draft" data-walkthrough-step>
           <div class="feature-copy">
             <div class="eyebrow">2. migrations</div>
             <h3>Let the diff engine write the first draft.</h3>
@@ -117,20 +108,24 @@ import '../styles/landing.css';
             <a href="/docs/migration-model">Read the migration model</a>
           </div>
           <div class="artifact-pair" aria-label="Draft command and reviewed migration">
-            <figure class="artifact">
+            <figure class="artifact terminal">
               <figcaption>terminal</figcaption>
-              <pre><code>$ npx sqlfu draft
-created migrations/20260430103000_add_posts.sql</code></pre>
+              <pre><code><span data-type-speed="command" data-run-command="true"><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu draft</span></span>
+<span class="terminal-output" data-terminal-output>created migrations/20260430103000_add_posts.sql</span></code></pre>
             </figure>
-            <figure class="artifact">
-              <figcaption>later change</figcaption>
-              <pre><code>alter table posts
-add column excerpt text;</code></pre>
+            <figure class="artifact" data-generated-artifact>
+              <figcaption>migrations/20260430103000_add_posts.sql</figcaption>
+              <pre><code><span class="tok-keyword">create table</span> <span class="tok-name">posts</span> (
+  <span class="tok-name">id</span> <span class="tok-keyword">integer primary key autoincrement</span>,
+  <span class="tok-name">slug</span> <span class="tok-keyword">text not null unique</span>,
+  <span class="tok-name">title</span> <span class="tok-keyword">text not null</span>,
+  <span class="tok-name">published</span> <span class="tok-keyword">integer not null default</span> <span class="tok-number">0</span>
+);</code></pre>
             </figure>
           </div>
         </article>
 
-        <article class="feature-row value-panel" data-animation-key="generate">
+        <article class="feature-row value-panel" data-animation-key="generate" data-walkthrough-step>
           <div class="feature-copy">
             <div class="eyebrow">3. type generation</div>
             <h3>Generate functions from checked-in queries.</h3>
@@ -139,27 +134,34 @@ add column excerpt text;</code></pre>
             </p>
             <a href="/docs/typegen">See query shapes</a>
           </div>
-          <div class="artifact-pair" aria-label="Query file and generated wrapper">
-            <figure class="artifact">
-              <figcaption>sql/get-posts.sql</figcaption>
-              <pre><code>select id, slug, title
-from posts
-where published = 1
-order by id desc
-limit :limit;</code></pre>
-            </figure>
-            <figure class="artifact">
+          <div class="artifact-pair artifact-pair-uneven" aria-label="Query file and generated wrapper">
+            <div class="artifact-stack">
+              <figure class="artifact artifact-compact">
+                <figcaption>sql/get-posts.sql</figcaption>
+                <pre><code data-type-speed="fast"><span class="tok-keyword">select</span> <span class="tok-name">id</span>, <span class="tok-name">slug</span>, <span class="tok-name">title</span>
+<span class="tok-keyword">from</span> <span class="tok-name">posts</span>
+<span class="tok-keyword">where</span> <span class="tok-name">published</span> = <span class="tok-number">1</span>
+<span class="tok-keyword">order by</span> <span class="tok-name">id</span> <span class="tok-keyword">desc</span>
+<span class="tok-keyword">limit</span> <span class="tok-param">:limit</span>;</code></pre>
+              </figure>
+              <figure class="artifact terminal artifact-compact">
+                <figcaption>terminal</figcaption>
+                <pre><code><span data-type-speed="command" data-run-command="true"><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu generate</span></span>
+<span class="terminal-output" data-terminal-output>wrote src/sqlfu.generated.ts</span></code></pre>
+              </figure>
+            </div>
+            <figure class="artifact" data-generated-artifact>
               <figcaption>generated wrapper</figcaption>
-              <pre><code>const posts = await getPosts(client, &#123;limit: 10&#125;);
-//    ^? Array&lt;&#123;id: number; slug: string; title: string&#125;&gt;
+              <pre><code><span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
+<span class="tok-comment">//    ^? Array&lt;&#123;id: number; slug: string; title: string&#125;&gt;</span>
 
-getPosts.query.name
-// "getPosts"</code></pre>
+<span class="tok-name">getPosts</span>.<span class="tok-prop">query</span>.<span class="tok-prop">name</span>
+<span class="tok-comment">// </span><span class="tok-string">"getPosts"</span></code></pre>
             </figure>
           </div>
         </article>
 
-        <article class="feature-row value-panel" data-animation-key="runtime">
+        <article class="feature-row value-panel" data-animation-key="runtime" data-walkthrough-step>
           <div class="feature-copy">
             <div class="eyebrow">4. runtime</div>
             <h3>Keep the wrapper when the driver changes.</h3>
@@ -171,18 +173,18 @@ getPosts.query.name
           <div class="artifact-pair" aria-label="Runtime client and query metadata">
             <figure class="artifact">
               <figcaption>application code</figcaption>
-              <pre><code>const client = instrument(
-  createNodeSqliteClient(db),
-  instrument.otel(&#123;tracer&#125;),
+              <pre><code data-type-speed="fast"><span class="tok-keyword">const</span> <span class="tok-name">client</span> = <span class="tok-name">instrument</span>(
+  <span class="tok-name">createNodeSqliteClient</span>(<span class="tok-name">db</span>),
+  <span class="tok-name">instrument</span>.<span class="tok-prop">otel</span>(&#123;<span class="tok-prop">tracer</span>&#125;),
 );
 
-await getPosts(client, &#123;limit: 10&#125;);</code></pre>
+<span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);</code></pre>
             </figure>
-            <figure class="artifact">
+            <figure class="artifact" data-generated-artifact>
               <figcaption>query context</figcaption>
-              <pre><code>db.query.summary = "getPosts"
-db.query.text = "select id, slug, title ..."
-db.system.name = "sqlite"</code></pre>
+              <pre><code><span class="tok-prop">db.query.summary</span> = <span class="tok-string">"getPosts"</span>
+<span class="tok-prop">db.query.text</span> = <span class="tok-string">"select id, slug, title ..."</span>
+<span class="tok-prop">db.system.name</span> = <span class="tok-string">"sqlite"</span></code></pre>
             </figure>
           </div>
         </article>
@@ -192,8 +194,118 @@ db.system.name = "sqlite"</code></pre>
         Driver support today: <code>better-sqlite3</code>, <code>node:sqlite</code>, <code>bun:sqlite</code>, <code>@libsql/client</code>, <code>@tursodatabase/database</code> / <code>serverless</code> / <code>sync</code>, Cloudflare D1, Durable Objects, Expo SQLite, and <code>sqlite-wasm</code>. <a href="/docs/adapters">Full list</a>
       </p>
 
+      <script is:inline>
+        (() => {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get('animation')) return;
+          if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+          const rows = Array.from(document.querySelectorAll('[data-walkthrough-step]'));
+          if (rows.length === 0) return;
+
+          const sleep = milliseconds =>
+            new Promise(resolve => {
+              window.setTimeout(resolve, milliseconds);
+            });
+
+          const prepareTyping = target => {
+            if (target.dataset.typingPrepared === 'true') {
+              return Array.from(target.querySelectorAll('.typed-char'));
+            }
+
+            const textNodes = [];
+            const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
+            let node = walker.nextNode();
+            while (node) {
+              if (node.nodeValue) textNodes.push(node);
+              node = walker.nextNode();
+            }
+
+            for (const textNode of textNodes) {
+              const fragment = document.createDocumentFragment();
+              for (const character of textNode.nodeValue) {
+                const span = document.createElement('span');
+                span.className = 'typed-char';
+                span.textContent = character;
+                if (!character.trim()) span.classList.add('is-visible');
+                fragment.append(span);
+              }
+              textNode.replaceWith(fragment);
+            }
+
+            target.dataset.typingPrepared = 'true';
+            return Array.from(target.querySelectorAll('.typed-char'));
+          };
+
+          const revealTyping = async target => {
+            const delay = target.dataset.typeSpeed === 'command' ? 26 : 3;
+            for (const character of prepareTyping(target)) {
+              if (character.classList.contains('is-visible')) continue;
+              character.classList.add('is-visible');
+              await sleep(delay);
+            }
+          };
+
+          const playRow = async row => {
+            if (row.dataset.walkthroughPlayed === 'true') return;
+            row.dataset.walkthroughPlayed = 'true';
+
+            for (const target of row.querySelectorAll('[data-type-speed]')) {
+              await revealTyping(target);
+
+              if (target.dataset.runCommand === 'true') {
+                const terminal = target.closest('.artifact');
+                if (terminal) terminal.classList.add('is-running');
+                await sleep(420);
+                for (const output of row.querySelectorAll('[data-terminal-output]')) {
+                  output.classList.add('is-visible');
+                }
+                if (terminal) {
+                  terminal.classList.remove('is-running');
+                  terminal.classList.add('is-done');
+                }
+                await sleep(140);
+              }
+            }
+
+            Array.from(row.querySelectorAll('[data-generated-artifact]')).forEach(
+              (artifact, index) => {
+                window.setTimeout(() => {
+                  artifact.classList.add('is-visible');
+                }, index * 90);
+              },
+            );
+          };
+
+          for (const row of rows) {
+            for (const target of row.querySelectorAll('[data-type-speed]')) {
+              prepareTyping(target);
+            }
+          }
+          document.documentElement.classList.add('landing-anim-ready');
+
+          if (!('IntersectionObserver' in window)) {
+            for (const row of rows) void playRow(row);
+            return;
+          }
+
+          const observer = new IntersectionObserver(
+            entries => {
+              for (const entry of entries) {
+                if (!entry.isIntersecting) continue;
+                observer.unobserve(entry.target);
+                void playRow(entry.target);
+              }
+            },
+            { rootMargin: '0px 0px -12% 0px', threshold: 0.35 },
+          );
+
+          for (const row of rows) observer.observe(row);
+        })();
+      </script>
+
       {/*
-        Animations are off by default. They are enabled with `?animation=<name>`:
+        Video animation variants are enabled with `?animation=<name>`:
 
           - `?animation=sequential`: a single large stage that plays the three
             beats (schema, generate, draft) in sequence, replacing the
@@ -202,8 +314,9 @@ db.system.name = "sqlite"</code></pre>
             each supported feature keeps its copy but its body gets swapped for the
             matching `alt-<letter>-<key>` video.
 
-        When no `animation` param is set, the page ships the plain static
-        feature walkthrough above.
+        When no `animation` param is set, the page keeps the feature
+        walkthrough above and progressively enhances it with lightweight DOM
+        typing/reveal animation.
       */}
       <script is:inline>
         (() => {
