@@ -14,7 +14,10 @@ Done. The first slice recognizes columns declared as `json`, emits `unknown`
 for their generated TypeScript surface, stringifies JSON write parameters, parses
 selected JSON result columns, records `driverEncoding: "json"` in the query
 catalog, and documents the narrow behavior. The `sqlfu_types` metadata-table
-idea remains deferred.
+idea remains deferred. A related arktype-first validator/schema direction is
+also deferred: if arktype schemas can stay serializable and emit TypeScript,
+they may be the right substrate for future strong runtime and compile-time
+logical types.
 
 ## Assumptions
 
@@ -28,6 +31,7 @@ idea remains deferred.
 ## Non-goals
 
 - Do not implement the proposed `sqlfu_types` table or arbitrary logical-type registry in this task.
+- Do not redesign validator generation around arktype in this task. The follow-up idea is that a future `sqlfu_types` metadata table could store serializable arktype-compatible POJOs, then use arktype runtime validation plus generated TypeScript for stronger logical types.
 - Do not infer a precise TypeScript payload shape from JSON contents, default values, check constraints, or JSON schema comments.
 - Do not attempt broad SQLite affinity modeling for every declared type. Limit the behavior to the `json` logical type unless the local implementation needs a tiny general hook.
 - Do not change runtime behavior for columns declared as ordinary `text` or `blob`.
@@ -69,4 +73,6 @@ idea remains deferred.
 - Deferred:
   - precise JSON payload shapes;
   - `sqlfu_types` or a general logical-type registry;
+  - an arktype-first schema path where `sqlfu_types` can persist serializable
+    type metadata and generate both runtime validators and TypeScript types;
   - broad SQLite affinity modeling beyond the exact declared type name `json`.
