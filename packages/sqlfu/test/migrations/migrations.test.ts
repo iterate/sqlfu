@@ -12,7 +12,7 @@ describe('draft', () => {
       desiredSchema: `create table person(name text)`,
     });
 
-    await fixture.api.draft();
+    await fixture.api.draft({});
 
     expect(await fixture.dumpFs()).toMatchInlineSnapshot(`
       "definitions.sql
@@ -35,7 +35,7 @@ describe('draft', () => {
       },
     });
 
-    await fixture.api.draft();
+    await fixture.api.draft({});
 
     expect(await fixture.dumpFs()).toMatchInlineSnapshot(`
       "definitions.sql
@@ -60,7 +60,7 @@ describe('draft', () => {
 
     const before = await fixture.listMigrationFiles();
 
-    await fixture.api.draft();
+    await fixture.api.draft({});
 
     expect(await fixture.listMigrationFiles()).toEqual(before);
   });
@@ -75,7 +75,7 @@ describe('draft', () => {
 
     const before = await fixture.listMigrationFiles();
 
-    await fixture.api.draft();
+    await fixture.api.draft({});
 
     expect(await fixture.listMigrationFiles()).toEqual(before);
   });
@@ -90,7 +90,7 @@ describe('draft', () => {
 
     const before = await fixture.listMigrationFiles();
 
-    await fixture.api.draft();
+    await fixture.api.draft({});
 
     expect(await fixture.listMigrationFiles()).toEqual(before);
   });
@@ -114,7 +114,7 @@ describe('migrate', () => {
 
     await fixture.writeMigration('add_person', `create table person(name text)`);
 
-    await fixture.api.migrate();
+    await fixture.api.migrate({});
 
     await fixture.writeFile(
       'definitions.sql',
@@ -125,7 +125,7 @@ describe('migrate', () => {
     );
     await fixture.writeMigration('add_pet', `create table pet(name text, species text)`);
 
-    await fixture.api.migrate();
+    await fixture.api.migrate({});
 
     expect(await extractSchema(fixture.db, 'main', {excludedTables: ['sqlfu_migrations']})).toMatchInlineSnapshot(`
       "create table person(name text);
@@ -140,10 +140,10 @@ describe('migrate', () => {
       },
     });
 
-    await fixture.api.migrate();
+    await fixture.api.migrate({});
     const before = await fixture.readMigrationHistory();
 
-    await fixture.api.migrate();
+    await fixture.api.migrate({});
 
     expect(await fixture.readMigrationHistory()).toMatchObject(before);
   });
@@ -159,7 +159,7 @@ describe('migrate', () => {
     );
     await fixture.writeFile('migrations/2026-04-10T00.00.00.000Z_create_person.sql', `create table person(name text)`);
 
-    await fixture.api.migrate();
+    await fixture.api.migrate({});
 
     expect(await fixture.db.sql`select name from person order by name`).toMatchObject([{name: 'alice'}]);
   });
@@ -172,13 +172,13 @@ describe('migrate', () => {
       },
     });
 
-    await fixture.api.migrate();
+    await fixture.api.migrate({});
     await fixture.api.baseline({target: '2026-04-10T00.00.00.000Z_create_person'});
     // forcibly drift live schema so it no longer matches history
     await fixture.db.raw(`drop table person`);
     await fixture.db.raw(`create table person(name text, extra text)`);
 
-    await expect(fixture.api.migrate()).rejects.toMatchInlineSnapshot(`
+    await expect(fixture.api.migrate({})).rejects.toMatchInlineSnapshot(`
       [Error: Cannot migrate from current database state.
 
       Schema Drift
@@ -196,11 +196,11 @@ describe('migrate', () => {
       },
     });
 
-    await fixture.api.migrate();
+    await fixture.api.migrate({});
     // forcibly drift the live schema after all migrations have already been applied
     await fixture.db.raw(`drop table person`);
 
-    await expect(fixture.api.migrate()).rejects.toMatchInlineSnapshot(`
+    await expect(fixture.api.migrate({})).rejects.toMatchInlineSnapshot(`
       [Error: Cannot migrate from current database state.
 
       Schema Drift
@@ -218,7 +218,7 @@ describe('migrate', () => {
       },
     });
 
-    await fixture.api.migrate();
+    await fixture.api.migrate({});
     await fixture.writeMigration(
       'add_pet_and_fail',
       dedent`
@@ -227,7 +227,7 @@ describe('migrate', () => {
     `,
     );
 
-    await expect(fixture.api.migrate()).rejects.toMatchInlineSnapshot(`
+    await expect(fixture.api.migrate({})).rejects.toMatchInlineSnapshot(`
       [Error: Migration 2026-04-10T01.00.00.000Z_add_pet_and_fail failed: near "this": syntax error
 
       The database is still healthy for migrate. Fix the migration and retry.]
@@ -245,7 +245,7 @@ describe('migrate', () => {
       },
     });
 
-    await fixture.api.migrate();
+    await fixture.api.migrate({});
     // a real-world user typo: `commit;` ends the migration transaction early, so the
     // `create table pet` is persisted and the subsequent syntax error cannot be rolled back
     await fixture.writeMigration(
@@ -257,7 +257,7 @@ describe('migrate', () => {
     `,
     );
 
-    await expect(fixture.api.migrate()).rejects.toMatchInlineSnapshot(`
+    await expect(fixture.api.migrate({})).rejects.toMatchInlineSnapshot(`
       [Error: Migration 2026-04-10T01.00.00.000Z_commit_then_fail failed: near "this": syntax error
 
       The database is no longer healthy for migrate. Reconcile before retrying.
@@ -282,7 +282,7 @@ describe('check recommendations', () => {
       },
     });
 
-    await fixture.api.migrate();
+    await fixture.api.migrate({});
 
     await expect(fixture.api.check.all()).resolves.toBeUndefined();
   });
@@ -473,7 +473,7 @@ describe('check recommendations', () => {
       },
     });
 
-    await fixture.api.migrate();
+    await fixture.api.migrate({});
     await fixture.db.raw(`
       drop table person;
       drop table pet;
@@ -573,7 +573,7 @@ describe('baseline', () => {
       },
     });
 
-    await fixture.api.migrate();
+    await fixture.api.migrate({});
 
     await fixture.api.baseline({target: '2026-04-10T00.00.00.000Z_create_person'});
 

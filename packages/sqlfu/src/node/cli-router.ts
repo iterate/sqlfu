@@ -32,39 +32,25 @@ import {
 const base = os.$context<SqlfuCommandRouterContext>();
 const positionalMetadata = {positional: true} as unknown as {description?: string};
 
-function withCliJsonSchema<T extends {toJsonSchema: (...args: any[]) => unknown}>(
-  schema: T,
-  jsonSchemaSource: {toJsonSchema: (...args: any[]) => unknown},
-): T {
-  // The runtime schema accepts `undefined`, but trpc-cli needs the object schema
-  // so it can discover option names, descriptions, and aliases.
-  schema.toJsonSchema = jsonSchemaSource.toJsonSchema.bind(jsonSchemaSource) as typeof schema.toJsonSchema;
-  return schema;
-}
-
 const serveInput = type({
   'port?': 'number.integer > 0',
   'ui?': type('boolean').describe(
     `Also serve @sqlfu/ui on the same port. Requires @sqlfu/ui@${packageJson.version} to be installed.`,
   ),
 });
-const optionalServeInput = withCliJsonSchema(serveInput.or('undefined'), serveInput);
 const killInput = type({
   'port?': 'number.integer > 0',
 });
-const optionalKillInput = withCliJsonSchema(killInput.or('undefined'), killInput);
 const draftInput = type({
   'name?': type('string > 0').describe(
     'The name of the migration to create. If omitted one is derived from the drafted SQL.',
   ),
 });
-const optionalDraftInput = withCliJsonSchema(draftInput.or('undefined'), draftInput);
 const migrateInput = type({
   'yes?': type('boolean').describe(
     `Skip the confirmation prompt and apply pending migrations. Defaults to true when stdin is not a TTY (e.g. CI, piped invocations), false otherwise.`,
   ),
 });
-const optionalMigrateInput = withCliJsonSchema(migrateInput.or('undefined'), migrateInput);
 
 export const router = {
   serve: base
@@ -73,12 +59,12 @@ export const router = {
       description: `Start the local sqlfu backend server used by the hosted studio at sqlfu.dev/ui.`,
     })
     .input(
-      optionalServeInput,
+      serveInput,
     )
     .handler(async ({context, input}) => {
       const project = await loadContextProjectState(context);
-      const params = {port: input?.port, configPath: project.configPath};
-      if (input?.ui) {
+      const params = {port: input.port, configPath: project.configPath};
+      if (input.ui) {
         const ui = await resolveSqlfuUi({sqlfuVersion: packageJson.version});
         await startSqlfuServer({...params, ui});
         context.host.logger.log(`sqlfu ready at http://localhost:${params.port || 56081}`);
@@ -122,10 +108,10 @@ export const router = {
       description: `Stop the process listening on the local sqlfu backend port.`,
     })
     .input(
-      optionalKillInput,
+      killInput,
     )
     .handler(async ({input}) => {
-      const port = input?.port || 56081;
+      const port = input.port || 56081;
       const stopped = await stopProcessesListeningOnPort(port);
 
       if (stopped.length === 0) {
@@ -164,7 +150,7 @@ export const router = {
       description: `Create a migration file from the diff between replayed migrations and definitions.sql.`,
     })
     .input(
-      optionalDraftInput,
+      draftInput,
     )
     .handler(async ({context, input}) => {
       await applyDraftSql(await loadContextConfig(context), input, context.confirm);
@@ -176,10 +162,10 @@ export const router = {
       aliases: {options: {yes: 'y'}},
     })
     .input(
-      optionalMigrateInput,
+      migrateInput,
     )
     .handler(async ({context, input}) => {
-      const yes = input?.yes ?? !process.stdin.isTTY;
+      const yes = input.yes === undefined ? !process.stdin.isTTY : input.yes;
       await applyMigrateSql(await loadContextConfig(context), yes ? autoAcceptConfirm : context.confirm);
     }),
 

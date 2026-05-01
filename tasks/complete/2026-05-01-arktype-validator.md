@@ -14,8 +14,10 @@ date: 2026-05-01
 Done after PR review correction. `packages/sqlfu` first-party CLI/UI router
 inputs use Arktype schemas and the runtime dependency list no longer includes
 Zod. Generated validator support remains intact for Arktype, Valibot, Zod, and
-Zod Mini. The `sqlfu_types` metadata-table implementation is split to the
-stacked follow-up branch.
+Zod Mini. CLI command inputs now use plain object schemas with optional
+properties instead of unioning the whole input object with `undefined`. The
+`sqlfu_types` metadata-table implementation is split to the stacked follow-up
+branch.
 
 ## Summary Ask
 
@@ -55,7 +57,7 @@ Zod Mini support remains public API.
 
 ## Checklist
 
-- [x] Replace direct `zod` imports in `packages/sqlfu/src` with arktype schemas. _`src/node/cli-router.ts` and `src/ui/router.ts` now import `type` from `arktype`; CLI optional-input schemas keep object JSON Schema for trpc-cli._
+- [x] Replace direct `zod` imports in `packages/sqlfu/src` with arktype schemas. _`src/node/cli-router.ts` and `src/ui/router.ts` now import `type` from `arktype`; CLI flag bags are plain object schemas with optional properties, so trpc-cli can read their JSON Schema without a custom `toJsonSchema` shim._
 - [x] Remove `zod` from `packages/sqlfu` direct dependencies and make arktype the
   direct runtime dependency where needed. _Moved `arktype` into `packages/sqlfu` dependencies and moved Zod to dev-only coverage for generated-code tests._
 - [x] ~~Remove `zod` and `zod-mini` from `SqlfuValidator`, config validation, and
@@ -99,4 +101,9 @@ Zod Mini support remains public API.
   - `pnpm --filter sqlfu test --run test/ui-server.test.ts test/cli-config.test.ts test/init.test.ts`
   - `pnpm --filter sqlfu test --run test/generate/fixtures.test.ts -t "legacy generate.zod"`
   - `pnpm --filter sqlfu typecheck`
+  - `pnpm --filter sqlfu test --run`
+- Passing checks after removing the optional-input shim:
+  - `pnpm --filter sqlfu typecheck`
+  - `pnpm --filter sqlfu test --run test/migrations/migrations.test.ts test/migrations/edge-cases.test.ts test/migrations/prefix-config.test.ts`
+  - `pnpm --filter sqlfu test --run test/cli-config.test.ts test/ui-server.test.ts`
   - `pnpm --filter sqlfu test --run`

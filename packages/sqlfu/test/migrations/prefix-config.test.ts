@@ -10,7 +10,7 @@ test('four-digit prefix in a fresh dir starts at 0000', async () => {
     migrationPrefix: 'four-digit',
   });
 
-  await fixture.api.draft();
+  await fixture.api.draft({});
 
   expect(await fixture.listMigrationFiles()).toEqual(['migrations/0000_create_table_person.sql']);
 });
@@ -27,7 +27,7 @@ test('four-digit prefix continues at next integer after the max existing four-di
     migrationPrefix: 'four-digit',
   });
 
-  await fixture.api.draft();
+  await fixture.api.draft({});
 
   expect(await fixture.listMigrationFiles()).toEqual([
     'migrations/0000_create_person.sql',
@@ -51,7 +51,7 @@ test('four-digit numbering uses max+1, not first missing, when there are gaps', 
 
   await fixture.writeFile('migrations/0007_existing_two.sql', `create table existing_two(id int);\n`);
 
-  await fixture.api.draft();
+  await fixture.api.draft({});
 
   const files = await fixture.listMigrationFiles();
   expect(files).toContain('migrations/0008_create_table_person.sql');
@@ -69,7 +69,7 @@ test('four-digit numbering ignores files that do not start with four digits', as
   // a stray non-four-digit file already in the dir should not push the new number up
   await fixture.writeFile('migrations/2024-01-01T00.00.00.000Z_legacy.sql', `create table legacy_kept(id int);\n`);
 
-  await fixture.api.draft();
+  await fixture.api.draft({});
 
   const files = await fixture.listMigrationFiles();
   expect(files.filter((f) => /\/0\d{3}_/.test(f))).toEqual(['migrations/0000_create_table_person.sql']);
@@ -81,7 +81,7 @@ test('object config with prefix: "iso" behaves the same as the bare-string short
     migrationPrefix: 'iso',
   });
 
-  await fixture.api.draft();
+  await fixture.api.draft({});
 
   expect(await fixture.listMigrationFiles()).toEqual(['migrations/2026-04-10T00.00.00.000Z_create_table_person.sql']);
 });
