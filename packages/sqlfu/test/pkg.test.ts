@@ -12,6 +12,7 @@ test('packed package supports normal public imports', async () => {
   await fixture.run('root-import.mjs');
   await fixture.run('api-import.mjs');
   await fixture.run('node-import.mjs');
+  await fixture.run('effect-import.mjs');
 });
 
 async function createPackedPackageFixture() {
@@ -25,6 +26,7 @@ async function createPackedPackageFixture() {
         private: true,
         type: 'module',
         dependencies: {
+          effect: '^3.21.2',
           sqlfu: `file:${tarballPath}`,
         },
       },
@@ -67,6 +69,26 @@ async function createPackedPackageFixture() {
       const dbPath = findMiniflareD1Path('my-dev-app-slug', {miniflareV3Root});
       assert.equal(path.dirname(path.dirname(path.dirname(dbPath))), miniflareV3Root);
       assert.match(dbPath, /\\.sqlite$/);
+    `,
+    'effect-import.mjs': `
+      import assert from 'node:assert/strict';
+      import {DatabaseSync} from 'node:sqlite';
+      import * as Effect from 'effect/Effect';
+      import {createNodeSqliteClient} from 'sqlfu';
+      import {toEffectClient} from 'sqlfu/effect';
+
+      const db = new DatabaseSync(':memory:');
+      try {
+        const client = toEffectClient(createNodeSqliteClient(db));
+        const rows = Effect.runSync(Effect.gen(function*() {
+          yield* client.run({sql: 'create table users(id integer primary key, email text not null)', args: []});
+          yield* client.run({sql: 'insert into users(email) values (?)', args: ['ada@example.com']});
+          return yield* client.all({sql: 'select id, email from users', args: []});
+        }));
+        assert.deepEqual(rows, [{id: 1, email: 'ada@example.com'}]);
+      } finally {
+        db.close();
+      }
     `,
   });
 

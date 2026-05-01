@@ -8,7 +8,7 @@ new_pr: https://github.com/mmkal/sqlfu/pull/83
 
 # Thin Effect Client Interop
 
-Status summary: setup complete, implementation not started. PR #82 was closed because it made Effect support look more Drizzle-like than it really was. Draft PR #83 now tracks the smaller replacement: optional Effect interop for existing sqlfu clients, without generated-code support or claims that sqlfu execution is Effect-native.
+Status summary: implementation mostly complete. PR #82 was closed because it made Effect support look more Drizzle-like than it really was. Draft PR #83 now tracks the smaller replacement: optional `sqlfu/effect` interop for existing sqlfu clients, covering `all`, `run`, `raw`, `prepare`, failures-as-values, and Context/Layer wiring; transaction support is deliberately left out of this thin adapter until it has a safer design.
 
 ## Context
 
@@ -69,15 +69,17 @@ const DB = SqlfuClient.make().pipe(Effect.provide(SqlfuClient.layer(client)));
 
 - [x] Commit this task file before implementation. _Initial task committed in `c5bc520` before product-code edits._
 - [x] Open a draft PR after the task-file commit. _Opened draft PR #83: https://github.com/mmkal/sqlfu/pull/83._
-- [ ] Add a red integration-style test for wrapping sync clients in Effects.
-- [ ] Add the smallest implementation that makes the sync-client Effect wrapper pass.
-- [ ] Add a red integration-style test for wrapping async clients in Effects.
-- [ ] Extend the wrapper so async clients pass through the same Effect API.
-- [ ] Add tests for query failure surfacing in the Effect error channel.
-- [ ] Export the optional Effect interop through a subpath that does not import Effect from the main `sqlfu` entrypoint.
+- [x] Add a red integration-style test for wrapping sync clients in Effects. _Added `packages/sqlfu/test/effect-client.test.ts`; first run failed because `effect` and `../src/effect.js` did not exist._
+- [x] Add the smallest implementation that makes the sync-client Effect wrapper pass. _Added `packages/sqlfu/src/effect.ts` with `toEffectClient` over `all`, `run`, and `raw`._
+- [x] Add a red integration-style test for wrapping async clients in Effects. _Added async node-sqlite coverage in `packages/sqlfu/test/effect-client.test.ts`; the generic operation helper already covered this branch._
+- [x] Extend the wrapper so async clients pass through the same Effect API. _`runOperation` uses sync `Effect.try` for sync clients and `Effect.tryPromise` for async clients._
+- [x] Add tests for query failure surfacing in the Effect error channel. _The missing-table query test matches the `SqlfuError` fields through `Effect.match`._
+- [x] Export the optional Effect interop through a subpath that does not import Effect from the main `sqlfu` entrypoint. _Added `sqlfu/effect` package exports and a packed-package import test._
 - [ ] Document the deliberately limited scope in the PR body.
+- [ ] Decide whether to mark the PR ready or leave it draft after review of the transaction omission.
 
 ## Implementation Notes
 
 - 2026-05-01: Closed PR #82. Started fresh from updated `main` in `../worktrees/sqlfu/effect-client-interop`.
 - 2026-05-01: Opened draft PR #83 after the task-only commit.
+- 2026-05-01: Implemented `sqlfu/effect` as an optional interop subpath. It intentionally exposes no `transaction` wrapper yet: a naive transaction callback would have to run nested Effects inside the underlying transaction callback, which risks turning typed Effect failures back into Effect runtime exceptions. That belongs in a follow-up design if the thin adapter is accepted.
