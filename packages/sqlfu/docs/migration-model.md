@@ -519,6 +519,22 @@ Under `preset: 'd1'` sqlfu reads and writes the same `d1_migrations` table alche
 
 Alchemy uses two different `d1_migrations` schemas: a 3-column remote shape in production D1 and a 4-column local shape (with a `type` column) when running against miniflare. Sqlfu introspects the existing table on first use and adapts its inserts, so the same `preset: 'd1'` config works in both environments.
 
+If you want sqlfu to operate on Alchemy's local dev database, use the Miniflare path helper from `sqlfu/api`:
+
+```ts
+import {defineConfig} from 'sqlfu';
+import {findMiniflareD1Path} from 'sqlfu/api';
+
+export default defineConfig({
+  db: findMiniflareD1Path('my-dev-app-slug'),
+  migrations: {path: './src/server/db/migrations', preset: 'd1'},
+  definitions: './src/server/db/definitions.sql',
+  queries: './src/server/db/queries',
+});
+```
+
+The helper walks up from `process.cwd()` looking for `.alchemy/miniflare/v3` and then derives the D1 sqlite filename from the Alchemy app slug. If the config is evaluated from somewhere else, pass `{miniflareV3Root: '/absolute/path/to/.alchemy/miniflare/v3'}`.
+
 #### Checksum downgrade
 
 Alchemy's `d1_migrations` schema has no checksum column, so under `preset: 'd1'` sqlfu cannot detect that an applied migration's content was edited after the fact. This is a deliberate tradeoff of alchemy compatibility: if you edit an already-applied migration file, `sqlfu migrate` and `sqlfu check` will treat it as a no-op rather than throwing.
