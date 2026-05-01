@@ -17,6 +17,7 @@ import {
 } from '../api.js';
 import {createDefaultInitPreview} from '../init-preview.js';
 import {migrationName, readMigrationHistory} from '../migrations/index.js';
+import {formatSqlFiles} from './format-files.js';
 import {stopProcessesListeningOnPort} from './port-process.js';
 import {generateQueryTypesForConfig} from '../typegen/index.js';
 import {startSqlfuServer} from '../ui/server.js';
@@ -123,6 +124,31 @@ export const router = {
       const sqlfuContext = await loadContextConfig(context);
       const result = await generateQueryTypesForConfig(sqlfuContext.config, sqlfuContext.host);
       return ['Updated generated files:', ...result.writtenFiles.map((filePath) => `  ${filePath}`)].join('\n');
+    }),
+
+  format: base
+    .meta({
+      description: `Format .sql files in place.`,
+    })
+    .input(
+      z.object({
+        paths: z
+          .array(z.string().min(1))
+          .min(1)
+          .meta({positional: true})
+          .describe('One or more .sql file paths or glob patterns.'),
+      }),
+    )
+    .handler(async ({input}) => {
+      const result = await formatSqlFiles(input.paths, process.cwd());
+      const lines: string[] = [];
+      if (result.formatted.length > 0) {
+        lines.push('Formatted files:', ...result.formatted.map((filePath) => `  ${filePath}`));
+      }
+      if (result.unchanged.length > 0) {
+        lines.push('Already formatted:', ...result.unchanged.map((filePath) => `  ${filePath}`));
+      }
+      return lines.join('\n');
     }),
 
   config: base.handler(async ({context}) => {

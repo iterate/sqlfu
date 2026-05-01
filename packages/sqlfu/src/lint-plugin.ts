@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import {formatSql} from './formatter.js';
+import {formatSql, formatSqlFileContents} from './formatter.js';
 
 import type {ESLint, Linter, Rule} from 'eslint';
 import type * as ESTree from 'estree';
@@ -425,19 +425,7 @@ function reapplyTemplateIndent(formatted: string, original: string, indent: stri
   return prefix + indentedBody + suffix;
 }
 
-/**
- * Format a standalone `.sql` file's contents the same way the `format-sql`
- * rule formats inline SQL templates. Pure string-in, string-out; preserves a
- * trailing newline if the input had one. Exported for CLIs, CI scripts, and
- * editor integrations that want to reuse the formatter on `.sql` files.
- */
-export function formatSqlFileContents(contents: string): string {
-  const trailingNewline = contents.endsWith('\n') ? '\n' : '';
-  const body = trailingNewline ? contents.slice(0, -1) : contents;
-  if (!body.trim()) return contents;
-  const formatted = formatSql(body, {style: 'sqlfu'});
-  return formatted + trailingNewline;
-}
+export {formatSqlFileContents};
 
 function escapeForWrappedSql(sql: string): string {
   return sql.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');

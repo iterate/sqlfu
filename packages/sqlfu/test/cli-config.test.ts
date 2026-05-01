@@ -72,6 +72,30 @@ test('generate prints the files it updated', async () => {
   void cwd;
 });
 
+test('format rewrites .sql files from a positional glob', async () => {
+  const root = await createTempFixtureRoot('cli-format');
+  await writeFixtureFiles(root, {
+    'sql/get-posts.sql': 'SELECT * FROM posts WHERE id=1;\n',
+    'sql/nested/get-comments.sql': 'SELECT id, body FROM comments ORDER BY id;',
+  });
+
+  using cwd = chdir(root);
+
+  const output = await runCli(['format', 'sql/**/*.sql']);
+
+  expect(output).toContain('Formatted files:');
+  expect(output).toContain('sql/get-posts.sql');
+  expect(output).toContain('sql/nested/get-comments.sql');
+  await expect(fs.readFile(path.join(root, 'sql/get-posts.sql'), 'utf8')).resolves.toBe(
+    'select *\nfrom posts\nwhere id = 1;\n',
+  );
+  await expect(fs.readFile(path.join(root, 'sql/nested/get-comments.sql'), 'utf8')).resolves.toBe(
+    'select id, body\nfrom comments\norder by id;\n',
+  );
+
+  void cwd;
+});
+
 test('commands that do not need config do not load the selected config file', async () => {
   const root = await createTempFixtureRoot('cli-config-lazy');
   using cwd = chdir(root);
