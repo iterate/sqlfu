@@ -1,5 +1,36 @@
 ---
 import '../styles/landing.css';
+import { renderDemo } from '../landing-demos/render';
+
+const demo = {
+  draft: {
+    definitions: await renderDemo('draft', 'definitions'),
+    terminal: await renderDemo('draft', 'terminal'),
+  },
+  generate: {
+    query: await renderDemo('generate', 'query'),
+    terminal: await renderDemo('generate', 'terminal'),
+    app: await renderDemo('generate', 'app'),
+  },
+  runtime: {
+    app: await renderDemo('runtime', 'app'),
+    node: await renderDemo('runtime', 'node'),
+    bun: await renderDemo('runtime', 'bun'),
+    better: await renderDemo('runtime', 'better'),
+    libsql: await renderDemo('runtime', 'libsql'),
+    wasm: await renderDemo('runtime', 'wasm'),
+    expo: await renderDemo('runtime', 'expo'),
+    do: await renderDemo('runtime', 'do'),
+  },
+  batteries: {
+    cli: await renderDemo('batteries', 'cli'),
+    admin: await renderDemo('batteries', 'admin'),
+    tracing: await renderDemo('batteries', 'tracing'),
+    lint: await renderDemo('batteries', 'lint'),
+    formatter: await renderDemo('batteries', 'formatter'),
+    skill: await renderDemo('batteries', 'skill'),
+  },
+};
 ---
 
 <!doctype html>
@@ -87,16 +118,12 @@ import '../styles/landing.css';
           </div>
           <div class="artifact-pair feature-demo" aria-label="Schema edit and draft command">
             <figure class="artifact artifact-tall">
-              <figcaption>definitions.sql</figcaption>
-              <pre><code><span class="tok-keyword">create table</span> <span class="tok-name">posts</span> (
-  <span class="tok-name">id</span> <span class="tok-keyword">integer primary key autoincrement</span>,
-  <span class="tok-name">slug</span> <span class="tok-keyword">text not null unique</span>,
-  <span class="tok-name">title</span> <span class="tok-keyword">text not null</span>
-<span class="diff-line diff-added" data-type-speed="schema-add" data-reveal-line data-reveal-pause="620" data-hide-typing-whitespace>+ <span class="tok-name">published</span> <span class="tok-keyword">integer</span></span>);</code></pre>
+              <figcaption>{demo.draft.definitions.caption}</figcaption>
+              <Fragment set:html={demo.draft.definitions.html} />
             </figure>
             <figure class="artifact terminal artifact-tall">
               <figcaption class="artifact-caption-actions">
-                <span>terminal</span>
+                <span>{demo.draft.terminal.caption}</span>
                 <button class="demo-replay" type="button" data-replay-demo aria-label="Replay schema and migration animation" title="Replay animation">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M20 11a8 8 0 1 0-2.34 5.66" />
@@ -104,23 +131,7 @@ import '../styles/landing.css';
                   </svg>
                 </button>
               </figcaption>
-              <pre><code><span data-type-speed="command" data-run-command="true"><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu draft</span></span>
-<span class="terminal-output terminal-block" data-terminal-output data-output-pause="1450">│
-◇  Create migration file? ─────────────────╮
-│                                          │
-│  alter table posts                       │
-│  add column published integer;           │
-│                                          │
-<span data-corner-before-next>├──────────────────────────────────────────╯
-</span><span data-corner-after-next>╰──────────────────────────────────────────╯
-</span><span data-dismiss-before-next>│
-◆  Continue with this body?
-│  ● Yes
-│  ○ No
-│  ○ Edit with code
-│  ○ Edit with vi
-│  ○ Edit with nano</span>
-<span class="terminal-output terminal-block" data-terminal-output data-output-pause="0">Wrote migrations/20260501090000_add_published_to_posts.sql</span></code></pre>
+              <Fragment set:html={demo.draft.terminal.html} />
             </figure>
           </div>
         </article>
@@ -130,18 +141,14 @@ import '../styles/landing.css';
             <div class="eyebrow">2. typescript generation</div>
             <h3>Your queries as SQL</h3>
             <p>
-              Query files are the source. <code>sqlfu generate</code> determines their types base on <code>definitions.sql</code>, then emits TypeScript wrappers with typed params, typed result rows, and the query name attached for runtime use.
+              Query files are the source. <code>sqlfu generate</code> determines their types based on <code>definitions.sql</code>, then emits TypeScript wrappers with typed params, typed result rows, and the query name attached for runtime use.
             </p>
             <a href="/docs/typegen">Read about type generation</a>
           </div>
           <div class="artifact-pair feature-demo" aria-label="Query file and generated TypeScript">
             <figure class="artifact artifact-tall">
-              <figcaption>sql/get-posts.sql</figcaption>
-              <pre><code data-type-speed="fast"><span class="tok-keyword">select</span> <span class="tok-name">id</span>, <span class="tok-name">slug</span>, <span class="tok-name">title</span>
-<span class="tok-keyword">from</span> <span class="tok-name">posts</span>
-<span class="tok-keyword">where</span> <span class="tok-name">published</span> = <span class="tok-number">1</span>
-<span class="tok-keyword">order by</span> <span class="tok-name">id</span> <span class="tok-keyword">desc</span>
-<span class="tok-keyword">limit</span> <span class="tok-param">:limit</span>;</code></pre>
+              <figcaption>{demo.generate.query.caption}</figcaption>
+              <Fragment set:html={demo.generate.query.html} />
             </figure>
             <div class="artifact artifact-tall artifact-tabs" data-tabbed-artifact>
               <div class="artifact-tablist" role="tablist" aria-label="Type generation output">
@@ -155,20 +162,10 @@ import '../styles/landing.css';
                 </button>
               </div>
               <div class="artifact-tab-panel terminal is-active" role="tabpanel" data-terminal-artifact data-tab-panel="terminal">
-                <pre><code><span data-type-speed="command" data-run-command="true"><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu generate</span></span>
-
-<span class="terminal-output terminal-block" data-terminal-output data-output-pause="820">Updated generated file:
-  ./.generated/get-posts.sql.ts</span></code></pre>
+                <Fragment set:html={demo.generate.terminal.html} />
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-replacement-artifact data-tab-panel="src">
-                <pre><code><span data-type-speed="medium"><span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
-
-<span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
-</span><span class="tok-comment generated-type-hint" data-pop-after-typing>//    ^? Array&lt;&#123;id: number; slug: string; title: string&#125;&gt;</span><span data-type-speed="medium">
-
-<span class="tok-name">posts</span>.<span class="tok-prop">forEach</span>((<span class="tok-name">post</span>) =&gt; &#123;
-  <span class="tok-name">console</span>.<span class="tok-prop">log</span>(<span class="tok-name">post</span>.<span class="tok-prop">slug</span> + <span class="tok-string">": "</span> + <span class="tok-name">post</span>.<span class="tok-prop">title</span>);
-&#125;);</span></code></pre>
+                <Fragment set:html={demo.generate.app.html} />
               </div>
             </div>
           </div>
@@ -179,23 +176,14 @@ import '../styles/landing.css';
             <div class="eyebrow">3. runtime</div>
             <h3>One client interface, many drivers.</h3>
             <p>
-              Your app code takes the sqlfu <code>Client</code> interface. <code>sqlfu</code> ships with many (very thin!) adapaters, with graceful fallback for features like prepared statements depending on client support, and proper handling of synchronous clients. Pick from Node, Bun, better-sqlite3, libsql, expo, browser via wasm, Durable Object storage, and more.
+              Your app code takes the sqlfu <code>Client</code> interface. <code>sqlfu</code> ships with many (very thin!) adapters, with graceful fallback for features like prepared statements depending on client support, and proper handling of synchronous clients. Pick from Node, Bun, better-sqlite3, libsql, expo, browser via wasm, Durable Object storage, and more.
             </p>
             <a href="/docs/adapters">Choose an adapter</a>
           </div>
           <div class="artifact-pair feature-demo" aria-label="Runtime client adapters">
             <figure class="artifact artifact-tall">
-              <figcaption>src/app.ts</figcaption>
-              <pre><code data-type-speed="fast"><span class="tok-keyword">import type</span> &#123;<span class="tok-name">Client</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
-
-<span class="tok-keyword">export async function</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">client</span>: <span class="tok-name">Client</span>) &#123;
-  <span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
-
-  <span class="tok-keyword">return</span> <span class="tok-name">posts</span>.<span class="tok-prop">map</span>((<span class="tok-name">post</span>) =&gt; &#123;
-    <span class="tok-keyword">return</span> <span class="tok-string">"&lt;article&gt;&lt;h2&gt;"</span> + <span class="tok-name">post</span>.<span class="tok-prop">title</span> + <span class="tok-string">"&lt;/h2&gt;&lt;/article&gt;"</span>;
-  &#125;).<span class="tok-prop">join</span>(<span class="tok-string">""</span>);
-&#125;</code></pre>
+              <figcaption>{demo.runtime.app.caption}</figcaption>
+              <Fragment set:html={demo.runtime.app.html} />
             </figure>
             <div class="artifact artifact-tall artifact-tabs runtime-tabs" data-tabbed-artifact data-default-tab="node">
               <div class="artifact-tablist" role="tablist" aria-label="Runtime adapter examples">
@@ -214,83 +202,31 @@ import '../styles/landing.css';
                 </button>
               </div>
               <div class="artifact-tab-panel is-active" role="tabpanel" data-tab-panel="node">
-                <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">DatabaseSync</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"node:sqlite"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">createNodeSqliteClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
-
-<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createNodeSqliteClient</span>(
-  <span class="tok-keyword">new</span> <span class="tok-name">DatabaseSync</span>(<span class="tok-string">"app.db"</span>),
-);
-<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
+                <Fragment set:html={demo.runtime.node.html} />
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="bun">
-                <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">Database</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"bun:sqlite"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">createBunClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
-
-<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createBunClient</span>(
-  <span class="tok-keyword">new</span> <span class="tok-name">Database</span>(<span class="tok-string">"app.db"</span>),
-);
-<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
+                <Fragment set:html={demo.runtime.bun.html} />
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="better">
-                <pre><code><span class="tok-keyword">import</span> <span class="tok-name">Database</span> <span class="tok-keyword">from</span> <span class="tok-string">"better-sqlite3"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">createBetterSqlite3Client</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
-
-<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createBetterSqlite3Client</span>(
-  <span class="tok-keyword">new</span> <span class="tok-name">Database</span>(<span class="tok-string">"app.db"</span>),
-);
-<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
+                <Fragment set:html={demo.runtime.better.html} />
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="libsql">
-                <pre><code><span class="tok-keyword">import</span> <span class="tok-name">Database</span> <span class="tok-keyword">from</span> <span class="tok-string">"libsql"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">createLibsqlSyncClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
-
-<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createLibsqlSyncClient</span>(
-  <span class="tok-keyword">new</span> <span class="tok-name">Database</span>(<span class="tok-string">"app.db"</span>),
-);
-<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
+                <Fragment set:html={demo.runtime.libsql.html} />
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="wasm">
-                <pre><code><span class="tok-keyword">import</span> <span class="tok-name">sqlite3InitModule</span> <span class="tok-keyword">from</span> <span class="tok-string">"@sqlite.org/sqlite-wasm"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">createSqliteWasmClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
-
-<span class="tok-keyword">const</span> <span class="tok-name">sqlite3</span> = <span class="tok-keyword">await</span> <span class="tok-name">sqlite3InitModule</span>();
-<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createSqliteWasmClient</span>(
-  <span class="tok-keyword">new</span> <span class="tok-name">sqlite3</span>.<span class="tok-prop">oo1</span>.<span class="tok-name">DB</span>(<span class="tok-string">":memory:"</span>),
-);
-<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
+                <Fragment set:html={demo.runtime.wasm.html} />
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="expo">
-                <pre><code><span class="tok-keyword">import</span> * <span class="tok-keyword">as</span> <span class="tok-name">SQLite</span> <span class="tok-keyword">from</span> <span class="tok-string">"expo-sqlite"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">createExpoSqliteClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
-
-<span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createExpoSqliteClient</span>(
-  <span class="tok-keyword">await</span> <span class="tok-name">SQLite</span>.<span class="tok-prop">openDatabaseAsync</span>(<span class="tok-string">"app.db"</span>),
-);
-<span class="tok-keyword">const</span> <span class="tok-name">html</span> = <span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>);</code></pre>
+                <Fragment set:html={demo.runtime.expo.html} />
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="do">
-                <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">DurableObject</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"cloudflare:workers"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">createDurableObjectClient</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">renderFeed</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./src/app.ts"</span>;
-
-<span class="tok-keyword">export class</span> <span class="tok-name">Blog</span> <span class="tok-keyword">extends</span> <span class="tok-name">DurableObject</span> &#123;
-  <span class="tok-keyword">async</span> <span class="tok-prop">fetch</span>() &#123;
-    <span class="tok-keyword">const</span> <span class="tok-name">db</span> = <span class="tok-name">createDurableObjectClient</span>(<span class="tok-keyword">this</span>.<span class="tok-prop">ctx</span>.<span class="tok-prop">storage</span>);
-    <span class="tok-keyword">return new</span> <span class="tok-name">Response</span>(<span class="tok-keyword">await</span> <span class="tok-name">renderFeed</span>(<span class="tok-name">db</span>));
-  &#125;
-&#125;</code></pre>
+                <Fragment set:html={demo.runtime.do.html} />
               </div>
             </div>
           </div>
         </article>
 
-        <article class="feature-row value-panel feature-showcase-row">
+        <article class="feature-row value-panel feature-showcase-row" data-animation-key="batteries" data-walkthrough-step>
           <div class="feature-copy">
             <div class="eyebrow">4. batteries</div>
             <h3>Built-in goodies (if you want them)</h3>
@@ -310,22 +246,14 @@ import '../styles/landing.css';
             <div class="feature-showcase-stage">
               <section class="feature-showcase-panel is-active" role="tabpanel" data-feature-panel="cli">
                 <figure class="artifact terminal">
-                  <figcaption>terminal</figcaption>
-                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu check</span>
-<span class="terminal-output">definitions.sql, migrations, and database agree</span>
-
-<span class="term-prompt">$</span> <span class="tok-command">npx sqlfu migrate</span>
-<span class="terminal-output">Applied 20260501090000_add_published_to_posts.sql</span>
-
-<span class="term-prompt">$</span> <span class="tok-command">npx sqlfu sync</span>
-<span class="terminal-output">Database already matches definitions.sql</span></code></pre>
+                  <figcaption>{demo.batteries.cli.caption}</figcaption>
+                  <Fragment set:html={demo.batteries.cli.html} />
                 </figure>
               </section>
               <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="admin">
                 <figure class="artifact terminal artifact-compact">
-                  <figcaption>terminal</figcaption>
-                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu</span>
-<span class="terminal-output">sqlfu ready at https://sqlfu.dev/ui</span></code></pre>
+                  <figcaption>{demo.batteries.admin.caption}</figcaption>
+                  <Fragment set:html={demo.batteries.admin.html} />
                 </figure>
                 <figure class="ui-shot">
                   <img src="/assets/landing/sqlfu-ui-crop.png" alt="sqlfu UI showing a customers table" loading="lazy" />
@@ -334,19 +262,8 @@ import '../styles/landing.css';
               <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="tracing">
                 <div class="artifact-pair artifact-pair-uneven">
                   <figure class="artifact">
-                    <figcaption>src/server.ts</figcaption>
-                    <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">instrument</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
-
-<span class="tok-keyword">const</span> <span class="tok-name">client</span> = <span class="tok-name">instrument</span>(
-  <span class="tok-name">baseClient</span>,
-  <span class="tok-name">instrument</span>.<span class="tok-prop">otel</span>(&#123;<span class="tok-prop">tracer</span>&#125;),
-);
-
-<span class="tok-name">app</span>.<span class="tok-prop">get</span>(<span class="tok-string">"/posts"</span>, <span class="tok-keyword">async</span> (<span class="tok-name">c</span>) =&gt; &#123;
-  <span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
-  <span class="tok-keyword">return</span> <span class="tok-name">c</span>.<span class="tok-prop">json</span>(<span class="tok-name">posts</span>);
-&#125;);</code></pre>
+                    <figcaption>{demo.batteries.tracing.caption}</figcaption>
+                    <Fragment set:html={demo.batteries.tracing.html} />
                   </figure>
                   <div class="trace-shot" aria-label="Example trace view">
                     <div class="trace-shot-header">
@@ -377,35 +294,20 @@ import '../styles/landing.css';
               </section>
               <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="lint">
                 <figure class="artifact terminal">
-                  <figcaption>terminal</figcaption>
-                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx eslint sql/get-posts.sql src/app.ts</span>
-
-<span class="terminal-output">sql/get-posts.sql
-  1:1  error  generated wrapper is stale; run npx sqlfu generate
-       sqlfu/generated-query-freshness
-
-src/app.ts
-  8:21 error  use ./sql/.generated/get-posts.sql.ts instead
-       sqlfu/query-naming</span></code></pre>
+                  <figcaption>{demo.batteries.lint.caption}</figcaption>
+                  <Fragment set:html={demo.batteries.lint.html} />
                 </figure>
               </section>
               <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="formatter">
                 <figure class="artifact terminal">
-                  <figcaption>terminal</figcaption>
-                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu format "sql/**/*.sql"</span>
-
-<span class="terminal-output">Formatted files:
-  sql/get-posts.sql
-  sql/get-comments.sql</span></code></pre>
+                  <figcaption>{demo.batteries.formatter.caption}</figcaption>
+                  <Fragment set:html={demo.batteries.formatter.html} />
                 </figure>
               </section>
               <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="skill">
                 <figure class="artifact terminal">
-                  <figcaption>terminal</figcaption>
-                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx skills add mmkal/sqlfu/skills/using-sqlfu</span>
-
-<span class="terminal-output">Installed using-sqlfu
-Agents now know to edit SQL first, run sqlfu draft, and regenerate wrappers.</span></code></pre>
+                  <figcaption>{demo.batteries.skill.caption}</figcaption>
+                  <Fragment set:html={demo.batteries.skill.html} />
                 </figure>
               </section>
             </div>
@@ -528,6 +430,32 @@ Agents now know to edit SQL first, run sqlfu draft, and regenerate wrappers.</sp
             }
           };
 
+          const typingTargetsForRow = row => {
+            return Array.from(row.querySelectorAll('[data-type-speed]')).filter(target => {
+              const featurePanel = target.closest('[data-feature-panel]');
+              return !featurePanel || featurePanel.classList.contains('is-active');
+            });
+          };
+
+          const terminalOutputsForCommand = (target, terminal) => {
+            const code = target.closest('code');
+            if (!code) return Array.from(terminal?.querySelectorAll('[data-terminal-output]') || []);
+
+            const outputs = [];
+            let afterTarget = false;
+            for (const child of code.children) {
+              if (child === target) {
+                afterTarget = true;
+                continue;
+              }
+              if (!afterTarget) continue;
+              if (child.matches('[data-type-speed][data-run-command="true"]')) break;
+              if (child.matches('[data-terminal-output]')) outputs.push(child);
+            }
+
+            return outputs;
+          };
+
           const setReplayState = (row, state) => {
             row.dataset.walkthroughState = state;
             for (const button of row.querySelectorAll('[data-replay-demo]')) {
@@ -543,7 +471,7 @@ Agents now know to edit SQL first, run sqlfu draft, and regenerate wrappers.</sp
             setReplayState(row, 'running');
 
             try {
-              for (const target of row.querySelectorAll('[data-type-speed]')) {
+              for (const target of typingTargetsForRow(row)) {
                 const completed = await revealTyping(target, isCurrent);
                 if (!completed || !isCurrent()) return;
 
@@ -552,7 +480,7 @@ Agents now know to edit SQL first, run sqlfu draft, and regenerate wrappers.</sp
                   if (terminal) terminal.classList.add('is-running');
                   await sleep(650);
                   let previousOutput = null;
-                  for (const output of terminal?.querySelectorAll('[data-terminal-output]') || []) {
+                  for (const output of terminalOutputsForCommand(target, terminal)) {
                     if (!isCurrent()) return;
                     if (previousOutput) {
                       if (previousOutput.hasAttribute('data-dismiss-before-next')) {
@@ -618,6 +546,7 @@ Agents now know to edit SQL first, run sqlfu draft, and regenerate wrappers.</sp
           for (const row of rows) {
             resetRow(row);
             setReplayState(row, 'idle');
+            row.addEventListener('landing-demo-replay', () => void playRow(row));
             for (const replayButton of row.querySelectorAll('[data-replay-demo]')) {
               replayButton.addEventListener('click', () => void playRow(row));
             }
@@ -676,6 +605,7 @@ Agents now know to edit SQL first, run sqlfu draft, and regenerate wrappers.</sp
             for (const option of showcase.querySelectorAll('[data-feature-for]')) {
               option.addEventListener('click', () => {
                 switchFeature(option.dataset.featureFor || 'admin');
+                showcase.closest('[data-walkthrough-step]')?.dispatchEvent(new CustomEvent('landing-demo-replay'));
               });
             }
           }
