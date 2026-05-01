@@ -335,18 +335,17 @@ import '../styles/landing.css';
                 <div class="artifact-pair artifact-pair-uneven">
                   <figure class="artifact">
                     <figcaption>src/server.ts</figcaption>
-                    <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">Hono</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"hono"</span>;
-<span class="tok-keyword">import</span> &#123;<span class="tok-name">instrument</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
+                    <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">instrument</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
 <span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
 
-<span class="tok-keyword">const</span> <span class="tok-name">app</span> = <span class="tok-keyword">new</span> <span class="tok-name">Hono</span>();
 <span class="tok-keyword">const</span> <span class="tok-name">client</span> = <span class="tok-name">instrument</span>(
   <span class="tok-name">baseClient</span>,
   <span class="tok-name">instrument</span>.<span class="tok-prop">otel</span>(&#123;<span class="tok-prop">tracer</span>&#125;),
 );
 
 <span class="tok-name">app</span>.<span class="tok-prop">get</span>(<span class="tok-string">"/posts"</span>, <span class="tok-keyword">async</span> (<span class="tok-name">c</span>) =&gt; &#123;
-  <span class="tok-keyword">return</span> <span class="tok-name">c</span>.<span class="tok-prop">json</span>(<span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;));
+  <span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
+  <span class="tok-keyword">return</span> <span class="tok-name">c</span>.<span class="tok-prop">json</span>(<span class="tok-name">posts</span>);
 &#125;);</code></pre>
                   </figure>
                   <div class="trace-shot" aria-label="Example trace view">
