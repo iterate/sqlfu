@@ -15,8 +15,9 @@ import type {SqlfuConfig, SqlfuProjectConfig} from './types.js';
 
 const adapterId = 'sqlfu';
 const adapterName = 'sqlfu Better Auth adapter';
-const beginMarker = '-- sqlfu:better-auth begin';
-const endMarker = '-- sqlfu:better-auth end';
+const managedSectionName = 'sqlfu:better-auth';
+const beginMarker = `-- #region ${managedSectionName}`;
+const endMarker = `-- #endregion ${managedSectionName}`;
 
 export interface SqlfuBetterAuthAdapterInput<Options extends BetterAuthOptions = BetterAuthOptions> {
   sqlfu: SqlfuConfig | SqlfuProjectConfig;

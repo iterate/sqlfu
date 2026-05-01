@@ -119,8 +119,8 @@ npx sqlfu migrate
 The `--output` path must resolve to `sqlfuConfig.definitions`. The definitions file may be empty, or it must contain exactly one managed section:
 
 ```sql
--- sqlfu:better-auth begin
--- sqlfu:better-auth end
+-- #region sqlfu:better-auth
+-- #endregion sqlfu:better-auth
 ```
 
 ## Local and embedded
