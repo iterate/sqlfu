@@ -1989,7 +1989,14 @@ function DataCellExpandTrigger(input: {meta: DataCellMeta}) {
         </button>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content className="rqp-popover rqp-popover-wide" align="end" sideOffset={6}>
+        <Popover.Content
+          className="rqp-popover rqp-popover-wide"
+          align="end"
+          sideOffset={6}
+          onClick={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           <CellDetailPopoverBody
             label={input.meta.label}
             selectedOriginalValue={input.meta.originalText}
