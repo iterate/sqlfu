@@ -5,17 +5,15 @@ import dedent from 'dedent';
 import {execaCommand} from 'execa';
 import {expect, test} from 'vitest';
 
-import {sqlfuBetterAuthAdapter} from '../src/better-auth.js';
+import {sqlfuBetterAuthAdapter as sqlfuBetterAuthAdapterUnderTest} from '../src/better-auth.js';
 import {extractSchema} from '../src/sqlite-text.js';
 import {createTempFixtureRoot, writeFixtureFiles} from './fs-fixture.js';
 import {createMigrationsFixture} from './migrations/fixture.js';
 
 const packageRoot = path.resolve(path.dirname(import.meta.filename), '..');
 
-declare const fixtureBetterAuth: any;
-declare const fixtureCreateBaseAdapter: any;
-declare const fixtureSqlfuBetterAuthAdapter: any;
-declare const fixtureSqlfuConfig: any;
+declare const betterAuth: any;
+declare const sqlfuBetterAuthAdapter: any;
 
 test('sqlfuBetterAuthAdapter preserves runtime methods and wraps createSchema', async () => {
   await using fixture = await createBetterAuthFixture({
@@ -26,7 +24,7 @@ test('sqlfuBetterAuthAdapter preserves runtime methods and wraps createSchema', 
 
   const create = async () => ({id: 'created-user'});
   const baseAdapter = createBaseAdapter({create});
-  const adapter = sqlfuBetterAuthAdapter({
+  const adapter = sqlfuBetterAuthAdapterUnderTest({
     sqlfu: {definitions: './definitions.sql', queries: './sql'},
     projectRoot: fixture.root,
     adapter: () => baseAdapter,
@@ -217,7 +215,7 @@ test('createSchema uses Better Auth scratch database output instead of wrapped a
       'definitions.sql': '',
     },
   });
-  const adapter = sqlfuBetterAuthAdapter({
+  const adapter = sqlfuBetterAuthAdapterUnderTest({
     sqlfu: {definitions: './definitions.sql', queries: './sql'},
     projectRoot: fixture.root,
     adapter: () =>
@@ -268,11 +266,8 @@ test('generated Better Auth definitions can feed sqlfu draft and migrate', async
 
 test('createBetterAuthFixture runs auth generate and can reconfigure auth.ts', async () => {
   await using fixture = await createBetterAuthFixture(() => {
-    return fixtureBetterAuth({
-      database: fixtureSqlfuBetterAuthAdapter({
-        sqlfu: fixtureSqlfuConfig,
-        adapter: () => fixtureCreateBaseAdapter(),
-      }),
+    return betterAuth({
+      database: sqlfuBetterAuthAdapter(),
       user: {
         additionalFields: {
           role: {
@@ -291,11 +286,8 @@ test('createBetterAuthFixture runs auth generate and can reconfigure auth.ts', a
   expect(firstDefinitionsSql).toContain('"role" text');
 
   await fixture.reconfigure(() => {
-    return fixtureBetterAuth({
-      database: fixtureSqlfuBetterAuthAdapter({
-        sqlfu: fixtureSqlfuConfig,
-        adapter: () => fixtureCreateBaseAdapter(),
-      }),
+    return betterAuth({
+      database: sqlfuBetterAuthAdapter(),
       user: {
         additionalFields: {
           handle: {
@@ -318,8 +310,8 @@ test('createBetterAuthFixture runs auth generate and can reconfigure auth.ts', a
 
 test('auth generate can rely on sqlfu config when no adapter input or output file is passed', async () => {
   await using fixture = await createBetterAuthFixture(() => {
-    return fixtureBetterAuth({
-      database: fixtureSqlfuBetterAuthAdapter(),
+    return betterAuth({
+      database: sqlfuBetterAuthAdapter(),
     });
   });
 
@@ -395,64 +387,13 @@ async function writeAuthConfig(root: string, fn: BetterAuthFixtureFactory) {
       import {betterAuth} from 'better-auth';
       import {sqlfuBetterAuthAdapter} from 'sqlfu/better-auth';
 
-      const sqlfuConfig = {
-        definitions: './definitions.sql',
-        queries: './sql',
-      };
-      const fixtureBetterAuth = betterAuth;
-      const fixtureSqlfuBetterAuthAdapter = sqlfuBetterAuthAdapter;
-      const fixtureSqlfuConfig = sqlfuConfig;
-
-      const createBaseAdapter = () => {
-        const baseAdapter = {
-          id: 'kysely',
-          async create() {
-            return {};
-          },
-          async findOne() {
-            return null;
-          },
-          async findMany() {
-            return [];
-          },
-          async count() {
-            return 0;
-          },
-          async update() {
-            return null;
-          },
-          async updateMany() {
-            return 0;
-          },
-          async delete() {},
-          async deleteMany() {
-            return 0;
-          },
-          async transaction(callback) {
-            return callback(baseAdapter);
-          },
-          options: {
-            adapterConfig: {
-              adapterId: 'kysely',
-              adapterName: 'Kysely Adapter',
-              supportsBooleans: false,
-            },
-          },
-        };
-
-        return baseAdapter;
-      };
-      const fixtureCreateBaseAdapter = createBaseAdapter;
-
-      const getAuth = ${fn.toString()};
-
-      export const auth = getAuth();
+      export const auth = (${fn.toString()})();
     `,
   );
 }
 
 function createAdapterForFixture(fixture: Awaited<ReturnType<typeof createBetterAuthFixture>>) {
-  return sqlfuBetterAuthAdapter({
+  return sqlfuBetterAuthAdapterUnderTest({
     sqlfu: {definitions: './definitions.sql', queries: './sql'},
     projectRoot: fixture.root,
     adapter: () => createBaseAdapter(),
