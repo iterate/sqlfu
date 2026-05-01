@@ -3,7 +3,7 @@ status: ready
 size: large
 branch: sqlfu-types-metadata
 base: arktype-validator
-pr: TBD
+pr: 85
 date: 2026-05-01
 ---
 
