@@ -385,6 +385,7 @@ function attrsForAnnotations(annotations: Record<string, string | true>, skip = 
     attrs.push('data-hide-typing-whitespace');
   }
   if (annotations['run-command'] && !skip.has('run-command')) {
+    classes.push('terminal-command-line');
     attrs.push('data-run-command="true"');
   }
   if (annotations['pop-after-typing'] && !skip.has('pop-after-typing')) {

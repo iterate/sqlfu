@@ -440,6 +440,11 @@ a {
   min-height: 5.75rem;
 }
 
+.artifact.terminal pre,
+.artifact-tab-panel.terminal pre {
+  line-height: 1rem;
+}
+
 .tok-keyword {
   color: var(--syntax-keyword);
   font-weight: 650;
@@ -473,6 +478,11 @@ a {
 
 .term-prompt {
   color: var(--muted);
+}
+
+.terminal-command-line {
+  display: block;
+  padding-bottom: 0.1rem;
 }
 
 .terminal-output {
@@ -653,6 +663,14 @@ a {
 
 .landing-anim-ready .typed-char {
   opacity: 0;
+}
+
+.landing-anim-ready .terminal-command-line .term-prompt {
+  opacity: 0;
+}
+
+.landing-anim-ready .terminal-command-line.is-prompt-visible .term-prompt {
+  opacity: 1;
 }
 
 .landing-anim-ready .typed-char.is-visible {

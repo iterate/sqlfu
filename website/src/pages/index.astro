@@ -367,7 +367,8 @@ const demo = {
             const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
             let node = walker.nextNode();
             while (node) {
-              if (node.nodeValue) textNodes.push(node);
+              const parent = node.parentElement;
+              if (node.nodeValue && !parent?.closest('.term-prompt')) textNodes.push(node);
               node = walker.nextNode();
             }
 
@@ -387,6 +388,28 @@ const demo = {
 
             target.dataset.typingPrepared = 'true';
             return Array.from(target.querySelectorAll('.typed-char'));
+          };
+
+          const isTypingTargetActive = target => {
+            const featurePanel = target.closest('[data-feature-panel]');
+            return !featurePanel || featurePanel.classList.contains('is-active');
+          };
+
+          const typingTargetsForRow = row => {
+            return Array.from(row.querySelectorAll('[data-type-speed]')).filter(isTypingTargetActive);
+          };
+
+          const showInitialCommandPrompts = row => {
+            const terminals = new Set();
+            for (const target of typingTargetsForRow(row)) {
+              if (target.dataset.runCommand !== 'true') continue;
+
+              const terminal = target.closest('.artifact');
+              if (!terminal || terminals.has(terminal)) continue;
+
+              target.classList.add('is-prompt-visible');
+              terminals.add(terminal);
+            }
           };
 
           const resetRow = row => {
@@ -416,13 +439,20 @@ const demo = {
             for (const terminal of row.querySelectorAll('.artifact.terminal')) {
               terminal.classList.remove('is-running', 'is-done', 'is-replaced');
             }
+            for (const commandLine of row.querySelectorAll('.terminal-command-line')) {
+              commandLine.classList.remove('is-prompt-visible');
+            }
             for (const tabbed of row.querySelectorAll('[data-tabbed-artifact]')) {
               switchArtifactTab(tabbed, tabbed.dataset.defaultTab || 'terminal');
               tabbed.classList.remove('is-running', 'is-done');
             }
+            showInitialCommandPrompts(row);
           };
 
           const revealTyping = async (target, isCurrent) => {
+            if (target.dataset.runCommand === 'true') {
+              target.classList.add('is-prompt-visible');
+            }
             if (target.hasAttribute('data-reveal-line')) {
               target.classList.add('is-visible');
               await sleep(Number(target.dataset.revealPause || 0));
@@ -453,13 +483,6 @@ const demo = {
             for (const panel of tabbed.querySelectorAll('[data-tab-panel]')) {
               panel.classList.toggle('is-active', panel.dataset.tabPanel === activeTab);
             }
-          };
-
-          const typingTargetsForRow = row => {
-            return Array.from(row.querySelectorAll('[data-type-speed]')).filter(target => {
-              const featurePanel = target.closest('[data-feature-panel]');
-              return !featurePanel || featurePanel.classList.contains('is-active');
-            });
           };
 
           const terminalOutputsForCommand = (target, terminal) => {
