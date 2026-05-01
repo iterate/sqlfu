@@ -157,6 +157,8 @@ async function ensureTypecheckProject(): Promise<Project> {
         'zod/mini': [path.join(packageRoot, 'node_modules', 'zod', 'mini')],
         valibot: [path.join(packageRoot, 'node_modules', 'valibot')],
         arktype: [path.join(packageRoot, 'node_modules', 'arktype')],
+        effect: [path.join(packageRoot, 'node_modules', 'effect')],
+        'effect/*': [path.join(packageRoot, 'node_modules', 'effect', '*')],
       },
       types: ['node'],
     },

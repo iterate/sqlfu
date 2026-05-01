@@ -167,6 +167,15 @@ export interface SqlfuGenerateConfig {
    */
   sync?: boolean;
   /**
+   * When true, emit a generated Effect service tag in `.generated/effect.ts` and re-export it
+   * from `.generated/index.ts`. The service binds every generated query wrapper to a provided
+   * sqlfu client so Effect users can `yield* SqlfuQueries` inside `Effect.gen`.
+   *
+   * This is opt-in because the generated file imports `effect/*`; projects that enable it should
+   * install `effect` alongside sqlfu.
+   */
+  effect?: boolean;
+  /**
    * Extension used in generated `.generated/index.ts` barrel re-exports (`./tables.js` vs
    * `./tables.ts`). If omitted, sqlfu infers it from the nearest `tsconfig.json`:
    * `.ts` when `allowImportingTsExtensions` / `rewriteRelativeImportExtensions` is on,
@@ -280,6 +289,7 @@ export interface SqlfuProjectConfig {
     validator: SqlfuValidator | null;
     prettyErrors: boolean;
     sync: boolean;
+    effect: boolean;
     importExtension: '.js' | '.ts';
     authority: SqlfuAuthority;
   };

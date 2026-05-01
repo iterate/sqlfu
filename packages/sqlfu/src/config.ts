@@ -36,6 +36,7 @@ export function resolveProjectConfig(
       validator: fileConfig.generate?.validator ?? null,
       prettyErrors: fileConfig.generate?.prettyErrors !== false,
       sync: fileConfig.generate?.sync === true,
+      effect: fileConfig.generate?.effect === true,
       importExtension: fileConfig.generate?.importExtension ?? inferImportExtension(tsconfigPreferences),
       authority: fileConfig.generate?.authority ?? 'desired_schema',
     },
@@ -122,6 +123,11 @@ export function assertConfigShape(configPath: string, config: object): asserts c
     const sync = generateRecord.sync;
     if (sync !== undefined && typeof sync !== 'boolean') {
       throw new Error(`Invalid sqlfu config at ${configPath}: "generate.sync" must be a boolean.`);
+    }
+
+    const effect = generateRecord.effect;
+    if (effect !== undefined && typeof effect !== 'boolean') {
+      throw new Error(`Invalid sqlfu config at ${configPath}: "generate.effect" must be a boolean.`);
     }
 
     const importExtension = generateRecord.importExtension;

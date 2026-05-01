@@ -83,6 +83,17 @@ export async function generateQueryTypesForConfig(
 
   writtenFiles.push(await writeTablesFile(config, generatedDir, schema));
   writtenFiles.push(await writeGeneratedQueriesFile(config, generatedDir, queryDocuments, config.generate.importExtension));
+  if (config.generate.effect) {
+    writtenFiles.push(
+      await writeGeneratedEffectFile(
+        config,
+        generatedDir,
+        querySources,
+        queryAnalyses,
+        config.generate.importExtension,
+      ),
+    );
+  }
   writtenFiles.push(await writeGeneratedBarrel(config, generatedDir, config.generate.importExtension));
   writtenFiles.push(await writeQueryCatalog(config, querySources, queryAnalyses, schema));
   if (config.migrations) {
@@ -1147,8 +1158,71 @@ async function writeGeneratedBarrel(
   const lines = [
     `export * from "./tables${importExtension}";`,
     `export * from "./queries${importExtension}";`,
+    ...(config.generate.effect ? [`export * from "./effect${importExtension}";`] : []),
   ];
   const filePath = path.join(generatedDir, 'index.ts');
+  await fs.writeFile(filePath, lines.join('\n') + '\n');
+  return projectRelativePath(config, filePath);
+}
+
+async function writeGeneratedEffectFile(
+  config: SqlfuProjectConfig,
+  generatedDir: string,
+  querySources: QuerySource[],
+  queryAnalyses: Awaited<ReturnType<typeof analyzeVendoredTypesqlQueries>>,
+  importExtension: '.js' | '.ts',
+): Promise<string> {
+  const exportedQueries = querySources
+    .filter((querySource) => {
+      const analysis = queryAnalyses.find((query) => query.sqlPath === querySource.sqlPath);
+      return Boolean(analysis?.ok);
+    })
+    .sort((left, right) => left.functionName.localeCompare(right.functionName));
+  const clientType = config.generate.sync ? 'SyncClient' : 'Client';
+  const importedNames = exportedQueries.map((querySource) => querySource.functionName);
+  const importLines = importedNames.length
+    ? [`import {${importedNames.join(', ')}} from "./queries${importExtension}";`, ``]
+    : [];
+  const serviceObjectLines = importedNames.length
+    ? [
+        `\t\treturn {`,
+        ...importedNames.map((name) => `\t\t\t${name}: (...args) => ${name}(client, ...args),`),
+        `\t\t};`,
+      ]
+    : [`\t\tvoid client;`, `\t\treturn {};`];
+  const serviceTypeLines = importedNames.length
+    ? [
+        `\texport type Service = {`,
+        ...importedNames.map((name) => `\t\t${name}: BindSqlfuClient<typeof ${name}>;`),
+        `\t};`,
+      ]
+    : [`\texport type Service = {};`];
+  const lines = [
+    `import * as Context from 'effect/Context';`,
+    `import * as Layer from 'effect/Layer';`,
+    `import type {${clientType}} from 'sqlfu';`,
+    ...importLines,
+    `type BindSqlfuClient<TQuery> = TQuery extends (client: ${clientType}, ...args: infer TArgs) => infer TResult ? (...args: TArgs) => TResult : never;`,
+    ``,
+    `export class SqlfuQueries extends Context.Tag("sqlfu/SqlfuQueries")<SqlfuQueries, SqlfuQueries.Service>() {`,
+    `\tstatic make() {`,
+    `\t\treturn SqlfuQueries;`,
+    `\t}`,
+    ``,
+    `\tstatic fromClient(client: ${clientType}): SqlfuQueries.Service {`,
+    ...serviceObjectLines,
+    `\t}`,
+    ``,
+    `\tstatic DefaultServices(client: ${clientType}) {`,
+    `\t\treturn Layer.succeed(SqlfuQueries, SqlfuQueries.fromClient(client));`,
+    `\t}`,
+    `}`,
+    ``,
+    `export namespace SqlfuQueries {`,
+    ...serviceTypeLines,
+    `}`,
+  ];
+  const filePath = path.join(generatedDir, 'effect.ts');
   await fs.writeFile(filePath, lines.join('\n') + '\n');
   return projectRelativePath(config, filePath);
 }

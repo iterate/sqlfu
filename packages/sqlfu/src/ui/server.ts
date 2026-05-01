@@ -294,7 +294,7 @@ async function ensureDatabase(host: SqlfuHost, projectRoot: string) {
     definitions: path.join(projectRoot, 'definitions.sql'),
     migrations: {path: path.join(projectRoot, 'migrations'), prefix: 'iso', preset: 'sqlfu'},
     queries: path.join(projectRoot, 'sql'),
-    generate: {validator: null, prettyErrors: true, sync: false, importExtension: '.js', authority: 'desired_schema'},
+    generate: {validator: null, prettyErrors: true, sync: false, effect: false, importExtension: '.js', authority: 'desired_schema'},
   });
   try {
     const definitionsSql = await fs.readFile(path.join(projectRoot, 'definitions.sql'), 'utf8');
