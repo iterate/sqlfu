@@ -315,9 +315,34 @@ const demo = {
         </article>
       </section>
 
-      <p class="works-with">
-        Driver support today: <code>better-sqlite3</code>, <code>node:sqlite</code>, <code>bun:sqlite</code>, <code>@libsql/client</code>, <code>@tursodatabase/database</code> / <code>serverless</code> / <code>sync</code>, Cloudflare D1, Durable Objects, Expo SQLite, and <code>sqlite-wasm</code>. <a href="/docs/adapters">Full list</a>
-      </p>
+      <section class="tweet-testimonial" aria-label="Testimonial">
+        <a
+          class="tweet-card"
+          href="https://x.com/samgoodwin89/status/2050276655047032915?s=20"
+          target="_blank"
+          rel="noreferrer"
+        >
+          <img
+            class="tweet-avatar"
+            src="/assets/landing/samgoodwin89-avatar.png"
+            alt="sam"
+            width="48"
+            height="48"
+            loading="lazy"
+          />
+          <span class="tweet-body">
+            <span class="tweet-meta">
+              <strong>sam</strong>
+              <span class="tweet-verified" aria-label="verified"></span>
+              <span>@samgoodwin89</span>
+              <span aria-hidden="true">&middot;</span>
+              <time datetime="2026-05-01">May 1, 2026</time>
+            </span>
+            <span class="tweet-text">I do love raw dogging SQL</span>
+          </span>
+          <span class="tweet-source" aria-hidden="true">X</span>
+        </a>
+      </section>
 
       <script is:inline>
         (() => {
@@ -701,9 +726,6 @@ const demo = {
         })();
       </script>
 
-      <footer class="footer">
-        Use with your db: <code>npx sqlfu</code>.
-      </footer>
     </div>
 
     {/* Landing-page theme toggle. Uses the same 'starlight-theme' localStorage key
