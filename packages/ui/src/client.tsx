@@ -1993,9 +1993,9 @@ function DataCellExpandTrigger(input: {meta: DataCellMeta}) {
           className="rqp-popover rqp-popover-wide"
           align="end"
           sideOffset={6}
-          onClick={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
-          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           <CellDetailPopoverBody
             label={input.meta.label}
