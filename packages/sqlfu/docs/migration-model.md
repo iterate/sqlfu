@@ -1,8 +1,8 @@
-# sqlfu Migration Model
+# SQL migrations
 
 >tl;dr: if you don't want to remember a bunch of commands, just run `sqlfu check`. It will say "all good" or give you a recommend action.
 
-This document describes the current migration model in plain English.
+This document describes sqlfu's migration model in plain English.
 
 "What's the state of my database" is an ambiguous question, with many different answers. How do you *expect* your database to look? How do your migration files imply your database *should* look? How do your *applied* migrations imply it should look? How does it *actually* look? What does it mean when these questions have conflicting answers?
 
@@ -144,7 +144,7 @@ A database can have a perfectly usable Live Schema and still have bad Migration 
 
 This is why `Pending Migrations` and `History Drift` need to be treated differently.
 
-- `Pending Migrations` is usually routine and should recommend `sqlfu migrate`.
+- `Pending Migrations` is usually routine and recommends `sqlfu migrate`.
 - `History Drift` is usually a serious integrity problem and may not have a single safe automatic recommendation.
 
 Two common causes of `History Drift` are:
@@ -279,12 +279,9 @@ Mutates:
 
 It verifies relationships between the four authorities.
 
-At minimum, it should validate:
+It computes these comparisons:
 
 - Desired Schema vs Migrations
-
-Later, database-targeted checks may also validate:
-
 - Migrations vs Migration History
 - Migration History vs Live Schema
 - Desired Schema vs Live Schema
@@ -296,9 +293,9 @@ Later, database-targeted checks may also validate:
 
 ## `sqlfu check` Recommendations
 
-`sqlfu check` should recommend the least-destructive next step it can justify from the evidence it has.
+`sqlfu check` recommends the least-destructive next step it can justify from the evidence it has.
 
-Recommendations should be based on named mismatch types, not generic failure text.
+Recommendations are based on named mismatch types, not generic failure text.
 
 - Repo Drift only
   Recommend `sqlfu draft`.
@@ -308,28 +305,28 @@ Recommendations should be based on named mismatch types, not generic failure tex
 
 - Schema Drift only
   Recommend `sqlfu baseline <target>` or `sqlfu goto <target>`.
-  If `sqlfu check` can prove that the Live Schema matches a replayed migration prefix exactly, it should recommend that exact target.
+  If `sqlfu check` can prove that the Live Schema matches a replayed migration prefix exactly, it recommends that exact target.
 
 - Sync Drift only
   If the database is otherwise history-clean, recommend:
   - `sqlfu migrate`, if migrations are pending
   - `sqlfu sync`, if the user is intentionally choosing a fast local-development path
-  If the database is not otherwise history-clean, the recommendation should defer to the more specific mismatch, especially Schema Drift or History Drift.
+  If the database is not otherwise history-clean, the recommendation defers to the more specific mismatch, especially Schema Drift or History Drift.
 
 - Pending Migrations plus Sync Drift
   Recommend `sqlfu migrate`.
-  The Sync Drift card's recommendation should defer to that same step rather than suggesting `sqlfu sync`.
+  The Sync Drift card's recommendation defers to that same step rather than suggesting `sqlfu sync`.
 
 - Repo Drift plus Sync Drift
   Recommend `sqlfu draft`.
   The repo needs a migration before the database can become migration-current honestly.
-  The Sync Drift card's recommendation should point back to Repo Drift.
+  The Sync Drift card's recommendation points back to Repo Drift.
 
 - Repo Drift plus Schema Drift
   Recommend:
   1. `sqlfu draft`
   2. then `sqlfu baseline <target>` or `sqlfu goto <target>`
-  `sqlfu check` should not pretend the database can be reconciled cleanly before the repo itself is coherent.
+  `sqlfu check` does not pretend the database can be reconciled cleanly before the repo itself is coherent.
 
 - History Drift only
   Do not give a single automatic recommendation.
@@ -342,7 +339,7 @@ Recommendations should be based on named mismatch types, not generic failure tex
   Recommend:
   1. `sqlfu draft`, if needed, to make Desired Schema and Migrations agree
   2. then resolve History Drift deliberately
-  This should be presented as a serious integrity problem, not a routine workflow step.
+  This is presented as a serious integrity problem, not a routine workflow step.
 
 - Multiple mismatch types with no clearly dominant cause
   Prefer the most upstream mismatch first:
@@ -352,7 +349,7 @@ Recommendations should be based on named mismatch types, not generic failure tex
   4. Schema Drift
   5. Sync Drift
   This keeps `sqlfu check` from recommending database reconciliation before the repo itself is coherent.
-  Downstream cards may still be shown, but their recommendation text should defer to the highest-priority unresolved mismatch.
+  Downstream cards may still be shown, but their recommendation text defers to the highest-priority unresolved mismatch.
 
 ## Healthy States
 
@@ -529,12 +526,12 @@ Under `preset: 'sqlfu'` (the default) edited-after-apply is caught and reported 
 
 This document intentionally does not answer every implementation question yet.
 
-For example, it does not yet pin down:
+For example, it does not pin down:
 
 - what repair commands should exist
 - whether `migrate` should ever allow forcing past history drift
 
-Those should be decided after this conceptual model is stable.
+Those decisions should be made at the product-command layer, not hidden inside the migration model.
 
 ## Related Reading
 

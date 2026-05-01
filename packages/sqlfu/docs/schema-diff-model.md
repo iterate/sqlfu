@@ -1,4 +1,4 @@
-# sqlfu Schema Diff Model
+# Schema diff internals
 
 This document describes what `diffSchemaSql` does today for SQLite, and how the native implementation is put together.
 

@@ -1,6 +1,8 @@
-# UI
+# Admin UI
 
-The sqlfu UI is a browser interface for inspecting a database, running ad hoc SQL, and executing checked-in `.sql` queries. It has three useful modes:
+The sqlfu Admin UI is a browser interface for seeing the whole project in one
+place: schema, migrations, query files, generated query metadata, and live data.
+It has three useful modes:
 
 - hosted UI shell at `https://sqlfu.dev/ui`, talking to a local backend started by `npx sqlfu`
 - demo mode at `https://sqlfu.dev/ui?demo=1`, running entirely in the browser
@@ -10,7 +12,7 @@ The sqlfu UI is a browser interface for inspecting a database, running ad hoc SQ
 
 Run `npx sqlfu` in your project directory and open `https://sqlfu.dev/ui`. The hosted UI connects to the local backend that sqlfu just started, on `localhost:56081`. No separate install needed.
 
-What the UI gives you:
+What the Admin UI gives you:
 
 - table browser -- inspect rows, column types, and indexes for every table in your database
 - ad hoc SQL runner -- run queries directly against your dev database, see results inline

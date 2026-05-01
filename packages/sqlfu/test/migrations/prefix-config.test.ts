@@ -10,8 +10,9 @@ test('four-digit prefix in a fresh dir starts at 0000', async () => {
     migrationPrefix: 'four-digit',
   });
 
-  await fixture.api.draft();
+  const output = await fixture.api.draft();
 
+  expect(output).toBe('Wrote migrations/0000_create_table_person.sql');
   expect(await fixture.listMigrationFiles()).toEqual(['migrations/0000_create_table_person.sql']);
 });
 

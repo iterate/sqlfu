@@ -19,6 +19,15 @@
   --button-text-primary: #fff9f2;
   --code-bg: rgba(121, 73, 24, 0.08);
   --showreel-filter: none;
+  --syntax-keyword: #8a4d00;
+  --syntax-name: #0f6470;
+  --syntax-string: #8a3550;
+  --syntax-number: #674fa3;
+  --syntax-comment: #76685d;
+  --syntax-command: #006b58;
+  --syntax-output: #3d6b2b;
+  --syntax-diff-bg: rgba(37, 122, 67, 0.11);
+  --syntax-diff-text: #237245;
 }
 
 :root[data-theme='dark'] {
@@ -42,6 +51,15 @@
   --button-text-primary: #1a1410;
   --code-bg: rgba(232, 155, 102, 0.14);
   --showreel-filter: brightness(0.88) contrast(0.95);
+  --syntax-keyword: #ffb86c;
+  --syntax-name: #78dce8;
+  --syntax-string: #ff87ab;
+  --syntax-number: #c6a0ff;
+  --syntax-comment: #a99a8d;
+  --syntax-command: #7ee0c4;
+  --syntax-output: #a6d982;
+  --syntax-diff-bg: rgba(126, 224, 151, 0.14);
+  --syntax-diff-text: #97e6a6;
 }
 
 * {
@@ -262,41 +280,677 @@ a {
   border-radius: 0.35rem;
 }
 
-.section-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
 .section-title {
-  margin-top: 2.4rem;
-  margin-bottom: 0.8rem;
+  margin: 2.8rem 0 1.2rem;
   font-size: 1.7rem;
   letter-spacing: -0.02em;
+  text-align: center;
 }
 
-.value-panel h3 {
+.feature-stack {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.feature-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  align-items: start;
+  padding: 1.65rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.feature-row:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.feature-copy {
+  max-width: 58rem;
+}
+
+.feature-copy h3 {
   margin: 0.45rem 0 0.55rem;
-  font-size: 1.18rem;
-  line-height: 1.25;
+  font-size: 1.55rem;
+  line-height: 1.18;
   letter-spacing: -0.01em;
 }
 
-.value-panel p {
-  margin: 0;
+.feature-copy p {
+  margin: 0 0 0.85rem;
+  font-size: 1rem;
+  line-height: 1.65;
   color: var(--muted);
 }
 
-/* Animation surfaces. Only injected by the `?animation=...` script on the
- * landing page; the default landing page ships no video. Two modes:
+.feature-copy a {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.92rem;
+  font-weight: 650;
+}
+
+.artifact-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.artifact-pair.artifact-pair-uneven {
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+}
+
+.artifact-stack {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.artifact {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  box-shadow: 0 12px 36px rgba(74, 43, 15, 0.08);
+}
+
+:root[data-theme='dark'] .artifact {
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+}
+
+.artifact figcaption {
+  display: flex;
+  align-items: center;
+  height: 2.65rem;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--accent);
+  font-family: ui-monospace, 'SFMono-Regular', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.11em;
+  text-transform: lowercase;
+}
+
+.artifact-caption-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.demo-replay {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.demo-replay:hover {
+  color: var(--accent);
+  background: var(--code-bg);
+}
+
+.demo-replay:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.demo-replay svg {
+  width: 0.92rem;
+  height: 0.92rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.artifact pre {
+  min-height: 12.5rem;
+  margin: 0;
+  padding: 0.8rem;
+  overflow: auto;
+  color: var(--text);
+  font-family: ui-monospace, 'SFMono-Regular', monospace;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  background: transparent;
+}
+
+.artifact code {
+  font: inherit;
+}
+
+.feature-demo {
+  width: 100%;
+}
+
+.artifact-tall pre {
+  min-height: 17rem;
+}
+
+.artifact-compact pre,
+.artifact.terminal pre {
+  min-height: 5.75rem;
+}
+
+.tok-keyword {
+  color: var(--syntax-keyword);
+  font-weight: 650;
+}
+
+.tok-name {
+  color: var(--syntax-name);
+}
+
+.tok-string {
+  color: var(--syntax-string);
+}
+
+.tok-number {
+  color: var(--syntax-number);
+}
+
+.tok-comment {
+  color: var(--syntax-comment);
+}
+
+.tok-param,
+.tok-prop {
+  color: var(--syntax-number);
+}
+
+.tok-command {
+  color: var(--syntax-command);
+  font-weight: 650;
+}
+
+.term-prompt {
+  color: var(--muted);
+}
+
+.terminal-output {
+  display: inline-block;
+  color: var(--syntax-output);
+}
+
+.terminal-block {
+  display: block;
+}
+
+.terminal-output.is-dismissed,
+[data-dismiss-before-next].is-dismissed,
+[data-corner-before-next].is-dismissed {
+  display: none;
+}
+
+[data-corner-after-next] {
+  display: none;
+}
+
+[data-corner-after-next].is-visible {
+  display: inline;
+}
+
+.diff-line {
+  display: block;
+  margin: 0.1rem -0.8rem;
+  padding: 0 0.8rem;
+}
+
+.diff-added,
+.diff-added .tok-keyword,
+.diff-added .tok-name {
+  color: var(--syntax-diff-text);
+}
+
+.diff-added {
+  background: var(--syntax-diff-bg);
+}
+
+.diff-line[data-reveal-line] {
+  min-height: 1.55em;
+}
+
+.landing-anim-ready .diff-line[data-reveal-line] {
+  max-height: 0;
+  min-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.landing-anim-ready .diff-line[data-reveal-line].is-visible {
+  max-height: 2rem;
+  min-height: 1.55em;
+  margin-top: 0.1rem;
+  margin-bottom: 0.1rem;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 1;
+  transition:
+    max-height 160ms ease,
+    margin 160ms ease,
+    opacity 160ms ease;
+}
+
+.artifact-swap {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.artifact-tabs {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.artifact-tablist {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 2.65rem;
+  padding: 0.45rem 0.55rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-family: ui-monospace, 'SFMono-Regular', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+}
+
+.artifact-tab-replay {
+  margin-left: auto;
+}
+
+.artifact-tab {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: 1.55rem;
+  padding: 0 0.48rem;
+  border: 0;
+  border-radius: 0.35rem;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.artifact-tab.is-active {
+  background: var(--code-bg);
+  color: var(--accent);
+}
+
+.artifact-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.artifact-tab-panel {
+  grid-area: 2 / 1;
+  min-width: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.artifact-tab-panel.is-active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+:root:not(.landing-anim-ready) .artifact-tab-panel:not(.is-active) {
+  display: none;
+}
+
+.artifact-tabs pre {
+  min-height: 0;
+}
+
+.runtime-tabs {
+  position: relative;
+}
+
+.runtime-tabs::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1.8rem;
+  height: 2.65rem;
+  background: linear-gradient(90deg, transparent, var(--surface));
+  pointer-events: none;
+}
+
+.runtime-tabs .artifact-tablist {
+  overflow-x: auto;
+  padding-right: 1.8rem;
+  scrollbar-width: thin;
+}
+
+.runtime-tabs .artifact-tablist::-webkit-scrollbar {
+  height: 0.25rem;
+}
+
+.artifact.terminal figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.landing-anim-ready .typed-char {
+  opacity: 0;
+}
+
+.landing-anim-ready .typed-char.is-visible {
+  opacity: 1;
+}
+
+.landing-anim-ready [data-pop-after-typing] {
+  opacity: 0;
+}
+
+.landing-anim-ready [data-pop-after-typing].is-visible {
+  opacity: 1;
+  transition: opacity 160ms ease;
+}
+
+.landing-anim-ready [data-terminal-output] {
+  opacity: 0;
+  transform: translateY(0.25rem);
+}
+
+.landing-anim-ready [data-terminal-output].is-visible {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.landing-anim-ready [data-generated-artifact],
+.landing-anim-ready [data-replacement-artifact] {
+  opacity: 0;
+  transform: scale(0.98) translateY(0.35rem);
+  filter: blur(1px);
+  pointer-events: none;
+}
+
+.landing-anim-ready [data-generated-artifact].is-visible,
+.landing-anim-ready [data-replacement-artifact].is-visible {
+  opacity: 1;
+  transform: none;
+  filter: none;
+  pointer-events: auto;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    filter 180ms ease;
+}
+
+.landing-anim-ready .artifact-tab-panel:not(.is-active) {
+  opacity: 0;
+  visibility: hidden;
+  transform: none;
+  filter: none;
+  pointer-events: none;
+  transition: none;
+}
+
+.landing-anim-ready .artifact-tab-panel.is-active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.landing-anim-ready .artifact-swap {
+  gap: 0;
+}
+
+.landing-anim-ready .artifact-swap > .artifact {
+  grid-area: 1 / 1;
+}
+
+.landing-anim-ready [data-terminal-artifact].is-replaced {
+  opacity: 0;
+  transform: scale(0.99);
+  pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.feature-showcase {
+  display: grid;
+  grid-template-columns: minmax(11rem, 0.28fr) minmax(0, 0.72fr);
+  gap: 1rem;
+}
+
+.feature-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  box-shadow: 0 12px 36px rgba(74, 43, 15, 0.08);
+}
+
+:root[data-theme='dark'] .feature-switcher {
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+}
+
+.feature-option {
+  width: 100%;
+  min-height: 2.45rem;
+  padding: 0.55rem 0.65rem;
+  border: 0;
+  border-radius: 0.35rem;
+  color: var(--muted);
+  background: transparent;
+  font-family: ui-monospace, 'SFMono-Regular', monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
+.feature-option:hover {
+  color: var(--accent);
+  background: var(--code-bg);
+}
+
+.feature-option.is-active {
+  color: var(--accent);
+  background: var(--code-bg);
+}
+
+.feature-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.feature-showcase-stage {
+  min-width: 0;
+  height: 358px;
+  min-height: 358px;
+}
+
+.feature-showcase-panel {
+  display: none;
+  min-width: 0;
+  height: 358px;
+  min-height: 358px;
+}
+
+.feature-showcase-panel.is-active {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.feature-showcase-panel .artifact pre {
+  min-height: 11.5rem;
+}
+
+.feature-showcase-panel .artifact-compact pre {
+  min-height: 4.5rem;
+}
+
+.ui-shot {
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: #21170f;
+  box-shadow: 0 12px 36px rgba(74, 43, 15, 0.08);
+}
+
+:root[data-theme='dark'] .ui-shot {
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+}
+
+.ui-shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top left;
+}
+
+.trace-shot {
+  min-width: 0;
+  min-height: 358px;
+  padding: 0.75rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface-strong);
+  box-shadow: 0 12px 36px rgba(74, 43, 15, 0.08);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+:root[data-theme='dark'] .trace-shot {
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+}
+
+.trace-shot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.trace-shot-header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-shot-header strong {
+  color: var(--accent);
+  font-size: 0.82rem;
+}
+
+.trace-row {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 0.35fr) minmax(0, 1fr) 3.2rem;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0.55rem 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.trace-row-child {
+  padding-left: 1rem;
+}
+
+.trace-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-time {
+  text-align: right;
+  font-family: ui-monospace, 'SFMono-Regular', monospace;
+  font-size: 0.72rem;
+}
+
+.trace-bar {
+  height: 0.62rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--syntax-command) 100%);
+}
+
+.trace-row-child .trace-bar {
+  width: 62%;
+}
+
+.trace-row-short .trace-bar {
+  width: 40%;
+}
+
+.trace-shot dl {
+  margin: 1rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-family: ui-monospace, 'SFMono-Regular', monospace;
+  font-size: 0.72rem;
+}
+
+.trace-shot dl div {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.55fr) minmax(0, 0.45fr);
+  gap: 0.75rem;
+  margin: 0.35rem 0;
+}
+
+.trace-shot dt,
+.trace-shot dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-shot dd {
+  color: var(--text);
+}
+
+/* Video animation surfaces. Only injected by the `?animation=...` script on the
+ * landing page; the default landing page uses DOM typing/reveal animation. Two modes:
  *
- *   `.value-media` — a 16:9 video slotted inside each value-panel alongside
- *   the heading and copy. Used by `?animation=a|b|c|d` (three-card alternatives).
+ *   `.value-media`: a 16:9 video slotted inside each value-panel alongside
+ *   the heading and copy. Used by `?animation=a|b|c|d` for legacy alternatives.
  *
- *   `.animation-stage` — a single full-width 16:9 video that replaces the
- *   three-card grid entirely. Used by `?animation=sequential` (the default
- *   sequential showreel). */
+ *   `.animation-stage`: a single full-width 16:9 video that replaces the
+ *   feature walkthrough entirely. Used by `?animation=sequential`. */
 
 .value-media {
   position: relative;
@@ -437,7 +1091,10 @@ a {
 
 @media (max-width: 900px) {
   .hero,
-  .section-grid {
+  .feature-row,
+  .artifact-pair,
+  .artifact-pair.artifact-pair-uneven,
+  .feature-showcase {
     grid-template-columns: 1fr;
   }
 
@@ -449,4 +1106,23 @@ a {
   .site-shell {
     padding-inline: 0.85rem;
   }
+
+  .feature-copy {
+    position: static;
+  }
+
+  .artifact pre {
+    min-height: auto;
+  }
+
+  .feature-switcher {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .feature-option {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
 }
