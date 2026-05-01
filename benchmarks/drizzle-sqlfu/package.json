@@ -9,6 +9,7 @@
     "bench:drizzle": "tsx bench/index.ts --host http://localhost:3000 --name drizzle --folder results",
     "bench:go": "tsx bench/index.ts --host http://localhost:3002 --name go --folder results",
     "bench:sqlfu": "tsx bench/index.ts --host http://localhost:3003 --name sqlfu --folder results",
+    "bench:sqlfu:bun": "tsx bench/index.ts --host http://localhost:3004 --name sqlfu-bun --folder results",
     "start:docker": "tsx ./src/docker.ts",
     "start:seed": "tsx ./src/seed.ts",
     "start:seed:sqlite": "tsx ./src/sqlite/seed.ts",
@@ -21,6 +22,7 @@
     "start:drizzle:bun": "bun ./src/drizzle-server-bun.ts",
     "start:go": "go run ./go",
     "start:sqlfu": "tsx ./src/sqlfu-server-node.ts",
+    "start:sqlfu:bun": "bun ./src/sqlfu-server-bun.ts",
     "typecheck": "tsc -p tsconfig.sqlfu.json --noEmit",
     "typecheck:postgres": "tsc --noEmit --skipLibCheck --esModuleInterop --strict --module commonjs --target es2022 --moduleResolution node src/docker.ts src/drizzle-server-node.ts src/drizzle-server-bun.ts src/seed.ts src/generate.ts src/schema.ts src/relations.ts src/cpu-usage.ts",
     "typecheck:upstream": "tsc --noEmit"

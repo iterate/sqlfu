@@ -2,8 +2,9 @@
 
 This directory is adapted from [`drizzle-team/drizzle-benchmarks`](https://github.com/drizzle-team/drizzle-benchmarks). The copied benchmark schema, seed data, request generator, K6 runner, Drizzle server, Prisma server, and Go/sqlc server are retained so local results stay comparable with Drizzle's public dashboard. The local modifications are:
 
-- `src/sqlfu-server-node.ts`: Hono server on port `3003` using sqlfu-style typed query wrappers.
-- `src/sqlfu/*`: a benchmark-local `pg.Pool` client implementing sqlfu's `AsyncClient` shape plus query wrappers using the same SQL shapes as the Drizzle/Go benchmark.
+- `src/sqlfu-server-node.ts`: Hono server on port `3003` using sqlfu-style typed query wrappers over `pg.Pool`.
+- `src/sqlfu-server-bun.ts`: Hono server on port `3004` using the same sqlfu queries over `Bun.SQL`.
+- `src/sqlfu/*`: benchmark-local `pg.Pool` and `Bun.SQL` clients implementing sqlfu's `AsyncClient` shape plus query wrappers using the same SQL shapes as the Drizzle/Go benchmark.
 - package scripts for `start:sqlfu`, `bench:sqlfu`, `start:drizzle:bun`, and `start:go`.
 - generated request JSON is ignored; run `pnpm start:generate` after seeding.
 
@@ -44,13 +45,15 @@ BENCH_WORKERS=4 pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace start:dri
 BENCH_WORKERS=4 pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace start:drizzle:node
 pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace start:go
 BENCH_WORKERS=4 pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace start:sqlfu
+BENCH_WORKERS=4 pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace start:sqlfu:bun
 ```
 
 Ports:
 
 - Drizzle/Prisma examples: `3000`/`3001`, matching upstream.
 - Go/sqlc: `3002`.
-- sqlfu: `3003`.
+- sqlfu over `pg`: `3003`.
+- sqlfu over `Bun.SQL`: `3004`.
 
 ## Benchmarks
 
@@ -60,6 +63,7 @@ Install `k6` first; the package dependency is only a type stub.
 pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace bench:drizzle
 pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace bench:go
 pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace bench:sqlfu
+pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace bench:sqlfu:bun
 ```
 
 Then merge benchmark outputs:

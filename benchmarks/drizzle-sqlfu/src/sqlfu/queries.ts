@@ -21,8 +21,8 @@ export const sqlfuQueries = {
   employees(client: SqlfuPgClient, params: LimitOffset) {
     return client.all(query('sqlfu_employees', employeesSql, [params.limit, params.offset]));
   },
-  async employeeWithRecipient(client: SqlfuPgClient, id: number) {
-    return first(await client.all(query('sqlfu_employee_with_recipient', employeeWithRecipientSql, [id])));
+  employeeWithRecipient(client: SqlfuPgClient, id: number) {
+    return client.all(query('sqlfu_employee_with_recipient', employeeWithRecipientSql, [id]));
   },
   suppliers(client: SqlfuPgClient, params: LimitOffset) {
     return client.all(query('sqlfu_suppliers', suppliersSql, [params.limit, params.offset]));
@@ -33,8 +33,8 @@ export const sqlfuQueries = {
   products(client: SqlfuPgClient, params: LimitOffset) {
     return client.all(query('sqlfu_products', productsSql, [params.limit, params.offset]));
   },
-  async productWithSupplier(client: SqlfuPgClient, id: number) {
-    return first(await client.all(query('sqlfu_product_with_supplier', productWithSupplierSql, [id])));
+  productWithSupplier(client: SqlfuPgClient, id: number) {
+    return client.all(query('sqlfu_product_with_supplier', productWithSupplierSql, [id]));
   },
   searchProduct(client: SqlfuPgClient, term: string) {
     return client.all(query('sqlfu_search_product', searchProductSql, [term]));
@@ -42,11 +42,11 @@ export const sqlfuQueries = {
   ordersWithDetails(client: SqlfuPgClient, params: LimitOffset) {
     return client.all(query('sqlfu_orders_with_details', ordersWithDetailsSql, [params.limit, params.offset]));
   },
-  async orderWithDetails(client: SqlfuPgClient, id: number) {
-    return first(await client.all(query('sqlfu_order_with_details', orderWithDetailsSql, [id])));
+  orderWithDetails(client: SqlfuPgClient, id: number) {
+    return client.all(query('sqlfu_order_with_details', orderWithDetailsSql, [id]));
   },
-  async orderWithDetailsAndProducts(client: SqlfuPgClient, id: number) {
-    return first(await client.all(query('sqlfu_order_with_details_and_products', orderWithDetailsAndProductsSql, [id])));
+  orderWithDetailsAndProducts(client: SqlfuPgClient, id: number) {
+    return client.all(query('sqlfu_order_with_details_and_products', orderWithDetailsAndProductsSql, [id]));
   },
 };
 

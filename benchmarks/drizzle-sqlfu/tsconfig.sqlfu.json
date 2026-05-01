@@ -6,6 +6,7 @@
   },
   "include": [
     "src/cpu-usage.ts",
+    "src/sqlfu-server-bun.ts",
     "src/sqlfu-server-node.ts",
     "src/sqlfu/**/*.ts"
   ]
