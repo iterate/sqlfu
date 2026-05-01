@@ -310,6 +310,22 @@ export default defineConfig({
 
 The factory is invoked on every `openDb` call; sqlfu calls `[Symbol.asyncDispose]` when the command scope exits. Memoize inside the factory if the setup is expensive (e.g. spinning up miniflare once per process).
 
+For an Alchemy-managed local D1 database, sqlfu can talk directly to Alchemy's persisted Miniflare sqlite file:
+
+```ts
+import {defineConfig} from 'sqlfu';
+import {findMiniflareD1Path} from 'sqlfu/api';
+
+export default defineConfig({
+  db: findMiniflareD1Path('my-dev-app-slug'),
+  migrations: {path: './src/server/db/migrations', preset: 'd1'},
+  definitions: './src/server/db/definitions.sql',
+  queries: './src/server/db/queries',
+});
+```
+
+`findMiniflareD1Path()` walks up from `process.cwd()` until it finds a supported Miniflare v3 persist root. Today that means Alchemy's `.alchemy/miniflare/v3` layout. It then derives the same D1 object sqlite filename Miniflare uses for the slug. Pass `{miniflareV3Root}` as the second argument if your config runs outside that project tree.
+
 ### `generate.authority`
 
 `sqlfu generate` needs to know your schema to produce typed query wrappers. The `generate.authority` option controls where it reads the schema from:

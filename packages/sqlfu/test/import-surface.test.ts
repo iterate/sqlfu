@@ -22,5 +22,6 @@ test('built api entry can load its runtime vendor dependencies', async () => {
   const api = await import(pathToFileURL(apiEntry).href);
   expect(api).toMatchObject({
     diffSchemaSql: expect.any(Function),
+    findMiniflareD1Path: expect.any(Function),
   });
 });

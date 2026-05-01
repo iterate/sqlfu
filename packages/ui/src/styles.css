@@ -736,11 +736,19 @@ h3 {
   margin-top: 0.35rem;
 }
 
+.cell-content-wrap {
+  display: contents;
+}
+
 .cell-expand-button {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 1.25rem;
   height: 1.25rem;
   padding: 0;
-  display: inline-flex;
+  display: none;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--line);
@@ -749,6 +757,12 @@ h3 {
   color: var(--muted);
   cursor: pointer;
   z-index: 6;
+}
+
+.rg-cell:hover .cell-expand-button,
+.rg-cell.cell-expand-active .cell-expand-button,
+.cell-expand-button[data-state='open'] {
+  display: inline-flex;
 }
 
 .cell-expand-button:hover,
@@ -921,7 +935,8 @@ h3 {
 }
 
 .reactgrid-content .rg-pane .rg-cell:hover,
-.reactgrid-content .rg-pane .rg-cell.cell-expand-active {
+.reactgrid-content .rg-pane .rg-cell.cell-expand-active,
+.reactgrid-content .rg-pane .rg-cell:has(.cell-expand-button[data-state='open']) {
   padding-right: 2rem;
 }
 
@@ -990,7 +1005,6 @@ h3 {
 
 .reactgrid-content .rg-pane .rg-cell.row-action-cell,
 .reactgrid-content .rg-pane .rg-cell.rg-rowAction-cell {
-  position: relative;
   justify-content: center;
   padding: 0;
 }

@@ -1690,7 +1690,67 @@ const rowActionCellTemplate: reactGrid.CellTemplate<RowActionCell> = {
   },
 };
 
-const customCellTemplates = {rowAction: rowActionCellTemplate};
+type DataCellMeta = {
+  draftText: string;
+  originalText: string;
+  label: string;
+  dirty: boolean;
+};
+
+type DataTextCell = reactGrid.TextCell & {meta?: DataCellMeta};
+type DataNumberCell = reactGrid.NumberCell & {meta?: DataCellMeta};
+
+class DataTextCellTemplate extends reactGrid.TextCellTemplate {
+  getCompatibleCell(uncertainCell: reactGrid.Uncertain<DataTextCell>): reactGrid.Compatible<DataTextCell> {
+    return {...super.getCompatibleCell(uncertainCell), meta: uncertainCell.meta};
+  }
+  update(
+    cell: reactGrid.Compatible<DataTextCell>,
+    cellToMerge: reactGrid.UncertainCompatible<DataTextCell>,
+  ): reactGrid.Compatible<DataTextCell> {
+    return {...super.update(cell, cellToMerge), meta: cell.meta};
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  render(cell: reactGrid.Compatible<DataTextCell>, isInEditMode: boolean, onCellChanged: any): any {
+    const inner = super.render(cell, isInEditMode, onCellChanged);
+    if (isInEditMode || !cell.meta) return inner;
+    return (
+      <span className="cell-content-wrap">
+        {inner}
+        <DataCellExpandTrigger meta={cell.meta} />
+      </span>
+    );
+  }
+}
+
+class DataNumberCellTemplate extends reactGrid.NumberCellTemplate {
+  getCompatibleCell(uncertainCell: reactGrid.Uncertain<DataNumberCell>): reactGrid.Compatible<DataNumberCell> {
+    return {...super.getCompatibleCell(uncertainCell), meta: uncertainCell.meta};
+  }
+  update(
+    cell: reactGrid.Compatible<DataNumberCell>,
+    cellToMerge: reactGrid.UncertainCompatible<DataNumberCell>,
+  ): reactGrid.Compatible<DataNumberCell> {
+    return {...super.update(cell, cellToMerge), meta: cell.meta};
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  render(cell: reactGrid.Compatible<DataNumberCell>, isInEditMode: boolean, onCellChanged: any): any {
+    const inner = super.render(cell, isInEditMode, onCellChanged);
+    if (isInEditMode || !cell.meta) return inner;
+    return (
+      <span className="cell-content-wrap">
+        {inner}
+        <DataCellExpandTrigger meta={cell.meta} />
+      </span>
+    );
+  }
+}
+
+const customCellTemplates = {
+  rowAction: rowActionCellTemplate,
+  text: new DataTextCellTemplate(),
+  number: new DataNumberCellTemplate(),
+};
 const ROW_ACTION_COLUMN_WIDTH = 42;
 const GRID_ROW_HEIGHT = 34;
 
@@ -1724,25 +1784,13 @@ function DataTable(input: {
       defaultValue: {},
     },
   );
-  const [selectedCell, setSelectedCell] = useLocalStorageState<{rowId: number; columnId: string} | null>(
-    `sqlfu-ui/selected-cell/${input.storageKey}`,
-    {
-      defaultValue: null,
-    },
-  );
-  const [selectedCellMode, setSelectedCellMode] = useLocalStorageState<'diff' | 'original' | 'draft'>(
-    `sqlfu-ui/selected-cell-mode/${input.storageKey}`,
-    {
-      defaultValue: 'diff',
-    },
-  );
+  const [selectedCell, setSelectedCell] = useState<{rowId: number; columnId: string} | null>(null);
   const [selectedRowIndex, setSelectedRowIndex] = useLocalStorageState<number | null>(
     `sqlfu-ui/selected-row/${input.storageKey}`,
     {
       defaultValue: null,
     },
   );
-  const [hoveredCell, setHoveredCell] = useState<{rowId: number; columnId: string} | null>(null);
   const pendingFocusRef = useRef<{rowId: number; columnId: string} | null>(null);
   const computedColumnWidths = columnWidthAlgorithm({
     availableWidth: Math.max(0, containerWidth - ROW_ACTION_COLUMN_WIDTH),
@@ -1793,16 +1841,31 @@ function DataTable(input: {
             setSelectedCell(null);
           },
         },
-        ...input.columns.map((column) =>
-          toGridCell(
-            row[column],
+        ...input.columns.map((column) => {
+          const draft = row[column];
+          const original = input.originalRows?.[rowIndex]?.[column];
+          const dirty = isDirtyDataCell(input.originalRows, rowIndex, column, draft);
+          const meta: DataCellMeta | undefined = input.showSelectedCellDetail
+            ? {
+                draftText: formatCellText(draft),
+                originalText: formatCellText(original),
+                label: `Cell: ${column}, row ${rowIndex + 1}`,
+                dirty,
+              }
+            : undefined;
+          return toGridCell(
+            draft,
             isEditableDataCell(input, rowIndex, column),
             joinCellClassNames(
               selectedRowIndex === rowIndex ? 'selected-row' : undefined,
-              isDirtyDataCell(input.originalRows, rowIndex, column, row[column]) ? 'dirty-cell' : undefined,
+              dirty ? 'dirty-cell' : undefined,
+              selectedCell?.rowId === rowIndex && selectedCell.columnId === column
+                ? 'cell-expand-active'
+                : undefined,
             ),
-          ),
-        ),
+            meta,
+          );
+        }),
       ],
     })),
     ...(input.editable && input.onAppendRow
@@ -1823,55 +1886,10 @@ function DataTable(input: {
         ]
       : []),
   ];
-  const expandCell = selectedCell ?? hoveredCell;
-  const expandOriginalValue =
-    expandCell && typeof expandCell.rowId === 'number' && typeof expandCell.columnId === 'string'
-      ? formatCellText(input.originalRows?.[expandCell.rowId]?.[expandCell.columnId])
-      : '';
-  const expandDraftValue =
-    expandCell && typeof expandCell.rowId === 'number' && typeof expandCell.columnId === 'string'
-      ? formatCellText(input.rows[expandCell.rowId]?.[expandCell.columnId])
-      : '';
-  const expandCellDirty =
-    expandCell != null &&
-    isDirtyDataCell(input.originalRows, expandCell.rowId, expandCell.columnId, input.rows[expandCell.rowId]?.[expandCell.columnId]);
-  const showExpandDiffTabs = expandCellDirty && expandOriginalValue !== 'null' && expandOriginalValue !== '';
-
-  const handleCellMouseOver = (event: React.MouseEvent<HTMLDivElement>) => {
-    const cellEl = (event.target as HTMLElement).closest('.rg-cell') as HTMLElement | null;
-    if (!cellEl) {
-      setHoveredCell(null);
-      return;
-    }
-    const rowAttr = cellEl.getAttribute('data-cell-rowidx');
-    const colAttr = cellEl.getAttribute('data-cell-colidx');
-    if (rowAttr === null || colAttr === null) {
-      setHoveredCell(null);
-      return;
-    }
-    const dataRowId = Number(rowAttr) - 1; // header is rowidx=0; data rows start at 1
-    const colIdx = Number(colAttr);
-    if (dataRowId < 0 || dataRowId >= input.rows.length) {
-      setHoveredCell(null);
-      return;
-    }
-    const columnId = gridColumns[colIdx]?.columnId;
-    if (typeof columnId !== 'string' || columnId === '__row__') {
-      setHoveredCell(null);
-      return;
-    }
-    setHoveredCell({rowId: dataRowId, columnId});
-  };
-
   return (
     <div className="stack">
       {input.toolbar ? <div className="data-toolbar">{input.toolbar}</div> : null}
-      <div
-        className="table-scroll"
-        ref={containerRef}
-        onMouseOver={handleCellMouseOver}
-        onMouseLeave={() => setHoveredCell(null)}
-      >
+      <div className="table-scroll" ref={containerRef}>
         <reactGrid.ReactGrid
           customCellTemplates={customCellTemplates}
           columns={gridColumns}
@@ -1925,7 +1943,6 @@ function DataTable(input: {
               rowId: location.rowId,
               columnId: location.columnId,
             });
-            setSelectedCellMode('diff');
           }}
           onCellsChanged={
             input.editable
@@ -1949,52 +1966,24 @@ function DataTable(input: {
               : undefined
           }
         />
-        {input.showSelectedCellDetail && expandCell ? (
-          <CellExpandFloatingButton
-            selectedCell={expandCell}
-            gridColumns={gridColumns}
-            rowHeight={GRID_ROW_HEIGHT}
-            selectedOriginalValue={expandOriginalValue}
-            selectedDraftValue={expandDraftValue}
-            showDiffTabs={showExpandDiffTabs}
-            selectedCellMode={selectedCellMode}
-            setSelectedCellMode={setSelectedCellMode}
-          />
-        ) : null}
       </div>
-
     </div>
   );
 }
 
-function CellExpandFloatingButton(input: {
-  selectedCell: {rowId: number; columnId: string};
-  gridColumns: reactGrid.Column[];
-  rowHeight: number;
-  selectedOriginalValue: string;
-  selectedDraftValue: string;
-  showDiffTabs: boolean;
-  selectedCellMode: 'diff' | 'original' | 'draft';
-  setSelectedCellMode: (mode: 'diff' | 'original' | 'draft') => void;
-}) {
-  const colIndex = input.gridColumns.findIndex((c) => c.columnId === input.selectedCell.columnId);
-  if (colIndex < 0) return null;
-  const colLeft = input.gridColumns.slice(0, colIndex).reduce((sum, c) => sum + (c.width ?? 0), 0);
-  const colWidth = input.gridColumns[colIndex]?.width ?? 100;
-  const rowTop = (1 + input.selectedCell.rowId) * input.rowHeight;
-  const label = `Cell: ${input.selectedCell.columnId}, row ${input.selectedCell.rowId + 1}`;
+function DataCellExpandTrigger(input: {meta: DataCellMeta}) {
+  const [mode, setMode] = useState<'diff' | 'original' | 'draft'>('diff');
+  const showDiffTabs =
+    input.meta.dirty && input.meta.originalText !== 'null' && input.meta.originalText !== '';
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
         <button
           type="button"
           className="cell-expand-button"
-          aria-label={label}
-          style={{
-            position: 'absolute',
-            left: colLeft + colWidth - 28,
-            top: rowTop + 6,
-          }}
+          aria-label={input.meta.label}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           <CellExpandIcon />
         </button>
@@ -2002,12 +1991,12 @@ function CellExpandFloatingButton(input: {
       <Popover.Portal>
         <Popover.Content className="rqp-popover rqp-popover-wide" align="end" sideOffset={6}>
           <CellDetailPopoverBody
-            label={label}
-            selectedOriginalValue={input.selectedOriginalValue}
-            selectedDraftValue={input.selectedDraftValue}
-            showDiffTabs={input.showDiffTabs}
-            selectedCellMode={input.selectedCellMode}
-            setSelectedCellMode={input.setSelectedCellMode}
+            label={input.meta.label}
+            selectedOriginalValue={input.meta.originalText}
+            selectedDraftValue={input.meta.draftText}
+            showDiffTabs={showDiffTabs}
+            selectedCellMode={mode}
+            setSelectedCellMode={setMode}
           />
         </Popover.Content>
       </Popover.Portal>
@@ -2236,9 +2225,14 @@ function renderCell(value: unknown) {
   return String(value);
 }
 
-function toGridCell(value: unknown, editable: boolean, className?: string): reactGrid.DefaultCellTypes {
+function toGridCell(
+  value: unknown,
+  editable: boolean,
+  className: string | undefined,
+  meta: DataCellMeta | undefined,
+): reactGrid.DefaultCellTypes {
   if (typeof value === 'number') {
-    return {type: 'number', value, nonEditable: !editable, className};
+    return {type: 'number', value, nonEditable: !editable, className, meta} as DataNumberCell;
   }
 
   if (typeof value === 'boolean') {
@@ -2246,14 +2240,14 @@ function toGridCell(value: unknown, editable: boolean, className?: string): reac
   }
 
   if (value == null) {
-    return {type: 'text', text: '', nonEditable: !editable, className};
+    return {type: 'text', text: '', nonEditable: !editable, className, meta} as DataTextCell;
   }
 
   if (typeof value === 'object') {
-    return {type: 'text', text: JSON.stringify(value), nonEditable: true, className};
+    return {type: 'text', text: JSON.stringify(value), nonEditable: true, className, meta} as DataTextCell;
   }
 
-  return {type: 'text', text: String(value), nonEditable: !editable, className};
+  return {type: 'text', text: String(value), nonEditable: !editable, className, meta} as DataTextCell;
 }
 
 function joinCellClassNames(...classNames: Array<string | undefined>) {
