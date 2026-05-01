@@ -45,6 +45,7 @@ interface StrictEntry {
 const strictEntries: StrictEntry[] = [
   {name: 'sqlfu', entry: 'dist/index.js', external: adapterExternals},
   {name: 'sqlfu/analyze', entry: 'dist/analyze.js', external: adapterExternals},
+  {name: 'sqlfu/api/core', entry: 'dist/api/core.js', external: []},
   {name: 'sqlfu/outbox', entry: 'dist/outbox/index.js', external: []},
   // TODO: sqlfu/ui/browser transitively pulls api.ts via ui/router.ts,
   // which imports schemadiff + typegen + node-using helpers. The uiRouter

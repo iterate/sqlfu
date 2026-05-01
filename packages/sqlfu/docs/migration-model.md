@@ -286,7 +286,7 @@ It computes these comparisons:
 - Migration History vs Live Schema
 - Desired Schema vs Live Schema
 
-`sqlfu check` also recommends a target migration when the Live Schema exactly matches some replayed migration prefix. The check replays migrations `1..1`, `1..2`, `1..3`, and so on, comparing each replayed schema to the live one (see `findRecommendedTarget` in `src/api.ts`). When a match is found, the recommendation is:
+`sqlfu check` also recommends a target migration when the Live Schema exactly matches some replayed migration prefix. The check replays migrations `1..1`, `1..2`, `1..3`, and so on, comparing each replayed schema to the live one (see `findRecommendedTarget` in `src/api/internal.ts`). When a match is found, the recommendation is:
 
 - a Baseline target, when the database is ahead of Migration History
 - a Goto target, when the database should be reconciled to a known migration prefix
@@ -516,11 +516,11 @@ Under `preset: 'd1'` sqlfu reads and writes the same `d1_migrations` table alche
 
 Alchemy uses two different `d1_migrations` schemas: a 3-column remote shape in production D1 and a 4-column local shape (with a `type` column) when running against miniflare. Sqlfu introspects the existing table on first use and adapts its inserts, so the same `preset: 'd1'` config works in both environments.
 
-If you want sqlfu to operate on Alchemy's local dev database, use the Miniflare path helper from `sqlfu/api`:
+If you want sqlfu to operate on Alchemy's local dev database, use the Miniflare path helper from `sqlfu/node`:
 
 ```ts
 import {defineConfig} from 'sqlfu';
-import {findMiniflareD1Path} from 'sqlfu/api';
+import {findMiniflareD1Path} from 'sqlfu/node';
 
 export default defineConfig({
   db: findMiniflareD1Path('my-dev-app-slug'),

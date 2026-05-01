@@ -14,7 +14,7 @@ import {
   loadContextConfig,
   loadContextProjectState,
   migrationsPresetOf,
-} from '../api.js';
+} from '../api/internal.js';
 import {createDefaultInitPreview} from '../init-preview.js';
 import {migrationName, readMigrationHistory} from '../migrations/index.js';
 import {formatSqlFiles} from './format-files.js';
@@ -28,7 +28,7 @@ import {
   materializeMigrationsSchemaForContext,
   compareSchemasForContext,
   readMigrationsFromContext,
-} from '../api.js';
+} from '../api/internal.js';
 
 const base = os.$context<SqlfuCommandRouterContext>();
 

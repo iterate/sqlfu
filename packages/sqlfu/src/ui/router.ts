@@ -10,7 +10,7 @@ import {
   writeDefinitionsSql,
   type CheckAnalysis,
   type SqlfuCommandConfirmParams,
-} from '../api.js';
+} from '../api/internal.js';
 import {SqlfuError, type SqlfuErrorKind} from '../errors.js';
 import {excludeReservedSqliteObjects, splitSqlStatements, sqlReturnsRows} from '../sqlite-text.js';
 import type {

@@ -33,6 +33,13 @@ const docs = [
       'Client factories for better-sqlite3, node:sqlite, bun:sqlite, libsql, Cloudflare D1, Durable Objects, Expo, sqlite-wasm, and more.',
   },
   {
+    slug: 'imports',
+    title: 'Import surface',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'imports.md'),
+    description:
+      'What each sqlfu import path is for: runtime client, command API, Node helpers, analysis, UI, lint plugin, and outbox.',
+  },
+  {
     slug: 'client',
     title: 'Runtime client',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'client.md'),
@@ -50,8 +57,7 @@ const docs = [
     slug: 'ui',
     title: 'Admin UI',
     sourcePath: path.join(repoRoot, 'packages', 'ui', 'README.md'),
-    description:
-      'Hosted, demo, and embedded Admin UI modes for schema, migrations, queries, and live data.',
+    description: 'Hosted, demo, and embedded Admin UI modes for schema, migrations, queries, and live data.',
   },
   {
     slug: 'migration-model',

@@ -162,11 +162,15 @@ Opt in to runtime validation by setting `generate.validator` to `'arktype'`, `'v
 
 ### Formatter
 
-`sqlfu` includes a SQL formatter via `formatSql()`. It started from a vendored copy of [`sql-formatter`](https://github.com/sql-formatter-org/sql-formatter), then diverged because upstream formatting is more newline-heavy than we want. The current sqlfu defaults are intentionally opinionated: SQLite-first, lowercase by default, and biased toward keeping simple clause bodies inline when they still read well.
+`sqlfu` includes a SQL formatter. It started from a vendored copy of [`sql-formatter`](https://github.com/sql-formatter-org/sql-formatter), then diverged because upstream formatting is more newline-heavy than we want. The current sqlfu defaults are intentionally opinionated: SQLite-first, lowercase by default, and biased toward keeping simple clause bodies inline when they still read well.
 
-Use `npx sqlfu format "sql/**/*.sql"` to rewrite files in place, or use the
-`sqlfu/format-sql` ESLint rule when you want editor and CI feedback. See
-[Formatter](https://sqlfu.dev/docs/formatter).
+How to use:
+
+- `npx sqlfu format 'queries/**/*.sql'`: rewrite files in place
+- `import {format} from 'sqlfu/api'`: programmatically format a sql string
+- `sqlfu/format-sql` eslint rule: have your editor/CI enforce formatting
+
+[Formatter docs](https://sqlfu.dev/docs/formatter).
 
 ### Observability
 
@@ -314,7 +318,7 @@ For an Alchemy-managed local D1 database, sqlfu can talk directly to Alchemy's p
 
 ```ts
 import {defineConfig} from 'sqlfu';
-import {findMiniflareD1Path} from 'sqlfu/api';
+import {findMiniflareD1Path} from 'sqlfu/node';
 
 export default defineConfig({
   db: findMiniflareD1Path('my-dev-app-slug'),

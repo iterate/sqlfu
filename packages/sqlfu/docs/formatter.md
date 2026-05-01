@@ -51,22 +51,6 @@ eslint --fix "sql/**/*.sql"
 Use this when you want the formatter in the same editor and CI loop as the rest
 of your lint rules.
 
-## Use TypeScript
-
-```ts
-import {formatSql} from 'sqlfu/api';
-
-const sql = formatSql(`
-SELECT id,title
-FROM posts
-WHERE published = 1
-ORDER BY created_at DESC
-`);
-```
-
-`formatSql()` is the lowest-level API. It is useful for codegen, tests, and
-tools that already have SQL text in memory.
-
 ## Related pages
 
 - [Lint plugin](https://sqlfu.dev/docs/lint-plugin) covers all SQL-aware ESLint

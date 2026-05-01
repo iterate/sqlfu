@@ -2,7 +2,8 @@ import BetterSqlite3 from 'better-sqlite3';
 import path from 'node:path';
 import {expect, test} from 'vitest';
 
-import {applyMigrateSql, autoAcceptConfirm, getCheckMismatches} from '../src/api.js';
+import {autoAcceptConfirm, createSqlfuApi} from '../src/api/core.js';
+import {getCheckMismatches} from '../src/api/internal.js';
 import {createBetterSqlite3Client} from '../src/index.js';
 import {createNodeHost, openLocalSqliteFile} from '../src/node/host.js';
 import type {SqlfuDbFactory, SqlfuProjectConfig} from '../src/types.js';
@@ -16,7 +17,7 @@ test('config.db can be a factory — migrate and check operate on the factory-pr
     definitionsSql: 'create table person(name text not null);',
   });
 
-  await fixture.api.migrate();
+  await fixture.api.migrate({confirm: autoAcceptConfirm});
 
   expect(fixture.factoryInvocations()).toBeGreaterThan(0);
 
@@ -44,9 +45,7 @@ test('config.db factory receives a disposal on every openDb call', async () => {
   expect(fixture.factoryDisposals()).toBeGreaterThan(disposalsBeforeCheck);
 });
 
-async function createFactoryFixture(
-  input: {migrations?: Record<string, string>; definitionsSql?: string} = {},
-) {
+async function createFactoryFixture(input: {migrations?: Record<string, string>; definitionsSql?: string} = {}) {
   const root = await createTempFixtureRoot('config-db-factory');
   const dbPath = path.join(root, 'app.db');
 
@@ -88,11 +87,7 @@ async function createFactoryFixture(
     host,
     factoryInvocations: () => invocations,
     factoryDisposals: () => disposals,
-    api: {
-      async migrate() {
-        await applyMigrateSql({config, host}, autoAcceptConfirm);
-      },
-    },
+    api: createSqlfuApi({config, host}),
     inspectDatabase() {
       const database = new BetterSqlite3(dbPath);
       return {

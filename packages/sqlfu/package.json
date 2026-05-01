@@ -17,7 +17,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./analyze": "./src/analyze.ts",
-    "./api": "./src/api.ts",
+    "./api": "./src/api/exports.ts",
+    "./api/core": "./src/api/core.ts",
+    "./node": "./src/node/exports.ts",
     "./lint-plugin": "./src/lint-plugin.ts",
     "./outbox": "./src/outbox/index.ts",
     "./ui": "./src/ui/server.ts",
@@ -34,8 +36,16 @@
         "default": "./dist/analyze.js"
       },
       "./api": {
-        "types": "./dist/api.d.ts",
-        "default": "./dist/api.js"
+        "types": "./dist/api/exports.d.ts",
+        "default": "./dist/api/exports.js"
+      },
+      "./api/core": {
+        "types": "./dist/api/core.d.ts",
+        "default": "./dist/api/core.js"
+      },
+      "./node": {
+        "types": "./dist/node/exports.d.ts",
+        "default": "./dist/node/exports.js"
       },
       "./lint-plugin": {
         "types": "./dist/lint-plugin.d.ts",
@@ -57,7 +67,7 @@
   },
   "scripts": {
     "build": "pnpm run build:runtime && pnpm run build:vendor-typesql && pnpm run build:bundle-vendor",
-    "build:runtime": "tsgo -p tsconfig.build.json",
+    "build:runtime": "rm -f dist/api.js dist/api.d.ts dist/node.js dist/node.d.ts && tsgo -p tsconfig.build.json",
     "build:vendor-typesql": "rm -rf dist/vendor/code-block-writer dist/vendor/sqlfu-sqlite-parser dist/vendor/typesql && tsgo -p src/vendor/typesql/tsconfig.json",
     "build:bundle-vendor": "tsx scripts/bundle-vendor.ts",
     "typecheck": "tsgo -p tsconfig.typecheck.json && pnpm run typecheck:vendor-typesql",

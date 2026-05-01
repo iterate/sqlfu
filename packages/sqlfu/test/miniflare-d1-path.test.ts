@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {expect, test} from 'vitest';
 
-import {findMiniflareD1Path} from '../src/api.js';
+import {findMiniflareD1Path} from '../src/node/miniflare.js';
 
 const packageRoot = path.resolve(path.dirname(import.meta.filename), '..');
 const repoRoot = path.resolve(packageRoot, '../..');

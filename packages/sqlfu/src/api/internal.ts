@@ -1,10 +1,10 @@
-import type {Client, SqlfuMigrationPrefix, SqlfuMigrationPreset, SqlfuProjectConfig} from './types.js';
-import type {SqlfuHost} from './host.js';
-import {basename, joinPath} from './paths.js';
-import {createDefaultInitPreview} from './init-preview.js';
-import type {LoadedSqlfuProject} from './config.js';
-import {migrationNickname} from './naming.js';
-import {extractSchema} from './sqlite-text.js';
+import type {Client, SqlfuMigrationPrefix, SqlfuMigrationPreset, SqlfuProjectConfig} from '../types.js';
+import type {SqlfuHost} from '../host.js';
+import {basename, joinPath} from '../paths.js';
+import {createDefaultInitPreview} from '../init-preview.js';
+import type {LoadedSqlfuProject} from '../config.js';
+import {migrationNickname} from '../naming.js';
+import {extractSchema} from '../sqlite-text.js';
 import {
   applyMigrations,
   baselineMigrationHistory,
@@ -12,13 +12,12 @@ import {
   readMigrationHistory,
   replaceMigrationHistory,
   type Migration,
-} from './migrations/index.js';
-import {presetTableName} from './migrations/preset-queries.js';
-import {diffSchemaSql} from './schemadiff/index.js';
-import {inspectSqliteSchemaSql, schemasEqual} from './schemadiff/sqlite/index.js';
+} from '../migrations/index.js';
+import {presetTableName} from '../migrations/preset-queries.js';
+import {diffSchemaSql} from '../schemadiff/index.js';
+import {inspectSqliteSchemaSql, schemasEqual} from '../schemadiff/sqlite/index.js';
 
-import {materializeDefinitionsSchemaFor, materializeMigrationsSchemaFor, readMigrationFiles} from './materialize.js';
-export {findMiniflareD1Path, type FindMiniflareD1PathOptions} from './node/miniflare.js';
+import {materializeDefinitionsSchemaFor, materializeMigrationsSchemaFor, readMigrationFiles} from '../materialize.js';
 
 export function migrationsPresetOf(context: SqlfuContext): SqlfuMigrationPreset {
   return context.config.migrations?.preset ?? 'sqlfu';
@@ -132,7 +131,7 @@ export type SqlfuCommandConfirmParams = {
   editable?: boolean;
 };
 
-export type SqlfuCommandConfirm = (params: SqlfuCommandConfirmParams) => Promise<string | null>;
+export type SqlfuCommandConfirm = (params: SqlfuCommandConfirmParams) => string | null | Promise<string | null>;
 
 /**
  * A `SqlfuCommandConfirm` that accepts the proposed body without prompting.
@@ -1086,26 +1085,3 @@ function formatRecommendationText(recommendation: CheckRecommendation) {
 function formatRecommendationCommand(command: [string, ...string[]]) {
   return ['sqlfu', ...command].join(' ');
 }
-
-// sqlfu/api is the heavy tier: "all the smart stuff" per the design
-// grill. Re-export the public surfaces of schemadiff and the SQL
-// formatter so consumers writing CI scripts / editor integrations /
-// custom tooling can reach them without deep-importing.
-//
-// Typegen is NOT re-exported here. typegen/index.ts has `node:*`
-// imports, and api.ts is transitively imported by ui/router.ts (via
-// uiRouter's handlers), which is in turn imported by ui/browser.ts for
-// demo mode. Re-exporting typegen poisons the browser bundle: the
-// rollup pass for @sqlfu/ui fails on `pathToFileURL` from node:url
-// before tree-shaking can remove the unused re-export. Until the
-// follow-up router/handler split lands (see
-// scripts/check-strict-imports.ts TODO), consumers who need typegen at
-// runtime deep-import `sqlfu/dist/typegen/index.js` — off-piste but
-// functional.
-
-export {diffSchemaSql} from './schemadiff/index.js';
-export {inspectSqliteSchemaSql, schemasEqual} from './schemadiff/sqlite/index.js';
-export type {SqliteInspectedDatabase} from './schemadiff/sqlite/types.js';
-
-export {formatSql} from './formatter.js';
-export type {FormatSqlOptions, SqlFormatStyle} from './formatter.js';

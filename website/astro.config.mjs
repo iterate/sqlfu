@@ -78,6 +78,7 @@ export default defineConfig({
         {
           label: 'Reference',
           items: [
+            {label: 'Import surface', slug: 'docs/imports'},
             {label: 'Errors', slug: 'docs/errors'},
             {label: 'Schema diff internals', slug: 'docs/schema-diff-model'},
             {
