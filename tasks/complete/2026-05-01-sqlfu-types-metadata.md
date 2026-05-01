@@ -75,6 +75,7 @@ back to objects, and validate both directions with the configured validator.
 - [x] Serialize typed JSON inputs with `JSON.stringify` before driver calls and parse JSON outputs before returning or validating. _The existing JSON logical-type driver path now handles metadata-backed JSON fields before object-field flattening._
 - [x] Exclude `sqlfu_types` from normal generated table exports/catalog entries. _`loadSchema` skips the reserved table after reading its metadata._
 - [x] Add a readable failure test for malformed strict JSON metadata. _Generation now errors with `sqlfu_types.<logical_type> default must be strict JSON...`._
+- [x] Add a readable fixture for the generated `sqlfu_types` output shape. _`packages/sqlfu/test/generate/fixtures/logical-types.md` snapshots the Arktype wrapper and table row type._
 - [x] Update docs to show the strict JSON metadata table and clarify the future TypeScript-to-SQL direction is out of scope. _Added a typed JSON columns section to `packages/sqlfu/docs/typegen.md`._
 - [x] Run focused typegen/runtime tests, package typecheck, and the full `sqlfu` test suite. _See verification log below._
 - [x] Move this task to `tasks/complete/` and update the PR body once implementation is done. _Moved to `tasks/complete/2026-05-01-sqlfu-types-metadata.md`; PR body updated after implementation._
@@ -100,6 +101,10 @@ back to objects, and validate both directions with the configured validator.
 - Fixed a generated-validator bug exposed by the new multi-query test: result
   parsing now references the local result schema name instead of hardcoding
   `Result`, which was undefined in multi-query generated modules.
+- Added a markdown fixture after review so the generated TypeScript surface is
+  visible without reading the runtime test. The fixture exposed a typecheck hole
+  in JSON result parsing; generated validator wrappers now type raw JSON rows as
+  `Record<string, unknown>` before validation.
 - Verification:
   - Red: `pnpm --filter sqlfu test --run test/generate/runtime.test.ts -t "sqlfu_types metadata"` first failed because payloads were still inferred as numbers.
   - `pnpm --filter sqlfu test --run test/generate/runtime.test.ts -t "sqlfu_types"`
@@ -108,3 +113,7 @@ back to objects, and validate both directions with the configured validator.
   - `pnpm --filter sqlfu typecheck`
   - `pnpm --filter @sqlfu/ui build` for generated UI assets in this fresh worktree.
   - `pnpm --filter sqlfu test --run`
+  - `pnpm --filter sqlfu test --run test/generate/fixtures.test.ts -t "sqlfu_types JSON metadata" -u`
+  - `pnpm --filter sqlfu test --run test/generate/fixtures.test.ts`
+  - `pnpm --filter sqlfu test --run test/generate/runtime.test.ts -t "sqlfu_types"`
+  - `pnpm --filter sqlfu typecheck`

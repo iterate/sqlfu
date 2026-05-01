@@ -2213,6 +2213,7 @@ function buildValidatorImplementation(input: {
   const {emitter, prettyErrors, queryReference, sync} = input;
   const maybeAwait = sync ? '' : 'await ';
   const q = queryReference;
+  const rawRowType = input.jsonParseFunctionName ? '<Record<string, unknown>>' : '';
   const rowExpr = (rowExpression: string) =>
     rowParseExpressionOrNull(
       emitter,
@@ -2233,12 +2234,12 @@ function buildValidatorImplementation(input: {
     const expr = rowExpr('row');
     if (expr) {
       return [
-        `\t\tconst rows = ${maybeAwait}client.all(${q});`,
+        `\t\tconst rows = ${maybeAwait}client.all${rawRowType}(${q});`,
         `\t\treturn rows.map((row) => ${expr});`,
       ];
     }
     return [
-      `\t\tconst rows = ${maybeAwait}client.all(${q});`,
+      `\t\tconst rows = ${maybeAwait}client.all${rawRowType}(${q});`,
       `\t\treturn rows.map((row) => {`,
       ...rowBlock('row', '\t\t\t'),
       `\t\t});`,
@@ -2249,12 +2250,12 @@ function buildValidatorImplementation(input: {
     const expr = rowExpr('rows[0]');
     if (expr) {
       return [
-        `\t\tconst rows = ${maybeAwait}client.all(${q});`,
+        `\t\tconst rows = ${maybeAwait}client.all${rawRowType}(${q});`,
         `\t\treturn rows.length > 0 ? ${expr} : null;`,
       ];
     }
     return [
-      `\t\tconst rows = ${maybeAwait}client.all(${q});`,
+      `\t\tconst rows = ${maybeAwait}client.all${rawRowType}(${q});`,
       `\t\tif (rows.length === 0) return null;`,
       ...rowBlock('rows[0]', '\t\t'),
     ];
@@ -2264,12 +2265,12 @@ function buildValidatorImplementation(input: {
     const expr = rowExpr('rows[0]');
     if (expr) {
       return [
-        `\t\tconst rows = ${maybeAwait}client.all(${q});`,
+        `\t\tconst rows = ${maybeAwait}client.all${rawRowType}(${q});`,
         `\t\treturn ${expr};`,
       ];
     }
     return [
-      `\t\tconst rows = ${maybeAwait}client.all(${q});`,
+      `\t\tconst rows = ${maybeAwait}client.all${rawRowType}(${q});`,
       ...rowBlock('rows[0]', '\t\t'),
     ];
   }
