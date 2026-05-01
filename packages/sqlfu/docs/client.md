@@ -11,8 +11,8 @@ client is an extremely thin wrapper around mature drivers such as `node:sqlite`,
 `better-sqlite3`, `bun:sqlite`, libsql, D1, and Durable Object storage.
 Generated wrappers are plain functions that build SQL plus args and call the
 client. The rougher surfaces are more likely to be workflow tools such as
-drafting migrations, generation, linting, formatting, and the UI. Those usually
-run before deployment rather than in your hot application path.
+drafting migrations, generation, linting, formatting, and the Admin UI. Those
+usually run before deployment rather than in your hot application path.
 
 ```ts
 import type {Client} from 'sqlfu';

@@ -85,5 +85,5 @@ If you try to do this with a bigger bundle (a vendored full-text-search layer, a
 
 ## Further reading
 
-- [Schema diff model](./schema-diff-model.md): how `definitions.sql` becomes a diff against live schema.
-- [Migration model](./migration-model.md): where a pasted generator ends up in your migration history.
+- [Schema diff internals](./schema-diff-model.md): how `definitions.sql` becomes a diff against live schema.
+- [SQL migrations](./migration-model.md): where a pasted generator ends up in your migration history.

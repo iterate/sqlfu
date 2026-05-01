@@ -120,9 +120,16 @@ Query files live next to the code that calls them. The filename is the query's i
 npx sqlfu generate
 ```
 
-sqlfu reads your `.sql` files and emits typed wrappers into `sql/.generated/`. For `get-posts.sql` you get a `getPosts` function with typed params and a typed result row attached via a namespace (`getPosts.Params`, `getPosts.Result`). The function also carries `.sql` and `.query` (including `name: "getPosts"`) as static properties used by observability hooks.
+sqlfu reads your `.sql` files against `definitions.sql` by default and emits
+typed wrappers into `sql/.generated/`. For `get-posts.sql` you get a `getPosts`
+function with typed params and a typed result row attached via a namespace
+(`getPosts.Params`, `getPosts.Result`). The function also carries `.sql` and
+`.query` (including `name: "getPosts"`) as static properties used by
+observability hooks.
 
-Note: `generate` reads the live database schema, so `migrate` must have run first.
+Because the default `generate.authority` is `desired_schema`, generation does
+not need a live database. This walkthrough still runs `migrate` first so the
+next step can call the wrapper against `db/app.sqlite`.
 
 ## Call the wrapper
 

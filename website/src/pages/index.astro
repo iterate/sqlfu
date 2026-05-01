@@ -130,7 +130,7 @@ import '../styles/landing.css';
             <div class="eyebrow">2. type generation</div>
             <h3>Generate functions from checked-in queries.</h3>
             <p>
-              Query files are the source. <code>sqlfu generate</code> reads the live schema and emits TypeScript wrappers with typed params, typed result rows, and the query name attached for runtime use.
+              Query files are the source. <code>sqlfu generate</code> reads them against <code>definitions.sql</code> by default, then emits TypeScript wrappers with typed params, typed result rows, and the query name attached for runtime use.
             </p>
             <a href="/docs/typegen">See query shapes</a>
           </div>
