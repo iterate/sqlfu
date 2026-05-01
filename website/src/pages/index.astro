@@ -161,10 +161,10 @@ import '../styles/landing.css';
   ./.generated/get-posts.sql.ts</span></code></pre>
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-replacement-artifact data-tab-panel="src">
-                <pre><code><span data-type-speed="generated-file"><span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
+                <pre><code><span data-type-speed="medium"><span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
 
 <span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
-</span><span class="tok-comment generated-type-hint" data-pop-after-typing>//    ^? Array&lt;&#123;id: number; slug: string; title: string&#125;&gt;</span><span data-type-speed="generated-file">
+</span><span class="tok-comment generated-type-hint" data-pop-after-typing>//    ^? Array&lt;&#123;id: number; slug: string; title: string&#125;&gt;</span><span data-type-speed="medium">
 
 <span class="tok-name">posts</span>.<span class="tok-prop">forEach</span>((<span class="tok-name">post</span>) =&gt; &#123;
   <span class="tok-name">console</span>.<span class="tok-prop">log</span>(<span class="tok-name">post</span>.<span class="tok-prop">slug</span> + <span class="tok-string">": "</span> + <span class="tok-name">post</span>.<span class="tok-prop">title</span>);
@@ -300,7 +300,8 @@ import '../styles/landing.css';
               if (!isCurrent()) return false;
             }
             const delayBySpeed = {
-              command: 78,
+              command: 50,
+              medium: 25,
               fast: 14,
               'generated-file': 5,
               'schema-add': 58,
