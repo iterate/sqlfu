@@ -61,6 +61,8 @@ export const router = {
         await startSqlfuServer(params);
         context.host.logger.log('sqlfu ready at https://sqlfu.dev/ui');
       }
+
+      await new Promise(() => {});
     }),
 
   init: base

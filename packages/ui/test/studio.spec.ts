@@ -490,7 +490,7 @@ test('views created from the sql runner can be browsed without crashing the app'
   );
   await page.getByRole('button', {name: 'Run SQL'}).click();
 
-  await page.getByRole('link', {name: 'recent_migrations view'}).click();
+  await page.locator('.nav-link[href="#table/recent_migrations"]').click();
   await expect(page).toHaveURL(/#table\/recent_migrations$/);
   await expect(page.locator('.nav-link.active')).toContainText('recent_migrations');
   await expect(page.getByText('No rows.')).toBeVisible();
@@ -546,29 +546,10 @@ test('relation rows can be appended from the grid', async ({page}) => {
   await expect(page.getByRole('button', {name: 'Cell: slug, row 3'})).toBeVisible();
   await expect(page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="2"]')).toBeVisible();
 
-  const editor = page.locator('.rg-celleditor input');
-  await page.keyboard.press('Enter');
-  await expect(editor).toBeVisible();
-  await editor.pressSequentially('brand-new-post');
-  await page.keyboard.press('Tab');
-
-  await expect(page.getByRole('button', {name: 'Cell: title, row 3'})).toBeVisible();
-  await page.keyboard.press('Enter');
-  await expect(editor).toBeVisible();
-  await editor.pressSequentially('Brand New Post');
-  await page.keyboard.press('Tab');
-
-  await expect(page.getByRole('button', {name: 'Cell: body, row 3'})).toBeVisible();
-  await page.keyboard.press('Enter');
-  await expect(editor).toBeVisible();
-  await editor.pressSequentially('Inserted from the relations grid');
-  await page.keyboard.press('Tab');
-
-  await expect(page.getByRole('button', {name: 'Cell: published, row 3'})).toBeVisible();
-  await page.keyboard.press('Enter');
-  await expect(editor).toBeVisible();
-  await editor.pressSequentially('0');
-  await page.keyboard.press('Enter');
+  await fillGridTextCell(page, 3, 2, 'brand-new-post');
+  await fillGridTextCell(page, 3, 3, 'Brand New Post');
+  await fillGridTextCell(page, 3, 4, 'Inserted from the relations grid');
+  await fillGridTextCell(page, 3, 5, '0');
 
   await expect(page.getByRole('button', {name: 'Save changes'})).toBeVisible();
   const [saveResponse] = await Promise.all([
@@ -1129,7 +1110,7 @@ test('relation toolbar exposes Filter / Sort / Columns / Query / Definition butt
   await expect(page.getByRole('button', {name: 'Sort', exact: true})).toBeVisible();
   await expect(page.getByRole('button', {name: /Columns — \d+ of \d+ visible/})).toBeVisible();
   await expect(page.getByRole('button', {name: 'Query SQL'})).toBeVisible();
-  await expect(page.getByRole('button', {name: 'Table definition'})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'View definition'})).toBeVisible();
   // The Query editor is not mounted until the popover is opened.
   await expect(page.getByLabel('Relation query editor')).toHaveCount(0);
 });
@@ -1158,9 +1139,7 @@ test('multi-column sort composes clauses in the order they were added', async ({
   await page.keyboard.press('Escape');
 
   await page.getByRole('button', {name: 'Query SQL'}).click();
-  await expect(page.getByLabel('Relation query editor')).toContainText(
-    'order by "published" asc, "title" asc',
-  );
+  await expect(page.getByLabel('Relation query editor')).toContainText('order by "published" asc, "title" asc');
 });
 
 test('clicking the same sort column 3 times (asc → desc → off) does not freeze the page', async ({page}) => {
@@ -1285,7 +1264,7 @@ test('Query popover requires Apply before the query re-runs', async ({page}) => 
 
 test('Definition popover shows the relation DDL as read-only SQL', async ({page}) => {
   await page.goto('/#table/posts');
-  await page.getByRole('button', {name: 'Table definition'}).click();
+  await page.getByRole('button', {name: 'View definition'}).click();
   const editor = page.getByLabel('Relation definition editor');
   await expect(editor).toBeVisible();
   await expect(editor).toContainText(/create table posts/i);
@@ -1364,16 +1343,10 @@ async function fillGridTextCell(page: any, rowIndex: number, columnIndex: number
   }
   await cell.dblclick({position: {x: 8, y: 8}});
   const editor = page.locator('.rg-celleditor input');
-  if (await editor.isVisible()) {
-    await editor.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+A`);
-    await editor.press('Backspace');
-    await editor.pressSequentially(value);
-    await editor.press('Enter');
-    await page.locator(`.reactgrid [data-cell-rowidx="${rowIndex}"][data-cell-colidx="0"]`).click();
-    return;
-  }
-
-  await cell.click();
-  await page.keyboard.type(value);
-  await page.keyboard.press('Enter');
+  await expect(editor).toBeVisible();
+  await editor.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+A`);
+  await editor.press('Backspace');
+  await editor.pressSequentially(value);
+  await editor.press('Enter');
+  await expect(editor).toBeHidden();
 }

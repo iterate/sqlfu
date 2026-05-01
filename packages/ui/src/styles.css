@@ -748,7 +748,7 @@ h3 {
   background: var(--panel-tint-strong);
   color: var(--muted);
   cursor: pointer;
-  z-index: 3;
+  z-index: 6;
 }
 
 .cell-expand-button:hover,
@@ -988,12 +988,16 @@ h3 {
   background: var(--rg-append-bg) !important;
 }
 
-.reactgrid-content .rg-pane .rg-cell.row-action-cell {
+.reactgrid-content .rg-pane .rg-cell.row-action-cell,
+.reactgrid-content .rg-pane .rg-cell.rg-rowAction-cell {
   justify-content: center;
   padding: 0;
 }
 
 .row-action-button {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
