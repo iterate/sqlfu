@@ -185,7 +185,13 @@ function FullscreenAffordance(props: {title: string; inline: ReactNode; fullscre
       {props.inline}
       <Dialog>
         <DialogTrigger asChild>
-          <button type="button" className="cm-fullscreen-button" aria-label={`Open ${props.title} fullscreen`}>
+          <button
+            type="button"
+            className="cm-fullscreen-button"
+            aria-label="Open editor fullscreen"
+            aria-description={props.title}
+            title={`Open ${props.title} fullscreen`}
+          >
             <FullscreenIcon />
           </button>
         </DialogTrigger>
