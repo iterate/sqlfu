@@ -300,15 +300,28 @@ import '../styles/landing.css';
           </div>
           <div class="feature-showcase feature-demo" data-feature-showcase aria-label="sqlfu workflow features">
             <div class="feature-switcher" role="tablist" aria-label="Workflow features">
-              <button class="feature-option is-active" type="button" role="tab" aria-selected="true" data-feature-for="admin">Admin UI</button>
-              <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="tracing">Built-in tracing</button>
+              <button class="feature-option is-active" type="button" role="tab" aria-selected="true" data-feature-for="cli">CLI</button>
+              <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="admin">Admin UI</button>
               <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="lint">Lint plugin</button>
               <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="formatter">Formatter</button>
+              <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="tracing">Built-in tracing</button>
               <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="skill">Agent skill</button>
-              <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="cli">CLI</button>
             </div>
             <div class="feature-showcase-stage">
-              <section class="feature-showcase-panel is-active" role="tabpanel" data-feature-panel="admin">
+              <section class="feature-showcase-panel is-active" role="tabpanel" data-feature-panel="cli">
+                <figure class="artifact terminal">
+                  <figcaption>terminal</figcaption>
+                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu check</span>
+<span class="terminal-output">definitions.sql, migrations, and database agree</span>
+
+<span class="term-prompt">$</span> <span class="tok-command">npx sqlfu migrate</span>
+<span class="terminal-output">Applied 20260501090000_add_published_to_posts.sql</span>
+
+<span class="term-prompt">$</span> <span class="tok-command">npx sqlfu sync</span>
+<span class="terminal-output">Database already matches definitions.sql</span></code></pre>
+                </figure>
+              </section>
+              <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="admin">
                 <figure class="artifact terminal artifact-compact">
                   <figcaption>terminal</figcaption>
                   <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu</span>
@@ -394,19 +407,6 @@ src/app.ts
 
 <span class="terminal-output">Installed using-sqlfu
 Agents now know to edit SQL first, run sqlfu draft, and regenerate wrappers.</span></code></pre>
-                </figure>
-              </section>
-              <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="cli">
-                <figure class="artifact terminal">
-                  <figcaption>terminal</figcaption>
-                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu check</span>
-<span class="terminal-output">definitions.sql, migrations, and database agree</span>
-
-<span class="term-prompt">$</span> <span class="tok-command">npx sqlfu migrate</span>
-<span class="terminal-output">Applied 20260501090000_add_published_to_posts.sql</span>
-
-<span class="term-prompt">$</span> <span class="tok-command">npx sqlfu sync</span>
-<span class="terminal-output">Database already matches definitions.sql</span></code></pre>
                 </figure>
               </section>
             </div>
