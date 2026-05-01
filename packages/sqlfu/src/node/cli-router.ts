@@ -20,6 +20,7 @@ import {migrationName, readMigrationHistory} from '../migrations/index.js';
 import {formatSqlFiles} from './format-files.js';
 import {stopProcessesListeningOnPort} from './port-process.js';
 import {generateQueryTypesForConfig} from '../typegen/index.js';
+import {watchGenerateQueryTypesForConfig} from '../typegen/watch.js';
 import {startSqlfuServer} from '../ui/server.js';
 import {resolveSqlfuUi} from '../ui/resolve-sqlfu-ui.js';
 import packageJson from '../../package.json' with {type: 'json'};
@@ -120,8 +121,24 @@ export const router = {
     .meta({
       description: `Generate TypeScript functions for all queries in the sql/ directory.`,
     })
-    .handler(async ({context}) => {
+    .input(
+      z
+        .object({
+          watch: z
+            .boolean()
+            .describe(
+              `Run generate once, then re-run whenever a query, definitions.sql, or migration file changes. Exits on SIGINT.`,
+            ),
+        })
+        .partial()
+        .optional(),
+    )
+    .handler(async ({context, input}) => {
       const sqlfuContext = await loadContextConfig(context);
+      if (input?.watch) {
+        await watchGenerateQueryTypesForConfig(sqlfuContext.config, sqlfuContext.host);
+        return;
+      }
       const result = await generateQueryTypesForConfig(sqlfuContext.config, sqlfuContext.host);
       return ['Updated generated files:', ...result.writtenFiles.map((filePath) => `  ${filePath}`)].join('\n');
     }),
