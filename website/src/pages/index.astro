@@ -108,8 +108,8 @@ import '../styles/landing.css';
 <span class="terminal-output terminal-block" data-terminal-output data-output-pause="1450">│
 ◇  Create migration file? ─────────────────╮
 │                                          │
-│  alter table posts add column           │
-│    published integer;                   │
+│  alter table posts                       │
+│  add column published integer;           │
 │                                          │
 <span data-corner-before-next>├──────────────────────────────────────────╯
 </span><span data-corner-after-next>╰──────────────────────────────────────────╯
@@ -146,7 +146,7 @@ import '../styles/landing.css';
             <div class="artifact artifact-tall artifact-tabs" data-tabbed-artifact>
               <div class="artifact-tablist" role="tablist" aria-label="Type generation output">
                 <button class="artifact-tab is-active" type="button" role="tab" aria-selected="true" data-tab-for="terminal">terminal</button>
-                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="src">src/posts.ts</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="src">src/app.ts</button>
                 <button class="demo-replay artifact-tab-replay" type="button" data-replay-demo aria-label="Replay type generation animation" title="Replay animation">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M20 11a8 8 0 1 0-2.34 5.66" />
@@ -161,14 +161,14 @@ import '../styles/landing.css';
   ./.generated/get-posts.sql.ts</span></code></pre>
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-replacement-artifact data-tab-panel="src">
-                <pre><code data-type-speed="generated-file"><span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
+                <pre><code><span data-type-speed="generated-file"><span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
 
 <span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
-<span class="tok-comment">//    ^? Array&lt;&#123;id: number; slug: string; title: string&#125;&gt;</span>
+</span><span class="tok-comment generated-type-hint" data-pop-after-typing>//    ^? Array&lt;&#123;id: number; slug: string; title: string&#125;&gt;</span><span data-type-speed="generated-file">
 
 <span class="tok-name">posts</span>.<span class="tok-prop">forEach</span>((<span class="tok-name">post</span>) =&gt; &#123;
   <span class="tok-name">console</span>.<span class="tok-prop">log</span>(<span class="tok-name">post</span>.<span class="tok-prop">slug</span> + <span class="tok-string">": "</span> + <span class="tok-name">post</span>.<span class="tok-prop">title</span>);
-&#125;);</code></pre>
+&#125;);</span></code></pre>
               </div>
             </div>
           </div>
@@ -271,6 +271,9 @@ import '../styles/landing.css';
             }
             for (const revealLine of row.querySelectorAll('[data-reveal-line]')) {
               revealLine.classList.remove('is-visible');
+            }
+            for (const pop of row.querySelectorAll('[data-pop-after-typing]')) {
+              pop.classList.remove('is-visible');
             }
             for (const output of row.querySelectorAll('[data-terminal-output]')) {
               output.classList.remove('is-visible', 'is-dismissed');
@@ -385,6 +388,12 @@ import '../styles/landing.css';
                     tabbedReplacement.classList.add('is-visible');
                   }
                 }
+              }
+
+              for (const pop of row.querySelectorAll('[data-pop-after-typing]')) {
+                if (!isCurrent()) return;
+                pop.classList.add('is-visible');
+                await sleep(Number(pop.dataset.popPause || 120));
               }
 
               for (const artifact of row.querySelectorAll('[data-generated-artifact]')) {

@@ -634,6 +634,15 @@ a {
   opacity: 1;
 }
 
+.landing-anim-ready [data-pop-after-typing] {
+  opacity: 0;
+}
+
+.landing-anim-ready [data-pop-after-typing].is-visible {
+  opacity: 1;
+  transition: opacity 160ms ease;
+}
+
 .landing-anim-ready [data-terminal-output] {
   opacity: 0;
   transform: translateY(0.25rem);
