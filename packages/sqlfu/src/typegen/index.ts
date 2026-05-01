@@ -257,9 +257,20 @@ type TsColumn = {
   tsType: string;
   notNull: boolean;
   logicalType?: LogicalType;
+  logicalTypeDefinition?: LogicalTypeDefinition;
+  objectFields?: GeneratedField[];
 };
 
 type LogicalType = 'json';
+type LogicalTypeDefinition = string | LogicalTypeDefinition[] | {[key: string]: LogicalTypeDefinition};
+
+type LogicalTypeInfo = {
+  name: string;
+  logicalType: LogicalType;
+  tsType: string;
+  definition: LogicalTypeDefinition;
+  objectFields?: GeneratedField[];
+};
 
 type RelationInfo = {
   kind: 'table' | 'view';
@@ -273,6 +284,7 @@ type GeneratedField = {
   tsType: string;
   notNull: boolean;
   logicalType?: LogicalType;
+  logicalTypeDefinition?: LogicalTypeDefinition;
   optional?: boolean;
   objectFields?: GeneratedField[];
   driverObjectFields?: GeneratedField[];
@@ -1747,6 +1759,9 @@ function arktypeFieldExpression(field: GeneratedField, notNull: boolean): string
 }
 
 function arktypeBaseExpressionForField(field: GeneratedField): string {
+  if (field.logicalTypeDefinition !== undefined) {
+    return arktypeExpressionForLogicalTypeDefinition(field.logicalTypeDefinition);
+  }
   if (field.objectFields) {
     const fields = field.objectFields
       .map((objectField) => `${objectField.name}: ${arktypeFieldExpression(objectField, objectField.notNull)}`)
@@ -1783,6 +1798,23 @@ function arktypeBaseExpression(tsType: string): string {
   }
 
   return '"unknown"';
+}
+
+function arktypeExpressionForLogicalTypeDefinition(definition: LogicalTypeDefinition): string {
+  if (typeof definition === 'string') {
+    return JSON.stringify(definition);
+  }
+  if (Array.isArray(definition)) {
+    const itemDefinition = definition[0];
+    if (itemDefinition === undefined) {
+      return '"unknown[]"';
+    }
+    return `type(${arktypeExpressionForLogicalTypeDefinition(itemDefinition)}).array()`;
+  }
+  const fields = Object.entries(definition)
+    .map(([name, fieldDefinition]) => `${name}: ${arktypeExpressionForLogicalTypeDefinition(fieldDefinition)}`)
+    .join(', ');
+  return `type({ ${fields} })`;
 }
 
 function renderValidatorQueryWrapper(input: {
@@ -1885,6 +1917,7 @@ function renderValidatorQueryWrapper(input: {
   const implementationLines = emitResultSchema
     ? buildValidatorImplementation({
         resultMode,
+        resultSchemaName,
         resultFields,
         emitter,
         prettyErrors,
@@ -2112,11 +2145,12 @@ function buildInputValidation(
  */
 function rowParseExpressionOrNull(
   emitter: ValidatorEmitter,
+  schemaName: string,
   rowExpression: string,
   prettyErrors: boolean,
 ): string | null {
   if (emitter.parseFlavour === 'zod' && !prettyErrors) {
-    return `Result.parse(${rowExpression})`;
+    return `${schemaName}.parse(${rowExpression})`;
   }
   return null;
 }
@@ -2128,6 +2162,7 @@ function rowParseExpressionOrNull(
  */
 function rowParseStatements(
   emitter: ValidatorEmitter,
+  schemaName: string,
   rowExpression: string,
   prettyErrors: boolean,
   indent: string,
@@ -2135,15 +2170,15 @@ function rowParseStatements(
   if (emitter.parseFlavour === 'zod') {
     // zod + pretty.
     return [
-      `${indent}const parsed = Result.safeParse(${rowExpression});`,
+      `${indent}const parsed = ${schemaName}.safeParse(${rowExpression});`,
       `${indent}if (!parsed.success) throw new Error(z.prettifyError(parsed.error));`,
       `${indent}return parsed.data;`,
     ];
   }
   // Standard Schema — same inline 3-step guard as for params, flipped to prettyErrors.
   return [
-    `${indent}const parsed = Result['~standard'].validate(${rowExpression});`,
-    `${indent}if ('then' in parsed) throw new Error('Unexpected async validation from Result.');`,
+    `${indent}const parsed = ${schemaName}['~standard'].validate(${rowExpression});`,
+    `${indent}if ('then' in parsed) throw new Error('Unexpected async validation from ${schemaName}.');`,
     prettyErrors
       ? `${indent}if ('issues' in parsed) throw new Error(prettifyStandardSchemaError(parsed) || 'Validation failed');`
       : `${indent}if ('issues' in parsed) throw Object.assign(new Error('Validation failed'), {issues: parsed.issues});`,
@@ -2167,6 +2202,7 @@ function buildValidatorQueryArgs(
 
 function buildValidatorImplementation(input: {
   resultMode: 'many' | 'nullableOne' | 'one' | 'metadata';
+  resultSchemaName: string;
   resultFields: GeneratedField[];
   emitter: ValidatorEmitter;
   prettyErrors: boolean;
@@ -2180,12 +2216,14 @@ function buildValidatorImplementation(input: {
   const rowExpr = (rowExpression: string) =>
     rowParseExpressionOrNull(
       emitter,
+      input.resultSchemaName,
       jsonDecodedRowExpression(rowExpression, input.resultFields, input.jsonParseFunctionName),
       prettyErrors,
     );
   const rowBlock = (rowExpression: string, indent: string) =>
     rowParseStatements(
       emitter,
+      input.resultSchemaName,
       jsonDecodedRowExpression(rowExpression, input.resultFields, input.jsonParseFunctionName),
       prettyErrors,
       indent,
@@ -2729,6 +2767,9 @@ function toDriver(
     isArray: boolean;
   },
 ): string {
+  if (param.logicalType === 'json') {
+    return toDriverValue(`${variableName}.${param.name}`, param);
+  }
   if (param.objectFields && (param.isArray || param.acceptsSingleOrArray)) {
     const collectionExpression = param.acceptsSingleOrArray
       ? `(Array.isArray(${variableName}.${param.name}) ? ${variableName}.${param.name} : [${variableName}.${param.name}])`
@@ -2816,11 +2857,14 @@ function refineDescriptor(
 }
 
 function refineFieldFromColumn<T extends GeneratedField>(field: T, column: TsColumn): T {
+  const tsType = column.logicalType === 'json' ? column.tsType : field.tsType === 'any' ? column.tsType : field.tsType;
   return {
     ...field,
-    tsType: column.logicalType === 'json' ? 'unknown' : field.tsType === 'any' ? column.tsType : field.tsType,
+    tsType,
     notNull: field.notNull || column.notNull,
     logicalType: column.logicalType || field.logicalType,
+    logicalTypeDefinition: column.logicalTypeDefinition || field.logicalTypeDefinition,
+    objectFields: column.objectFields || field.objectFields,
   };
 }
 
@@ -2897,6 +2941,7 @@ async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, Rel
   const client = database.client;
 
   try {
+    const logicalTypes = await loadSqlfuTypes(client);
     const schemaResult = await client.all<{name: string; type: string; sql: string | null}>({
       sql: `
         select name, type, sql
@@ -2912,8 +2957,11 @@ async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, Rel
 
     for (const row of schemaResult) {
       const name = String(row.name);
+      if (name.toLowerCase() === 'sqlfu_types') {
+        continue;
+      }
       const kind = row.type === 'view' ? 'view' : 'table';
-      const columns = await loadRelationColumns(client, name);
+      const columns = await loadRelationColumns(client, name, logicalTypes);
       relations.set(name, {
         kind,
         name,
@@ -2943,7 +2991,49 @@ async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, Rel
   }
 }
 
-async function loadRelationColumns(client: Client, relationName: string): Promise<ReadonlyMap<string, TsColumn>> {
+async function loadSqlfuTypes(client: Client): Promise<ReadonlyMap<string, LogicalTypeInfo>> {
+  const pragmaResult = await client.all<Record<string, unknown>>({
+    sql: `PRAGMA table_xinfo("sqlfu_types")`,
+    args: [],
+  });
+  const logicalTypes = new Map<string, LogicalTypeInfo>();
+
+  for (const row of pragmaResult) {
+    if (Number(row.hidden || 0) !== 0) {
+      continue;
+    }
+
+    const name = String(row.name);
+    const location = `sqlfu_types.${name}`;
+    if (!name.startsWith('json_')) {
+      throw new Error(`${location} is not supported yet. sqlfu_types logical type names must start with "json_".`);
+    }
+
+    const declaredType = typeof row.type === 'string' ? row.type : '';
+    if (!hasTextAffinity(declaredType)) {
+      throw new Error(`${location} must be declared with TEXT affinity because json_* logical types store JSON text.`);
+    }
+
+    const definitionText = parseSqliteStringDefault(row.dflt_value, location);
+    const definition = parseLogicalTypeDefinition(definitionText, location);
+    const field = fieldFromLogicalTypeDefinition(name, definition, location);
+    logicalTypes.set(normalizeDeclaredType(name), {
+      name,
+      logicalType: 'json',
+      tsType: fieldTypeExpression(field, 'parameter'),
+      definition,
+      objectFields: field.objectFields,
+    });
+  }
+
+  return logicalTypes;
+}
+
+async function loadRelationColumns(
+  client: Client,
+  relationName: string,
+  logicalTypes: ReadonlyMap<string, LogicalTypeInfo>,
+): Promise<ReadonlyMap<string, TsColumn>> {
   const pragmaResult = await client.all<Record<string, unknown>>({
     sql: `PRAGMA table_xinfo("${escapeSqliteIdentifier(relationName)}")`,
     args: [],
@@ -2958,12 +3048,15 @@ async function loadRelationColumns(client: Client, relationName: string): Promis
 
     const name = String(row.name);
     const declaredType = typeof row.type === 'string' ? row.type : '';
-    const logicalType = logicalTypeForDeclaredSqliteType(declaredType);
+    const logicalTypeInfo = logicalTypes.get(normalizeDeclaredType(declaredType));
+    const logicalType = logicalTypeInfo?.logicalType || logicalTypeForDeclaredSqliteType(declaredType);
     columns.set(name, {
       name,
-      tsType: logicalType === 'json' ? 'unknown' : mapSqliteTypeToTs(declaredType),
+      tsType: logicalTypeInfo?.tsType || (logicalType === 'json' ? 'unknown' : mapSqliteTypeToTs(declaredType)),
       notNull: Number(row.notnull ?? 0) === 1 || Number(row.pk ?? 0) >= 1,
       logicalType,
+      logicalTypeDefinition: logicalTypeInfo?.definition,
+      objectFields: logicalTypeInfo?.objectFields,
     });
   }
 
@@ -3139,6 +3232,8 @@ function inferExpressionColumn(
         tsType: directColumn.tsType,
         notNull: directColumn.notNull,
         logicalType: directColumn.logicalType,
+        logicalTypeDefinition: directColumn.logicalTypeDefinition,
+        objectFields: directColumn.objectFields,
       };
     }
   }
@@ -3361,8 +3456,127 @@ function mapSqliteTypeToTs(columnType: string): string {
   return 'number';
 }
 
+function hasTextAffinity(columnType: string): boolean {
+  const normalized = columnType.trim().toUpperCase();
+  return normalized.includes('CHAR') || normalized.includes('CLOB') || normalized.includes('TEXT');
+}
+
 function logicalTypeForDeclaredSqliteType(columnType: string): LogicalType | undefined {
-  return columnType.trim().toUpperCase() === 'JSON' ? 'json' : undefined;
+  return normalizeDeclaredType(columnType) === 'json' ? 'json' : undefined;
+}
+
+function normalizeDeclaredType(columnType: string): string {
+  return columnType.trim().toLowerCase();
+}
+
+function parseSqliteStringDefault(rawDefault: unknown, location: string): string {
+  if (typeof rawDefault !== 'string') {
+    throw new Error(`${location} must have a strict JSON string default.`);
+  }
+  const trimmed = rawDefault.trim();
+  if (!trimmed.startsWith("'") || !trimmed.endsWith("'")) {
+    throw new Error(`${location} must have a strict JSON string default.`);
+  }
+  return trimmed.slice(1, -1).replaceAll("''", "'");
+}
+
+function parseLogicalTypeDefinition(rawDefinition: string, location: string): LogicalTypeDefinition {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawDefinition);
+  } catch (error) {
+    throw new Error(`${location} default must be strict JSON: ${(error as Error).message}`);
+  }
+  return normalizeLogicalTypeDefinition(parsed, location);
+}
+
+function normalizeLogicalTypeDefinition(value: unknown, location: string): LogicalTypeDefinition {
+  if (typeof value === 'string') {
+    assertSupportedLogicalTypeExpression(value, location);
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length !== 1) {
+      throw new Error(`${location} array definitions must contain exactly one item schema.`);
+    }
+    return [normalizeLogicalTypeDefinition(value[0], `${location}[0]`)];
+  }
+  if (typeof value === 'object' && value !== null) {
+    const output: {[key: string]: LogicalTypeDefinition} = {};
+    for (const [key, child] of Object.entries(value)) {
+      assertGeneratedObjectFieldName(key, `${location}.${key}`);
+      output[key] = normalizeLogicalTypeDefinition(child, `${location}.${key}`);
+    }
+    return output;
+  }
+  throw new Error(`${location} must be a string, object, or one-item array type definition.`);
+}
+
+function assertSupportedLogicalTypeExpression(expression: string, location: string): void {
+  try {
+    tsTypeForLogicalTypeExpression(expression);
+  } catch (error) {
+    throw new Error(`${location} has unsupported type expression ${JSON.stringify(expression)}: ${(error as Error).message}`);
+  }
+}
+
+function assertGeneratedObjectFieldName(name: string, location: string): void {
+  if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
+    return;
+  }
+  throw new Error(`${location} must be a TypeScript identifier in this first sqlfu_types slice.`);
+}
+
+function fieldFromLogicalTypeDefinition(
+  name: string,
+  definition: LogicalTypeDefinition,
+  location: string,
+): GeneratedField {
+  if (typeof definition === 'string') {
+    return {
+      name,
+      tsType: tsTypeForLogicalTypeExpression(definition),
+      notNull: true,
+      logicalTypeDefinition: definition,
+    };
+  }
+  if (Array.isArray(definition)) {
+    const item = fieldFromLogicalTypeDefinition('item', definition[0]!, `${location}[0]`);
+    return {
+      name,
+      tsType: `${fieldTypeExpression(item, 'parameter')}[]`,
+      notNull: true,
+      logicalTypeDefinition: definition,
+      isArray: true,
+      objectFields: item.objectFields,
+    };
+  }
+  const objectFields = Object.entries(definition).map(([fieldName, fieldDefinition]) =>
+    fieldFromLogicalTypeDefinition(fieldName, fieldDefinition, `${location}.${fieldName}`),
+  );
+  return {
+    name,
+    tsType: renderInlineObjectTsType(objectFields),
+    notNull: true,
+    logicalTypeDefinition: definition,
+    objectFields,
+  };
+}
+
+function tsTypeForLogicalTypeExpression(expression: string): string {
+  const normalized = expression.trim();
+  if (normalized === 'string') return 'string';
+  if (normalized === 'number') return 'number';
+  if (normalized === 'boolean') return 'boolean';
+  if (normalized === 'unknown') return 'unknown';
+  if (normalized === 'Date') return 'Date';
+  if (normalized.endsWith('[]')) {
+    return `${tsTypeForLogicalTypeExpression(normalized.slice(0, -2))}[]`;
+  }
+  if (parseStringLiteralUnion(normalized)) {
+    return normalized;
+  }
+  throw new Error('only primitives, arrays, and string-literal unions are supported');
 }
 
 function escapeSqliteIdentifier(value: string): string {

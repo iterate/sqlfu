@@ -143,6 +143,44 @@ await listPostsByKeys(client, {
 });
 ```
 
+## Typed JSON columns
+
+Columns declared as `json` are serialized as JSON text and exposed as `unknown`.
+For a stronger shape, add a reserved `sqlfu_types` metadata table to
+`definitions.sql` and declare app columns with one of its `json_*` logical type
+names.
+
+```sql
+create table sqlfu_types(
+  json_slack_payload text default '{ "action": "''message'' | ''reaction''", "content": "string" }'
+);
+
+create table slack_webhooks(
+  id integer primary key,
+  payload json_slack_payload not null
+);
+```
+
+The default value must be strict JSON. Object keys become TypeScript field names;
+string values are Arktype-style type expressions. The example above generates a
+payload type like this:
+
+```ts
+{
+  action: 'message' | 'reaction';
+  content: string;
+}
+```
+
+Generated wrappers still store the value as JSON text in SQLite. Inputs are
+validated, then `JSON.stringify`-ed before the driver call. Result rows are
+`JSON.parse`-d before returning and before result validation. The configured
+validator target can still be `arktype`, `valibot`, `zod`, or `zod-mini`.
+
+The first slice supports `json_*` logical types stored as `text`. Generating the
+SQL metadata table from TypeScript definitions, serializing runtime Arktype
+`Type` instances, and non-JSON branded scalar types are future work.
+
 ## Limits
 
 - Runtime-expanded params, currently inferred scalar `IN` lists, row-value `IN`
@@ -151,9 +189,8 @@ await listPostsByKeys(client, {
   duplicating the driver arguments, so sqlfu rejects that shape for now.
 - Columns declared with the SQLite type name `json` get narrow logical-type
   handling: generated wrappers accept `unknown`, stringify JSON inputs before
-  driver calls, and parse selected JSON result columns on the way out. sqlfu
-  still does not infer or enforce a precise TypeScript object shape inside JSON
-  values.
+  driver calls, and parse selected JSON result columns on the way out. Use
+  `sqlfu_types` when a JSON column needs a precise generated object shape.
 - Parameter shape is inferred from SQL shape, not comment metadata. `@name` names
   queries; `IN (:ids)`, `(slug, title) in (:keys)`, and `values :posts` describe
   runtime placeholder expansion where the SQL shape changes.
