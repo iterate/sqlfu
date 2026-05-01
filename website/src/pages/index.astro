@@ -87,32 +87,34 @@ import '../styles/landing.css';
           </div>
           <div class="artifact-pair feature-demo" aria-label="Schema edit and draft command">
             <figure class="artifact artifact-tall">
-              <figcaption>definitions.sql</figcaption>
+              <figcaption class="artifact-caption-actions">
+                <span>definitions.sql</span>
+                <button class="demo-replay" type="button" data-replay-demo aria-label="Replay schema and migration animation" title="Replay animation">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+                    <path d="M20 4v7h-7" />
+                  </svg>
+                </button>
+              </figcaption>
               <pre><code><span class="tok-keyword">create table</span> <span class="tok-name">posts</span> (
   <span class="tok-name">id</span> <span class="tok-keyword">integer primary key autoincrement</span>,
   <span class="tok-name">slug</span> <span class="tok-keyword">text not null unique</span>,
-  <span class="tok-name">title</span> <span class="tok-keyword">text not null</span>,
-  <span class="tok-name">published</span> <span class="tok-keyword">integer not null default</span> <span class="tok-number">0</span>,
-<span class="diff-line diff-added" data-type-speed="schema-add">+ <span class="tok-name">foo</span> <span class="tok-keyword">text</span></span>
+  <span class="tok-name">title</span> <span class="tok-keyword">text not null</span>
+<span class="diff-line diff-added" data-type-speed="schema-add" data-reveal-line data-reveal-pause="620" data-hide-typing-whitespace>+ <span class="tok-name">published</span> <span class="tok-keyword">integer not null default</span> <span class="tok-number">0</span></span>
 );</code></pre>
             </figure>
             <figure class="artifact terminal artifact-tall">
               <figcaption>terminal</figcaption>
               <pre><code><span data-type-speed="command" data-run-command="true"><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu draft</span></span>
-<span class="terminal-output terminal-block" data-terminal-output data-output-pause="1250" data-dismiss-before-next>│
+<span class="terminal-output terminal-block" data-terminal-output data-output-pause="1250">│
 ◇  Create migration file? ─────────────────╮
 │                                          │
-│  alter table posts add column foo text;  │
+│  alter table posts add column published  │
+│    integer not null default 0;           │
 │                                          │
 ├──────────────────────────────────────────╯
-│
-◆  Continue with this body?
-│  ● Yes
-│  ○ No
-│  ○ Edit with code
-│  ○ Edit with vi
-│  ○ Edit with nano</span>
-<span class="terminal-output terminal-block" data-terminal-output data-output-pause="0">Wrote migrations/20260501090000_add_foo_to_posts.sql</span></code></pre>
+│</span>
+<span class="terminal-output terminal-block" data-terminal-output data-output-pause="0">Wrote migrations/20260501090000_add_published_to_posts.sql</span></code></pre>
             </figure>
           </div>
         </article>
@@ -128,7 +130,15 @@ import '../styles/landing.css';
           </div>
           <div class="artifact-pair feature-demo" aria-label="Query file and generated TypeScript">
             <figure class="artifact artifact-tall">
-              <figcaption>sql/get-posts.sql</figcaption>
+              <figcaption class="artifact-caption-actions">
+                <span>sql/get-posts.sql</span>
+                <button class="demo-replay" type="button" data-replay-demo aria-label="Replay type generation animation" title="Replay animation">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+                    <path d="M20 4v7h-7" />
+                  </svg>
+                </button>
+              </figcaption>
               <pre><code data-type-speed="fast"><span class="tok-keyword">select</span> <span class="tok-name">id</span>, <span class="tok-name">slug</span>, <span class="tok-name">title</span>
 <span class="tok-keyword">from</span> <span class="tok-name">posts</span>
 <span class="tok-keyword">where</span> <span class="tok-name">published</span> = <span class="tok-number">1</span>
@@ -137,10 +147,10 @@ import '../styles/landing.css';
             </figure>
             <div class="artifact artifact-tall artifact-tabs" data-tabbed-artifact>
               <div class="artifact-tablist" role="tablist" aria-label="Type generation output">
-                <span class="artifact-tab is-active" data-tab-for="terminal">terminal</span>
-                <span class="artifact-tab" data-tab-for="src">src/posts.ts</span>
+                <button class="artifact-tab is-active" type="button" role="tab" aria-selected="true" data-tab-for="terminal">terminal</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="src">src/posts.ts</button>
               </div>
-              <div class="artifact-tab-panel terminal is-active" data-terminal-artifact data-tab-panel="terminal">
+              <div class="artifact-tab-panel terminal is-active" role="tabpanel" data-terminal-artifact data-tab-panel="terminal">
                 <pre><code><span data-type-speed="command" data-run-command="true"><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu generate</span></span>
 <span class="terminal-output terminal-block" data-terminal-output data-output-pause="820">Updated generated files:
   sql/.generated/get-posts.sql.ts
@@ -149,7 +159,7 @@ import '../styles/landing.css';
   sql/.generated/tables.ts
   .sqlfu/query-catalog.json</span></code></pre>
               </div>
-              <div class="artifact-tab-panel" data-replacement-artifact data-tab-panel="src">
+              <div class="artifact-tab-panel" role="tabpanel" data-replacement-artifact data-tab-panel="src">
                 <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
 
 <span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
@@ -174,7 +184,15 @@ import '../styles/landing.css';
           </div>
           <div class="artifact-pair feature-demo" aria-label="Runtime client and query metadata">
             <figure class="artifact artifact-tall">
-              <figcaption>application code</figcaption>
+              <figcaption class="artifact-caption-actions">
+                <span>application code</span>
+                <button class="demo-replay" type="button" data-replay-demo aria-label="Replay runtime animation" title="Replay animation">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+                    <path d="M20 4v7h-7" />
+                  </svg>
+                </button>
+              </figcaption>
               <pre><code data-type-speed="fast"><span class="tok-keyword">const</span> <span class="tok-name">client</span> = <span class="tok-name">instrument</span>(
   <span class="tok-name">createNodeSqliteClient</span>(<span class="tok-name">db</span>),
   <span class="tok-name">instrument</span>.<span class="tok-prop">otel</span>(&#123;<span class="tok-prop">tracer</span>&#125;),
@@ -229,7 +247,9 @@ import '../styles/landing.css';
                 const span = document.createElement('span');
                 span.className = 'typed-char';
                 span.textContent = character;
-                if (!character.trim()) span.classList.add('is-visible');
+                if (!character.trim() && !target.hasAttribute('data-hide-typing-whitespace')) {
+                  span.classList.add('is-visible');
+                }
                 fragment.append(span);
               }
               textNode.replaceWith(fragment);
@@ -241,7 +261,15 @@ import '../styles/landing.css';
 
           const resetRow = row => {
             for (const character of row.querySelectorAll('.typed-char')) {
-              character.classList.toggle('is-visible', !character.textContent?.trim());
+              const target = character.closest('[data-type-speed]');
+              const hideWhitespace = target?.hasAttribute('data-hide-typing-whitespace');
+              character.classList.toggle(
+                'is-visible',
+                !hideWhitespace && !character.textContent?.trim(),
+              );
+            }
+            for (const revealLine of row.querySelectorAll('[data-reveal-line]')) {
+              revealLine.classList.remove('is-visible');
             }
             for (const output of row.querySelectorAll('[data-terminal-output]')) {
               output.classList.remove('is-visible', 'is-dismissed');
@@ -259,6 +287,11 @@ import '../styles/landing.css';
           };
 
           const revealTyping = async (target, isCurrent) => {
+            if (target.hasAttribute('data-reveal-line')) {
+              target.classList.add('is-visible');
+              await sleep(Number(target.dataset.revealPause || 0));
+              if (!isCurrent()) return false;
+            }
             const delayBySpeed = {
               command: 78,
               fast: 14,
@@ -277,9 +310,18 @@ import '../styles/landing.css';
           const switchArtifactTab = (tabbed, activeTab) => {
             for (const tab of tabbed.querySelectorAll('[data-tab-for]')) {
               tab.classList.toggle('is-active', tab.dataset.tabFor === activeTab);
+              tab.setAttribute('aria-selected', String(tab.dataset.tabFor === activeTab));
             }
             for (const panel of tabbed.querySelectorAll('[data-tab-panel]')) {
               panel.classList.toggle('is-active', panel.dataset.tabPanel === activeTab);
+            }
+          };
+
+          const setReplayState = (row, state) => {
+            row.dataset.walkthroughState = state;
+            for (const button of row.querySelectorAll('[data-replay-demo]')) {
+              button.dataset.replayState = state;
+              button.disabled = state === 'running';
             }
           };
 
@@ -288,57 +330,59 @@ import '../styles/landing.css';
             row.dataset.walkthroughRun = runId;
             const isCurrent = () => row.dataset.walkthroughRun === runId;
             resetRow(row);
+            setReplayState(row, 'running');
 
-            for (const target of row.querySelectorAll('[data-type-speed]')) {
-              const completed = await revealTyping(target, isCurrent);
-              if (!completed || !isCurrent()) return;
+            try {
+              for (const target of row.querySelectorAll('[data-type-speed]')) {
+                const completed = await revealTyping(target, isCurrent);
+                if (!completed || !isCurrent()) return;
 
-              if (target.dataset.runCommand === 'true') {
-                const terminal = target.closest('.artifact');
-                if (terminal) terminal.classList.add('is-running');
-                await sleep(650);
-                let previousOutput = null;
-                for (const output of terminal?.querySelectorAll('[data-terminal-output]') || []) {
-                  if (!isCurrent()) return;
-                  if (previousOutput?.hasAttribute('data-dismiss-before-next')) {
-                    previousOutput.classList.add('is-dismissed');
+                if (target.dataset.runCommand === 'true') {
+                  const terminal = target.closest('.artifact');
+                  if (terminal) terminal.classList.add('is-running');
+                  await sleep(650);
+                  let previousOutput = null;
+                  for (const output of terminal?.querySelectorAll('[data-terminal-output]') || []) {
+                    if (!isCurrent()) return;
+                    if (previousOutput?.hasAttribute('data-dismiss-before-next')) {
+                      previousOutput.classList.add('is-dismissed');
+                    }
+                    output.classList.add('is-visible');
+                    previousOutput = output;
+                    await sleep(Number(output.dataset.outputPause || 260));
                   }
-                  output.classList.add('is-visible');
-                  previousOutput = output;
-                  await sleep(Number(output.dataset.outputPause || 260));
-                }
-                if (terminal) {
-                  terminal.classList.remove('is-running');
-                  terminal.classList.add('is-done');
-                }
-                await sleep(170);
+                  if (terminal) {
+                    terminal.classList.remove('is-running');
+                    terminal.classList.add('is-done');
+                  }
+                  await sleep(170);
 
-                const replacement = terminal
-                  ?.closest('.artifact-swap')
-                  ?.querySelector('[data-replacement-artifact]');
-                const tabbedReplacement = terminal
-                  ?.closest('[data-tabbed-artifact]')
-                  ?.querySelector('[data-replacement-artifact]');
-                const tabbed = terminal?.closest('[data-tabbed-artifact]');
-                if (replacement) {
-                  terminal.classList.add('is-replaced');
-                  replacement.classList.add('is-visible');
-                }
-                if (tabbed && tabbedReplacement) {
-                  switchArtifactTab(tabbed, 'src');
-                  tabbedReplacement.classList.add('is-visible');
+                  const replacement = terminal
+                    ?.closest('.artifact-swap')
+                    ?.querySelector('[data-replacement-artifact]');
+                  const tabbedReplacement = terminal
+                    ?.closest('[data-tabbed-artifact]')
+                    ?.querySelector('[data-replacement-artifact]');
+                  const tabbed = terminal?.closest('[data-tabbed-artifact]');
+                  if (replacement) {
+                    terminal.classList.add('is-replaced');
+                    replacement.classList.add('is-visible');
+                  }
+                  if (tabbed && tabbedReplacement) {
+                    switchArtifactTab(tabbed, 'src');
+                    tabbedReplacement.classList.add('is-visible');
+                  }
                 }
               }
-            }
 
-            Array.from(row.querySelectorAll('[data-generated-artifact]')).forEach(
-              (artifact, index) => {
-                window.setTimeout(() => {
-                  if (!isCurrent()) return;
-                  artifact.classList.add('is-visible');
-                }, index * 110);
-              },
-            );
+              for (const artifact of row.querySelectorAll('[data-generated-artifact]')) {
+                if (!isCurrent()) return;
+                artifact.classList.add('is-visible');
+                await sleep(110);
+              }
+            } finally {
+              if (isCurrent()) setReplayState(row, 'done');
+            }
           };
 
           for (const row of rows) {
@@ -349,10 +393,17 @@ import '../styles/landing.css';
           document.documentElement.classList.add('landing-anim-ready');
           for (const row of rows) {
             resetRow(row);
-            row.addEventListener('click', event => {
-              if (event.target instanceof Element && event.target.closest('a, button')) return;
-              void playRow(row);
-            });
+            setReplayState(row, 'idle');
+            for (const replayButton of row.querySelectorAll('[data-replay-demo]')) {
+              replayButton.addEventListener('click', () => void playRow(row));
+            }
+            for (const tabbed of row.querySelectorAll('[data-tabbed-artifact]')) {
+              for (const tab of tabbed.querySelectorAll('[data-tab-for]')) {
+                tab.addEventListener('click', () => {
+                  switchArtifactTab(tabbed, tab.dataset.tabFor || 'terminal');
+                });
+              }
+            }
           }
 
           if (!('IntersectionObserver' in window)) {
