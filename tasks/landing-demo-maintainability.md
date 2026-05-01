@@ -5,7 +5,7 @@ size: large
 
 ## Status
 
-Worktree branch created for the follow-up pass. The current landing-page demos work, but they are hand-authored in Astro with manual syntax-token spans and small custom animation conventions. This pass should move demo content into source-like markdown fixtures, compile syntax-highlighted markup at build time, and preserve the existing client-side animation behavior where possible.
+Implementation is mostly done. Demo snippets now live in markdown fixtures, a build-time renderer parses annotations and uses Shiki for SQL/TypeScript, terminal transcripts are rendered by a small custom path, and `index.astro` consumes compiled demo artifacts instead of hand-tokenized spans. Batteries now participates in the existing scroll/replay animation flow for the active feature panel. Remaining work: fake trace rendering still needs a real design pass, and Outbox remains intentionally deferred until the product surface is stable enough to advertise.
 
 ## Scope
 
@@ -22,17 +22,17 @@ Worktree branch created for the follow-up pass. The current landing-page demos w
 
 ## Checklist
 
-- [ ] Create `website/src/landing-demos/README.md` documenting every fence-level and line-level annotation directive.
-- [ ] Create markdown demo fixtures for `draft`, `generate`, `runtime`, and `batteries`, with headings as artifact captions and fenced blocks as artifacts.
-- [ ] Add a build-time renderer that parses the demo markdown with `remark`/`unified`, passes supported language fences through Shiki, strips inline annotations, and converts annotation metadata into the existing landing DOM classes and `data-*` attributes.
-- [ ] Map Shiki token output to the existing `tok-*` class names so `website/src/styles/landing.css` does not need a broad syntax-theme rewrite.
-- [ ] Treat terminal transcripts as custom fence languages such as `term` or `term-output`, not as real Shiki grammars.
-- [ ] Handle SQL quirks explicitly, especially `:limit` not being a parameter token in Shiki's SQL grammar.
-- [ ] Replace hand-pre-tokenized Astro snippets in `website/src/pages/index.astro` with calls to the build-time renderer.
-- [ ] Animate the Batteries section. Use the same scroll-into-view/replay principles as the first three beats, but avoid making every feature pane auto-run at once.
+- [x] Create `website/src/landing-demos/README.md` documenting every fence-level and line-level annotation directive. _added alongside the fixture files; includes product-fact maintenance breadcrumbs and the `:limit` Shiki caveat_
+- [x] Create markdown demo fixtures for `draft`, `generate`, `runtime`, and `batteries`, with headings as artifact captions and fenced blocks as artifacts. _added `draft.md`, `generate.md`, `runtime.md`, and `batteries.md` under `website/src/landing-demos/`_
+- [x] Add a build-time renderer that parses the demo markdown with `remark`/`unified`, passes supported language fences through Shiki, strips inline annotations, and converts annotation metadata into the existing landing DOM classes and `data-*` attributes. _implemented in `website/src/landing-demos/render.ts`; uses Vite raw markdown imports so it works after Astro bundles the page_
+- [x] Map Shiki token output to the existing `tok-*` class names so `website/src/styles/landing.css` does not need a broad syntax-theme rewrite. _renderer maps Shiki scopes to `tok-keyword`, `tok-name`, `tok-string`, `tok-number`, `tok-comment`, `tok-param`, and `tok-prop`; no syntax-theme CSS rewrite needed_
+- [x] Treat terminal transcripts as custom fence languages such as `term` or `term-output`, not as real Shiki grammars. _`term` fences render through a custom terminal transcript renderer with prompt, command, and output grouping support_
+- [x] Handle SQL quirks explicitly, especially `:limit` not being a parameter token in Shiki's SQL grammar. _renderer masks `:name` parameters before Shiki tokenization and restores them as `tok-param` spans_
+- [x] Replace hand-pre-tokenized Astro snippets in `website/src/pages/index.astro` with calls to the build-time renderer. _landing page frontmatter calls `renderDemo(...)` and inserts compiled artifacts via `set:html`_
+- [x] Animate the Batteries section. Use the same scroll-into-view/replay principles as the first three beats, but avoid making every feature pane auto-run at once. _Batteries now has `data-walkthrough-step`; the IIFE filters typing targets to the active feature panel and reveals only outputs before the next command_
 - [ ] Improve the fake trace rendering. Make it look more like a real trace viewer while staying intentionally simplified and vendor-neutral.
 - [ ] Re-add an Outbox demo to Batteries once the product surface is stable enough to advertise without caveats.
-- [ ] Add explicit maintenance hints for future agents. Capture which product facts each demo depends on, where those facts live in the code/docs, and what should be checked before changing landing copy or terminal output.
+- [x] Add explicit maintenance hints for future agents. Capture which product facts each demo depends on, where those facts live in the code/docs, and what should be checked before changing landing copy or terminal output. _documented in `website/src/landing-demos/README.md`_
 
 ## Notes
 
