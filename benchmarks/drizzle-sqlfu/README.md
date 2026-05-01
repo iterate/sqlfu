@@ -40,10 +40,10 @@ cp benchmarks/drizzle-sqlfu/.env.example benchmarks/drizzle-sqlfu/.env
 Run one server target at a time:
 
 ```bash
-pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace start:drizzle:bun
-pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace start:drizzle:node
+BENCH_WORKERS=4 pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace start:drizzle:bun
+BENCH_WORKERS=4 pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace start:drizzle:node
 pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace start:go
-pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace start:sqlfu
+BENCH_WORKERS=4 pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace start:sqlfu
 ```
 
 Ports:
@@ -69,6 +69,8 @@ pnpm --dir benchmarks/drizzle-sqlfu --ignore-workspace tsx bench/prepare.ts --fo
 ```
 
 For a serious comparison, follow upstream's two-machine setup rather than running K6, Postgres, and the server on one laptop.
+
+The original benchmark machine in Drizzle's screenshot has 4 CPU cores. On larger local machines, set `BENCH_WORKERS=4` for Node/Bun targets or the per-worker `pg.Pool({ max: 10 })` can exceed Postgres' default connection cap and turn the benchmark into a connection-limit test.
 
 ## Verification
 

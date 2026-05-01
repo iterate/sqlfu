@@ -12,7 +12,7 @@ import { relations } from './relations';
 import * as schema from './schema';
 import { customers, details, orders, products } from './schema';
 
-const numCPUs = os.cpus().length;
+const numCPUs = Number(process.env.BENCH_WORKERS || os.cpus().length);
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, min: 10, max: 10 });
 const db = drizzle({ client: pool, relations, jit: true });

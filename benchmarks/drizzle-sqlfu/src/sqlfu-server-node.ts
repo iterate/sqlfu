@@ -9,7 +9,7 @@ import cpuUsage from './cpu-usage';
 import {createSqlfuPgClient} from './sqlfu/pg-client';
 import {sqlfuQueries} from './sqlfu/queries';
 
-const numCPUs = os.cpus().length;
+const numCPUs = Number(process.env.BENCH_WORKERS || os.cpus().length);
 const port = Number(process.env.SQLFU_PORT || 3003);
 
 const pool = new pg.Pool({connectionString: process.env.DATABASE_URL, min: 10, max: 10});

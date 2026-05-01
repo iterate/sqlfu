@@ -84,7 +84,7 @@ export const products = d.snakeCase.table(
   {
     id: d.serial().primaryKey(),
     name: d.text().notNull(),
-    quantityPerUnit: d.varchar().notNull(),
+    quantityPerUnit: d.varchar("qt_per_unit").notNull(),
     unitPrice: d.doublePrecision().notNull(),
     unitsInStock: d.integer().notNull(),
     unitsOnOrder: d.integer().notNull(),

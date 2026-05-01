@@ -22,7 +22,7 @@
     "start:go": "go run ./go",
     "start:sqlfu": "tsx ./src/sqlfu-server-node.ts",
     "typecheck": "tsc -p tsconfig.sqlfu.json --noEmit",
-    "typecheck:postgres": "tsc --noEmit --skipLibCheck --esModuleInterop --strict --module commonjs --target es2022 --moduleResolution node src/drizzle-server-node.ts src/drizzle-server-bun.ts src/seed.ts src/generate.ts src/schema.ts src/relations.ts src/cpu-usage.ts",
+    "typecheck:postgres": "tsc --noEmit --skipLibCheck --esModuleInterop --strict --module commonjs --target es2022 --moduleResolution node src/docker.ts src/drizzle-server-node.ts src/drizzle-server-bun.ts src/seed.ts src/generate.ts src/schema.ts src/relations.ts src/cpu-usage.ts",
     "typecheck:upstream": "tsc --noEmit"
   },
   "keywords": [],
