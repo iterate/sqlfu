@@ -6,6 +6,7 @@
     "url": "https://github.com/mmkal/sqlfu"
   },
   "scripts": {
+    "dev-project": "tsx packages/sqlfu/src/cli --config packages/ui/test/projects/dev-project/sqlfu.config.ts",
     "dev": "pnpm --filter @sqlfu/ui dev",
     "demo": "pnpm --filter @sqlfu/ui demo",
     "sync:root-readme": "tsx scripts/sync-root-readme.ts sync",
