@@ -1139,7 +1139,7 @@ test('relation toolbar exposes Filter / Sort / Columns / Query / Definition butt
   await expect(page.getByRole('button', {name: 'Sort', exact: true})).toBeVisible();
   await expect(page.getByRole('button', {name: /Columns — \d+ of \d+ visible/})).toBeVisible();
   await expect(page.getByRole('button', {name: 'Query SQL'})).toBeVisible();
-  await expect(page.getByRole('button', {name: 'View definition'})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Table definition'})).toBeVisible();
   // The Query editor is not mounted until the popover is opened.
   await expect(page.getByLabel('Relation query editor', {exact: true})).toHaveCount(0);
 });
@@ -1219,7 +1219,7 @@ test('failed saves surface the underlying SQL error instead of a generic interna
   await page.goto('/#table/posts');
 
   // Append a row that will violate the UNIQUE(slug) constraint against the seeded hello-world row.
-  const appendCell = page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="0"]');
+  const appendCell = page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="2"]');
   await appendCell.scrollIntoViewIfNeeded();
   await appendCell.click({position: {x: 8, y: 8}});
   await fillGridTextCell(page, 3, 1, '999');
@@ -1247,7 +1247,7 @@ test('after a failed insert, the grid stays editable so the user can fix the row
   await page.goto('/#table/posts');
 
   // Trigger append by clicking the "+" cell in the append row.
-  const appendCell = page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="0"]');
+  const appendCell = page.locator('.reactgrid [data-cell-rowidx="3"][data-cell-colidx="2"]');
   await appendCell.scrollIntoViewIfNeeded();
   await appendCell.click({position: {x: 8, y: 8}});
 
