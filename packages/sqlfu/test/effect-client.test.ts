@@ -104,6 +104,35 @@ test('toEffectClient puts query failures in the Effect failure channel', () => {
   });
 });
 
+test('toEffectClient normalizes async client query failures in the Effect failure channel', async () => {
+  using fixture = createAsyncNodeSqliteFixture();
+  const client = toEffectClient(fixture.client);
+
+  const result = await Effect.runPromise(
+    client
+      .all({
+        sql: 'select id from missing_posts',
+        args: [],
+        name: 'findMissingPosts',
+      })
+      .pipe(
+        Effect.match({
+          onFailure: (error) => ({ok: false, error}),
+          onSuccess: (rows) => ({ok: true, rows}),
+        }),
+      ),
+  );
+
+  expect(result).toMatchObject({
+    ok: false,
+    error: {
+      kind: 'missing_table',
+      query: {name: 'findMissingPosts'},
+      system: 'sqlite',
+    },
+  });
+});
+
 test('SqlfuClient layer provides a wrapped client through Effect context', () => {
   using fixture = createNodeSqliteFixture();
   const DB = SqlfuClient.make().pipe(Effect.provide(SqlfuClient.layer(fixture.client)));
