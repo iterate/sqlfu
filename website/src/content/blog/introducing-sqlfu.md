@@ -1,7 +1,7 @@
 ---
-title: "sqlfu"
+title: "introducing sqlfu"
 slug: "introducing-sqlfu"
-date: "2026-04-30"
+date: "2026-04-23"
 description: "Introducing `sqlfu` — a library that lets you and your agent *just write SQL* to build your application."
 ---
 
@@ -9,7 +9,7 @@ Introducing `sqlfu` — a library that lets you and your agent *just write SQL* 
 
 > We need to talk about data
 
-It's 2026. After 3 agonising hours after submitting your YC application, you've finally heard back. You're in. A relief, now you won't be the only one of your friends that didn't make it. But now, you actually need to tell claude to build your startup. You only know three things. 1: the world needs your agent-harness-todolist-llm-wiki app. 2: it's going to be written in TypeScript. 3: it's going to need a database.
+It's 2026. After 3 agonising hours after asking Claude to submit your YC application, you've finally heard back. You're in. A relief, now you won't be the only one of your friends that didn't make it. But now, you actually need to tell claude to build your startup. You only know three things. 1: the world needs your agent-harness-todolist-llm-wiki app. 2: it's going to be written in TypeScript. 3: it's going to need a database.
 
 So, which TypeScript-friendly database library do you choose? Prisma has a pretty readable schema definition language. Drizzle's performance is meant to be great, and you hear it "close to SQL". Or you could go with Kysely because you want full control over the queries your application runs. You argue with your cofounder. Let's say you settle on Prisma.
 
