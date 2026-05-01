@@ -459,6 +459,14 @@ table {
   padding: 2rem;
 }
 
+.table-main {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 .sidebar-block,
 .panel,
 .card {
@@ -540,13 +548,14 @@ h3 {
 .nav-link {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 0.5rem;
   padding: 0.3rem 0.55rem;
   border-radius: 0.45rem;
   border: 1px solid transparent;
   font-size: 0.85rem;
   line-height: 1.3;
+  min-width: 0;
 }
 
 .nav-link.active,
@@ -557,6 +566,28 @@ h3 {
 
 .nav-link small {
   font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.nav-link-icon {
+  flex: 0 0 auto;
+  width: 0.95rem;
+  height: 0.95rem;
+  color: var(--muted);
+}
+
+.nav-link-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-link-count {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
 
@@ -591,6 +622,24 @@ h3 {
   border-radius: 1.4rem;
   box-shadow: var(--shadow);
   padding: 1rem 1.1rem;
+}
+
+.table-panel,
+.table-view {
+  min-width: 0;
+  min-height: 0;
+}
+
+.table-panel {
+  flex: 1;
+  gap: 0;
+}
+
+.table-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  background: var(--panel-strong);
 }
 
 .card-title {
@@ -682,8 +731,101 @@ h3 {
 }
 
 .table-scroll {
+  position: relative;
   overflow: auto;
   margin-top: 0.35rem;
+}
+
+.cell-expand-button {
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+  background: var(--panel-tint-strong);
+  color: var(--muted);
+  cursor: pointer;
+  z-index: 6;
+}
+
+.cell-expand-button:hover,
+.cell-expand-button:focus-visible {
+  color: var(--text);
+  background: var(--panel-tint-mid);
+  border-color: var(--accent-border-mid);
+}
+
+.cm-host {
+  position: relative;
+}
+
+.cm-fullscreen-button {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  z-index: 2;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  background: var(--panel-tint-soft);
+  color: var(--muted);
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.cm-host:hover .cm-fullscreen-button,
+.cm-fullscreen-button:hover,
+.cm-fullscreen-button:focus-visible {
+  opacity: 1;
+  color: var(--text);
+  background: var(--panel-tint-mid);
+  border-color: var(--accent-border-mid);
+}
+
+.cm-fullscreen-dialog {
+  width: min(80rem, calc(100vw - 2rem));
+  max-width: none;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.cm-fullscreen-dialog-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.table-view .rqp,
+.table-view .stack {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+}
+
+.table-view .data-toolbar {
+  margin-bottom: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--panel-strong);
+}
+
+.table-view .table-scroll {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  margin-top: 0;
+  background: var(--panel-strong);
 }
 
 /*
@@ -721,6 +863,10 @@ h3 {
 .reactgrid {
   min-width: max-content;
   color: var(--text);
+}
+
+.table-view .reactgrid {
+  min-width: 100%;
 }
 
 .reactgrid-content {
@@ -763,13 +909,35 @@ h3 {
   align-items: center;
   overflow: hidden;
   box-sizing: border-box;
-  padding: 0 0.55rem;
+  padding: 0 0.75rem;
   white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--text);
   background: var(--panel-tint-faint);
   border-color: var(--line) !important;
   outline: none;
   font-family: 'IBM Plex Mono', 'SFMono-Regular', 'Menlo', monospace;
+  font-size: 0.82rem;
+}
+
+.reactgrid-content .rg-pane .rg-cell:hover,
+.reactgrid-content .rg-pane .rg-cell.cell-expand-active {
+  padding-right: 2rem;
+}
+
+.reactgrid-content .rg-pane .rg-cell > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reactgrid-content .rg-pane .rg-cell.rg-text-cell,
+.reactgrid-content .rg-pane .rg-cell.rg-header-cell,
+.reactgrid-content .rg-pane .rg-cell.rg-number-cell {
+  display: block;
+  line-height: 33px;
+  text-overflow: ellipsis;
 }
 
 .reactgrid-content .rg-pane .rg-cell.rg-header-cell {
@@ -781,8 +949,29 @@ h3 {
   font-size: 0.78rem;
 }
 
-.reactgrid-content .rg-pane .rg-cell.rg-number-cell {
-  justify-content: flex-end;
+.reactgrid-content .rg-pane .rg-cell .rg-touch-column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -0.3rem;
+  z-index: 2;
+  width: 0.7rem;
+  height: 100%;
+  cursor: col-resize;
+  pointer-events: auto;
+}
+
+.reactgrid-content .rg-pane .rg-cell .rg-touch-column-resize-handle .rg-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0.28rem;
+  width: 0.14rem;
+  height: 100%;
+  background: transparent;
+}
+
+.reactgrid-content .rg-pane .rg-cell .rg-touch-column-resize-handle:hover .rg-resize-handle,
+.reactgrid-content .rg-pane .rg-cell .rg-touch-column-resize-handle:active .rg-resize-handle {
+  background: var(--accent);
 }
 
 .reactgrid-content .rg-pane .rg-cell.dirty-cell {
@@ -799,20 +988,41 @@ h3 {
   background: var(--rg-append-bg) !important;
 }
 
-.reactgrid-content .rg-pane .rg-cell.row-action-cell {
+.reactgrid-content .rg-pane .rg-cell.row-action-cell,
+.reactgrid-content .rg-pane .rg-cell.rg-rowAction-cell {
+  position: relative;
   justify-content: center;
   padding: 0;
 }
 
 .row-action-button {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   padding: 0;
   background: transparent;
   color: inherit;
   font: inherit;
+  line-height: 1;
   cursor: pointer;
+}
+
+.row-action-button:empty::before {
+  content: '';
+  width: 0.78rem;
+  height: 0.78rem;
+  border: 1px solid var(--line);
+  border-radius: 0.18rem;
+  background: var(--panel-tint-faint);
+}
+
+.row-action-button:hover:empty::before {
+  border-color: var(--accent-border-mid);
+  background: var(--panel-tint-soft);
 }
 
 .row-action-button:disabled {
@@ -852,12 +1062,16 @@ h3 {
 .reactgrid-content .rg-pane-shadow.shadow-top {
   top: 0;
   pointer-events: none;
-  box-shadow: 2px 2px 3px 1px var(--rg-shadow);
+  box-shadow: none;
 }
 
 .rg-hidden-element {
   position: fixed;
+  top: 50%;
+  left: 50%;
   width: 1px;
+  height: 1px;
+  opacity: 0;
   border: 0;
   padding: 0;
   margin: 0;
@@ -1350,6 +1564,10 @@ form textarea {
   .main {
     padding: 1rem;
   }
+
+  .table-main {
+    padding: 0;
+  }
 }
 
 /* === Relation query panel === */
@@ -1442,8 +1660,18 @@ form textarea {
 }
 
 .rqp-pill-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0.9rem;
   line-height: 1;
+}
+
+.rqp-svg-icon {
+  display: block;
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
 }
 
 .rqp-pill-badge {
@@ -1688,6 +1916,11 @@ form textarea {
 }
 
 .rqp-sort-direction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
   font-size: 0.9rem;
   opacity: 0.8;
 }
@@ -1752,15 +1985,6 @@ form textarea {
 .rqp-per-page-row.is-active {
   background: var(--accent-bg-mid);
   color: var(--accent);
-}
-
-/* Footer (pagination + reset) */
-
-.data-toolbar-trailing {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-left: auto;
 }
 
 /* Query popover body */

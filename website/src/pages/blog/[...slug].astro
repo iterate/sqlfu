@@ -1,0 +1,57 @@
+---
+import {getCollection, render} from 'astro:content';
+import '../../styles/blog.css';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog');
+  return posts.map((post) => ({
+    params: {slug: post.data.slug},
+    props: {post},
+  }));
+}
+
+const {post} = Astro.props;
+const {Content} = await render(post);
+
+const formatDate = (iso: string) =>
+  new Date(iso + 'T00:00:00Z').toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{post.data.title} — sqlfu blog</title>
+    {post.data.description ? <meta name="description" content={post.data.description} /> : null}
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <script is:inline>
+      (() => {
+        const stored = typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
+        const theme = stored || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+      })();
+    </script>
+  </head>
+  <body class="blog-page">
+    <header class="blog-header">
+      <a class="blog-home-link" href="/blog">← Back to blog</a>
+    </header>
+    <main class="blog-post">
+      <div class="blog-post-meta">
+        <time datetime={post.data.date}>{formatDate(post.data.date)}</time>
+      </div>
+      <h1 class="blog-post-title">{post.data.title}</h1>
+      <article class="blog-post-body">
+        <Content />
+      </article>
+    </main>
+  </body>
+</html>

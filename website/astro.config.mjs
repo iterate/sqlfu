@@ -11,6 +11,13 @@ export default defineConfig({
   build: {
     format: 'file',
   },
+  vite: {
+    server: {
+      // Allow ad-hoc tunnels (cloudflare / ngrok) to hit the dev server when
+      // previewing on phones or other devices.
+      allowedHosts: ['.trycloudflare.com', '.ngrok.app', '.ngrok.dev'],
+    },
+  },
   redirects: {
     '/docs': '/docs/getting-started',
   },

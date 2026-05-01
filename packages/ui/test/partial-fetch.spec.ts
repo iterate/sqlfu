@@ -87,7 +87,7 @@ test('D1 worker partial fetch serves real UI assets while leaving app routes ava
   await page.getByRole('button', {name: 'Add'}).click();
 
   await page.goto(`${fixture.origin}/#table/todos`);
-  await expect(page.getByRole('heading', {name: 'todos'})).toBeVisible();
+  await expect(page.locator('.nav-link.active')).toContainText('todos');
   await expect(page.getByText('Feed snake')).toBeVisible();
 
   await page.getByRole('link', {name: 'SQL runner'}).click();
@@ -216,7 +216,7 @@ test('partial fetch can serve the UI behind worker-owned prefix auth', async ({p
 
   await page.goto(`${fixture.origin}/my-db/#table/todos`);
   await expect(page).toHaveURL(/\/my-db\/?#table\/todos$/u);
-  await expect(page.getByRole('heading', {name: 'todos'})).toBeVisible();
+  await expect(page.locator('.nav-link.active')).toContainText('todos');
   await expect(page.getByText('Wash cloak')).toBeVisible();
 });
 
@@ -413,16 +413,16 @@ test('partial fetch can serve separate worker and durable object UIs from one wo
   await expect(page.getByText('Todos added this session: 1')).toBeVisible();
 
   await page.goto(`${fixture.origin}/my-db/#table/todos`);
-  await expect(page.getByRole('heading', {name: 'todos'})).toBeVisible();
+  await expect(page.locator('.nav-link.active')).toContainText('todos');
   await expect(page.getByText('Feed snake')).toBeVisible();
 
   await page.goto(`${fixture.origin}/app/session-db/#table/events`);
   await expect(page).toHaveURL(/\/app\/session-db\/?#table\/events$/u);
-  await expect(page.getByRole('heading', {name: 'events'})).toBeVisible();
+  await expect(page.locator('.nav-link.active')).toContainText('events');
   await expect(page.getByText('todo_added')).toBeVisible();
 
   await page.goto(`${fixture.origin}/my-db/#table/todos`);
-  await expect(page.getByRole('heading', {name: 'todos'})).toBeVisible();
+  await expect(page.locator('.nav-link.active')).toContainText('todos');
   await expect(page.getByText('Feed snake')).toBeVisible();
 
   await page.goto(`${fixture.origin}/app`);

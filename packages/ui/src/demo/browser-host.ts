@@ -16,6 +16,7 @@ import type {
 import type {SqlAnalysisResponse} from 'sqlfu/ui/browser';
 
 import {buildQueryCatalog} from './catalog.js';
+import northwindData from './northwind/data.sql?raw';
 import {openWasmDatabase, type Database} from './sqlite-wasm-client.js';
 import {DemoVfs} from './vfs.js';
 
@@ -276,9 +277,5 @@ function createVfsFs(vfs: DemoVfs, config: SqlfuProjectConfig, notify: () => voi
 
 function seedLiveDatabase(database: Database, definitionsSql: string) {
   database.exec(definitionsSql);
-  database.exec(`
-    insert into posts (slug, title, body, published) values
-      ('hello-world', 'Hello World', 'First post body', 1),
-      ('draft-notes', 'Draft Notes', 'Unpublished notes', 0);
-  `);
+  database.exec(northwindData);
 }
