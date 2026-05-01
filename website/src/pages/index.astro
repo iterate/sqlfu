@@ -291,15 +291,16 @@ import '../styles/landing.css';
               <button class="feature-option is-active" type="button" role="tab" aria-selected="true" data-feature-for="admin">Admin UI</button>
               <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="tracing">Built-in tracing</button>
               <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="lint">Lint plugin</button>
+              <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="formatter">Formatter</button>
               <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="skill">Agent skill</button>
-              <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="outbox">Outbox</button>
+              <button class="feature-option" type="button" role="tab" aria-selected="false" data-feature-for="cli">CLI</button>
             </div>
             <div class="feature-showcase-stage">
               <section class="feature-showcase-panel is-active" role="tabpanel" data-feature-panel="admin">
                 <figure class="artifact terminal artifact-compact">
                   <figcaption>terminal</figcaption>
                   <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu</span>
-<span class="terminal-output">sqlfu/ui listening on http://localhost:56081</span></code></pre>
+<span class="terminal-output">sqlfu ready at https://sqlfu.dev/ui</span></code></pre>
                 </figure>
                 <div class="ui-shot" aria-label="Clipped sqlfu UI screenshot">
                   <div class="ui-shot-topbar">
@@ -329,20 +330,46 @@ import '../styles/landing.css';
               <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="tracing">
                 <div class="artifact-pair artifact-pair-uneven">
                   <figure class="artifact">
-                    <figcaption>instrumentation</figcaption>
-                    <pre><code><span class="tok-keyword">const</span> <span class="tok-name">client</span> = <span class="tok-name">instrument</span>(
+                    <figcaption>src/server.ts</figcaption>
+                    <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">Hono</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"hono"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">instrument</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu"</span>;
+<span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
+
+<span class="tok-keyword">const</span> <span class="tok-name">app</span> = <span class="tok-keyword">new</span> <span class="tok-name">Hono</span>();
+<span class="tok-keyword">const</span> <span class="tok-name">client</span> = <span class="tok-name">instrument</span>(
   <span class="tok-name">baseClient</span>,
   <span class="tok-name">instrument</span>.<span class="tok-prop">otel</span>(&#123;<span class="tok-prop">tracer</span>&#125;),
 );
 
-<span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);</code></pre>
+<span class="tok-name">app</span>.<span class="tok-prop">get</span>(<span class="tok-string">"/posts"</span>, <span class="tok-keyword">async</span> (<span class="tok-name">c</span>) =&gt; &#123;
+  <span class="tok-keyword">return</span> <span class="tok-name">c</span>.<span class="tok-prop">json</span>(<span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;));
+&#125;);</code></pre>
                   </figure>
-                  <figure class="artifact">
-                    <figcaption>span attributes</figcaption>
-                    <pre><code><span class="tok-prop">db.query.summary</span> = <span class="tok-string">"getPosts"</span>
-<span class="tok-prop">db.query.text</span> = <span class="tok-string">"select id, slug, title ..."</span>
-<span class="tok-prop">db.system.name</span> = <span class="tok-string">"sqlite"</span></code></pre>
-                  </figure>
+                  <div class="trace-shot" aria-label="Example trace view">
+                    <div class="trace-shot-header">
+                      <span>GET /posts</span>
+                      <strong>42 ms</strong>
+                    </div>
+                    <div class="trace-row trace-row-root">
+                      <span class="trace-label">GET /posts</span>
+                      <span class="trace-bar"></span>
+                      <span class="trace-time">42 ms</span>
+                    </div>
+                    <div class="trace-row trace-row-child">
+                      <span class="trace-label">getPosts</span>
+                      <span class="trace-bar"></span>
+                      <span class="trace-time">8 ms</span>
+                    </div>
+                    <div class="trace-row trace-row-child trace-row-short">
+                      <span class="trace-label">sqlite all</span>
+                      <span class="trace-bar"></span>
+                      <span class="trace-time">5 ms</span>
+                    </div>
+                    <dl>
+                      <div><dt>db.query.summary</dt><dd>getPosts</dd></div>
+                      <div><dt>db.system.name</dt><dd>sqlite</dd></div>
+                    </dl>
+                  </div>
                 </div>
               </section>
               <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="lint">
@@ -359,26 +386,36 @@ src/app.ts
        sqlfu/query-naming</span></code></pre>
                 </figure>
               </section>
+              <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="formatter">
+                <figure class="artifact terminal">
+                  <figcaption>terminal</figcaption>
+                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu format "sql/**/*.sql"</span>
+
+<span class="terminal-output">Formatted files:
+  sql/get-posts.sql
+  sql/get-comments.sql</span></code></pre>
+                </figure>
+              </section>
               <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="skill">
                 <figure class="artifact terminal">
                   <figcaption>terminal</figcaption>
-                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx skills@latest add mmkal/sqlfu/skills/using-sqlfu</span>
+                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx skills add mmkal/sqlfu/skills/using-sqlfu</span>
 
 <span class="terminal-output">Installed using-sqlfu
 Agents now know to edit SQL first, run sqlfu draft, and regenerate wrappers.</span></code></pre>
                 </figure>
               </section>
-              <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="outbox">
-                <figure class="artifact">
-                  <figcaption>outbox worker</figcaption>
-                  <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">createOutbox</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"sqlfu/outbox"</span>;
+              <section class="feature-showcase-panel" role="tabpanel" data-feature-panel="cli">
+                <figure class="artifact terminal">
+                  <figcaption>terminal</figcaption>
+                  <pre><code><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu check</span>
+<span class="terminal-output">definitions.sql, migrations, and database agree</span>
 
-<span class="tok-keyword">const</span> <span class="tok-name">outbox</span> = <span class="tok-name">createOutbox</span>(<span class="tok-name">client</span>, &#123;
-  <span class="tok-prop">email</span>: <span class="tok-keyword">async</span> (<span class="tok-name">job</span>) =&gt; <span class="tok-name">sendEmail</span>(<span class="tok-name">job</span>.<span class="tok-prop">payload</span>),
-&#125;);
+<span class="term-prompt">$</span> <span class="tok-command">npx sqlfu migrate</span>
+<span class="terminal-output">Applied 20260501090000_add_published_to_posts.sql</span>
 
-<span class="tok-keyword">await</span> <span class="tok-name">outbox</span>.<span class="tok-prop">emit</span>(<span class="tok-string">"email"</span>, &#123;<span class="tok-prop">postId</span>: <span class="tok-number">42</span>&#125;);
-<span class="tok-keyword">await</span> <span class="tok-name">outbox</span>.<span class="tok-prop">work</span>();</code></pre>
+<span class="term-prompt">$</span> <span class="tok-command">npx sqlfu sync</span>
+<span class="terminal-output">Database already matches definitions.sql</span></code></pre>
                 </figure>
               </section>
             </div>

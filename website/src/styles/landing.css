@@ -768,11 +768,13 @@ a {
 
 .feature-showcase-stage {
   min-width: 0;
+  min-height: 358px;
 }
 
 .feature-showcase-panel {
   display: none;
   min-width: 0;
+  min-height: 358px;
 }
 
 .feature-showcase-panel.is-active {
@@ -884,6 +886,113 @@ a {
   border-bottom: 1px solid var(--line);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.trace-shot {
+  min-width: 0;
+  min-height: 358px;
+  padding: 0.75rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface-strong);
+  box-shadow: 0 12px 36px rgba(74, 43, 15, 0.08);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+:root[data-theme='dark'] .trace-shot {
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+}
+
+.trace-shot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.trace-shot-header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-shot-header strong {
+  color: var(--accent);
+  font-size: 0.82rem;
+}
+
+.trace-row {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 0.35fr) minmax(0, 1fr) 3.2rem;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0.55rem 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.trace-row-child {
+  padding-left: 1rem;
+}
+
+.trace-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-time {
+  text-align: right;
+  font-family: ui-monospace, 'SFMono-Regular', monospace;
+  font-size: 0.72rem;
+}
+
+.trace-bar {
+  height: 0.62rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--syntax-command) 100%);
+}
+
+.trace-row-child .trace-bar {
+  width: 62%;
+}
+
+.trace-row-short .trace-bar {
+  width: 40%;
+}
+
+.trace-shot dl {
+  margin: 1rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-family: ui-monospace, 'SFMono-Regular', monospace;
+  font-size: 0.72rem;
+}
+
+.trace-shot dl div {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.55fr) minmax(0, 0.45fr);
+  gap: 0.75rem;
+  margin: 0.35rem 0;
+}
+
+.trace-shot dt,
+.trace-shot dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-shot dd {
+  color: var(--text);
 }
 
 /* Video animation surfaces. Only injected by the `?animation=...` script on the
