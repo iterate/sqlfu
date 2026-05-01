@@ -441,6 +441,10 @@ a {
   display: block;
 }
 
+.terminal-output.is-dismissed {
+  display: none;
+}
+
 .diff-line {
   display: block;
   margin: 0.1rem -0.8rem;
@@ -460,6 +464,58 @@ a {
 .artifact-swap {
   display: grid;
   gap: 0.8rem;
+}
+
+.artifact-tabs {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.artifact-tablist {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.55rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-family: ui-monospace, 'SFMono-Regular', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+}
+
+.artifact-tab {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.55rem;
+  padding: 0 0.48rem;
+  border-radius: 0.35rem;
+  color: var(--muted);
+}
+
+.artifact-tab.is-active {
+  background: var(--code-bg);
+  color: var(--accent);
+}
+
+.artifact-tab-panel {
+  grid-area: 2 / 1;
+  min-width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.artifact-tab-panel.is-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+:root:not(.landing-anim-ready) .artifact-tab-panel:not(.is-active) {
+  display: none;
+}
+
+.artifact-tabs pre {
+  min-height: 0;
 }
 
 .artifact.terminal figcaption {
@@ -528,7 +584,9 @@ a {
 }
 
 .landing-anim-ready .artifact.terminal.is-running figcaption::after,
-.landing-anim-ready .artifact.terminal.is-done figcaption::after {
+.landing-anim-ready .artifact.terminal.is-done figcaption::after,
+.landing-anim-ready .artifact-tabs.is-running .artifact-tablist::after,
+.landing-anim-ready .artifact-tabs.is-done .artifact-tablist::after {
   color: var(--syntax-command);
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-size: 0.66rem;
@@ -537,12 +595,16 @@ a {
   text-transform: uppercase;
 }
 
-.landing-anim-ready .artifact.terminal.is-running figcaption::after {
+.landing-anim-ready .artifact.terminal.is-running figcaption::after,
+.landing-anim-ready .artifact-tabs.is-running .artifact-tablist::after {
   content: 'running';
+  margin-left: auto;
 }
 
-.landing-anim-ready .artifact.terminal.is-done figcaption::after {
+.landing-anim-ready .artifact.terminal.is-done figcaption::after,
+.landing-anim-ready .artifact-tabs.is-done .artifact-tablist::after {
   content: 'done';
+  margin-left: auto;
 }
 
 /* Video animation surfaces. Only injected by the `?animation=...` script on the

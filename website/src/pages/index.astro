@@ -88,18 +88,18 @@ import '../styles/landing.css';
           <div class="artifact-pair feature-demo" aria-label="Schema edit and draft command">
             <figure class="artifact artifact-tall">
               <figcaption>definitions.sql</figcaption>
-              <pre><code data-type-speed="fast"><span class="tok-keyword">create table</span> <span class="tok-name">posts</span> (
+              <pre><code><span class="tok-keyword">create table</span> <span class="tok-name">posts</span> (
   <span class="tok-name">id</span> <span class="tok-keyword">integer primary key autoincrement</span>,
   <span class="tok-name">slug</span> <span class="tok-keyword">text not null unique</span>,
   <span class="tok-name">title</span> <span class="tok-keyword">text not null</span>,
   <span class="tok-name">published</span> <span class="tok-keyword">integer not null default</span> <span class="tok-number">0</span>,
-<span class="diff-line diff-added">+ <span class="tok-name">foo</span> <span class="tok-keyword">text</span></span>
+<span class="diff-line diff-added" data-type-speed="schema-add">+ <span class="tok-name">foo</span> <span class="tok-keyword">text</span></span>
 );</code></pre>
             </figure>
             <figure class="artifact terminal artifact-tall">
               <figcaption>terminal</figcaption>
               <pre><code><span data-type-speed="command" data-run-command="true"><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu draft</span></span>
-<span class="terminal-output terminal-block" data-terminal-output data-output-pause="1150">│
+<span class="terminal-output terminal-block" data-terminal-output data-output-pause="1250" data-dismiss-before-next>│
 ◇  Create migration file? ─────────────────╮
 │                                          │
 │  alter table posts add column foo text;  │
@@ -135,9 +135,12 @@ import '../styles/landing.css';
 <span class="tok-keyword">order by</span> <span class="tok-name">id</span> <span class="tok-keyword">desc</span>
 <span class="tok-keyword">limit</span> <span class="tok-param">:limit</span>;</code></pre>
             </figure>
-            <div class="artifact-swap">
-              <figure class="artifact terminal artifact-tall" data-terminal-artifact>
-                <figcaption>terminal</figcaption>
+            <div class="artifact artifact-tall artifact-tabs" data-tabbed-artifact>
+              <div class="artifact-tablist" role="tablist" aria-label="Type generation output">
+                <span class="artifact-tab is-active" data-tab-for="terminal">terminal</span>
+                <span class="artifact-tab" data-tab-for="src">src/posts.ts</span>
+              </div>
+              <div class="artifact-tab-panel terminal is-active" data-terminal-artifact data-tab-panel="terminal">
                 <pre><code><span data-type-speed="command" data-run-command="true"><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu generate</span></span>
 <span class="terminal-output terminal-block" data-terminal-output data-output-pause="820">Updated generated files:
   sql/.generated/get-posts.sql.ts
@@ -145,17 +148,17 @@ import '../styles/landing.css';
   sql/.generated/queries.ts
   sql/.generated/tables.ts
   .sqlfu/query-catalog.json</span></code></pre>
-              </figure>
-              <figure class="artifact artifact-tall" data-replacement-artifact>
-                <figcaption>src/posts.ts</figcaption>
+              </div>
+              <div class="artifact-tab-panel" data-replacement-artifact data-tab-panel="src">
                 <pre><code><span class="tok-keyword">import</span> &#123;<span class="tok-name">getPosts</span>&#125; <span class="tok-keyword">from</span> <span class="tok-string">"./.generated/get-posts.sql.ts"</span>;
 
 <span class="tok-keyword">const</span> <span class="tok-name">posts</span> = <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);
 <span class="tok-comment">//    ^? Array&lt;&#123;id: number; slug: string; title: string&#125;&gt;</span>
 
-<span class="tok-name">getPosts</span>.<span class="tok-prop">query</span>.<span class="tok-prop">name</span>
-<span class="tok-comment">// </span><span class="tok-string">"getPosts"</span></code></pre>
-              </figure>
+<span class="tok-name">posts</span>.<span class="tok-prop">forEach</span>((<span class="tok-name">post</span>) =&gt; &#123;
+  <span class="tok-name">console</span>.<span class="tok-prop">log</span>(<span class="tok-name">post</span>.<span class="tok-prop">slug</span> + <span class="tok-string">": "</span> + <span class="tok-name">post</span>.<span class="tok-prop">title</span>);
+&#125;);</code></pre>
+              </div>
             </div>
           </div>
         </article>
@@ -241,7 +244,7 @@ import '../styles/landing.css';
               character.classList.toggle('is-visible', !character.textContent?.trim());
             }
             for (const output of row.querySelectorAll('[data-terminal-output]')) {
-              output.classList.remove('is-visible');
+              output.classList.remove('is-visible', 'is-dismissed');
             }
             for (const artifact of row.querySelectorAll('[data-generated-artifact], [data-replacement-artifact]')) {
               artifact.classList.remove('is-visible');
@@ -249,10 +252,19 @@ import '../styles/landing.css';
             for (const terminal of row.querySelectorAll('.artifact.terminal')) {
               terminal.classList.remove('is-running', 'is-done', 'is-replaced');
             }
+            for (const tabbed of row.querySelectorAll('[data-tabbed-artifact]')) {
+              switchArtifactTab(tabbed, 'terminal');
+              tabbed.classList.remove('is-running', 'is-done');
+            }
           };
 
           const revealTyping = async (target, isCurrent) => {
-            const delay = target.dataset.typeSpeed === 'command' ? 31 : 4;
+            const delayBySpeed = {
+              command: 78,
+              fast: 14,
+              'schema-add': 58,
+            };
+            const delay = delayBySpeed[target.dataset.typeSpeed] || 14;
             for (const character of prepareTyping(target)) {
               if (!isCurrent()) return false;
               if (character.classList.contains('is-visible')) continue;
@@ -260,6 +272,15 @@ import '../styles/landing.css';
               await sleep(delay);
             }
             return true;
+          };
+
+          const switchArtifactTab = (tabbed, activeTab) => {
+            for (const tab of tabbed.querySelectorAll('[data-tab-for]')) {
+              tab.classList.toggle('is-active', tab.dataset.tabFor === activeTab);
+            }
+            for (const panel of tabbed.querySelectorAll('[data-tab-panel]')) {
+              panel.classList.toggle('is-active', panel.dataset.tabPanel === activeTab);
+            }
           };
 
           const playRow = async row => {
@@ -275,10 +296,15 @@ import '../styles/landing.css';
               if (target.dataset.runCommand === 'true') {
                 const terminal = target.closest('.artifact');
                 if (terminal) terminal.classList.add('is-running');
-                await sleep(500);
+                await sleep(650);
+                let previousOutput = null;
                 for (const output of terminal?.querySelectorAll('[data-terminal-output]') || []) {
                   if (!isCurrent()) return;
+                  if (previousOutput?.hasAttribute('data-dismiss-before-next')) {
+                    previousOutput.classList.add('is-dismissed');
+                  }
                   output.classList.add('is-visible');
+                  previousOutput = output;
                   await sleep(Number(output.dataset.outputPause || 260));
                 }
                 if (terminal) {
@@ -290,9 +316,17 @@ import '../styles/landing.css';
                 const replacement = terminal
                   ?.closest('.artifact-swap')
                   ?.querySelector('[data-replacement-artifact]');
+                const tabbedReplacement = terminal
+                  ?.closest('[data-tabbed-artifact]')
+                  ?.querySelector('[data-replacement-artifact]');
+                const tabbed = terminal?.closest('[data-tabbed-artifact]');
                 if (replacement) {
                   terminal.classList.add('is-replaced');
                   replacement.classList.add('is-visible');
+                }
+                if (tabbed && tabbedReplacement) {
+                  switchArtifactTab(tabbed, 'src');
+                  tabbedReplacement.classList.add('is-visible');
                 }
               }
             }
@@ -329,14 +363,24 @@ import '../styles/landing.css';
           const observer = new IntersectionObserver(
             entries => {
               for (const entry of entries) {
-                if (!entry.isIntersecting) continue;
-                void playRow(entry.target);
+                const row = entry.target.closest('[data-walkthrough-step]');
+                if (!row) continue;
+                const fullyVisible = entry.isIntersecting && entry.intersectionRatio >= 0.98;
+                if (!fullyVisible) {
+                  row.dataset.walkthroughFullyVisible = 'false';
+                  continue;
+                }
+                if (row.dataset.walkthroughFullyVisible === 'true') continue;
+                row.dataset.walkthroughFullyVisible = 'true';
+                void playRow(row);
               }
             },
-            { rootMargin: '0px 0px -12% 0px', threshold: 0.35 },
+            { rootMargin: '0px', threshold: [0, 0.98, 1] },
           );
 
-          for (const row of rows) observer.observe(row);
+          for (const row of rows) {
+            observer.observe(row.querySelector('.feature-demo') || row);
+          }
         })();
       </script>
 
