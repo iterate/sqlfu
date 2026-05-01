@@ -15,6 +15,8 @@ type WatchRoot = {
   recursive: boolean;
 };
 
+const RESCAN_INTERVAL_MS = 500;
+
 export function watch(watchPaths: string[], options: WatchOptions) {
   const watcher = new FileWatcher(watchPaths, options);
   void watcher.start();
@@ -27,6 +29,7 @@ class FileWatcher extends EventEmitter {
   private closed = false;
   private scanRunning = false;
   private scanAgain = false;
+  private rescanInterval: NodeJS.Timeout | undefined;
 
   constructor(
     private watchPaths: string[],
@@ -46,6 +49,7 @@ class FileWatcher extends EventEmitter {
         }
       }
 
+      this.startPollingFallback();
       this.emit('ready');
     } catch (error) {
       this.emitError(error);
@@ -55,6 +59,10 @@ class FileWatcher extends EventEmitter {
 
   async close() {
     this.closed = true;
+    if (this.rescanInterval) {
+      clearInterval(this.rescanInterval);
+      this.rescanInterval = undefined;
+    }
     for (const nativeWatcher of this.nativeWatchers) {
       nativeWatcher.close();
     }
@@ -82,6 +90,14 @@ class FileWatcher extends EventEmitter {
         this.emitError(error);
       }
     }
+  }
+
+  private startPollingFallback() {
+    // Tradeoff vs chokidar: native fs.watch can miss setup-time or atomic-save
+    // events on some platforms. The intentionally inefficient fallback keeps
+    // correctness simple by periodically re-running the same full snapshot diff.
+    this.rescanInterval = setInterval(() => this.requestScan(), RESCAN_INTERVAL_MS);
+    this.rescanInterval.unref();
   }
 
   private async resolveWatchRoot(watchPath: string): Promise<WatchRoot | null> {

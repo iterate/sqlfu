@@ -9,7 +9,7 @@ size: small
 
 Regenerate the typegen output (wrappers under `queries/.generated/`, tables file, barrel, query catalog, migrations bundle) whenever an input file changes. Today the dev loop is "edit SQL → run `sqlfu generate` → look at types → repeat"; watch mode closes that loop so the user keeps typing and `.generated/` stays fresh.
 
-**Executive summary:** implementation landed. `--watch` flag wired into the CLI; `watchGenerateQueryTypesForConfig` is a reusable entry-point that takes an `AbortSignal` so tests shut it down cleanly. Current branch tip is a plain Node watcher experiment: `src/node/watcher.ts` exposes the small chokidar-shaped API this PR uses, backed by `fs.watch` plus full `fs.glob`/file-content snapshots on every native event. `.generated/` is ignored so regen output doesn't re-trigger regen. Errors are logged and the watcher keeps running. 5 integration tests and package typecheck pass.
+**Executive summary:** implementation landed. `--watch` flag wired into the CLI; `watchGenerateQueryTypesForConfig` is a reusable entry-point that takes an `AbortSignal` so tests shut it down cleanly. Current branch tip is a plain Node watcher experiment: `src/node/watcher.ts` exposes the small chokidar-shaped API this PR uses, backed by `fs.watch` plus full `fs.glob`/file-content snapshots on every native event and a 500ms reconciliation scan. `.generated/` is ignored so regen output doesn't re-trigger regen. Errors are logged and the watcher keeps running. 5 integration tests and package typecheck pass.
 
 ## Scope
 
@@ -52,7 +52,7 @@ Batch rapid-fire events (e.g., a save-all from the editor, or git operations tou
 Current experiment uses a small `packages/sqlfu/src/node/watcher.ts` shim backed by Node's built-in `fs.watch` and `fs.glob`, assuming a modern stable Node runtime. This removes the direct chokidar dependency while keeping the typegen code close to the previous chokidar-shaped call site:
 
 - Native `fs.watch` only reports `rename` and `change`, so the shim synthesizes `add` / `change` / `unlink` by re-globbing every watched path and comparing file contents.
-- The shim is intentionally inefficient: any native event can re-read every watched file. This is acceptable for the pre-alpha CLI loop and can be optimized later.
+- The shim is intentionally inefficient: any native event can re-read every watched file, and a 500ms fallback scan catches missed native events. This is acceptable for the pre-alpha CLI loop and can be optimized later.
 - It has only a local notion of readiness: initial snapshot read, native watchers registered, then `ready`.
 - Native watcher behavior is still platform-dependent. Modern Node supports recursive directory watching across the major platforms, but it does less normalization than chokidar around editor atomic saves and missing watch roots.
 
