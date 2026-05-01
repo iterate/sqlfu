@@ -7,13 +7,13 @@ test('demo mode runs fully in-browser', async ({page}) => {
   await expect(page.getByRole('link', {name: 'Back to sqlfu.dev/ui'})).toBeVisible();
 
   await expect(page.getByRole('link', {name: /^customers/})).toBeVisible();
-  await expect(page.getByRole('link', {name: /^products\s/})).toBeVisible();
+  await expect(page.locator('.nav-link[href="#table/products"]')).toBeVisible();
   await expect(page.getByRole('link', {name: /^invoices/})).toBeVisible();
 
   await page.getByRole('link', {name: /^customers/}).click();
   await expect(page.getByText('Alfreds Futterkiste')).toBeVisible();
 
-  await page.getByRole('link', {name: /^products\s/}).click();
+  await page.locator('.nav-link[href="#table/products"]').click();
   await expect(page.getByText('Chai')).toBeVisible();
   await expect(page.locator('.nav-link.active')).toContainText('products');
 

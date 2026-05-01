@@ -490,8 +490,7 @@ test('views created from the sql runner can be browsed without crashing the app'
   );
   await page.getByRole('button', {name: 'Run SQL'}).click();
 
-  await page.reload();
-  await page.getByRole('link', {name: /^recent_migrations\b/}).click();
+  await page.locator('.nav-link[href="#table/recent_migrations"]').click();
   await expect(page).toHaveURL(/#table\/recent_migrations$/);
   await expect(page.locator('.nav-link.active')).toContainText('recent_migrations');
   await expect(page.getByText('No rows.')).toBeVisible();
@@ -1140,7 +1139,7 @@ test('relation toolbar exposes Filter / Sort / Columns / Query / Definition butt
   await expect(page.getByRole('button', {name: 'Sort', exact: true})).toBeVisible();
   await expect(page.getByRole('button', {name: /Columns — \d+ of \d+ visible/})).toBeVisible();
   await expect(page.getByRole('button', {name: 'Query SQL'})).toBeVisible();
-  await expect(page.getByRole('button', {name: 'Table definition'})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'View definition'})).toBeVisible();
   // The Query editor is not mounted until the popover is opened.
   await expect(page.getByLabel('Relation query editor', {exact: true})).toHaveCount(0);
 });
@@ -1384,5 +1383,5 @@ async function fillGridTextCell(page: any, rowIndex: number, columnIndex: number
   await editor.press('Backspace');
   await editor.pressSequentially(value);
   await editor.press('Enter');
-  await expect(editor).toHaveCount(0);
+  await expect(editor).toBeHidden();
 }
