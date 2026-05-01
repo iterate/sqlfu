@@ -12,8 +12,8 @@ import {createMigrationsFixture} from './migrations/fixture.js';
 
 const packageRoot = path.resolve(path.dirname(import.meta.filename), '..');
 
-declare const betterAuth: any;
-declare const sqlfuBetterAuthAdapter: any;
+declare const betterAuth: typeof import('better-auth').betterAuth;
+declare const sqlfuBetterAuthAdapter: typeof import('../src/better-auth.js').sqlfuBetterAuthAdapter;
 
 test('sqlfuBetterAuthAdapter preserves runtime methods and wraps createSchema', async () => {
   await using fixture = await createBetterAuthFixture({
