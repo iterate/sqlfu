@@ -74,16 +74,16 @@ import '../styles/landing.css';
         <img src="/docs/assets/packages/sqlfu/docs/i-know-sqlfu.webp" alt="I know sqlfu" />
       </figure>
 
-      <h2 class="section-title">The path through a sqlfu project</h2>
+      <h2 class="section-title">what sqlfu provides</h2>
       <section class="feature-stack" id="value-panels">
         <article class="feature-row value-panel" data-animation-key="draft" data-walkthrough-step>
           <div class="feature-copy">
             <div class="eyebrow">1. schema + migration</div>
-            <h3>Change the schema; draft the SQL.</h3>
+            <h3>Your schema as SQL</h3>
             <p>
               Edit <code>definitions.sql</code> to the shape you want. <code>sqlfu draft</code> compares that desired schema with replayed migration history, shows the smart diff, then writes the reviewed migration file.
             </p>
-            <a href="/docs/migration-model">Read the migration model</a>
+            <a href="/docs/migration-model">Read about the migration model</a>
           </div>
           <div class="artifact-pair feature-demo" aria-label="Schema edit and draft command">
             <figure class="artifact artifact-tall">
@@ -127,12 +127,12 @@ import '../styles/landing.css';
 
         <article class="feature-row value-panel" data-animation-key="generate" data-walkthrough-step>
           <div class="feature-copy">
-            <div class="eyebrow">2. type generation</div>
-            <h3>Generate functions from checked-in queries.</h3>
+            <div class="eyebrow">2. typescript generation</div>
+            <h3>Your queries as SQL</h3>
             <p>
-              Query files are the source. <code>sqlfu generate</code> reads them against <code>definitions.sql</code> by default, then emits TypeScript wrappers with typed params, typed result rows, and the query name attached for runtime use.
+              Query files are the source. <code>sqlfu generate</code> determines their types base on <code>definitions.sql</code>, then emits TypeScript wrappers with typed params, typed result rows, and the query name attached for runtime use.
             </p>
-            <a href="/docs/typegen">See query shapes</a>
+            <a href="/docs/typegen">Read about type generation</a>
           </div>
           <div class="artifact-pair feature-demo" aria-label="Query file and generated TypeScript">
             <figure class="artifact artifact-tall">
@@ -177,9 +177,9 @@ import '../styles/landing.css';
         <article class="feature-row value-panel" data-animation-key="runtime" data-walkthrough-step>
           <div class="feature-copy">
             <div class="eyebrow">3. runtime</div>
-            <h3>Keep the wrapper when the driver changes.</h3>
+            <h3>One client interface, many drivers.</h3>
             <p>
-              Your app code takes the sqlfu <code>Client</code> interface, not a specific SQLite package. Pick the adapter at the boundary: local Node, Bun, mobile, browser, edge, or a Durable Object.
+              Your app code takes the sqlfu <code>Client</code> interface. <code>sqlfu</code> ships with many (very thin!) adapaters, with graceful fallback for features like prepared statements depending on client support, and proper handling of synchronous clients. Pick from Node, Bun, better-sqlite3, libsql, expo, browser via wasm, Durable Object storage, and more.
             </p>
             <a href="/docs/adapters">Choose an adapter</a>
           </div>
