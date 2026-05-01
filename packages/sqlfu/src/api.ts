@@ -18,7 +18,7 @@ import {diffSchemaSql} from './schemadiff/index.js';
 import {inspectSqliteSchemaSql, schemasEqual} from './schemadiff/sqlite/index.js';
 
 import {materializeDefinitionsSchemaFor, materializeMigrationsSchemaFor, readMigrationFiles} from './materialize.js';
-export {findMiniflareD1Path, type FindMiniflareD1PathOptions} from './node/alchemy.js';
+export {findMiniflareD1Path, type FindMiniflareD1PathOptions} from './node/miniflare.js';
 
 export function migrationsPresetOf(context: SqlfuContext): SqlfuMigrationPreset {
   return context.config.migrations?.preset ?? 'sqlfu';

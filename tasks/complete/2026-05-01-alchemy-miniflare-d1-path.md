@@ -3,11 +3,11 @@ status: done
 size: medium
 ---
 
-# Alchemy Miniflare D1 path helper
+# Miniflare D1 path helper
 
 ## Status Summary
 
-Done. `sqlfu/api` now exports `findMiniflareD1Path()`, including explicit-root support, Alchemy `.alchemy/miniflare/v3` discovery, tests, built import-surface coverage, and docs.
+Done. `sqlfu/api` now exports `findMiniflareD1Path()`, including explicit-root support, well-known Miniflare v3 root discovery, real Alchemy dev integration coverage, built import-surface coverage, and docs.
 
 ## Goal
 
@@ -34,7 +34,7 @@ export default defineConfig({
 - The helper is Node-only and belongs on the `sqlfu/api` surface used by config files.
 - The signature should be `findMiniflareD1Path(slug: string, options?: { miniflareV3Root?: string; cwd?: string })`.
 - If `miniflareV3Root` is provided, use it directly.
-- If `miniflareV3Root` is omitted, walk up from `cwd` or `process.cwd()` looking for `.alchemy/miniflare/v3`.
+- If `miniflareV3Root` is omitted, walk up from `cwd` or `process.cwd()` looking for a supported well-known Miniflare v3 persist root. Currently the only supported layout is Alchemy's `.alchemy/miniflare/v3`.
 - If no root is found, throw an actionable error rather than returning a guessed path.
 - Use the Miniflare D1 database object path algorithm from the user-provided snippet:
   - unique key: `miniflare-D1DatabaseObject`
@@ -45,10 +45,10 @@ export default defineConfig({
 
 ## Checklist
 
-- [x] Add a failing public-interface test for explicit `miniflareV3Root`. _Covered in `packages/sqlfu/test/alchemy-miniflare-d1-path.test.ts` with a fixed expected D1 object filename._
-- [x] Implement the D1 object path hashing helper. _Implemented in `packages/sqlfu/src/node/alchemy.ts` with Miniflare's `miniflare-D1DatabaseObject` SHA-256/HMAC path derivation._
-- [x] Add a failing public-interface test for Alchemy root discovery from a nested cwd. _Covered by a temp fixture with `.alchemy/miniflare/v3` above `apps/web/src/server`._
-- [x] Implement the find-up walker for `.alchemy/miniflare/v3`. _Implemented synchronously in `packages/sqlfu/src/node/alchemy.ts` so config files can call it directly._
+- [x] Add a failing public-interface test for explicit `miniflareV3Root`. _Superseded by the real Alchemy dev integration test, which proves the helper matches an actual Miniflare sqlite path._
+- [x] Implement the D1 object path hashing helper. _Implemented in `packages/sqlfu/src/node/miniflare.ts` with Miniflare's `miniflare-D1DatabaseObject` SHA-256/HMAC path derivation._
+- [x] Add a failing public-interface test for Alchemy root discovery from a nested cwd. _Covered by `packages/sqlfu/test/miniflare-d1-path.test.ts`, which runs real `alchemy dev` from a temp fixture and resolves from `apps/web/src/server`._
+- [x] Implement the find-up walker for `.alchemy/miniflare/v3`. _Implemented as a well-known Miniflare v3 root walker in `packages/sqlfu/src/node/miniflare.ts`; Alchemy's path is currently the only supported layout._
 - [x] Add coverage for the missing-root error path. _The test asserts the actionable error includes the searched cwd and explicit `{miniflareV3Root}` escape hatch._
 - [x] Export the helper from `sqlfu/api`. _`packages/sqlfu/src/api.ts` re-exports the helper and option type; `test/import-surface.test.ts` checks the built API export._
 - [x] Document the Alchemy usage pattern. _Added config snippets to `packages/sqlfu/README.md` and `packages/sqlfu/docs/migration-model.md`, with root README synced._
@@ -62,6 +62,7 @@ export default defineConfig({
 - Verification:
   - `pnpm --dir packages/sqlfu build`
   - `pnpm --dir packages/sqlfu typecheck`
+  - `pnpm --dir packages/sqlfu exec vitest run test/miniflare-d1-path.test.ts`
   - `pnpm --dir packages/sqlfu test`
   - `pnpm --filter @sqlfu/ui build`
   - `pnpm sync:root-readme:check`

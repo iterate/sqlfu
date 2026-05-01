@@ -23,10 +23,10 @@ export function findMiniflareD1Path(slug: string, options?: FindMiniflareD1PathO
   const node = nodeBuiltins();
   const resolvedOptions = options || {};
   const searchStart = node.path.resolve(resolvedOptions.cwd || process.cwd());
-  const miniflareV3Root = resolvedOptions.miniflareV3Root || findAlchemyMiniflareV3Root(searchStart, node);
+  const miniflareV3Root = resolvedOptions.miniflareV3Root || findWellKnownMiniflareV3Root(searchStart, node);
   if (!miniflareV3Root) {
     throw new Error(
-      `No Alchemy Miniflare v3 root found from ${searchStart}. Pass {miniflareV3Root} or run from inside an Alchemy project.`,
+      `No Miniflare v3 root found from ${searchStart}. Pass {miniflareV3Root} or run from inside a project with a supported Miniflare persist directory.`,
     );
   }
 
@@ -38,7 +38,7 @@ export function findMiniflareD1Path(slug: string, options?: FindMiniflareD1PathO
   );
 }
 
-function findAlchemyMiniflareV3Root(startDir: string, node: NodeBuiltins): string | undefined {
+function findWellKnownMiniflareV3Root(startDir: string, node: NodeBuiltins): string | undefined {
   let currentDir = startDir;
 
   while (true) {

@@ -301,7 +301,7 @@ export default defineConfig({
 });
 ```
 
-`findMiniflareD1Path()` walks up from `process.cwd()` until it finds `.alchemy/miniflare/v3`, then derives the same D1 object sqlite filename Miniflare uses for the slug. Pass `{miniflareV3Root}` as the second argument if your config runs outside the Alchemy project tree.
+`findMiniflareD1Path()` walks up from `process.cwd()` until it finds a supported Miniflare v3 persist root. Today that means Alchemy's `.alchemy/miniflare/v3` layout. It then derives the same D1 object sqlite filename Miniflare uses for the slug. Pass `{miniflareV3Root}` as the second argument if your config runs outside that project tree.
 
 ### `generate.authority`
 

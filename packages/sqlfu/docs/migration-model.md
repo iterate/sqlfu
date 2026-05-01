@@ -533,7 +533,7 @@ export default defineConfig({
 });
 ```
 
-The helper walks up from `process.cwd()` looking for `.alchemy/miniflare/v3` and then derives the D1 sqlite filename from the Alchemy app slug. If the config is evaluated from somewhere else, pass `{miniflareV3Root: '/absolute/path/to/.alchemy/miniflare/v3'}`.
+The helper walks up from `process.cwd()` looking for a supported Miniflare v3 persist root. Today that means Alchemy's `.alchemy/miniflare/v3` layout. It then derives the D1 sqlite filename from the Alchemy app slug. If the config is evaluated from somewhere else, pass `{miniflareV3Root: '/absolute/path/to/.alchemy/miniflare/v3'}`.
 
 #### Checksum downgrade
 
