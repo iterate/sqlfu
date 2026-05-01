@@ -87,15 +87,7 @@ import '../styles/landing.css';
           </div>
           <div class="artifact-pair feature-demo" aria-label="Schema edit and draft command">
             <figure class="artifact artifact-tall">
-              <figcaption class="artifact-caption-actions">
-                <span>definitions.sql</span>
-                <button class="demo-replay" type="button" data-replay-demo aria-label="Replay schema and migration animation" title="Replay animation">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M20 11a8 8 0 1 0-2.34 5.66" />
-                    <path d="M20 4v7h-7" />
-                  </svg>
-                </button>
-              </figcaption>
+              <figcaption>definitions.sql</figcaption>
               <pre><code><span class="tok-keyword">create table</span> <span class="tok-name">posts</span> (
   <span class="tok-name">id</span> <span class="tok-keyword">integer primary key autoincrement</span>,
   <span class="tok-name">slug</span> <span class="tok-keyword">text not null unique</span>,
@@ -103,16 +95,25 @@ import '../styles/landing.css';
 <span class="diff-line diff-added" data-type-speed="schema-add" data-reveal-line data-reveal-pause="620" data-hide-typing-whitespace>+ <span class="tok-name">published</span> <span class="tok-keyword">integer not null default</span> <span class="tok-number">0</span></span>);</code></pre>
             </figure>
             <figure class="artifact terminal artifact-tall">
-              <figcaption>terminal</figcaption>
+              <figcaption class="artifact-caption-actions">
+                <span>terminal</span>
+                <button class="demo-replay" type="button" data-replay-demo aria-label="Replay schema and migration animation" title="Replay animation">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+                    <path d="M20 4v7h-7" />
+                  </svg>
+                </button>
+              </figcaption>
               <pre><code><span data-type-speed="command" data-run-command="true"><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu draft</span></span>
-<span class="terminal-output terminal-block" data-terminal-output data-output-pause="1250">│
+<span class="terminal-output terminal-block" data-terminal-output data-output-pause="1450">│
 ◇  Create migration file? ─────────────────╮
 │                                          │
 │  alter table posts add column published  │
 │    integer not null default 0;           │
 │                                          │
-├──────────────────────────────────────────╯
-│</span><span class="terminal-output terminal-block" data-terminal-output data-output-pause="950" data-dismiss-before-next>│
+<span data-corner-before-next>├──────────────────────────────────────────╯
+</span><span data-corner-after-next>╰──────────────────────────────────────────╯
+</span><span data-dismiss-before-next>│
 ◆  Continue with this body?
 │  ● Yes
 │  ○ No
@@ -135,15 +136,7 @@ import '../styles/landing.css';
           </div>
           <div class="artifact-pair feature-demo" aria-label="Query file and generated TypeScript">
             <figure class="artifact artifact-tall">
-              <figcaption class="artifact-caption-actions">
-                <span>sql/get-posts.sql</span>
-                <button class="demo-replay" type="button" data-replay-demo aria-label="Replay type generation animation" title="Replay animation">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M20 11a8 8 0 1 0-2.34 5.66" />
-                    <path d="M20 4v7h-7" />
-                  </svg>
-                </button>
-              </figcaption>
+              <figcaption>sql/get-posts.sql</figcaption>
               <pre><code data-type-speed="fast"><span class="tok-keyword">select</span> <span class="tok-name">id</span>, <span class="tok-name">slug</span>, <span class="tok-name">title</span>
 <span class="tok-keyword">from</span> <span class="tok-name">posts</span>
 <span class="tok-keyword">where</span> <span class="tok-name">published</span> = <span class="tok-number">1</span>
@@ -154,6 +147,12 @@ import '../styles/landing.css';
               <div class="artifact-tablist" role="tablist" aria-label="Type generation output">
                 <button class="artifact-tab is-active" type="button" role="tab" aria-selected="true" data-tab-for="terminal">terminal</button>
                 <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="src">src/posts.ts</button>
+                <button class="demo-replay artifact-tab-replay" type="button" data-replay-demo aria-label="Replay type generation animation" title="Replay animation">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+                    <path d="M20 4v7h-7" />
+                  </svg>
+                </button>
               </div>
               <div class="artifact-tab-panel terminal is-active" role="tabpanel" data-terminal-artifact data-tab-panel="terminal">
                 <pre><code><span data-type-speed="command" data-run-command="true"><span class="term-prompt">$</span> <span class="tok-command">npx sqlfu generate</span></span>
@@ -189,15 +188,7 @@ import '../styles/landing.css';
           </div>
           <div class="artifact-pair feature-demo" aria-label="Runtime client and query metadata">
             <figure class="artifact artifact-tall">
-              <figcaption class="artifact-caption-actions">
-                <span>application code</span>
-                <button class="demo-replay" type="button" data-replay-demo aria-label="Replay runtime animation" title="Replay animation">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M20 11a8 8 0 1 0-2.34 5.66" />
-                    <path d="M20 4v7h-7" />
-                  </svg>
-                </button>
-              </figcaption>
+              <figcaption>application code</figcaption>
               <pre><code data-type-speed="fast"><span class="tok-keyword">const</span> <span class="tok-name">client</span> = <span class="tok-name">instrument</span>(
   <span class="tok-name">createNodeSqliteClient</span>(<span class="tok-name">db</span>),
   <span class="tok-name">instrument</span>.<span class="tok-prop">otel</span>(&#123;<span class="tok-prop">tracer</span>&#125;),
@@ -205,9 +196,17 @@ import '../styles/landing.css';
 
 <span class="tok-keyword">await</span> <span class="tok-name">getPosts</span>(<span class="tok-name">client</span>, &#123;<span class="tok-prop">limit</span>: <span class="tok-number">10</span>&#125;);</code></pre>
             </figure>
-            <figure class="artifact artifact-tall" data-generated-artifact>
-              <figcaption>query context</figcaption>
-              <pre><code><span class="tok-prop">db.query.summary</span> = <span class="tok-string">"getPosts"</span>
+            <figure class="artifact artifact-tall">
+              <figcaption class="artifact-caption-actions">
+                <span>query context</span>
+                <button class="demo-replay" type="button" data-replay-demo aria-label="Replay runtime animation" title="Replay animation">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+                    <path d="M20 4v7h-7" />
+                  </svg>
+                </button>
+              </figcaption>
+              <pre data-generated-artifact><code><span class="tok-prop">db.query.summary</span> = <span class="tok-string">"getPosts"</span>
 <span class="tok-prop">db.query.text</span> = <span class="tok-string">"select id, slug, title ..."</span>
 <span class="tok-prop">db.system.name</span> = <span class="tok-string">"sqlite"</span></code></pre>
             </figure>
@@ -279,6 +278,9 @@ import '../styles/landing.css';
             for (const output of row.querySelectorAll('[data-terminal-output]')) {
               output.classList.remove('is-visible', 'is-dismissed');
             }
+            for (const promptPart of row.querySelectorAll('[data-dismiss-before-next], [data-corner-before-next], [data-corner-after-next]')) {
+              promptPart.classList.remove('is-visible', 'is-dismissed');
+            }
             for (const artifact of row.querySelectorAll('[data-generated-artifact], [data-replacement-artifact]')) {
               artifact.classList.remove('is-visible');
             }
@@ -326,7 +328,6 @@ import '../styles/landing.css';
             row.dataset.walkthroughState = state;
             for (const button of row.querySelectorAll('[data-replay-demo]')) {
               button.dataset.replayState = state;
-              button.disabled = state === 'running';
             }
           };
 
@@ -349,8 +350,16 @@ import '../styles/landing.css';
                   let previousOutput = null;
                   for (const output of terminal?.querySelectorAll('[data-terminal-output]') || []) {
                     if (!isCurrent()) return;
-                    if (previousOutput?.hasAttribute('data-dismiss-before-next')) {
-                      previousOutput.classList.add('is-dismissed');
+                    if (previousOutput) {
+                      if (previousOutput.hasAttribute('data-dismiss-before-next')) {
+                        previousOutput.classList.add('is-dismissed');
+                      }
+                      for (const promptPart of previousOutput.querySelectorAll('[data-dismiss-before-next], [data-corner-before-next]')) {
+                        promptPart.classList.add('is-dismissed');
+                      }
+                      for (const promptPart of previousOutput.querySelectorAll('[data-corner-after-next]')) {
+                        promptPart.classList.add('is-visible');
+                      }
                     }
                     output.classList.add('is-visible');
                     previousOutput = output;
