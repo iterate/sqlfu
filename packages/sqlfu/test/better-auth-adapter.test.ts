@@ -207,11 +207,11 @@ test('createSchema uses integer foreign keys when Better Auth is configured for 
     'definitions.sql',
   );
 
-  expect(schema?.code).toContain('"id" integer primary key not null');
+  expect(schema?.code).toContain('"id" integer not null primary key');
   expect(schema?.code).toContain('"userId" integer not null references "user" ("id") on delete cascade');
 });
 
-test('createSchema follows the wrapped adapter table naming config', async () => {
+test('createSchema uses Better Auth scratch database output instead of wrapped adapter table naming config', async () => {
   await using fixture = await createBetterAuthFixture({
     files: {
       'definitions.sql': '',
@@ -234,9 +234,10 @@ test('createSchema follows the wrapped adapter table naming config', async () =>
 
   const schema = await adapter.createSchema?.({}, 'definitions.sql');
 
-  expect(schema?.code).toContain('create table "users"');
-  expect(schema?.code).toContain('create table "sessions"');
-  expect(schema?.code).toContain('"userId" text not null references "users" ("id") on delete cascade');
+  expect(schema?.code).toContain('create table "user"');
+  expect(schema?.code).toContain('create table "session"');
+  expect(schema?.code).toContain('"userId" text not null references "user" ("id") on delete cascade');
+  expect(schema?.code).not.toContain('create table "users"');
 });
 
 test('generated Better Auth definitions can feed sqlfu draft and migrate', async () => {

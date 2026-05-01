@@ -91,6 +91,8 @@ Every factory takes the underlying driver's database/connection object as its si
 
 This wrapper is currently intended and tested for the schema-generation path. Runtime create/read/update/delete methods are delegated to the Better Auth adapter you pass in, but runtime auth behavior should still be validated through that underlying adapter in your app. If your production auth config already works with Better Auth's direct D1 support (`database: env.DB`) or another runtime path, it can stay that way; use a small CLI-only auth config with `sqlfu/better-auth` for `auth generate`.
 
+For schema generation, sqlfu asks Better Auth to compile migrations against an empty in-memory SQLite database. That makes the output a full Better Auth SQLite schema rather than a diff against your real database. The schema path follows Better Auth's Kysely SQLite output; wrapped adapter naming options such as `usePlural` are not currently part of the supported contract.
+
 ```ts
 import {betterAuth} from 'better-auth';
 import {kyselyAdapter} from 'better-auth/adapters/kysely';
