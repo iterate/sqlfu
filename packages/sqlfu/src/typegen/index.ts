@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import {analyzeVendoredTypesqlQueries} from './analyze-vendored-typesql.js';
+import {sqliteDialect} from '../dialect.js';
 import type {
   AdHocQueryAnalysis,
   JsonSchema,
@@ -2926,7 +2927,7 @@ async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, Rel
 
 async function loadRelationColumns(client: Client, relationName: string): Promise<ReadonlyMap<string, TsColumn>> {
   const pragmaResult = await client.all<Record<string, unknown>>({
-    sql: `PRAGMA table_xinfo("${escapeSqliteIdentifier(relationName)}")`,
+    sql: `PRAGMA table_xinfo(${sqliteDialect.quoteIdentifier(relationName)})`,
     args: [],
   });
 
@@ -3214,6 +3215,3 @@ function mapSqliteTypeToTs(columnType: string): string {
   return 'number';
 }
 
-function escapeSqliteIdentifier(value: string): string {
-  return value.replaceAll('"', '""');
-}

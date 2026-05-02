@@ -920,7 +920,7 @@ function encodeScalar(
 
 async function getRelationColumns(client: Client, relationName: string): Promise<StudioColumn[]> {
   const rows = await client.all<Record<string, unknown>>({
-    sql: `PRAGMA table_xinfo("${escapeIdentifier(relationName)}")`,
+    sql: `PRAGMA table_xinfo(${sqliteDialect.quoteIdentifier(relationName)})`,
     args: [],
   });
   return rows
@@ -935,7 +935,7 @@ async function getRelationColumns(client: Client, relationName: string): Promise
 
 async function getRelationCount(client: Client, relationName: string) {
   const rows = await client.all<{count: number}>({
-    sql: `select count(*) as count from "${escapeIdentifier(relationName)}"`,
+    sql: `select count(*) as count from ${sqliteDialect.quoteIdentifier(relationName)}`,
     args: [],
   });
   return Number(rows[0]?.count ?? 0);
@@ -950,7 +950,7 @@ async function getTableRows(client: Client, relationName: string, page: number):
   const primaryKeyColumns = relationColumns.filter((column) => column.primaryKey).map((column) => column.name);
   const includeRowid = relation.type === 'table' && primaryKeyColumns.length === 0;
   const rows = await client.all<Record<string, unknown>>({
-    sql: `select ${includeRowid ? 'rowid as "__sqlfu_rowid__", ' : ''}* from "${escapeIdentifier(relationName)}" limit ? offset ?`,
+    sql: `select ${includeRowid ? 'rowid as "__sqlfu_rowid__", ' : ''}* from ${sqliteDialect.quoteIdentifier(relationName)} limit ? offset ?`,
     args: [pageSize, safePage * pageSize],
   });
   const materializedRows = rows.map(materializeRow);
@@ -1113,10 +1113,6 @@ function materializeRow(row: object) {
   );
 }
 
-function escapeIdentifier(value: string) {
-  return value.replaceAll('"', '""');
-}
-
 async function getRelationInfo(client: Client, relationName: string) {
   const row = (
     await client.all<{name: string; type: 'table' | 'view'; sql: string | null}>({
@@ -1170,7 +1166,7 @@ function buildRowWhereClause(rowKey: TableRowKey, _originalRow: Record<string, u
   return {
     sql: entries
       .map(([column, value]) =>
-        value == null ? `"${escapeIdentifier(column)}" is null` : `"${escapeIdentifier(column)}" = ?`,
+        value == null ? `${sqliteDialect.quoteIdentifier(column)} is null` : `${sqliteDialect.quoteIdentifier(column)} = ?`,
       )
       .join(' and '),
     args: entries.flatMap(([, value]) => (value == null ? [] : [normalizeDbValue(value)])),
@@ -1182,7 +1178,7 @@ function buildExactRowMatchClause(row: Record<string, unknown>) {
   return {
     sql: entries
       .map(([column, value]) =>
-        value == null ? `"${escapeIdentifier(column)}" is null` : `"${escapeIdentifier(column)}" = ?`,
+        value == null ? `${sqliteDialect.quoteIdentifier(column)} is null` : `${sqliteDialect.quoteIdentifier(column)} = ?`,
       )
       .join(' and '),
     args: entries.flatMap(([, value]) => (value == null ? [] : [normalizeDbValue(value)])),
@@ -1190,10 +1186,10 @@ function buildExactRowMatchClause(row: Record<string, unknown>) {
 }
 
 function buildInsertRowStatement(relationName: string, nextRow: Record<string, unknown>, changedColumns: string[]) {
-  const columns = changedColumns.map((column) => `"${escapeIdentifier(column)}"`).join(', ');
+  const columns = changedColumns.map((column) => sqliteDialect.quoteIdentifier(column)).join(', ');
   const placeholders = changedColumns.map(() => '?').join(', ');
   return {
-    sql: `insert into "${escapeIdentifier(relationName)}" (${columns}) values (${placeholders})`,
+    sql: `insert into ${sqliteDialect.quoteIdentifier(relationName)} (${columns}) values (${placeholders})`,
     args: changedColumns.map((column) => normalizeDbValue(nextRow[column])),
   };
 }
@@ -1205,11 +1201,11 @@ function buildUpdateRowStatement(
   nextRow: Record<string, unknown>,
   changedColumns: string[],
 ) {
-  const setSql = changedColumns.map((column) => `"${escapeIdentifier(column)}" = ?`).join(', ');
+  const setSql = changedColumns.map((column) => `${sqliteDialect.quoteIdentifier(column)} = ?`).join(', ');
   const setArgs = changedColumns.map((column) => normalizeDbValue(nextRow[column]));
   const whereClause = buildRowWhereClause(rowKey, originalRow);
   return {
-    sql: `update "${escapeIdentifier(relationName)}" set ${setSql} where ${whereClause.sql}`,
+    sql: `update ${sqliteDialect.quoteIdentifier(relationName)} set ${setSql} where ${whereClause.sql}`,
     args: [...setArgs, ...whereClause.args],
   };
 }
@@ -1222,7 +1218,7 @@ function buildDeleteRowStatement(
   const rowKeyWhereClause = buildRowWhereClause(rowKey, originalRow);
   const originalRowWhereClause = buildExactRowMatchClause(originalRow);
   return {
-    sql: `delete from "${escapeIdentifier(relationName)}" where (${rowKeyWhereClause.sql}) and (${originalRowWhereClause.sql})`,
+    sql: `delete from ${sqliteDialect.quoteIdentifier(relationName)} where (${rowKeyWhereClause.sql}) and (${originalRowWhereClause.sql})`,
     args: [...rowKeyWhereClause.args, ...originalRowWhereClause.args],
   };
 }
