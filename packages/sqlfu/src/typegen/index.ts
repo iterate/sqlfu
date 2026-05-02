@@ -425,7 +425,7 @@ async function replayMigrationHistoryAsSchemaSql(config: SqlfuProjectConfig, hos
     );
   }
   await using live = await openLiveDb(config.db, 'migration_history');
-  const history = await Promise.resolve(readMigrationHistory(live.client, {preset: config.migrations.preset}));
+  const history = await Promise.resolve(readMigrationHistory(live.client, {preset: config.migrations.preset, dialect: config.dialect}));
 
   const migrations = await readMigrationFiles(host, config);
   const byName = new Map(migrations.map((migration) => [migrationName(migration), migration]));

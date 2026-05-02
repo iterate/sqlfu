@@ -44,7 +44,7 @@ Design decisions (sign-off received in chat before this commit):
 - [x] Define `Dialect` type and export `sqliteDialect` aggregator from `packages/sqlfu/src/dialect.ts` _(landed: thin aggregator over existing functions; no new helpers)_
 - [ ] Add `dialect?: Dialect` to `SqlfuConfig`; resolve to `sqliteDialect` when omitted (`resolveDialect(config)` helper)
 - [ ] Refactor schemadiff entrypoints to take `Dialect` and call `dialect.diffSchema(...)`
-- [ ] Refactor formatter call sites to call `dialect.formatSql(...)` (where a config/dialect is in scope)
+- [x] Refactor formatter call sites to call `dialect.formatSql(...)` (where a config/dialect is in scope) _(no internal call sites have a dialect in scope today; see "Formatter dialect routing — step one scope" below)_
 - [ ] Migration runner: source default-preset DDL via `dialect.defaultMigrationTableDdl(tableName)`; wrap migrations in `dialect.withMigrationLock` if defined
 - [ ] Replace ad-hoc `escapeIdentifier` / `escapeSqliteIdentifier` call sites with `dialect.quoteIdentifier`
 - [ ] Generalize `sqlReturnsRows` internally to cover both sqlite and pg keywords
@@ -66,4 +66,12 @@ Design decisions (sign-off received in chat before this commit):
 
 ## Implementation notes
 
-(Updated as work progresses.)
+### Formatter dialect routing — step one scope
+
+The `Dialect` type includes `formatSql`, but no internal call site currently has a dialect in scope:
+
+- `src/api/exports.ts` — public `format(sql)` helper takes only `sql`, no config.
+- `src/node/format-files.ts` — `formatSqlFiles(patterns, cwd)` powers the `sqlfu format` CLI; takes no config.
+- `src/lint-plugin.ts` — eslint plugin runs without sqlfu project context.
+
+For each of these, formatting is sqlite-only today and stays sqlite-only in step one. They're documented limitations (the `Dialect.formatSql` slot is wired into the interface for step two). When a `pgDialect` lands, these surfaces will need to grow optional config-loading paths to opt into pg formatting (e.g. `format` reads `sqlfu.config.ts`, eslint plugin gains a `dialect` option, etc.). None of those plumbing changes belong in step one — they're independent of the Dialect abstraction itself.

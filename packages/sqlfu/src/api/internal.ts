@@ -45,7 +45,7 @@ export async function getSchemaAuthorities(context: SqlfuContext) {
 
   await using database = await context.host.openDb(context.config);
   const preset = migrationsPresetOf(context);
-  const applied = await readMigrationHistory(database.client, {preset});
+  const applied = await readMigrationHistory(database.client, {preset, dialect: context.config.dialect});
   const liveSchema = await extractSchema(database.client, 'main', {
     excludedTables: schemaDriftExcludedTables(context),
   });
@@ -109,7 +109,7 @@ export async function getMigrationResultantSchema(
   }
 
   await using database = await context.host.openDb(context.config);
-  const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(context)});
+  const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(context), dialect: context.config.dialect});
   const targetIndex = applied.findIndex((migration) => migration.name === input.id);
   if (targetIndex === -1) {
     throw new Error(`migration history entry ${input.id} not found`);
@@ -336,7 +336,8 @@ export async function applyMigrateSql(context: SqlfuContext, confirm: SqlfuComma
 
   await using database = await context.host.openDb(context.config);
   const preset = migrationsPresetOf(context);
-  const applied = await readMigrationHistory(database.client, {preset});
+  const dialect = context.config.dialect;
+  const applied = await readMigrationHistory(database.client, {preset, dialect});
   const appliedNames = new Set(applied.map((migration) => migration.name));
   const pendingMigrations = migrations.filter((migration) => !appliedNames.has(migrationName(migration)));
   if (pendingMigrations.length > 0) {
@@ -354,10 +355,10 @@ export async function applyMigrateSql(context: SqlfuContext, confirm: SqlfuComma
 
   try {
     // apply migrations even if there are zero pending, because this will validate migration history
-    await applyMigrations(database.client, {migrations, preset});
+    await applyMigrations(database.client, {migrations, preset, dialect});
   } catch (error) {
     // figure out which migration was the first one to not make it into history
-    const appliedAfter = await readMigrationHistory(database.client, {preset});
+    const appliedAfter = await readMigrationHistory(database.client, {preset, dialect});
     const appliedAfterNames = new Set(appliedAfter.map((migration) => migration.name));
     const failed = pendingMigrations.find((migration) => !appliedAfterNames.has(migrationName(migration)));
     const failedName = failed ? migrationName(failed) : 'migration';
@@ -399,7 +400,7 @@ async function analyzeMigrateHealthWithClient(
   migrations: Migration[],
   client: Client,
 ): Promise<MigrateHealthAnalysis> {
-  const applied = await readMigrationHistory(client, {preset: migrationsPresetOf(context)});
+  const applied = await readMigrationHistory(client, {preset: migrationsPresetOf(context), dialect: context.config.dialect});
   const liveSchema = await extractSchema(client, 'main', {
     excludedTables: schemaDriftExcludedTables(context),
   });
@@ -551,6 +552,7 @@ export async function applyBaselineSql(context: SqlfuContext, input: {target: st
     migrations,
     target: input.target,
     preset: migrationsPresetOf(context),
+    dialect: context.config.dialect,
   });
 }
 
@@ -583,7 +585,7 @@ export async function applyGotoSql(context: SqlfuContext, input: {target: string
     if (confirmedSql?.trim()) {
       await tx.raw(confirmedSql.trim());
     }
-    await replaceMigrationHistory(tx, {migrations: targetMigrations, preset});
+    await replaceMigrationHistory(tx, {migrations: targetMigrations, preset, dialect: context.config.dialect});
   });
 }
 
@@ -620,6 +622,7 @@ export const materializeMigrationsSchemaForContext = (context: SqlfuContext, mig
   materializeMigrationsSchemaFor(context.host, migrations, {
     excludedTables: schemaDriftExcludedTables(context),
     preset: migrationsPresetOf(context),
+    dialect: context.config.dialect,
   });
 
 function getMigrationsThroughTarget(migrations: Migration[], target: string) {
@@ -643,7 +646,7 @@ export async function analyzeDatabase(context: SqlfuContext) {
   const liveSchema = await extractSchema(database.client, 'main', {
     excludedTables: schemaDriftExcludedTables(context),
   });
-  const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(context)});
+  const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(context), dialect: context.config.dialect});
   const hasAppliedHistory = applied.length > 0;
   const appliedNames = new Set(applied.map((migration) => migration.name));
   const migrationByName = new Map(migrations.map((migration) => [migrationName(migration), migration]));

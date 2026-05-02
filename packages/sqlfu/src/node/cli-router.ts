@@ -232,7 +232,7 @@ export const router = {
       const initializedContext = await loadContextConfig(context);
       const migrations = await readMigrationsFromContext(initializedContext);
       await using database = await initializedContext.host.openDb(initializedContext.config);
-      const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(initializedContext)});
+      const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(initializedContext), dialect: initializedContext.config.dialect});
       const appliedNames = new Set(applied.map((migration) => migration.name));
       return migrations.map((migration) => migrationName(migration)).filter((name) => !appliedNames.has(name));
     }),
@@ -244,7 +244,7 @@ export const router = {
     .handler(async ({context}) => {
       const initializedContext = await loadContextConfig(context);
       await using database = await initializedContext.host.openDb(initializedContext.config);
-      const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(initializedContext)});
+      const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(initializedContext), dialect: initializedContext.config.dialect});
       return applied.map((migration) => migration.name);
     }),
 
@@ -261,7 +261,7 @@ export const router = {
       const initializedContext = await loadContextConfig(context);
       const migrations = await readMigrationsFromContext(initializedContext);
       await using database = await initializedContext.host.openDb(initializedContext.config);
-      const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(initializedContext)});
+      const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(initializedContext), dialect: initializedContext.config.dialect});
       const appliedNames = new Set(applied.map((migration) => migration.name));
       return migrations
         .map((migration) => migrationName(migration))

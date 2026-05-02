@@ -5,6 +5,7 @@
 // full import graph (schemadiff, formatter, vendored sql-formatter) along for
 // the ride.
 
+import type {Dialect} from './dialect.js';
 import type {SqlfuHost} from './host.js';
 import {joinPath} from './paths.js';
 import type {SqlfuMigrationPreset, SqlfuProjectConfig} from './types.js';
@@ -31,6 +32,8 @@ export type MaterializeMigrationsSchemaOptions = MaterializeSchemaOptions & {
    * user's configured preset should pass it explicitly.
    */
   preset?: SqlfuMigrationPreset;
+  /** Dialect for migration-table DDL. Defaults to `sqliteDialect`. */
+  dialect?: Dialect;
 };
 
 export async function materializeDefinitionsSchemaFor(
@@ -49,7 +52,7 @@ export async function materializeMigrationsSchemaFor(
   options: MaterializeMigrationsSchemaOptions = {},
 ): Promise<string> {
   await using database = await host.openScratchDb('materialize-migrations');
-  await applyMigrations(database.client, {migrations, preset: options.preset ?? 'sqlfu'});
+  await applyMigrations(database.client, {migrations, preset: options.preset ?? 'sqlfu', dialect: options.dialect});
   return extractSchema(database.client, 'main', {excludedTables: [...(options.excludedTables ?? [])]});
 }
 
