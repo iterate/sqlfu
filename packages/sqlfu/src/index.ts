@@ -35,6 +35,7 @@ export * from './adapters/expo-sqlite.js';
 export * from './adapters/sqlite-wasm.js';
 export * from './adapters/turso-database.js';
 export * from './adapters/turso-serverless.js';
+export * from './adapters/pg.js';
 
 export {defineConfig} from './config.js';
 
