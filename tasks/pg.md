@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: step-one-ready-for-review
 size: huge
 ---
 
@@ -7,7 +7,7 @@ pgkit supported postgres. it has basically the same core features. we should be 
 
 ## Status summary
 
-Step one (in progress on branch `extract-dialect-interface`): extract a `Dialect` interface from the main package and reimplement the existing sqlite-only behavior as the default `sqliteDialect`. No file moves; the new `src/dialect.ts` is a thin aggregator over the existing implementations. Existing test suite must keep passing untouched. After this step, the public surface is unchanged for users (sqlite is still the default), but core code routes through `config.dialect` everywhere a dialect-specific decision is made.
+Step one (ready-for-review on branch `extract-dialect-interface`, PR #87): extracted the `Dialect` interface from the main package and re-implemented the existing sqlite-only behavior as the default `sqliteDialect`. New `src/dialect.ts` is a thin aggregator over existing implementations (no file moves). All existing tests pass untouched (1428 sqlfu + 67 ui). Public surface is unchanged for users (sqlite is still the default); core code routes through `config.dialect` for schemadiff, identifier quoting, migration table DDL, and migration locking. Formatter and typegen routing deferred to step two (formatter call sites all lack a config in scope today; typegen materialization is tangled with sqlite-specific private helpers in `typegen/index.ts` and is best refactored when the pg side drives the requirement).
 
 Step two (later, separate branch): create `packages/pg` (`@sqlfu/pg`) that exports a `pgDialect` object satisfying the same interface, lifting schemainspect+migra from pgkit and using `sql-formatter` directly for postgres formatting. Typegen via typesql (or pgkit's own typegen if typesql doesn't fit).
 
@@ -42,13 +42,13 @@ Design decisions (sign-off received in chat before this commit):
 ### Step one checklist
 
 - [x] Define `Dialect` type and export `sqliteDialect` aggregator from `packages/sqlfu/src/dialect.ts` _(landed: thin aggregator over existing functions; no new helpers)_
-- [ ] Add `dialect?: Dialect` to `SqlfuConfig`; resolve to `sqliteDialect` when omitted (`resolveDialect(config)` helper)
-- [ ] Refactor schemadiff entrypoints to take `Dialect` and call `dialect.diffSchema(...)`
+- [x] Add `dialect?: Dialect` to `SqlfuConfig`; resolve to `sqliteDialect` when omitted _(landed in `resolveProjectConfig`; `dialect` is required on `SqlfuProjectConfig` so internal callers always have a resolved dialect)_
+- [x] Refactor schemadiff entrypoints to take `Dialect` and call `dialect.diffSchema(...)` _(landed: deleted the `diffSchemaSql` passthrough; production callers go through `context.config.dialect.diffSchema`; `compareSchemasForContext` widened to take the full context)_
 - [x] Refactor formatter call sites to call `dialect.formatSql(...)` (where a config/dialect is in scope) _(no internal call sites have a dialect in scope today; see "Formatter dialect routing — step one scope" below)_
-- [ ] Migration runner: source default-preset DDL via `dialect.defaultMigrationTableDdl(tableName)`; wrap migrations in `dialect.withMigrationLock` if defined
-- [ ] Replace ad-hoc `escapeIdentifier` / `escapeSqliteIdentifier` call sites with `dialect.quoteIdentifier`
-- [ ] Generalize `sqlReturnsRows` internally to cover both sqlite and pg keywords
-- [ ] Full test suite + typecheck pass with no test changes (sqlite is still the default)
+- [x] Migration runner: source default-preset DDL via `dialect.defaultMigrationTableDdl(tableName)`; wrap migrations in `dialect.withMigrationLock` if defined _(landed: `applyMigrations` / `readMigrationHistory` / etc. accept `dialect?` defaulting to `sqliteDialect`; async path wraps in `withMigrationLock` when set; production callers thread `context.config.dialect`)_
+- [x] Replace ad-hoc `escapeIdentifier` / `escapeSqliteIdentifier` call sites with `dialect.quoteIdentifier` _(landed: both helpers deleted; call sites in `ui/router.ts` and `typegen/index.ts` use `sqliteDialect.quoteIdentifier`)_
+- [x] Generalize `sqlReturnsRows` internally to cover both sqlite and pg keywords _(landed: regex now matches `select|with|pragma|explain|values|show|table|fetch` plus `RETURNING`)_
+- [x] Full test suite + typecheck pass with no test changes (sqlite is still the default) _(landed: 1428 sqlfu tests + 67 ui tests pass; `pnpm --filter sqlfu typecheck` and `pnpm --filter @sqlfu/ui typecheck` clean; dev-project `sqlfu check` and `sqlfu generate` smoke-tested)_
 - [ ] ~~Refactor typegen entrypoint to call `dialect.analyzeQueries(...)`~~ _deferred to step two — pg will drive the right shape; lifting `materializeTypegenDatabase` + `loadSchema` cleanly out of `typegen/index.ts` is a bigger refactor that depends on knowing what pg's typegen pipeline needs._
 
 ### Step two — `@sqlfu/pg` (separate branch, later)
