@@ -224,4 +224,4 @@ error if neither is supplied.
 
 - Worktree: `../worktrees/sqlfu/cloudflare-d1-helpers`
 - Branch: `feat/cloudflare-d1-helpers`
-- PR: (filled in after creation)
+- PR: https://github.com/mmkal/sqlfu/pull/86

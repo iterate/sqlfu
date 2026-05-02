@@ -53,6 +53,18 @@ test('built node entry exposes only node helpers', async () => {
   expect(Object.keys(node).sort()).toEqual(['findMiniflareD1Path']);
 });
 
+test('built cloudflare entry exposes the D1-over-HTTP helpers', async () => {
+  const cloudflareEntry = path.join(packageRoot, 'dist/cloudflare/exports.js');
+  const cloudflare = await import(pathToFileURL(cloudflareEntry).href);
+  expect(Object.keys(cloudflare).sort()).toEqual([
+    'DEFAULT_CLOUDFLARE_API_BASE',
+    'createAlchemyD1Client',
+    'createD1HttpClient',
+    'findCloudflareD1ByName',
+    'readAlchemyD1State',
+  ]);
+});
+
 test('confirm type accepts inline auto-accept callbacks', () => {
   const confirm: Confirm = (params) => params.body;
   expect(confirm({title: 'Apply SQL?', body: 'select 1;'})).toBe('select 1;');
