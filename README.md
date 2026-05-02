@@ -342,7 +342,7 @@ export default defineConfig({
 });
 ```
 
-`createAlchemyD1Client` reads alchemy's local state to discover the deployed `databaseId` and `accountId`, falls back to `process.env.CLOUDFLARE_API_TOKEN` for auth, and wraps Cloudflare's HTTP D1 query API. Lower-level helpers (`createD1HttpClient`, `readAlchemyD1State`, `findCloudflareD1ByName`) are exported for composing your own factory. See [Cloudflare D1](packages/sqlfu/docs/cloudflare-d1.md) for the full guide.
+`createAlchemyD1Client` reads alchemy's local state to discover the deployed `databaseId` and `accountId`, falls back to `process.env.CLOUDFLARE_API_TOKEN` for auth, and produces a sqlfu client that talks to Cloudflare's HTTP D1 query API. Lower-level helpers (`createD1HttpClient`, `readAlchemyD1State`, `findCloudflareD1ByName`) are exported for composing your own factory. See [Cloudflare D1](packages/sqlfu/docs/cloudflare-d1.md) for the full guide.
 
 ### `generate.authority`
 

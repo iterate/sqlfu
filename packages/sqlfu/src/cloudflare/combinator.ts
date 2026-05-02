@@ -1,4 +1,4 @@
-import {createD1Client, type D1DatabaseLike} from '../adapters/d1.js';
+import type {D1DatabaseLike} from '../adapters/d1.js';
 import type {AsyncClient} from '../types.js';
 import {readAlchemyD1State, type ReadAlchemyD1StateOptions} from './alchemy-state.js';
 import {createD1HttpClient, type CreateD1HttpClientOptions} from './d1-http.js';
@@ -32,14 +32,12 @@ export function createAlchemyD1Client(options: CreateAlchemyD1ClientOptions): {
   }
 
   return {
-    client: createD1Client(
-      createD1HttpClient({
-        accountId,
-        apiToken,
-        databaseId,
-        fetch: options.fetch,
-        apiBase: options.apiBase,
-      }),
-    ),
+    client: createD1HttpClient({
+      accountId,
+      apiToken,
+      databaseId,
+      fetch: options.fetch,
+      apiBase: options.apiBase,
+    }),
   };
 }

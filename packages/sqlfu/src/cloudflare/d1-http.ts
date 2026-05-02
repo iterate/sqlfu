@@ -1,4 +1,5 @@
-import type {D1DatabaseLike, D1PreparedStatement} from '../adapters/d1.js';
+import {createD1Client, type D1DatabaseLike, type D1PreparedStatement} from '../adapters/d1.js';
+import type {AsyncClient} from '../types.js';
 
 export const DEFAULT_CLOUDFLARE_API_BASE = 'https://api.cloudflare.com/client/v4';
 
@@ -21,7 +22,7 @@ interface CloudflareQueryEnvelope<TRow = unknown> {
   }>;
 }
 
-export function createD1HttpClient(options: CreateD1HttpClientOptions): D1DatabaseLike {
+export function createD1HttpClient(options: CreateD1HttpClientOptions): AsyncClient<D1DatabaseLike> {
   const fetchFn = options.fetch || globalThis.fetch;
   const apiBase = options.apiBase || DEFAULT_CLOUDFLARE_API_BASE;
   const queryUrl = `${apiBase}/accounts/${options.accountId}/d1/database/${options.databaseId}/query`;
@@ -60,11 +61,12 @@ export function createD1HttpClient(options: CreateD1HttpClientOptions): D1Databa
     return statementResult;
   };
 
-  return {
+  const d1Like: D1DatabaseLike = {
     prepare(sql: string): D1PreparedStatement {
       return makeStatement(sql, [], callQuery);
     },
   };
+  return createD1Client(d1Like);
 }
 
 function makeStatement(

@@ -30,16 +30,16 @@ audiences:
 Low-level: bring your own credentials and `databaseId`:
 
 ```ts
-import {defineConfig, createD1Client} from 'sqlfu';
+import {defineConfig} from 'sqlfu';
 import {createD1HttpClient} from 'sqlfu/cloudflare';
 
 export default defineConfig({
   db: () => ({
-    client: createD1Client(createD1HttpClient({
+    client: createD1HttpClient({
       accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
       apiToken: process.env.CLOUDFLARE_API_TOKEN!,
       databaseId: '<uuid>',
-    })),
+    }),
   }),
   migrations: {path: './migrations', preset: 'd1'},
 });
@@ -54,7 +54,7 @@ db: async () => {
   const {databaseId} = await findCloudflareD1ByName({
     accountId, apiToken, name: 'my-app-prod-database',
   });
-  return {client: createD1Client(createD1HttpClient({accountId, apiToken, databaseId}))};
+  return {client: createD1HttpClient({accountId, apiToken, databaseId})};
 },
 ```
 
@@ -67,9 +67,9 @@ db: () => {
   const {databaseId, accountId} = readAlchemyD1State({
     stack: 'my-app', stage: 'dev', fqn: 'database',
   });
-  return {client: createD1Client(createD1HttpClient({
+  return {client: createD1HttpClient({
     accountId, apiToken: process.env.CLOUDFLARE_API_TOKEN!, databaseId,
-  }))};
+  })};
 },
 ```
 
@@ -83,14 +83,12 @@ db: () => createAlchemyD1Client({stack: 'my-app', stage: 'dev', fqn: 'database'}
 
 ## Helpers
 
-### 1. `createD1HttpClient(options) -> D1DatabaseLike`
+### 1. `createD1HttpClient(options) -> AsyncClient<D1DatabaseLike>`
 
-Wraps Cloudflare's HTTP D1 query API
-(`POST /accounts/{accountId}/d1/database/{databaseId}/query`,
-`POST .../raw` for `exec`) in a `prepare/bind/all/first/run` shape
-matching `@cloudflare/workers-types` D1Database. sqlfu's existing
-`createD1Client` (`packages/sqlfu/src/adapters/d1.ts:23`) accepts
-this shape unchanged.
+Returns a sqlfu `AsyncClient` that talks to Cloudflare's HTTP D1 query
+API (`POST /accounts/{accountId}/d1/database/{databaseId}/query`).
+Drops directly into a `db` factory — no separate `createD1Client`
+wrapping step.
 
 Inputs:
 - `accountId: string` (required)

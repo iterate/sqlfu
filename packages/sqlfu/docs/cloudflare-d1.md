@@ -47,31 +47,30 @@ copy-paste UUIDs into your config.
 
 ## The pieces
 
-`sqlfu/cloudflare` is just four small helpers. The combinator above is
-`createD1HttpClient(createD1Client(readAlchemyD1State(...)))` with the
-plumbing wired up. If your project doesn't fit the one-line recipe —
-different state directory, dynamic database resolution, custom auth —
-compose your own factory from the parts.
+`sqlfu/cloudflare` is just four small helpers. The combinator above
+resolves the deployed `databaseId`/`accountId` from alchemy state, then
+hands them to `createD1HttpClient`. If your project doesn't fit the
+one-line recipe — different state directory, dynamic database
+resolution, custom auth — compose your own factory from the parts.
 
 ### `createD1HttpClient`
 
-The HTTP transport. Wraps Cloudflare's
-[D1 query API](https://developers.cloudflare.com/api/operations/cloudflare-d1-query-database)
-in a `prepare(sql).bind(...).all()/.first()/.run()` shape that matches
-`@cloudflare/workers-types` `D1Database`. Drop into sqlfu's
-`createD1Client` exactly the same way as a Miniflare binding:
+The HTTP transport. Returns a sqlfu `AsyncClient` that talks to
+Cloudflare's
+[D1 query API](https://developers.cloudflare.com/api/operations/cloudflare-d1-query-database).
+Drop straight into a `db` factory:
 
 ```ts
-import {defineConfig, createD1Client} from 'sqlfu';
+import {defineConfig} from 'sqlfu';
 import {createD1HttpClient} from 'sqlfu/cloudflare';
 
 export default defineConfig({
   db: () => ({
-    client: createD1Client(createD1HttpClient({
+    client: createD1HttpClient({
       accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
       apiToken: process.env.CLOUDFLARE_API_TOKEN!,
       databaseId: '00000000-0000-0000-0000-000000000000',
-    })),
+    }),
   }),
   migrations: {path: './migrations', preset: 'd1'},
 });
@@ -149,9 +148,8 @@ The combinator above. Inputs are the union of `readAlchemyD1State` and
 These helpers are simple wrappers. If you outgrow them — you want
 caching, retries, custom auth flows, a reverse proxy — copy
 `createD1HttpClient` from the source and edit it. The stable contract
-is sqlfu's `D1DatabaseLike` interface (anything with a `prepare(sql)`
-returning `{bind, all, first, run}`); the helper is one valid way to
-satisfy it.
+is sqlfu's `AsyncClient` (the type returned by every `db` factory);
+the helper is one valid way to produce one.
 
 ## What's *not* here
 
