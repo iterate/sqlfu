@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {expect, test, vi} from 'vitest';
 
+import {sqliteDialect} from '../src/dialect.js';
 import {createNodeHost} from '../src/node/host.js';
 import type {SqlfuProjectConfig} from '../src/types.js';
 import {watchGenerateQueryTypesForConfig} from '../src/typegen/watch.js';
@@ -129,6 +130,7 @@ async function createWatchFixture(input: {
       importExtension: '.js',
       authority: input.authority ?? 'desired_schema',
     },
+    dialect: sqliteDialect,
   };
 
   await writeFixtureFiles(root, {

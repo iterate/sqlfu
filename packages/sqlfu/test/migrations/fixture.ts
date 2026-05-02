@@ -5,6 +5,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {createRouterClient} from '@orpc/server';
 
 import {getMigrationPrefix} from '../../src/api/internal.js';
+import {sqliteDialect} from '../../src/dialect.js';
 import {router} from '../../src/node/cli-router.js';
 import {createNodeSqliteClient} from '../../src/index.js';
 import {createNodeHost} from '../../src/node/host.js';
@@ -35,6 +36,7 @@ export async function createMigrationsFixture(
     definitions: path.join(root, 'definitions.sql'),
     queries: path.join(root, 'sql'),
     generate: {validator: null, prettyErrors: true, sync: false, importExtension: '.js', authority: 'desired_schema'},
+    dialect: sqliteDialect,
   };
 
   let nowUsage = 0;

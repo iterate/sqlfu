@@ -15,22 +15,20 @@ Step two (later, separate branch): create `packages/pg` (`@sqlfu/pg`) that expor
 
 ### Step one — extract the Dialect interface (this branch)
 
-The interface, agreed shape:
+The interface, step-one shape:
 
 ```ts
 type Dialect = {
   name: string  // 'sqlite' | 'postgresql' | ...
-  diffSchema(baselineSql: string, targetSql: string): Promise<string>
-  formatSql(sql: string): string
-  analyzeQueries(input: {
-    schemaSql: string
-    queries: Array<{name: string; sql: string}>
-  }): Promise<QueryTypeInfo[]>
+  diffSchema(host: SqlfuHost, input: {baselineSql; desiredSql; allowDestructive}): Promise<string[]>
+  formatSql(sql: string, options?: FormatSqlOptions): string
   quoteIdentifier(name: string): string
-  withMigrationLock?<T>(client: Client, fn: () => Promise<T>): Promise<T>
   defaultMigrationTableDdl(tableName: string): string
+  withMigrationLock?<T>(client: AsyncClient, fn: () => Promise<T>): Promise<T>
 }
 ```
+
+**Typegen abstraction is deferred to step two**, where the pg implementation will drive the real requirement. The current sqlite typegen pipeline (`materializeTypegenDatabase` → `loadSchema` → `analyzeVendoredTypesqlQueries`) is tangled with private helpers in `typegen/index.ts` (`openMainDevDatabase`, `loadRelationColumns`, view-shape inference, etc.); cleanly lifting those onto a Dialect interface is a larger refactor than fits step one and is best informed by the pg side's actual shape. Step one keeps typegen flowing through its existing sqlite-specific path.
 
 Design decisions (sign-off received in chat before this commit):
 
@@ -43,15 +41,15 @@ Design decisions (sign-off received in chat before this commit):
 
 ### Step one checklist
 
-- [ ] Define `Dialect` type and export `sqliteDialect` aggregator from `packages/sqlfu/src/dialect.ts`
+- [x] Define `Dialect` type and export `sqliteDialect` aggregator from `packages/sqlfu/src/dialect.ts` _(landed: thin aggregator over existing functions; no new helpers)_
 - [ ] Add `dialect?: Dialect` to `SqlfuConfig`; resolve to `sqliteDialect` when omitted (`resolveDialect(config)` helper)
 - [ ] Refactor schemadiff entrypoints to take `Dialect` and call `dialect.diffSchema(...)`
 - [ ] Refactor formatter call sites to call `dialect.formatSql(...)` (where a config/dialect is in scope)
-- [ ] Refactor typegen entrypoint to call `dialect.analyzeQueries({schemaSql, queries})`
 - [ ] Migration runner: source default-preset DDL via `dialect.defaultMigrationTableDdl(tableName)`; wrap migrations in `dialect.withMigrationLock` if defined
 - [ ] Replace ad-hoc `escapeIdentifier` / `escapeSqliteIdentifier` call sites with `dialect.quoteIdentifier`
 - [ ] Generalize `sqlReturnsRows` internally to cover both sqlite and pg keywords
 - [ ] Full test suite + typecheck pass with no test changes (sqlite is still the default)
+- [ ] ~~Refactor typegen entrypoint to call `dialect.analyzeQueries(...)`~~ _deferred to step two — pg will drive the right shape; lifting `materializeTypegenDatabase` + `loadSchema` cleanly out of `typegen/index.ts` is a bigger refactor that depends on knowing what pg's typegen pipeline needs._
 
 ### Step two — `@sqlfu/pg` (separate branch, later)
 

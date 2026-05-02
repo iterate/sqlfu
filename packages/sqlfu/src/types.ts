@@ -1,3 +1,7 @@
+// Type-only import; erased at runtime so no module cycle even though
+// `dialect.ts` depends on `types.ts` for `AsyncClient` etc.
+import type {Dialect} from './dialect.js';
+
 export type QueryArg = null | string | number | bigint | Uint8Array | boolean;
 
 export type ResultRow = object;
@@ -268,6 +272,12 @@ export interface SqlfuConfig {
   definitions: string;
   queries: string;
   generate?: SqlfuGenerateConfig;
+  /**
+   * Dialect-specific behavior (schema diff, formatting, identifier quoting,
+   * migration table DDL, optional locking primitive). Defaults to the built-in
+   * `sqliteDialect`. Set to `pgDialect` from `@sqlfu/pg` to target postgres.
+   */
+  dialect?: Dialect;
 }
 
 export interface SqlfuProjectConfig {
@@ -283,6 +293,12 @@ export interface SqlfuProjectConfig {
     importExtension: '.js' | '.ts';
     authority: SqlfuAuthority;
   };
+  /**
+   * The resolved dialect — always set; defaults to `sqliteDialect` when the
+   * user-facing config omits `dialect`. Internal code should consume the
+   * dialect from here rather than checking `config.dialect` directly.
+   */
+  dialect: Dialect;
 }
 
 export interface MigrateDiffResult {

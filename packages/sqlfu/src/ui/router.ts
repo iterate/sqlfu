@@ -11,6 +11,7 @@ import {
   type CheckAnalysis,
   type SqlfuCommandConfirmParams,
 } from '../api/internal.js';
+import {sqliteDialect} from '../dialect.js';
 import {SqlfuError, type SqlfuErrorKind} from '../errors.js';
 import {excludeReservedSqliteObjects, splitSqlStatements, sqlReturnsRows} from '../sqlite-text.js';
 import type {
@@ -134,6 +135,7 @@ function applyUiProjectDefaults(project: SqlfuUiProject): ResolvedUiProject {
         importExtension: generate.importExtension || '.js',
         authority: generate.authority || 'live_schema',
       },
+      dialect: config.dialect || sqliteDialect,
     },
   };
 }
