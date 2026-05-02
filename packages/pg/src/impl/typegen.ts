@@ -19,7 +19,6 @@ type PgMaterializedHandle = MaterializedTypegenSchema & {
   readonly dialect: 'postgresql';
   readonly schema: string;
   readonly client: PgkitClient;
-  readonly adminClient: PgkitClient;
 };
 
 function assertPgHandle(materialized: MaterializedTypegenSchema): PgMaterializedHandle {
@@ -51,25 +50,25 @@ export const pgMaterializeTypegenSchema: Dialect['materializeTypegenSchema'] = a
   const definitionsSql = await readDefinitionsSqlBestEffort(host, _config);
 
   const schema = uniqueSchemaName();
-  const adminClient = createClient(url);
-  await adminClient.query(adminClient.sql.raw(`create schema "${schema.replaceAll('"', '""')}"`));
-
-  const schemaClient = createClientWithSearchPath(url, schema);
+  // One client doing all the work — see schemadiff.ts for why we avoid the
+  // URL `-c search_path=...` trick under pglite-socket.
+  const client = createClient(url);
+  await client.query(client.sql.raw(`create schema "${schema.replaceAll('"', '""')}"`));
+  await client.query(client.sql.raw(`set search_path = "${schema.replaceAll('"', '""')}"`));
   if (definitionsSql.trim()) {
-    await schemaClient.query(schemaClient.sql.raw(definitionsSql));
+    await client.query(client.sql.raw(definitionsSql));
   }
 
   const handle: PgMaterializedHandle = {
     dialect: 'postgresql',
     schema,
-    client: schemaClient,
-    adminClient,
+    client,
     [Symbol.asyncDispose]: async () => {
       try {
-        await adminClient.query(adminClient.sql.raw(`drop schema if exists "${schema.replaceAll('"', '""')}" cascade`));
+        await client.query(client.sql.raw(`reset search_path`));
+        await client.query(client.sql.raw(`drop schema if exists "${schema.replaceAll('"', '""')}" cascade`));
       } finally {
-        await schemaClient.end();
-        await adminClient.end();
+        await client.end();
       }
     },
   };
@@ -221,12 +220,6 @@ function pgTypeToTs(typeName: string): string {
 
 function uniqueSchemaName(): string {
   return `sqlfu_typegen_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function createClientWithSearchPath(baseUrl: string, schema: string): PgkitClient {
-  const url = new URL(baseUrl);
-  url.searchParams.set('options', `-c search_path=${schema}`);
-  return createClient(url.toString());
 }
 
 async function readDefinitionsSqlBestEffort(

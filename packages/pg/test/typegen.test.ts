@@ -1,0 +1,132 @@
+import {expect, test} from 'vitest';
+import {mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+
+import type {SqlfuHost, SqlfuProjectConfig} from 'sqlfu';
+
+import {pgDialect} from '../src/index.js';
+import {startPgliteFixture} from './pglite-fixture.js';
+
+async function withProjectAndFixture<T>(
+  definitionsSql: string,
+  fn: (config: SqlfuProjectConfig, host: SqlfuHost) => Promise<T>,
+): Promise<T> {
+  const projectRoot = await mkdtemp(join(tmpdir(), 'sqlfu-pg-typegen-'));
+  await writeFile(join(projectRoot, 'definitions.sql'), definitionsSql);
+  await using fixture = await startPgliteFixture();
+  const previous = process.env.SQLFU_PG_TYPEGEN_URL;
+  process.env.SQLFU_PG_TYPEGEN_URL = fixture.url;
+  try {
+    const config: SqlfuProjectConfig = {
+      projectRoot,
+      definitions: join(projectRoot, 'definitions.sql'),
+      queries: join(projectRoot, 'sql'),
+      generate: {
+        validator: null,
+        prettyErrors: true,
+        sync: false,
+        importExtension: '.js',
+        authority: 'desired_schema',
+      },
+      dialect: pgDialect,
+    };
+    const host = createMinimalHost();
+    return await fn(config, host);
+  } finally {
+    if (previous == null) delete process.env.SQLFU_PG_TYPEGEN_URL;
+    else process.env.SQLFU_PG_TYPEGEN_URL = previous;
+    await rm(projectRoot, {recursive: true, force: true});
+  }
+}
+
+function createMinimalHost(): SqlfuHost {
+  // The pg dialect's typegen methods only exercise `host.fs.readFile`. The
+  // rest of the host surface is irrelevant — return a partial that throws
+  // for everything else.
+  const fsImpl: SqlfuHost['fs'] = {
+    async readFile(path: string) {
+      const fs = await import('node:fs/promises');
+      return fs.readFile(path, 'utf8');
+    },
+    async writeFile() {
+      throw new Error('host.fs.writeFile not implemented in typegen test fixture');
+    },
+    async readdir() {
+      throw new Error('host.fs.readdir not implemented in typegen test fixture');
+    },
+    async mkdir() {
+      throw new Error('host.fs.mkdir not implemented in typegen test fixture');
+    },
+    async rm() {
+      throw new Error('host.fs.rm not implemented in typegen test fixture');
+    },
+    async rename() {
+      throw new Error('host.fs.rename not implemented in typegen test fixture');
+    },
+    async exists() {
+      return false;
+    },
+  };
+  return {
+    fs: fsImpl,
+    openDb: async () => {
+      throw new Error('host.openDb not implemented in typegen test fixture');
+    },
+    openScratchDb: async () => {
+      throw new Error('host.openScratchDb not implemented in typegen test fixture');
+    },
+    execAdHocSql: async () => {
+      throw new Error('host.execAdHocSql not implemented in typegen test fixture');
+    },
+    initializeProject: async () => {
+      throw new Error('host.initializeProject not implemented in typegen test fixture');
+    },
+    digest: async (content) => content,
+    now: () => new Date('2026-05-03T00:00:00.000Z'),
+    uuid: () => 'test-uuid',
+    logger: {log: () => {}, warn: () => {}, error: () => {}},
+    catalog: {
+      load: async () => ({queries: {}, queryDocuments: {}}) as never,
+      refresh: async () => {},
+      analyzeSql: async () => ({} as never),
+    },
+  };
+}
+
+test('pgDialect.materializeTypegenSchema + loadSchemaForTypegen returns the relations', {timeout: 30_000}, async () => {
+  const sql = `
+    create table users (id integer primary key, name text not null, bio text);
+    create view active_users as select id, name from users where bio is not null;
+  `;
+  await withProjectAndFixture(sql, async (config, host) => {
+    await using materialized = await pgDialect.materializeTypegenSchema(host, config);
+    const relations = await pgDialect.loadSchemaForTypegen(materialized);
+
+    expect(relations.has('users')).toBe(true);
+    expect(relations.has('active_users')).toBe(true);
+
+    const users = relations.get('users')!;
+    expect(users.kind).toBe('table');
+    expect(users.columns.get('id')).toMatchObject({tsType: 'number', notNull: true});
+    expect(users.columns.get('name')).toMatchObject({tsType: 'string', notNull: true});
+    expect(users.columns.get('bio')).toMatchObject({tsType: 'string', notNull: false});
+
+    const view = relations.get('active_users')!;
+    expect(view.kind).toBe('view');
+    expect(view.columns.has('id')).toBe(true);
+    expect(view.columns.has('name')).toBe(true);
+  });
+});
+
+test('pgDialect.analyzeQueries currently throws a typed stub', {timeout: 30_000}, async () => {
+  const sql = `create table users (id integer primary key, name text not null);`;
+  await withProjectAndFixture(sql, async (config, host) => {
+    await using materialized = await pgDialect.materializeTypegenSchema(host, config);
+    const analyses = await pgDialect.analyzeQueries(materialized, [
+      {sqlPath: 'find-user.sql', sqlContent: 'select id, name from users where id = :id'},
+    ]);
+    expect(analyses).toHaveLength(1);
+    expect(analyses[0]).toMatchObject({ok: false});
+  });
+});

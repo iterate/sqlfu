@@ -35,19 +35,19 @@ These are best-guess decisions; user can override on review.
 
 ### Method-by-method implementation
 
-- [ ] `name: 'postgresql'`
-- [ ] `formatSql` — via `sql-formatter` (postgres dialect). No vendoring. Stretch: thin wrapper for sqlfu-style compaction matching the sqlite formatter's `style: 'sqlfu'` clauses.
-- [ ] `quoteIdentifier` — pg uses double-quote escaping, identical to sqlite's; reuse the same logic.
-- [ ] `defaultMigrationTableDdl(tableName)` — pg flavor: `text` columns, `timestamptz` for `applied_at`. Byte-for-byte parity with the sqlite preset isn't required; the migration runner reads the `name`/`checksum`/`applied_at` columns abstractly.
-- [ ] `withMigrationLock` — `SELECT pg_advisory_xact_lock(<sqlfu-namespaced-key>)` inside a transaction wrapping the inner fn.
-- [ ] `diffSchema` — defer to `@pgkit/migra`. Adapter input → `migra` call → string array out. Will need to materialize baseline + desired into temp schemas, run migra, return statements.
-- [ ] `materializeTypegenSchema` — open a pg connection from `config.db` factory or env var, create a uniquely-named temp schema, apply the schema SQL (via `readSchemaForAuthority`-equivalent — likely pulls config.generate.authority into a dialect-neutral helper), return a handle whose `[Symbol.asyncDispose]` drops the schema and closes the connection.
-- [ ] `loadSchemaForTypegen` — query `information_schema.tables/columns/views` (or `pg_catalog`) inside the materialized schema, build the dialect-neutral `RelationInfo` map.
-- [ ] `analyzeQueries` — `PREPARE` each query, introspect via `pg_catalog`. Output is `QueryAnalysis[]` matching the existing typesql shape.
+- [x] `name: 'postgresql'`
+- [x] `formatSql` — via `sql-formatter` (postgres dialect). _(Sqlfu-style compaction not yet layered in; can come later.)_
+- [x] `quoteIdentifier` — pg double-quote, identical rule to sqlite.
+- [x] `defaultMigrationTableDdl(tableName)` — pg flavor with `timestamptz`.
+- [x] `withMigrationLock` — `pg_advisory_xact_lock(<deterministic FNV-1a 64-bit key>)` inside `client.transaction`.
+- [x] `diffSchema` — `@pgkit/migra` against two pgkit clients pointing at separate databases. Reads `SQLFU_PG_DIFF_BASELINE_URL` + `SQLFU_PG_DIFF_DESIRED_URL` from env. _Wart: env-var hack; user-facing config field comes later. Documented in source._
+- [x] `materializeTypegenSchema` — temp schema in the URL pointed at by `SQLFU_PG_TYPEGEN_URL`, `set search_path`, apply DDL, dispose drops the schema. _Wart: only the `'desired_schema'` authority is honored — schema-source readers in main sqlfu's typegen are sqlite-only, see "Wart watch" below._
+- [x] `loadSchemaForTypegen` — `pg_class` + `pg_attribute` + `pg_namespace` queries scoped to the materialized schema. Returns the dialect-neutral `RelationInfo` map.
+- [ ] `analyzeQueries` — typed stub returning `{ok: false, error: {name: 'PgAnalyzeQueriesNotImplemented'}}`. Real PREPARE-statement introspection is the largest remaining work; deferred to a follow-up so the rest of the package can land for review.
 
 ### Main-package additions
 
-- [ ] `packages/sqlfu/src/adapters/pg.ts` — `NodePostgresLike` interface (type-only) + `createNodePostgresClient(pool)` factory matching the existing adapter pattern (returns `AsyncClient` with `system: 'postgresql'`). Uses `Pool.query` / `Pool.connect` for transactions.
+- [x] `packages/sqlfu/src/adapters/pg.ts` — `NodePostgresLike` interface + `createNodePostgresClient(pool)` factory. Type-only; users install `pg` separately and pass a `Pool`. Transactions acquire a `PoolClient` via `pool.connect()`.
 
 ### Wart watch
 
@@ -59,10 +59,11 @@ These are best-guess decisions; user can override on review.
 
 ### Tests
 
-- [ ] Unit tests for the easy methods (formatSql, quoteIdentifier, defaultMigrationTableDdl).
-- [ ] Integration test: pgDialect.diffSchema on a baseline → desired schema using pglite.
-- [ ] Integration test: pgDialect.materializeTypegenSchema → loadSchemaForTypegen → analyzeQueries on a small fixture.
-- [ ] Integration test: pgDialect.withMigrationLock blocks concurrent calls (verify advisory lock).
+- [x] Unit tests for the easy methods (formatSql, quoteIdentifier, defaultMigrationTableDdl).
+- [x] Integration test: pgDialect.diffSchema across the four cases (matching, create-table, refused-destructive, allowed-destructive). Uses `startPglitePairFixture` (two pglite-socket instances).
+- [x] Integration test: pgDialect.materializeTypegenSchema → loadSchemaForTypegen against a table+view fixture.
+- [x] Integration test: pgDialect.analyzeQueries returns the typed stub.
+- [ ] Integration test: pgDialect.withMigrationLock blocks concurrent calls. _Tricky under pglite-socket because its query queue serializes everything in-process — the lock test would need a real pg server (or two pglite-socket processes), so it's deferred until the main migration-runner integration lands._
 
 ### Out of scope for this PR
 
@@ -72,4 +73,20 @@ These are best-guess decisions; user can override on review.
 
 ## Implementation notes
 
-(Updated as work progresses.)
+### What landed
+
+7 commits on this branch. All of `@sqlfu/pg`'s methods are wired up except `analyzeQueries` (typed stub). 12 pg-side tests pass; the existing 1428 sqlfu tests + 67 ui tests still pass too.
+
+- **Skeleton** (commit `4b18a79`): packages/pg with proper tsconfig/vitest wiring, deps on `@pgkit/{client,schemainspect,migra}` and `sql-formatter`, peer dep on `sqlfu`.
+- **NodePostgresLike adapter** (commit `f0d9a0e`): in main sqlfu (transport, not dialect). `createNodePostgresClient(pool)` returns an `AsyncClient`. Translates sqlfu's prepared-statement params (named-Record or positional) into pg's `$1, $2, …` shape; transactions acquire a `PoolClient` via `pool.connect()` so begin/commit land on the same connection.
+- **diffSchema via migra** (commit `6fb9287`): two pgkit clients pointing at separate databases, run `Migration.create + add_all_changes`, return statements as a string array. Env-var-driven for now (`SQLFU_PG_DIFF_BASELINE_URL` / `SQLFU_PG_DIFF_DESIRED_URL`). Tests use a `startPglitePairFixture` that spins up two pglite-socket instances.
+- **typegen materialize+loadSchema**: temp schema, `set search_path`, apply DDL; introspect via `pg_class` + `pg_attribute`; produces the dialect-neutral `RelationInfo` map. Reads `SQLFU_PG_TYPEGEN_URL` from env. Currently honors only `generate.authority='desired_schema'` because the schema-source readers in main sqlfu's typegen are sqlite-only.
+
+### Warts identified (still open)
+
+1. **Env-var hack for connection URLs.** `SQLFU_PG_DIFF_BASELINE_URL`, `SQLFU_PG_DIFF_DESIRED_URL`, `SQLFU_PG_TYPEGEN_URL` should all become proper config fields. Likely shape: a new `dialectConfig` block (or letting the dialect read its own keys off `config.db`'s connection string for typegen).
+2. **Schema-source readers in typegen are sqlite-coupled.** `readSchemaForAuthority` (in main sqlfu's `typegen/index.ts`) handles four authorities: `desired_schema`, `migrations`, `migration_history`, `live_schema`. Three of them call sqlite-specific helpers (`materializeDefinitionsSchemaFor`, `materializeMigrationsSchemaFor`, sqlite-only `extractSchema`) so they don't work for pg. The pg dialect today only honors `desired_schema` (read `definitions.sql` directly). A follow-up should lift these readers into a dialect-neutral form so all four authorities work for both dialects.
+3. **`?` → `$N` translator is layered on top of a sqlite-flavored rewriter.** `rewriteNamedParamsToPositional` was named for the sqlite case. The pg adapter calls it then converts each `?` to `$1, $2, …`. Cleaner would be to parameterize the rewriter on placeholder style. Tracked in `adapters/pg.ts` source.
+4. **`analyzeQueries` is a typed stub.** Real PREPARE-statement introspection lands in a follow-up. Postgres becomes the parser (no third-party AST dep needed); the impl reads parameter and result types from `pg_catalog` after `PREPARE`. The trickiest bit will be result-set introspection — needs the wire-protocol Describe message which `@pgkit/client` doesn't expose directly. May need to drop down to raw `pg` for this.
+5. **withMigrationLock test deferred.** Pglite-socket has a single global query queue (process-wide), so the "two concurrent calls block on each other" test would always pass trivially. Real concurrency check needs a real pg server (or two separate pglite-socket processes). Deferred.
+6. **Postgres dev-project, UI server postgres support, dialect-aware formatter call sites.** All explicitly out of scope per the task spec.
