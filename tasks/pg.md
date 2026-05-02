@@ -25,10 +25,13 @@ type Dialect = {
   quoteIdentifier(name: string): string
   defaultMigrationTableDdl(tableName: string): string
   withMigrationLock?<T>(client: AsyncClient, fn: () => Promise<T>): Promise<T>
+  materializeTypegenSchema(host: SqlfuHost, config: SqlfuProjectConfig): Promise<MaterializedTypegenSchema>
+  loadSchemaForTypegen(materialized: MaterializedTypegenSchema): Promise<ReadonlyMap<string, RelationInfo>>
+  analyzeQueries(materialized: MaterializedTypegenSchema, queries: QueryAnalysisInput[]): Promise<QueryAnalysis[]>
 }
 ```
 
-**Typegen abstraction is deferred to step two**, where the pg implementation will drive the real requirement. The current sqlite typegen pipeline (`materializeTypegenDatabase` → `loadSchema` → `analyzeVendoredTypesqlQueries`) is tangled with private helpers in `typegen/index.ts` (`openMainDevDatabase`, `loadRelationColumns`, view-shape inference, etc.); cleanly lifting those onto a Dialect interface is a larger refactor than fits step one and is best informed by the pg side's actual shape. Step one keeps typegen flowing through its existing sqlite-specific path.
+The interface includes three typegen methods — `materializeTypegenSchema`, `loadSchemaForTypegen`, `analyzeQueries` — operating on an opaque `MaterializedTypegenSchema` handle (`AsyncDisposable` so `await using` releases dialect-owned resources). The pg dialect will satisfy these via pgkit-derived schemainspect/migra + a typegen of its own.
 
 Design decisions (sign-off received in chat before this commit):
 
@@ -49,7 +52,7 @@ Design decisions (sign-off received in chat before this commit):
 - [x] Replace ad-hoc `escapeIdentifier` / `escapeSqliteIdentifier` call sites with `dialect.quoteIdentifier` _(landed: both helpers deleted; call sites in `ui/router.ts` and `typegen/index.ts` use `sqliteDialect.quoteIdentifier`)_
 - [x] Generalize `sqlReturnsRows` internally to cover both sqlite and pg keywords _(landed: regex now matches `select|with|pragma|explain|values|show|table|fetch` plus `RETURNING`)_
 - [x] Full test suite + typecheck pass with no test changes (sqlite is still the default) _(landed: 1428 sqlfu tests + 67 ui tests pass; `pnpm --filter sqlfu typecheck` and `pnpm --filter @sqlfu/ui typecheck` clean; dev-project `sqlfu check` and `sqlfu generate` smoke-tested)_
-- [ ] ~~Refactor typegen entrypoint to call `dialect.analyzeQueries(...)`~~ _deferred to step two — pg will drive the right shape; lifting `materializeTypegenDatabase` + `loadSchema` cleanly out of `typegen/index.ts` is a bigger refactor that depends on knowing what pg's typegen pipeline needs._
+- [x] Refactor typegen entrypoint to call `dialect.{materializeTypegenSchema, loadSchemaForTypegen, analyzeQueries}` _(landed: opaque `MaterializedTypegenSchema` handle threads through three method calls, disposes via `await using`. Sqlite impls are registered onto `sqliteDialect` at typegen/index.ts module-load — see "Side-effect registration of sqlite typegen impls" below.)_
 
 ### Step two — `@sqlfu/pg` (separate branch, later)
 
@@ -65,6 +68,19 @@ Design decisions (sign-off received in chat before this commit):
 - [ ] Examples / docs / `dev-project` smoke test against postgres
 
 ## Implementation notes
+
+### Side-effect registration of sqlite typegen impls
+
+`dialect.ts` is in the strict-tier import graph (`dist/index.js`), which forbids `node:*` imports — including those reached via dynamic `import()`. The strict check follows dynamic imports too, so neither static nor lazy imports of `typegen/index.ts` are viable from `dialect.ts`.
+
+Workaround: `dialect.ts` ships `sqliteDialect` with throwing stubs for the three typegen methods. `typegen/index.ts` mutates them to real impls at module-load time. Heavy entries (CLI, api/exports, ui server) all transitively load `typegen/index.ts`, so the stubs only ever fire if a strict-tier consumer tries to invoke typegen — which is itself a bug.
+
+Alternatives considered and why we didn't pick them:
+1. **Move `sqliteDialect` to a heavy entry.** Breaks `defineConfig` defaulting in the strict-tier `config.ts`, which references the *value*.
+2. **Make typegen methods optional (`typegen?: {...}`).** Forces every caller to nullish-check, hurts the dialect's "uniform contract" UX.
+3. **Loosen the strict check to skip dynamic imports.** Drops an existing guarantee for one feature.
+
+The smallest hammer was side-effect registration. Documented in `dialect.ts` header.
 
 ### Formatter dialect routing — step one scope
 
