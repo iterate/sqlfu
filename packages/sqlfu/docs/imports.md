@@ -84,6 +84,31 @@ Miniflare v3 persist root. Today that means Alchemy's
 Alchemy app slug. If the config is evaluated from somewhere else, pass
 `{miniflareV3Root: '/absolute/path/to/.alchemy/miniflare/v3'}`.
 
+## `sqlfu/cloudflare`
+
+Use `sqlfu/cloudflare` to point sqlfu at a deployed Cloudflare D1 database
+over HTTP, instead of a local sqlite file. This is the path for users on
+[alchemy v2](https://alchemy.run) (where `alchemy dev` connects to real
+cloud D1 — no Miniflare emulation), and for anyone managing D1 outside
+sqlfu (wrangler, Terraform, etc.).
+
+```ts
+import {defineConfig} from 'sqlfu';
+import {createAlchemyD1Client} from 'sqlfu/cloudflare';
+
+export default defineConfig({
+  db: () => createAlchemyD1Client({stack: 'my-app', stage: 'dev', fqn: 'database'}),
+  migrations: {path: './migrations', preset: 'd1'},
+});
+```
+
+Lower-level helpers are exported for users who want to compose their own
+factory: `createD1HttpClient` (just the HTTP transport), `readAlchemyD1State`
+(read alchemy's local state to get the deployed `databaseId`), and
+`findCloudflareD1ByName` (look up a D1 by name via Cloudflare's REST API).
+
+See [Cloudflare D1](./cloudflare-d1.md) for the full guide.
+
 ## `sqlfu/analyze`
 
 Use `sqlfu/analyze` for in-browser or worker analysis surfaces: schema
