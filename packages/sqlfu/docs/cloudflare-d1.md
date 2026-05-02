@@ -45,103 +45,95 @@ and `databaseId` come from the alchemy state file at
 `.alchemy/state/<stack>/<stage>/<fqn>.json`, so you don't have to
 copy-paste UUIDs into your config.
 
-## The pieces
+## Compose your own factory
 
-`sqlfu/cloudflare` is just four small helpers. The combinator above
-resolves the deployed `databaseId`/`accountId` from alchemy state, then
-hands them to `createD1HttpClient`. If your project doesn't fit the
-one-line recipe — different state directory, dynamic database
-resolution, custom auth — compose your own factory from the parts.
+`sqlfu/cloudflare` is just four small helpers, and `createAlchemyD1Client`
+is one valid composition. If your project doesn't fit it — different
+state location, dynamic database resolution, custom auth source, you're
+not on alchemy — wire your own factory from the parts. The two patterns
+below cover almost everything.
 
-### `createD1HttpClient`
+### Compose with alchemy state
 
-The HTTP transport. Returns a sqlfu `AsyncClient` that talks to
-Cloudflare's
-[D1 query API](https://developers.cloudflare.com/api/operations/cloudflare-d1-query-database).
-Drop straight into a `db` factory:
+`readAlchemyD1State` reads alchemy v2's local state file and returns the
+deployed resource's identity. Hand it to `createD1HttpClient` and you've
+got a sqlfu `db` factory:
 
 ```ts
 import {defineConfig} from 'sqlfu';
-import {createD1HttpClient} from 'sqlfu/cloudflare';
+import {createD1HttpClient, readAlchemyD1State} from 'sqlfu/cloudflare';
 
 export default defineConfig({
-  db: () => ({
-    client: createD1HttpClient({
-      accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
-      apiToken: process.env.CLOUDFLARE_API_TOKEN!,
-      databaseId: '00000000-0000-0000-0000-000000000000',
-    }),
-  }),
+  db: () => {
+    const {databaseId, accountId} = readAlchemyD1State({
+      stack: 'my-app', stage: 'dev', fqn: 'database',
+    });
+    return {
+      client: createD1HttpClient({
+        accountId,
+        databaseId,
+        apiToken: process.env.CLOUDFLARE_API_TOKEN!,
+      }),
+    };
+  },
   migrations: {path: './migrations', preset: 'd1'},
 });
 ```
 
-Options:
-
-- `accountId`, `apiToken`, `databaseId` — required.
-- `fetch?: typeof fetch` — DI hook. Defaults to `globalThis.fetch`.
-  Useful for tests (point at a local server) or for piping through a
-  proxy/auth layer.
-- `apiBase?: string` — defaults to `https://api.cloudflare.com/client/v4`.
-
-### `readAlchemyD1State`
-
-Reads alchemy v2's local state file and returns the deployed resource's
-identity:
-
-```ts
-import {readAlchemyD1State, createD1HttpClient} from 'sqlfu/cloudflare';
-
-const {databaseId, accountId} = readAlchemyD1State({
-  stack: 'my-app',
-  stage: 'dev',
-  fqn: 'database',
-});
-```
-
-State lives at `.alchemy/state/<stack>/<stage>/<encoded-fqn>.json`. The
-helper walks up from the cwd until it finds an `.alchemy/state/`
-directory, so it works from any subdirectory of your project. Pass
-`{alchemyDir: '/abs/path/to/.alchemy'}` to override.
+State lives at `.alchemy/state/<stack>/<stage>/<encoded-fqn>.json`.
+`readAlchemyD1State` walks up from the cwd until it finds an
+`.alchemy/state/` directory, so it works from any subdirectory of your
+project. Pass `{alchemyDir: '/abs/path/to/.alchemy'}` to override —
+useful when your config runs outside the project tree.
 
 `fqn` is the resource's
 [fully-qualified name](https://github.com/alchemy-run/alchemy-effect/blob/main/packages/alchemy/src/FQN.ts)
-inside the alchemy app. For a top-level `Cloudflare.D1Database("database")`
-the fqn is just `"database"`. For a nested `Namespace("Auth").run(...)`
-that contains a `D1Database("database")`, it's `"Auth/database"`.
+inside the alchemy app. For a top-level
+`Cloudflare.D1Database("database")` the fqn is just `"database"`. For a
+nested `Namespace("Auth").run(...)` containing a
+`D1Database("database")`, it's `"Auth/database"`.
 
 This helper is **alchemy v2 specific** — alchemy v1 stored state at a
 different path and in a different shape. If you're on v1, prefer
 `findCloudflareD1ByName` (below).
 
-### `findCloudflareD1ByName`
+### Compose without alchemy
 
-Look up a D1 by name via Cloudflare's REST API:
+If you're not on alchemy — or you just don't want sqlfu reading alchemy's
+state files — point at the deployed D1 with credentials and either an
+explicit `databaseId` or a name lookup:
 
 ```ts
-import {findCloudflareD1ByName, createD1HttpClient} from 'sqlfu/cloudflare';
+import {defineConfig} from 'sqlfu';
+import {createD1HttpClient, findCloudflareD1ByName} from 'sqlfu/cloudflare';
 
-const {databaseId, accountId} = await findCloudflareD1ByName({
-  accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
-  apiToken: process.env.CLOUDFLARE_API_TOKEN!,
-  name: 'my-app-prod-database',
+export default defineConfig({
+  db: async () => {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID!;
+    const apiToken = process.env.CLOUDFLARE_API_TOKEN!;
+    const {databaseId} = await findCloudflareD1ByName({
+      accountId, apiToken, name: 'my-app-prod-database',
+    });
+    return {client: createD1HttpClient({accountId, apiToken, databaseId})};
+  },
+  migrations: {path: './migrations', preset: 'd1'},
 });
 ```
 
-Throws if zero or multiple databases match the name. Use this when:
+If you've already got a `databaseId` — env var, hardcoded UUID,
+whatever — skip the lookup and pass it straight to `createD1HttpClient`.
+The lookup uses `GET /accounts/{id}/d1/database?name=...` and throws on
+zero or multiple matches; use it when:
 
-- You're not using alchemy at all.
 - You're on alchemy v1 and don't want to depend on its (different)
   on-disk state format.
-- Your config dynamically resolves the database name (e.g. one config
-  serves multiple environments by reading `process.env.STAGE`).
+- Your config dynamically resolves the database name (one config serves
+  multiple environments by reading `process.env.STAGE`).
+- You're not using alchemy at all.
 
-### `createAlchemyD1Client`
-
-The combinator above. Inputs are the union of `readAlchemyD1State` and
-`createD1HttpClient`'s options, minus `accountId` and `databaseId`
-(read from state). Returns a sqlfu `db` factory return value
-(`{client}`) ready to drop into a config.
+`createD1HttpClient` returns a sqlfu `AsyncClient` directly — no separate
+`createD1Client` wrap. Both helpers accept `fetch` and `apiBase` as DI
+hooks for tests, proxies, or custom transports.
 
 ## Reference code as a starting point, not a forever API
 
