@@ -1,0 +1,48 @@
+{
+  "name": "@sqlfu/pg",
+  "version": "0.0.0",
+  "description": "Postgres dialect for sqlfu — schema diff, typegen, formatter, migration table DDL, advisory-lock migration runner.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mmkal/sqlfu.git",
+    "directory": "packages/pg"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsgo -p tsconfig.build.json",
+    "typecheck": "tsgo -p tsconfig.typecheck.json",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@pgkit/client": "^0.6.1",
+    "@pgkit/migra": "^0.6.1",
+    "@pgkit/schemainspect": "^0.6.1",
+    "sql-formatter": "^15.7.0"
+  },
+  "peerDependencies": {
+    "sqlfu": "workspace:^"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "@types/node": "^24.5.2",
+    "@typescript/native-preview": "^7.0.0-dev.20260414.1",
+    "pg": "^8.13.0",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.1"
+  }
+}
