@@ -178,9 +178,6 @@ error if neither is supplied.
 
 ## Out of scope (not this PR)
 
-- Migrating `findMiniflareD1Path` from `sqlfu/node` to
-  `sqlfu/cloudflare`. It's still useful for alchemy v1 users; can
-  be re-exported later or moved as a follow-up.
 - A real-account end-to-end test (would need live CF credentials and
   cleanup logic).
 - A v2-CLI integration test. Blocked on alchemy v2 fixing the

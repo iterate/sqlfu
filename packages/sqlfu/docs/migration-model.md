@@ -516,11 +516,11 @@ Under `preset: 'd1'` sqlfu reads and writes the same `d1_migrations` table alche
 
 Alchemy uses two different `d1_migrations` schemas: a 3-column remote shape in production D1 and a 4-column local shape (with a `type` column) when running against miniflare. Sqlfu introspects the existing table on first use and adapts its inserts, so the same `preset: 'd1'` config works in both environments.
 
-If you want sqlfu to operate on Alchemy's local dev database, use the Miniflare path helper from `sqlfu/node`:
+If you want sqlfu to operate on Alchemy's local dev database, use the Miniflare path helper from `sqlfu/cloudflare`:
 
 ```ts
 import {defineConfig} from 'sqlfu';
-import {findMiniflareD1Path} from 'sqlfu/node';
+import {findMiniflareD1Path} from 'sqlfu/cloudflare';
 
 export default defineConfig({
   db: findMiniflareD1Path('my-dev-app-slug'),

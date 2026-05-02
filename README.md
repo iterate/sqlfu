@@ -318,7 +318,7 @@ For an Alchemy-managed local D1 database, sqlfu can talk directly to Alchemy's p
 
 ```ts
 import {defineConfig} from 'sqlfu';
-import {findMiniflareD1Path} from 'sqlfu/node';
+import {findMiniflareD1Path} from 'sqlfu/cloudflare';
 
 export default defineConfig({
   db: findMiniflareD1Path('my-dev-app-slug'),

@@ -1,6 +1,9 @@
 export {createD1HttpClient, DEFAULT_CLOUDFLARE_API_BASE} from './d1-http.js';
 export type {CreateD1HttpClientOptions} from './d1-http.js';
 
+export {findMiniflareD1Path} from './miniflare.js';
+export type {FindMiniflareD1PathOptions} from './miniflare.js';
+
 export {readAlchemyD1State} from './alchemy-state.js';
 export type {AlchemyD1State, ReadAlchemyD1StateOptions} from './alchemy-state.js';
 
