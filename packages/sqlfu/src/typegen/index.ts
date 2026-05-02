@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import {analyzeVendoredTypesqlQueries} from './analyze-vendored-typesql.js';
-import {sqliteDialect} from '../dialect.js';
+import {assertSqliteMaterialized, sqliteDialect, type DialectColumnInfo, type RelationInfo} from '../dialect.js';
 import type {
   AdHocQueryAnalysis,
   JsonSchema,
@@ -46,14 +46,15 @@ export async function generateQueryTypesForConfig(
   config: SqlfuProjectConfig,
   host: SqlfuHost,
 ): Promise<GenerateQueryTypesResult> {
-  const databasePath = await materializeTypegenDatabase(config, host);
-  const schema = await loadSchema(databasePath);
+  const dialect = config.dialect;
+  await using materialized = await dialect.materializeTypegenSchema(host, config);
+  const schema = await dialect.loadSchemaForTypegen(materialized);
   const queryDocuments = await loadQueryDocuments(config.queries);
   const querySources = queryDocuments.flatMap((queryDocument) => queryDocument.queries);
   assertUniqueQueryFunctionNames(querySources);
 
-  const queryAnalyses = await analyzeVendoredTypesqlQueries(
-    databasePath,
+  const queryAnalyses = await dialect.analyzeQueries(
+    materialized,
     querySources.map((query) => ({
       sqlPath: query.sqlPath,
       sqlContent: query.analysisSqlContent,
@@ -243,9 +244,10 @@ export async function analyzeAdHocSqlForConfig(
   host: SqlfuHost,
   sql: string,
 ): Promise<AdHocQueryAnalysis> {
-  const databasePath = await materializeTypegenDatabase(config, host);
-  const schema = await loadSchema(databasePath);
-  const [analysis] = await analyzeVendoredTypesqlQueries(databasePath, [
+  const dialect = config.dialect;
+  await using materialized = await dialect.materializeTypegenSchema(host, config);
+  const schema = await dialect.loadSchemaForTypegen(materialized);
+  const [analysis] = await dialect.analyzeQueries(materialized, [
     {
       sqlPath: path.join(config.queries, '__sql_runner__.sql'),
       sqlContent: sql,
@@ -269,18 +271,11 @@ type DisposableClient = {
   [Symbol.asyncDispose](): Promise<void>;
 };
 
-type TsColumn = {
-  name: string;
-  tsType: string;
-  notNull: boolean;
-};
-
-type RelationInfo = {
-  kind: 'table' | 'view';
-  name: string;
-  columns: ReadonlyMap<string, TsColumn>;
-  sql?: string;
-};
+// `TsColumn` and `RelationInfo` are imported from `../dialect.js` as
+// `DialectColumnInfo` and `RelationInfo` so both sqlite and pg dialects
+// produce values of the same shape. Local alias keeps the rest of the
+// file's identifier choices stable.
+type TsColumn = DialectColumnInfo;
 
 type GeneratedField = {
   name: string;
@@ -358,7 +353,7 @@ type ParameterExpansion =
       acceptsSingleOrArray: boolean;
     };
 
-async function materializeTypegenDatabase(config: SqlfuProjectConfig, host: SqlfuHost) {
+export async function materializeTypegenDatabase(config: SqlfuProjectConfig, host: SqlfuHost) {
   const tempDbPath = path.join(config.projectRoot, '.sqlfu', 'typegen.db');
   const schemaSql = await readSchemaForAuthority(config, host);
 
@@ -2874,7 +2869,7 @@ function buildGeneratedImplementation(input: {
   return [`${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`, `${i}return rows[0];`];
 }
 
-async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, RelationInfo>> {
+export async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, RelationInfo>> {
   await using database = await openMainDevDatabase(databasePath);
   const client = database.client;
 
@@ -3214,4 +3209,23 @@ function mapSqliteTypeToTs(columnType: string): string {
   }
   return 'number';
 }
+
+// Side-effect registration: install real sqlite typegen impls onto
+// `sqliteDialect`. See dialect.ts header for why this lives here. Heavy
+// entries (CLI, api/exports, ui/server) all transitively load this module,
+// so the real methods are in place before any caller invokes them.
+sqliteDialect.materializeTypegenSchema = async (host, config) => {
+  const databasePath = await materializeTypegenDatabase(config, host);
+  return {
+    dialect: 'sqlite',
+    databasePath,
+    [Symbol.asyncDispose]: async () => {
+      // Sqlite leaves the typegen db on disk between runs — the next
+      // materialize wipes it. No active disposal needed.
+    },
+  } satisfies AsyncDisposable & {dialect: string; databasePath: string};
+};
+sqliteDialect.loadSchemaForTypegen = async (materialized) => loadSchema(assertSqliteMaterialized(materialized).databasePath);
+sqliteDialect.analyzeQueries = async (materialized, queries) =>
+  analyzeVendoredTypesqlQueries(assertSqliteMaterialized(materialized).databasePath, queries);
 
