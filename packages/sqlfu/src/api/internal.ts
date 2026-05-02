@@ -14,7 +14,6 @@ import {
   type Migration,
 } from '../migrations/index.js';
 import {presetTableName} from '../migrations/preset-queries.js';
-import {diffSchemaSql} from '../schemadiff/index.js';
 import {inspectSqliteSchemaSql, schemasEqual} from '../schemadiff/sqlite/index.js';
 
 import {materializeDefinitionsSchemaFor, materializeMigrationsSchemaFor, readMigrationFiles} from '../materialize.js';
@@ -240,7 +239,7 @@ export async function applyDraftSql(
   const migrations = await readMigrationsFromContext(context);
   const definitionsSql = await readDefinitionsSql(context.host, context.config.definitions);
   const baselineSql = migrations.length === 0 ? '' : await materializeMigrationsSchemaForContext(context, migrations);
-  const diffLines = await diffSchemaSql(context.host, {
+  const diffLines = await context.config.dialect.diffSchema(context.host, {
     baselineSql,
     desiredSql: definitionsSql,
     allowDestructive: true,
@@ -290,7 +289,7 @@ export async function applySyncSql(context: SqlfuContext, confirm: SqlfuCommandC
     excludedTables: schemaDriftExcludedTables(context),
   });
   try {
-    const diffLines = await diffSchemaSql(context.host, {
+    const diffLines = await context.config.dialect.diffSchema(context.host, {
       baselineSql,
       desiredSql: definitionsSql,
       allowDestructive: true,
@@ -453,7 +452,7 @@ async function analyzeMigrateHealthWithClient(
     .map((historical) => migrationByName.get(historical.name))
     .filter((migration): migration is Migration => Boolean(migration));
   const historicalSchema = await materializeMigrationsSchemaForContext(context, historicalMigrations);
-  const schemaDrift = await compareSchemasForContext(context.host, historicalSchema, liveSchema);
+  const schemaDrift = await compareSchemasForContext(context, historicalSchema, liveSchema);
 
   if (schemaDrift.isDifferent) {
     const recommendedBaselineTarget = await findRecommendedTarget(context, migrations, liveSchema);
@@ -565,7 +564,7 @@ export async function applyGotoSql(context: SqlfuContext, input: {target: string
   const liveSchema = await extractSchema(database.client, 'main', {
     excludedTables: schemaDriftExcludedTables(context),
   });
-  const diffLines = await diffSchemaSql(context.host, {
+  const diffLines = await context.config.dialect.diffSchema(context.host, {
     baselineSql: liveSchema,
     desiredSql: targetSchema,
     allowDestructive: true,
@@ -649,7 +648,7 @@ export async function analyzeDatabase(context: SqlfuContext) {
   const appliedNames = new Set(applied.map((migration) => migration.name));
   const migrationByName = new Map(migrations.map((migration) => [migrationName(migration), migration]));
 
-  const repoDrift = await compareSchemasForContext(host, desiredSchema, migrationsSchema);
+  const repoDrift = await compareSchemasForContext(context, desiredSchema, migrationsSchema);
   const historyMismatch = await findHistoryMismatch(host, applied, migrations, migrationByName);
   const hasPendingMigrations =
     !historyMismatch && migrations.some((migration) => !appliedNames.has(migrationName(migration)));
@@ -658,8 +657,8 @@ export async function analyzeDatabase(context: SqlfuContext) {
     .map((historical) => migrationByName.get(historical.name))
     .filter((migration): migration is Migration => Boolean(migration));
   const historicalSchema = await materializeMigrationsSchemaForContext(context, historicalMigrations);
-  const schemaDrift = await compareSchemasForContext(host, historicalSchema, liveSchema);
-  const syncDrift = await compareSchemasForContext(host, desiredSchema, liveSchema);
+  const schemaDrift = await compareSchemasForContext(context, historicalSchema, liveSchema);
+  const syncDrift = await compareSchemasForContext(context, desiredSchema, liveSchema);
   const recommendedBaselineTarget = await findRecommendedTarget(context, migrations, liveSchema);
   const recommendedGotoTarget =
     !repoDrift.isDifferent && !historyMismatch && migrations.length > 0 ? migrationName(migrations.at(-1)!) : null;
@@ -860,24 +859,24 @@ async function findRecommendedTarget(context: SqlfuContext, migrations: Migratio
       // prefix containing the same migration is also untrustworthy. stop searching.
       return null;
     }
-    if (!(await compareSchemasForContext(context.host, candidateSchema, liveSchema)).isDifferent) {
+    if (!(await compareSchemasForContext(context, candidateSchema, liveSchema)).isDifferent) {
       return migrationName(candidate.at(-1)!);
     }
   }
   return null;
 }
 
-export async function compareSchemasForContext(host: SqlfuHost, left: string, right: string) {
+export async function compareSchemasForContext(context: SqlfuContext, left: string, right: string) {
   const [leftInspected, rightInspected] = await Promise.all([
-    inspectSqliteSchemaSql(host, left),
-    inspectSqliteSchemaSql(host, right),
+    inspectSqliteSchemaSql(context.host, left),
+    inspectSqliteSchemaSql(context.host, right),
   ]);
 
   const isDifferent = !schemasEqual(leftInspected, rightInspected);
   let isSyncable = false;
   if (isDifferent) {
     try {
-      const syncPlan = await diffSchemaSql(host, {
+      const syncPlan = await context.config.dialect.diffSchema(context.host, {
         baselineSql: right,
         desiredSql: left,
         allowDestructive: true,

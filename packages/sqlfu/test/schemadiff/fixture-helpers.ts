@@ -1,8 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import {sqliteDialect} from '../../src/dialect.js';
 import {createNodeHost} from '../../src/node/host.js';
-import {diffSchemaSql} from '../../src/schemadiff/index.js';
 
 export type SchemadiffFixtureCase = {
   name: string;
@@ -18,7 +18,7 @@ let sharedHostPromise: ReturnType<typeof createNodeHost> | undefined;
 export async function runFixtureCase(fixtureCase: SchemadiffFixtureCase): Promise<string> {
   sharedHostPromise ??= createNodeHost();
   const host = await sharedHostPromise;
-  const diff = await diffSchemaSql(host, {
+  const diff = await sqliteDialect.diffSchema(host, {
     baselineSql: fixtureCase.baselineSql,
     desiredSql: fixtureCase.desiredSql,
     allowDestructive: (fixtureCase.config as {allowDestructive?: boolean}).allowDestructive ?? false,

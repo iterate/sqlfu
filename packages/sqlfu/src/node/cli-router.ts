@@ -323,7 +323,7 @@ export const router = {
         materializeDefinitionsSchemaForContext(sqlfuContext, definitionsSql),
         materializeMigrationsSchemaForContext(sqlfuContext, migrations),
       ]);
-      if ((await compareSchemasForContext(sqlfuContext.host, definitionsSchema, migrationsSchema)).isDifferent) {
+      if ((await compareSchemasForContext(sqlfuContext, definitionsSchema, migrationsSchema)).isDifferent) {
         throw new Error('replayed migrations do not match definitions.sql');
       }
     }),
