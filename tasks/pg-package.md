@@ -59,16 +59,20 @@ These are best-guess decisions; user can override on review.
 - [x] **Phase C3** — vendored `@pgkit/migra` into `packages/pg/src/vendor/migra/`. `pgDialect.diffSchema` wired to the vendored migra. `@pgkit/{client,schemainspect,migra}` deps removed from package.json.
 - [x] **Phase C4** — `@pgkit/client` removed from this package's own modules (`scratch-database.ts`, `schemadiff.ts`, `schema.ts`, `typegen.ts`). Single point where `pg.Pool` is instantiated; everything downstream uses sqlfu's `AsyncClient` interface.
 - [x] **Phase C5** — vendored `@pgkit/typegen` AST passes (`query/parse.ts`, `query/column-info.ts`, `query/analyze-select-statement.ts`, `query/parameters.ts`, plus minimal `types.ts`/`util.ts`). `pgsql-ast-parser` added as a dep, scoped strictly to the vendored typegen module. `pgDialect.analyzeQueries` rewritten to drive the vendored pipeline: PREPARE → DescribedQuery → vendored getColumnInfo (which uses the in-pg `analyze_select_statement_columns` function for view-column-usage analysis) → AnalysedQuery → sqlfu's QueryAnalysis. nullability + DML+RETURNING result columns now both work. The Phase B SELECT-only `CREATE TEMP VIEW` workaround is gone.
-- [x] **Phase C6 (initial)** — lifted 28 migra schema-diff fixtures from pgkit/migra/test/{FIXTURES,NEW_FIXTURES} into `packages/pg/test/fixtures/migra/`. Runner at `test/migra-fixtures.test.ts` walks each `<name>/{a,b,expected}.sql` trio through `pgDialect.diffSchema`. **12 pass against pg 16, 5 skipped (need migra args we don't currently plumb), 11 marked test.todo (output drifts from pgkit's expected.sql — pg version differences, missing test roles, formatting)**. Each todo is real follow-up work; they're listed as todo (not failing) so the suite stays green while the gap is visible.
+- [x] **Phase C6 (initial)** — lifted 28 migra schema-diff fixtures from pgkit/migra/test/{FIXTURES,NEW_FIXTURES} into `packages/pg/test/fixtures/migra/`. Runner at `test/migra-fixtures.test.ts` walks each `<name>/{a,b,expected}.sql` trio through `pgDialect.diffSchema`.
+- [x] **Phase C7** — canonical `.md` fixture format + un-skip pass + typegen lift.
+    - Migra fixtures consolidated to one `<name>.md` per case (sqlfu's existing typegen fixture format — `## case` heading + nested `<details>` blocks + `(path)`-tagged code fences). Vestigial `additions.sql`/`expected2.sql` files dropped (never referenced).
+    - 9 of 11 drift fixtures un-skipped: regenerated expected SQL against pg16 (pg_get_viewdef no longer qualifies columns), added a one-time `ensureFixtureRoles()` setup that creates `schemainspect_test_role`. 2 remain skipped for fundamental reasons (postgres doesn't record ACL entries for superusers in `privileges`; `generated_added`'s a.sql/b.sql leave the relevant table identical).
+    - Typegen fixtures lifted from pgkit's `*.test.ts` inline snapshots into 10 `.md` files under `fixtures/typegen/`: joins, CTEs, scalar subqueries, DML+RETURNING, type mappings, enums, views, table-returning functions, nullability hints, primitives, limitations. Output is a JSON snapshot of the analyzer's per-column `name`/`tsType`/`notNull` per query.
+    - Three real bugs surfaced and fixed: `import * as pluralize`/`* as lodash` were namespace-importing CJS modules where named exports get assigned dynamically (cjs-module-lexer can't see them); switched to default-import. The vendored `Queryable` shim was missing `maybeOne`/`one` — added. `formatError` now includes stack traces under `SQLFU_PG_DEBUG=1`.
+
+**Net suite state: 50 passing / 7 skipped / 0 todo**. The 7 skipped: 5 migra-args (deferred), 1 superuser-ACL fundamental, 1 upstream-malformed fixture.
 
 Future Phase C work (not in this PR):
 
 - [ ] **pg17 `result_types` integration** — when the connected pg is 17+, skip EXECUTE-NULLs entirely and read `pg_prepared_statements.result_types`. Falls back on older pg.
-- [ ] **Lift pgkit/typegen test fixtures** — they're TS files (`<name>/index.ts`) with pre-extracted SQL queries and an expected `namespace queries { … }` block. Different format than migra's `{a,b,expected}.sql` trios; needs a separate runner. Hundreds of cases.
-- [ ] **Address the migra-fixture todos** — investigate each, fix vendored code or document the deviation.
 - [ ] **Plumb migra args through `Dialect.diffSchema`** — `schema`, `excludeSchema`, `createExtensionsOnly`, `ignoreExtensionVersions`. Unblocks the 5 skipped fixtures.
-
-After C5+C6: pg typegen handles result-column nullability, INSERT/UPDATE/DELETE+RETURNING result columns, CTEs, view-flattening, and subquery types — closing the gap with pgkit/typegen. The 27 passing pg tests (15 dialect-method + 12 migra fixtures) form a real regression net.
+- [ ] **Literal-only query columns** — currently `select 1 as a` returns `columns: []` because `pg_get_viewdef` doesn't record column origins for FROM-less queries. Pgkit handles this via `\gdesc`; we don't have an equivalent yet. Documented in `fixtures/typegen/primitives.md`.
 
 ### Wart watch
 
