@@ -33,7 +33,7 @@ for (const loaded of loadFixtures()) {
       test(fixtureCase.name, {timeout: 60_000}, async () => {
         await using handle = await materializeFor(loaded.fixture.definitions);
         const actual = await runCase(handle.materialized, fixtureCase);
-        expect(actual).toEqual(fixtureCase.expected);
+        expect(actual, `query under test:\n${fixtureCase.query}`).toEqual(fixtureCase.expected);
       });
     }
   });
