@@ -39,22 +39,13 @@ function assertPgHandle(materialized: MaterializedTypegenSchema): PgMaterialized
 }
 
 export const pgMaterializeTypegenSchema = (adminUrl: string): Dialect['materializeTypegenSchema'] => {
-  return async (host, config) => {
-    if (config.generate.authority !== 'desired_schema') {
-      throw new Error(
-        `pgDialect.materializeTypegenSchema currently only supports generate.authority='desired_schema' (got '${config.generate.authority}'). ` +
-          `A follow-up will lift the migration replay helpers out of sqlite-only land.`,
-      );
-    }
-
-    const definitionsSql = await readDefinitionsSqlBestEffort(host, config);
-
+  return async (_host, input) => {
     const temp = await createTempDatabase(adminUrl);
     const pool = new Pool({connectionString: temp.url, max: 1});
     const client = createNodePostgresClient(pool);
     try {
-      if (definitionsSql.trim()) {
-        await client.raw(definitionsSql);
+      if (input.sourceSql.trim()) {
+        await client.raw(input.sourceSql);
       }
     } catch (error) {
       // Materialization failed — release the scratch db before propagating.
@@ -473,22 +464,6 @@ function pgTypeToTs(typeName: string): string {
     return `${inner}[]`;
   }
   return 'unknown';
-}
-
-async function readDefinitionsSqlBestEffort(
-  host: import('sqlfu').SqlfuHost,
-  config: import('sqlfu').SqlfuProjectConfig,
-): Promise<string> {
-  try {
-    return await host.fs.readFile(config.definitions);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(
-        `pgDialect.materializeTypegenSchema needs ${config.definitions}, but the file was not found.`,
-      );
-    }
-    throw error;
-  }
 }
 
 function quoteIdent(name: string): string {

@@ -76,7 +76,7 @@ Future Phase C work (not in this PR):
 
 ### Wart watch
 
-- **Schema-source readers in typegen are sqlite-coupled.** `readSchemaForAuthority` in main sqlfu's `typegen/index.ts` handles four authorities (`desired_schema`, `migrations`, `migration_history`, `live_schema`). The pg dialect today only honors `desired_schema` — the materializer reads `config.definitions` directly. The other three need dialect-aware splitting in main sqlfu (the `materializeMigrationsSchemaFor`/`extractSchemaFromClient` work on the `extract-dialect-interface` branch is a step toward this; finishing the `migrations` + `migration_history` authorities for pg requires an `applyMigrations` integration that respects pg's `withMigrationLock`).
+- ~~**Schema-source readers in typegen are sqlite-coupled.**~~ Closed: refactored `Dialect.materializeTypegenSchema` to take `{projectRoot, sourceSql}` instead of the full config, with `readSchemaForAuthority` running dialect-neutrally before the dialect call. All four authorities (`desired_schema`, `migrations`, `migration_history`, `live_schema`) now work for both sqlite and pg; the dialect is no longer aware of the `authority` concept.
 
 ### Tests
 

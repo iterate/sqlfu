@@ -5,11 +5,11 @@
 // The split exists because the regenerate script runs under tsx and
 // can't import a file that calls `beforeAll(...)` at module scope.
 import {readdirSync, readFileSync} from 'node:fs';
-import {mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {basename, join} from 'node:path';
 
-import type {QueryAnalysis, SqlfuHost, SqlfuProjectConfig} from 'sqlfu';
+import type {QueryAnalysis, SqlfuHost} from 'sqlfu';
 
 import {pgDialect} from '../src/index.js';
 import {TEST_ADMIN_URL} from './pg-fixture.js';
@@ -69,22 +69,11 @@ export async function runCase(
  */
 export async function materializeFor(definitions: string) {
   const projectRoot = await mkdtemp(join(tmpdir(), 'sqlfu-pg-typegen-fixture-'));
-  await writeFile(join(projectRoot, 'definitions.sql'), definitions);
   const dialect = pgDialect({adminUrl: TEST_ADMIN_URL});
-  const config: SqlfuProjectConfig = {
+  const materialized = await dialect.materializeTypegenSchema(stubHost(), {
     projectRoot,
-    definitions: join(projectRoot, 'definitions.sql'),
-    queries: join(projectRoot, 'sql'),
-    generate: {
-      validator: null,
-      prettyErrors: true,
-      sync: false,
-      importExtension: '.js',
-      authority: 'desired_schema',
-    },
-    dialect,
-  };
-  const materialized = await dialect.materializeTypegenSchema(stubHost(), config);
+    sourceSql: definitions,
+  });
   const dispose = materialized[Symbol.asyncDispose];
   return {
     materialized,
