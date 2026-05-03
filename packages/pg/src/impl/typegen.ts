@@ -18,6 +18,8 @@ import {Pool} from 'pg';
 import {createNodePostgresClient} from 'sqlfu';
 import type {AsyncClient, Dialect, MaterializedTypegenSchema, QueryAnalysis, QueryAnalysisInput, RelationInfo} from 'sqlfu';
 
+import {adaptAsyncClient} from '../vendor/schemainspect/pgkit-compat.js';
+import {getColumnInfo, type DescribedQuery} from '../vendor/typegen/index.js';
 import {createTempDatabase, type TempDatabaseHandle} from './scratch-database.js';
 
 type PgMaterializedHandle = MaterializedTypegenSchema & {
@@ -151,17 +153,22 @@ export const pgAnalyzeQueries: Dialect['analyzeQueries'] = async (materialized, 
 };
 
 /**
- * Analyze a single query via PREPARE introspection.
+ * Analyze a single query via:
  *
- * Phase C5 will replace this with the full AST-driven pipeline:
- *   - parse user SQL with pgsql-ast-parser
- *   - rewrite (flatten CTEs, lift views, DML+RETURNING → SELECT)
- *   - infer nullability from JOIN tree
- *   - PREPARE the rewritten query, read pg17 `result_types` (or fall back
- *     to EXECUTE-NULLs)
+ *   1. `PREPARE foo AS <user-sql>` — postgres parses + plans.
+ *   2. Read `pg_prepared_statements.parameter_types` for the input regtypes.
+ *   3. Provoke result-column metadata via the vendored
+ *      `analyze_select_statement_columns` postgres function (driven by the
+ *      vendored `getColumnInfo` from pgkit/typegen).
+ *   4. AST-driven nullability + DML+RETURNING handling: `getColumnInfo`
+ *      uses `pgsql-ast-parser` to walk the query, rewrite DML+RETURNING
+ *      into a SELECT shape, flatten CTEs, propagate JOIN-aware nullability,
+ *      and combine that with `information_schema.columns.is_nullable`.
  *
- * What's here today is the bare PREPARE+execute path. SELECT works;
- * INSERT/UPDATE/DELETE+RETURNING gets parameters but empty result columns.
+ * The output's `notNull` reflects the AST + view-column-usage analysis —
+ * `nullability === 'not_null' || 'assumed_not_null'`. Other values
+ * (`'nullable'`, `'nullable_via_join'`, `'unknown'`) all become
+ * `notNull: false`, which is the safe default for typegen.
  */
 async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): Promise<QueryAnalysis> {
   const stmtName = `sqlfu_analyze_${Math.random().toString(36).slice(2, 12)}`;
@@ -185,38 +192,37 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
       });
       const paramTypes = paramRow[0]?.parameter_types ?? [];
 
-      // EXECUTE with NULLs to provoke a RowDescription. Wraps in a savepoint
-      // so a NOT NULL violation in INSERT (...) VALUES (NULL) doesn't blow
-      // up our outer rollback.
-      let resultColumns: {name: string; tsType: string; notNull: boolean}[] = [];
-      try {
-        await client.raw('savepoint exec_probe');
-        try {
-          const executeArgs = paramTypes.map(() => 'null').join(', ');
-          const executeSql =
-            paramTypes.length === 0
-              ? `execute ${quoteIdent(stmtName)}`
-              : `execute ${quoteIdent(stmtName)}(${executeArgs})`;
-          await client.all({sql: executeSql, args: []});
-          // sqlfu's AsyncClient doesn't surface result.fields; we need a
-          // separate route to get column names + dataTypeIDs.
-          //
-          // Workaround: query `pg_typeof` for each column. We don't have the
-          // column NAMES from sqlfu's interface either, so we parse them
-          // from the user's SQL where possible (SELECT projection list).
-          //
-          // For now, a SELECT with explicit column list gives us names; for
-          // expressions or *, we just emit positional names. Phase C5
-          // replaces this with proper introspection via raw `pg.Client`.
-          if (queryType === 'Select') {
-            resultColumns = await introspectSelectColumns(client, query.sqlContent);
-          }
-        } catch {
-          await client.raw('rollback to savepoint exec_probe');
-        }
-      } catch {
-        // Savepoint setup itself failed — give up on result columns.
-      }
+      // Build a `DescribedQuery` for the vendored getColumnInfo. The
+      // `fields` here are intentionally empty — getColumnInfo populates
+      // result columns via the in-pg analyzer function. (pgkit's path
+      // populated fields via `\gdesc`; ours via the analyzer function +
+      // AST. Both feed into the same `analyzeAST` machinery.)
+      const describedQuery: DescribedQuery = {
+        sql: query.sqlContent,
+        template: [query.sqlContent],
+        fields: [],
+        parameters: paramTypes.map((typeName, index) => ({
+          name: `$${index + 1}`,
+          regtype: typeName,
+          typescript: pgTypeToTs(typeName),
+        })),
+        // ExtractedQuery requires these, but the vendored code only reads
+        // `query.context` for tag generation — empty array is fine.
+        file: '',
+        line: 0,
+        context: [],
+        source: '',
+      };
+
+      const queryable = adaptAsyncClient(client);
+      const analysed = await getColumnInfo(queryable as never, describedQuery, ((regtype: string) =>
+        pgTypeToTs(regtype)) as never);
+
+      const columns = (analysed.fields ?? []).map((field: {name: string; regtype: string; typescript: string; nullability: string}) => ({
+        name: field.name,
+        tsType: field.typescript,
+        notNull: field.nullability === 'not_null' || field.nullability === 'assumed_not_null',
+      }));
 
       const parameters = paramTypes.map((typeName, index) => ({
         name: `$${index + 1}`,
@@ -233,11 +239,14 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
           sql: query.sqlContent,
           queryType,
           multipleRowsResult: queryType === 'Select' || /\breturning\b/iu.test(query.sqlContent),
-          columns: resultColumns,
+          columns,
           parameters,
         },
       };
     } finally {
+      try {
+        await client.raw(`deallocate ${quoteIdent(stmtName)}`);
+      } catch {}
       await client.raw('rollback');
     }
   } catch (error) {
@@ -246,62 +255,22 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
       ok: false,
       error: {
         name: 'PgQueryAnalysisFailed',
-        description: error instanceof Error ? error.message : String(error),
+        description: formatError(error),
       },
     };
   }
 }
 
-/**
- * Best-effort result-column introspection for SELECT queries. Wraps the
- * user's SQL in a `CREATE TEMP VIEW` and reads `pg_attribute` for the
- * resulting view's columns. Works for any SELECT with deterministic param
- * types; doesn't work for DML+RETURNING (CREATE VIEW rejects DML bodies).
- *
- * This is a stopgap for the gap between the basic `analyzeQueries` (which
- * doesn't expose result.fields) and the Phase C5 implementation (which
- * will run the AST + raw-pg pipeline). Lives here for now so SELECT users
- * get accurate result columns with no extra deps.
- */
-async function introspectSelectColumns(
-  client: AsyncClient,
-  sql: string,
-): Promise<{name: string; tsType: string; notNull: boolean}[]> {
-  const viewName = `sqlfu_probe_${Math.random().toString(36).slice(2, 10)}`;
-  // Substitute `$N` placeholders with NULL so we can `CREATE TEMP VIEW`
-  // without param binding.
-  const sqlWithNullParams = sql.replace(/\$\d+/g, 'null');
-
-  await client.raw('savepoint probe_view');
-  try {
-    await client.raw(`create temp view ${quoteIdent(viewName)} as ${sqlWithNullParams}`);
-    const cols = await client.all<{name: string; type_name: string; not_null: boolean}>({
-      sql: `
-        select
-          a.attname as name,
-          pg_catalog.format_type(a.atttypid, a.atttypmod) as type_name,
-          a.attnotnull as not_null
-        from pg_attribute a
-        inner join pg_class c on c.oid = a.attrelid
-        where c.relname = $1
-          and a.attnum > 0
-          and not a.attisdropped
-        order by a.attnum
-      `,
-      args: [viewName],
-    });
-    return cols.map((row) => ({
-      name: row.name,
-      tsType: pgTypeToTs(row.type_name),
-      notNull: row.not_null,
-    }));
-  } catch {
-    return [];
-  } finally {
-    try {
-      await client.raw('rollback to savepoint probe_view');
-    } catch {}
+/** Stringify an error including `.cause` chains so the test output is useful. */
+function formatError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const parts: string[] = [error.message];
+  let cause: unknown = (error as Error & {cause?: unknown}).cause;
+  while (cause instanceof Error) {
+    parts.push(`caused by: ${cause.message}`);
+    cause = (cause as Error & {cause?: unknown}).cause;
   }
+  return parts.join('\n  ');
 }
 
 function classifyQuery(sql: string): 'Select' | 'Insert' | 'Update' | 'Delete' | 'Copy' | 'Ddl' {

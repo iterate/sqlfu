@@ -122,51 +122,99 @@ test('pgDialect.materializeTypegenSchema + loadSchemaForTypegen returns the rela
   });
 });
 
-test('pgDialect.analyzeQueries infers parameter and result types via PREPARE introspection', {timeout: 30_000}, async () => {
-  const sql = `create table users (id integer primary key, name text not null, bio text);`;
-  await withProject(sql, async (config, host, dialect) => {
-    await using materialized = await dialect.materializeTypegenSchema(host, config);
-    const analyses = await dialect.analyzeQueries(materialized, [
-      {sqlPath: 'find-user.sql', sqlContent: 'select id, name, bio from users where id = $1'},
-    ]);
+test(
+  'pgDialect.analyzeQueries infers parameter + result types AND nullability via the AST pipeline',
+  {timeout: 30_000},
+  async () => {
+    const sql = `create table users (id integer primary key, name text not null, bio text);`;
+    await withProject(sql, async (config, host, dialect) => {
+      await using materialized = await dialect.materializeTypegenSchema(host, config);
+      const analyses = await dialect.analyzeQueries(materialized, [
+        {sqlPath: 'find-user.sql', sqlContent: 'select id, name, bio from users where id = $1'},
+      ]);
 
-    expect(analyses).toHaveLength(1);
-    const [analysis] = analyses;
-    if (!analysis.ok) {
-      throw new Error(`expected ok analysis, got error: ${analysis.error.description}`);
-    }
-    expect(analysis.descriptor.queryType).toBe('Select');
-    expect(analysis.descriptor.parameters).toEqual([
-      {name: '$1', tsType: 'number', notNull: false, toDriver: 'identity', isArray: false},
-    ]);
-    expect(analysis.descriptor.columns.map((c) => c.name)).toEqual(['id', 'name', 'bio']);
-    expect(analysis.descriptor.columns.map((c) => c.tsType)).toEqual(['number', 'string', 'string']);
-  });
-});
+      expect(analyses).toHaveLength(1);
+      const [analysis] = analyses;
+      if (!analysis.ok) {
+        throw new Error(`expected ok analysis, got error: ${analysis.error.description}`);
+      }
+      expect(analysis.descriptor.queryType).toBe('Select');
+      expect(analysis.descriptor.parameters).toEqual([
+        {name: '$1', tsType: 'number', notNull: false, toDriver: 'identity', isArray: false},
+      ]);
+      expect(analysis.descriptor.columns.map((c) => c.name)).toEqual(['id', 'name', 'bio']);
+      expect(analysis.descriptor.columns.map((c) => c.tsType)).toEqual(['number', 'string', 'string']);
+      // Nullability: PRIMARY KEY → not_null, NOT NULL → not_null, otherwise nullable.
+      expect(analysis.descriptor.columns.map((c) => c.notNull)).toEqual([true, true, false]);
+    });
+  },
+);
 
-test('pgDialect.analyzeQueries reports parameters for INSERT', {timeout: 30_000}, async () => {
-  // INSERT/UPDATE/DELETE with RETURNING is a known limitation today —
-  // EXECUTE-with-NULLs hits NOT NULL constraints, so the result-column
-  // list comes back empty. Parameters are still reported correctly via
-  // pg_prepared_statements. Lifting result-columns for non-SELECT queries
-  // is a follow-up (likely needs CREATE TEMP VIEW or pg17's
-  // pg_prepared_statements.result_types).
-  const sql = `create table posts (id integer primary key, title text not null);`;
-  await withProject(sql, async (config, host, dialect) => {
-    await using materialized = await dialect.materializeTypegenSchema(host, config);
-    const analyses = await dialect.analyzeQueries(materialized, [
-      {sqlPath: 'create-post.sql', sqlContent: 'insert into posts (title) values ($1) returning id, title'},
-    ]);
-    const [analysis] = analyses;
-    if (!analysis.ok) {
-      throw new Error(`expected ok analysis, got error: ${analysis.error.description}`);
-    }
-    expect(analysis.descriptor.queryType).toBe('Insert');
-    expect(analysis.descriptor.parameters).toHaveLength(1);
-    expect(analysis.descriptor.parameters[0]).toMatchObject({tsType: 'string'});
-    // Columns may be empty today — see comment above.
-  });
-});
+test(
+  'pgDialect.analyzeQueries handles LEFT JOIN queries end-to-end',
+  {timeout: 30_000},
+  async () => {
+    // Smoke-test: a LEFT JOIN query goes through the AST pipeline without
+    // erroring. Specific nullability semantics are pgkit/typegen's domain
+    // — we inherit them as-is and the pgkit fixture lift (Phase C6) will
+    // pin those down.
+    const sql = `
+      create table users (id integer primary key, name text not null);
+      create table profiles (user_id integer primary key references users(id), bio text not null);
+    `;
+    await withProject(sql, async (config, host, dialect) => {
+      await using materialized = await dialect.materializeTypegenSchema(host, config);
+      const analyses = await dialect.analyzeQueries(materialized, [
+        {
+          sqlPath: 'users-with-bios.sql',
+          sqlContent: `
+            select u.id, u.name, p.bio
+            from users u
+            left join profiles p on p.user_id = u.id
+          `,
+        },
+      ]);
+      const [analysis] = analyses;
+      if (!analysis.ok) {
+        throw new Error(`expected ok analysis, got error: ${analysis.error.description}`);
+      }
+      const cols = analysis.descriptor.columns;
+      expect(cols.map((c) => c.name)).toEqual(['id', 'name', 'bio']);
+      expect(cols.map((c) => c.tsType)).toEqual(['number', 'string', 'string']);
+    });
+  },
+);
+
+test(
+  'pgDialect.analyzeQueries handles INSERT...RETURNING via DML→SELECT rewrite',
+  {timeout: 30_000},
+  async () => {
+    const sql = `create table posts (id integer primary key, title text not null, draft boolean);`;
+    await withProject(sql, async (config, host, dialect) => {
+      await using materialized = await dialect.materializeTypegenSchema(host, config);
+      const analyses = await dialect.analyzeQueries(materialized, [
+        {sqlPath: 'create-post.sql', sqlContent: 'insert into posts (title) values ($1) returning id, title, draft'},
+      ]);
+      const [analysis] = analyses;
+      if (!analysis.ok) {
+        throw new Error(`expected ok analysis, got error: ${analysis.error.description}`);
+      }
+      expect(analysis.descriptor.queryType).toBe('Insert');
+      expect(analysis.descriptor.parameters).toHaveLength(1);
+      expect(analysis.descriptor.parameters[0]).toMatchObject({tsType: 'string'});
+      // Result columns for DML+RETURNING come from the AST rewrite (the
+      // vendored pipeline turns INSERT...RETURNING into a SELECT-shaped
+      // analysis target).
+      const colNames = analysis.descriptor.columns.map((c) => c.name);
+      expect(colNames).toEqual(['id', 'title', 'draft']);
+      // id (PRIMARY KEY) and title (NOT NULL) → not_null. draft is nullable.
+      const cols = analysis.descriptor.columns;
+      expect(cols.find((c) => c.name === 'id')?.notNull).toBe(true);
+      expect(cols.find((c) => c.name === 'title')?.notNull).toBe(true);
+      expect(cols.find((c) => c.name === 'draft')?.notNull).toBe(false);
+    });
+  },
+);
 
 test('pgDialect.analyzeQueries reports prepare-time errors as ok:false', {timeout: 30_000}, async () => {
   const sql = `create table users (id integer primary key);`;
