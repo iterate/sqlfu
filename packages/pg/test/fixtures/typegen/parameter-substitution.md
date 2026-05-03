@@ -6,15 +6,19 @@ regex-based `$N → NULL::<type>` substitution used to mis-substitute
 
 The expected YAML below is hand-authored to reflect what a correctly-
 functioning typegen should produce. Most cases now pass thanks to
-`redact-string-literals.ts` — a focused tokenizer that swaps every
-string-literal body for `null/*sqlfu_redacted_literal*/::text` before
-the regex sub or the vendored AST pipeline see it. The marker comment
-is metadata the future literal-not-null inference pass can recognise.
+`redact-string-literals.ts` (which strips string bodies before the
+regex sub or the vendored AST pipeline see them) plus the
+`getAliasInfo` patch in the vendored typegen (which previously
+silently dropped non-`ref`/`call` columns from per-field analysis).
 
-Failures that remain trace to a single open gap (literal nullability
-inference): pgkit's typegen reports `'hello'` as a not-null column;
-ours reports it as nullable because the vendored AST pipeline doesn't
-yet have logic for "literal expressions are not-null." Tracked.
+The one remaining red — `dollar-quoted-with-dollar` — exposes the
+`$$..$$` limitation: the redactor swaps the dollar-quoted body for
+`null::text` so the AST parser doesn't choke (`pgsql-ast-parser`
+has no grammar for dollar-quoting). After substitution the AST node
+is a *cast of null*, not a *literal*, so the vendored
+`isNonNullableField` doesn't recognise it as not-null. Single-quoted
+strings work fine because we don't redact them — pgsql-ast-parser
+handles those natively.
 
 ```sql definitions
 create table t (x int not null);
@@ -60,9 +64,10 @@ parameters:
 ## string-literal-with-dollar
 
 `$1` inside a single-quoted string. The redactor strips the literal
-before any `$N` substitution sees it, so column types come through
-correctly. Currently fails on `notNull` for `msg` — the vendored
-pipeline doesn't infer "string literal is not null" yet.
+before the regex `$N` sub sees it (so the WHERE-clause `$1` is the
+only one substituted), and pgsql-ast-parser handles the original
+single-quoted string fine — so `isNonNullableField` sees a real
+string-literal node and infers not-null.
 
 ```sql
 select 'hello $1 world' as msg, x from t where x = $1
@@ -117,10 +122,13 @@ parameters:
 ## dollar-quoted-with-dollar
 
 `$1` inside a `$$…$$` dollar-quoted string. The redactor strips
-dollar-quoted bodies before the AST pipeline sees them
-(`pgsql-ast-parser` has no grammar for `$$…$$`), so the analysis
-runs cleanly. Currently fails on `notNull` for `msg` — same
-literal-not-null gap as `string-literal-with-dollar`.
+dollar-quoted bodies because pgsql-ast-parser has no grammar for
+`$$…$$`, but the substitute is `null::text` — which the AST sees
+as a *cast of null*, not a *literal*, so `isNonNullableField`
+doesn't recognise it as not-null and the column comes out
+nullable. Hand-written expected reflects what we'd want; actual is
+`notNull: false`. See the file-level prose for the bigger
+discussion.
 
 ```sql
 select $$hello $1 world$$ as msg, x from t where x = $1
@@ -178,8 +186,7 @@ error: |-
 ## bare-dollar-without-number
 
 A standalone `$` followed by digits (in a literal context that doesn't
-match any param). Currently fails on `notNull` for `note` — same
-literal-not-null gap as `string-literal-with-dollar`.
+match any param). Both columns now come back not-null.
 
 ```sql
 select x, 'cost: $50' as note from t where x = $1

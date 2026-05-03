@@ -272,6 +272,21 @@ export const getAliasInfo = (statement: pgsqlAST.Statement): AliasInfo[] => {
       }
     }
 
+    // sqlfu-vendor change: any other expression type (literals like `1` or
+    // `'foo'`, binary ops like `a + 1`, casts of those, etc.) — track the
+    // column with the alias as its name when one is present. Without this,
+    // source-less columns are dropped before per-field analysis runs, so
+    // `isNonNullableField`'s literal-not-null logic never gets consulted
+    // for queries like `select 1 as a` or `select 'hi' as msg, x from t`.
+    if (alias?.name) {
+      return {
+        queryColumn: alias.name,
+        aliasFor: null,
+        tablesColumnCouldBeFrom: [],
+        hasNullableJoin: false,
+      }
+    }
+
     return []
   }
 }

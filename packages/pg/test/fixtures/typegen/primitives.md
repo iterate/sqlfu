@@ -3,18 +3,10 @@
 Lifted in spirit from `pgkit/packages/typegen/test/primitives.test.ts`.
 
 Covers literal type inference, aggregate-result nullability, and
-arithmetic / concat operator nullability. The pgkit assertion is that
-primitive literal columns are reported as not-null while expressions
-involving columns or potentially-null values are nullable.
-
-> **Partial gap:** Column names and types are correct (we wrap the
-> query in a temp view and read `pg_attribute`). Nullability for
-> FROM-less queries defaults to `false` (the safe default) — pgkit's
-> typegen reports `select 1 as a` and `select 2 > 1 as a` as not-null
-> via AST-level expression analysis, but our vendored pipeline only
-> derives nullability from source-table tracing. Closing this delta
-> would mean teaching the AST analyzer to mark "literal" / "comparison
-> of literals" / "arithmetic of not-null sources" as `not_null`.
+arithmetic / concat operator nullability. Primitive literal columns
+are reported as not-null; expressions involving null values
+(`'foo' || null`, `null::int`) come out nullable; aggregates over
+zero rows (`sum(b) from t`) come out nullable.
 
 ```sql definitions
 create table test_table (
@@ -33,7 +25,7 @@ select 1 as a
 ok: true
 queryType: Select
 columns:
-  - {name: a, tsType: number, notNull: false}
+  - {name: a, tsType: number, notNull: true}
 parameters: []
 ```
 
@@ -47,7 +39,7 @@ select 'a' as a
 ok: true
 queryType: Select
 columns:
-  - {name: a, tsType: string, notNull: false}
+  - {name: a, tsType: string, notNull: true}
 parameters: []
 ```
 
@@ -103,7 +95,7 @@ select 'foo' || 'bar' as result
 ok: true
 queryType: Select
 columns:
-  - {name: result, tsType: string, notNull: false}
+  - {name: result, tsType: string, notNull: true}
 parameters: []
 ```
 
@@ -145,6 +137,6 @@ select 2 > 1 as a
 ok: true
 queryType: Select
 columns:
-  - {name: a, tsType: boolean, notNull: false}
+  - {name: a, tsType: boolean, notNull: true}
 parameters: []
 ```
