@@ -7,14 +7,14 @@ arithmetic / concat operator nullability. The pgkit assertion is that
 primitive literal columns are reported as not-null while expressions
 involving columns or potentially-null values are nullable.
 
-> **Known gap:** Our analyzer relies on the in-pg
-> `analyze_select_statement_columns` function (vendored from pgkit/typegen),
-> which uses `pg_get_viewdef` to read the column-source map. For queries
-> without a `FROM <table>`, that map is empty — so literal-only queries
-> (`select 1 as a`) currently produce `columns: []`. Pgkit's typegen
-> handles this via psql's `\gdesc`; we don't have an equivalent yet.
-> The snapshots below record the current behaviour so we'll see when
-> this changes.
+> **Partial gap:** Column names and types are correct (we wrap the
+> query in a temp view and read `pg_attribute`). Nullability for
+> FROM-less queries defaults to `false` (the safe default) — pgkit's
+> typegen reports `select 1 as a` and `select 2 > 1 as a` as not-null
+> via AST-level expression analysis, but our vendored pipeline only
+> derives nullability from source-table tracing. Closing this delta
+> would mean teaching the AST analyzer to mark "literal" / "comparison
+> of literals" / "arithmetic of not-null sources" as `not_null`.
 
 ```sql definitions
 create table test_table (
@@ -32,7 +32,8 @@ select 1 as a
 ```yaml
 ok: true
 queryType: Select
-columns: []
+columns:
+  - {name: a, tsType: number, notNull: false}
 parameters: []
 ```
 
@@ -45,7 +46,8 @@ select 'a' as a
 ```yaml
 ok: true
 queryType: Select
-columns: []
+columns:
+  - {name: a, tsType: string, notNull: false}
 parameters: []
 ```
 
@@ -58,7 +60,8 @@ select null::integer as b
 ```yaml
 ok: true
 queryType: Select
-columns: []
+columns:
+  - {name: b, tsType: number, notNull: false}
 parameters: []
 ```
 
@@ -99,7 +102,8 @@ select 'foo' || 'bar' as result
 ```yaml
 ok: true
 queryType: Select
-columns: []
+columns:
+  - {name: result, tsType: string, notNull: false}
 parameters: []
 ```
 
@@ -112,7 +116,8 @@ select 'foo' || null as result
 ```yaml
 ok: true
 queryType: Select
-columns: []
+columns:
+  - {name: result, tsType: string, notNull: false}
 parameters: []
 ```
 
@@ -125,7 +130,8 @@ select a > 1 as result from test_table
 ```yaml
 ok: true
 queryType: Select
-columns: []
+columns:
+  - {name: result, tsType: boolean, notNull: false}
 parameters: []
 ```
 
@@ -138,6 +144,7 @@ select 2 > 1 as a
 ```yaml
 ok: true
 queryType: Select
-columns: []
+columns:
+  - {name: a, tsType: boolean, notNull: false}
 parameters: []
 ```

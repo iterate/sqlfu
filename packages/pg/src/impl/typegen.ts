@@ -153,25 +153,32 @@ export const pgAnalyzeQueries: Dialect['analyzeQueries'] = async (materialized, 
 };
 
 /**
- * Analyze a single query via:
+ * Analyze a single query in two layered passes:
  *
- *   1. `PREPARE foo AS <user-sql>` — postgres parses + plans.
- *   2. Read `pg_prepared_statements.parameter_types` for the input regtypes.
- *   3. Provoke result-column metadata via the vendored
- *      `analyze_select_statement_columns` postgres function (driven by the
- *      vendored `getColumnInfo` from pgkit/typegen).
- *   4. AST-driven nullability + DML+RETURNING handling: `getColumnInfo`
- *      uses `pgsql-ast-parser` to walk the query, rewrite DML+RETURNING
- *      into a SELECT shape, flatten CTEs, propagate JOIN-aware nullability,
- *      and combine that with `information_schema.columns.is_nullable`.
+ *   1. **Column-list baseline**: PREPARE the query, then for SELECTs
+ *      `CREATE TEMP VIEW v AS <query-with-$N-substituted>` and read
+ *      `pg_attribute` for `(name, atttypid)`. This is the equivalent of
+ *      psql's `\gdesc` — it answers *"what columns and types does this
+ *      query produce?"* even when the query has no FROM clause
+ *      (e.g. `select 1 as a`, `select now() as the_time`). DML and
+ *      queries pg refuses to wrap in a view skip this pass; the
+ *      vendored pipeline below handles them.
  *
- * The output's `notNull` reflects the AST + view-column-usage analysis —
- * `nullability === 'not_null' || 'assumed_not_null'`. Other values
- * (`'nullable'`, `'nullable_via_join'`, `'unknown'`) all become
- * `notNull: false`, which is the safe default for typegen.
+ *   2. **Vendored AST pipeline** (`getColumnInfo`): pgsql-ast-parser
+ *      walks the query, rewrites DML+RETURNING into a SELECT shape,
+ *      flattens CTEs, propagates JOIN-aware nullability, and combines
+ *      that with `information_schema.columns.is_nullable`. Output is
+ *      a list of fields with a `nullability` tag.
+ *
+ * Merge: when pass 1 gave us a baseline, it's the source of truth for
+ * column names and types — pass 2 only contributes `notNull` (when it
+ * has a matching name). When pass 1 gave nothing (DML, refused
+ * queries), pass 2's output is the whole answer. Default `notNull` is
+ * `false` (the safe default for typegen).
  */
 async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): Promise<QueryAnalysis> {
-  const stmtName = `sqlfu_analyze_${Math.random().toString(36).slice(2, 12)}`;
+  const stmtName = `sqlfu_analyze_${randomSuffix()}`;
+  const viewName = `sqlfu_view_${randomSuffix()}`;
   const queryType = classifyQuery(query.sqlContent);
 
   try {
@@ -192,11 +199,15 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
       });
       const paramTypes = paramRow[0]?.parameter_types ?? [];
 
-      // Build a `DescribedQuery` for the vendored getColumnInfo. The
-      // `fields` here are intentionally empty — getColumnInfo populates
-      // result columns via the in-pg analyzer function. (pgkit's path
-      // populated fields via `\gdesc`; ours via the analyzer function +
-      // AST. Both feed into the same `analyzeAST` machinery.)
+      // Pass 1: column baseline via temp view (Select-like queries only).
+      const baselineColumns =
+        queryType === 'Select'
+          ? await captureColumnBaseline(client, query.sqlContent, paramTypes, viewName)
+          : null;
+
+      // Pass 2: vendored AST pipeline. The `fields` here are
+      // intentionally empty — getColumnInfo populates result columns
+      // itself via the in-pg analyzer function + AST.
       const describedQuery: DescribedQuery = {
         sql: query.sqlContent,
         template: [query.sqlContent],
@@ -217,12 +228,9 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
       const queryable = adaptAsyncClient(client);
       const analysed = await getColumnInfo(queryable as never, describedQuery, ((regtype: string) =>
         pgTypeToTs(regtype)) as never);
+      const analysedFields: AnalysedField[] = analysed.fields ?? [];
 
-      const columns = (analysed.fields ?? []).map((field: {name: string; regtype: string; typescript: string; nullability: string}) => ({
-        name: field.name,
-        tsType: field.typescript,
-        notNull: field.nullability === 'not_null' || field.nullability === 'assumed_not_null',
-      }));
+      const columns = mergeColumns(baselineColumns, analysedFields);
 
       const parameters = paramTypes.map((typeName, index) => ({
         name: `$${index + 1}`,
@@ -245,6 +253,9 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
       };
     } finally {
       try {
+        await client.raw(`drop view if exists ${quoteIdent(viewName)}`);
+      } catch {}
+      try {
         await client.raw(`deallocate ${quoteIdent(stmtName)}`);
       } catch {}
       await client.raw('rollback');
@@ -259,6 +270,101 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
       },
     };
   }
+}
+
+interface BaselineColumn {
+  name: string;
+  tsType: string;
+}
+
+interface AnalysedField {
+  name: string;
+  regtype?: string;
+  typescript?: string;
+  nullability?: string;
+}
+
+/**
+ * Wrap the SELECT in a temp view and read `pg_attribute` to get its
+ * column list. Returns `null` when the query can't be wrapped in a
+ * view (multi-statement, queries containing DML, etc.) — the caller
+ * falls back to the vendored AST pipeline.
+ *
+ * `$N` parameters are substituted with `NULL::<paramType>` so views
+ * (which can't reference parameters) accept the body. The substitution
+ * is regex-based — string literals containing `$1` etc. would be
+ * mis-replaced; for typegen analysis the AST path takes over for
+ * tricky cases.
+ */
+async function captureColumnBaseline(
+  client: AsyncClient,
+  sqlContent: string,
+  paramTypes: string[],
+  viewName: string,
+): Promise<BaselineColumn[] | null> {
+  const viewableSql = substituteParamsWithNulls(sqlContent, paramTypes);
+  try {
+    await client.raw(`create temp view ${quoteIdent(viewName)} as ${viewableSql}`);
+  } catch {
+    return null;
+  }
+  const rows = await client.all<{name: string; type_name: string}>({
+    sql: `
+      select a.attname as name,
+             pg_catalog.format_type(a.atttypid, a.atttypmod) as type_name
+      from pg_attribute a
+      join pg_class c on c.oid = a.attrelid
+      where c.relname = $1
+        and a.attnum > 0
+        and not a.attisdropped
+      order by a.attnum
+    `,
+    args: [viewName],
+  });
+  return rows.map((r) => ({name: r.name, tsType: pgTypeToTs(r.type_name)}));
+}
+
+function substituteParamsWithNulls(sql: string, paramTypes: string[]): string {
+  // Replace longest-numbered placeholder first ($10 before $1) so the
+  // regex doesn't match `$1` inside `$10`.
+  const indices = paramTypes.map((_, i) => i).sort((a, b) => b - a);
+  let result = sql;
+  for (const i of indices) {
+    const placeholder = new RegExp(`\\$${i + 1}\\b`, 'g');
+    result = result.replace(placeholder, `null::${paramTypes[i]}`);
+  }
+  return result;
+}
+
+function mergeColumns(
+  baseline: BaselineColumn[] | null,
+  analysed: AnalysedField[],
+): {name: string; tsType: string; notNull: boolean}[] {
+  if (!baseline) {
+    return analysed.map((field) => ({
+      name: field.name,
+      tsType: field.typescript ?? 'unknown',
+      notNull: field.nullability === 'not_null' || field.nullability === 'assumed_not_null',
+    }));
+  }
+  // The temp view tells us what columns and types the query actually
+  // produces; the vendored pipeline contributes `notNull` for columns
+  // it could trace back to a source.
+  const nullabilityByName = new Map(
+    analysed.map((field) => [
+      field.name,
+      field.nullability === 'not_null' || field.nullability === 'assumed_not_null',
+    ]),
+  );
+  return baseline.map((column) => ({
+    name: column.name,
+    tsType: column.tsType,
+    notNull: nullabilityByName.get(column.name) ?? false,
+  }));
+}
+
+function randomSuffix(): string {
+  return Math.random().toString(36).slice(2, 12);
 }
 
 /**

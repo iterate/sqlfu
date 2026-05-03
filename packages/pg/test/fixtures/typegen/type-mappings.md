@@ -34,7 +34,20 @@ select
 ```yaml
 ok: true
 queryType: Select
-columns: []
+columns:
+  - {name: a, tsType: Date, notNull: false}
+  - {name: b, tsType: string, notNull: false}
+  - {name: d, tsType: bigint, notNull: false}
+  - {name: e, tsType: number, notNull: false}
+  - {name: f, tsType: Date, notNull: false}
+  - {name: g, tsType: unknown, notNull: false}
+  - {name: h, tsType: unknown, notNull: false}
+  - {name: i, tsType: string, notNull: false}
+  - {name: j, tsType: number, notNull: false}
+  - {name: k, tsType: unknown, notNull: false}
+  - {name: l, tsType: number, notNull: false}
+  - {name: m, tsType: string, notNull: false}
+  - {name: n, tsType: string, notNull: false}
 parameters: []
 ```
 
@@ -47,6 +60,10 @@ select '2000-01-01'::timestamptz as a, 1::int8 as b, true::bool as c, '{}'::json
 ```yaml
 ok: true
 queryType: Select
-columns: []
+columns:
+  - {name: a, tsType: Date, notNull: false}
+  - {name: b, tsType: bigint, notNull: false}
+  - {name: c, tsType: boolean, notNull: false}
+  - {name: d, tsType: unknown, notNull: false}
 parameters: []
 ```
