@@ -21,7 +21,6 @@ create table orders(
   status order_status default 'pending'::order_status,
   othercolumn other.otherenum1
 );
-
 ```
 
 ```sql (b.sql)

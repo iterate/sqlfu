@@ -37,8 +37,6 @@ INSERT INTO view_on_table VALUES ('this is a test');
 ```
 
 ```sql (b.sql)
-
-
 CREATE TABLE "my_table" (
     "some_text" text,
     "some_date" timestamp,

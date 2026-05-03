@@ -1,18 +1,19 @@
-// Vitest-free helpers for the typegen fixture suite. Both
-// `typegen-fixtures.test.ts` and the regeneration script in
-// `scripts/regenerate-typegen-expected.ts` import from here.
+// Vitest-free runner for the pg-typegen fixture suite. Both
+// `typegen-fixtures.test.ts` and `scripts/regenerate-typegen-expected.ts`
+// import from here.
 //
 // The split exists because the regenerate script runs under tsx and
 // can't import a file that calls `beforeAll(...)` at module scope.
+import {readdirSync, readFileSync} from 'node:fs';
 import {mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {basename, join} from 'node:path';
 
 import type {QueryAnalysis, SqlfuHost, SqlfuProjectConfig} from 'sqlfu';
 
 import {pgDialect} from '../src/index.js';
-import type {FixtureCase} from './fixture-md.js';
 import {TEST_ADMIN_URL} from './pg-fixture.js';
+import {parseTypegenFixture, type TypegenFixtureCase, type TypegenFixture} from './typegen-fixture-md.js';
 
 export const FIXTURES_DIR = new URL('./fixtures/typegen/', import.meta.url).pathname;
 
@@ -25,41 +26,73 @@ export type JsonAnalysis =
     }
   | {ok: false; error: string};
 
-export interface TypegenCaseResult {
-  actual: Record<string, JsonAnalysis>;
-  expected: Record<string, JsonAnalysis>;
+export interface LoadedFixture {
+  /** File path of the .md (so error messages can point back at it). */
+  path: string;
+  /** File basename without `.md` (used as the `describe` block name). */
+  name: string;
+  fixture: TypegenFixture;
 }
 
-export async function runTypegenCase(fixtureCase: FixtureCase): Promise<TypegenCaseResult> {
-  const definitionsSql = fixtureCase.inputFiles.find((f) => f.path === 'definitions.sql')?.content ?? '';
-  const sqlFiles = fixtureCase.inputFiles.filter((f) => f.path.startsWith('sql/'));
-  if (sqlFiles.length === 0) {
-    throw new Error(`Case "${fixtureCase.name}" has no sql/*.sql query files`);
-  }
+export function loadFixtures(): LoadedFixture[] {
+  return readdirSync(FIXTURES_DIR)
+    .filter((name) => name.endsWith('.md'))
+    .sort()
+    .map((name) => {
+      const path = join(FIXTURES_DIR, name);
+      const fixture = parseTypegenFixture(readFileSync(path, 'utf8'));
+      return {path, name: basename(name, '.md'), fixture};
+    });
+}
 
-  await using config = await projectConfigForCase(definitionsSql);
+/**
+ * Run a single case and return the analyzer's output as a JSON-friendly
+ * shape (matching the `expected` slot in the fixture). The caller
+ * supplies a materialized scratch db; the runner is free to materialize
+ * once per file and re-use it across cases.
+ */
+export async function runCase(
+  materialized: Awaited<ReturnType<ReturnType<typeof pgDialect>['materializeTypegenSchema']>>,
+  fixtureCase: TypegenFixtureCase,
+): Promise<JsonAnalysis> {
   const dialect = pgDialect({adminUrl: TEST_ADMIN_URL});
-  await using materialized = await dialect.materializeTypegenSchema(stubHost(), config);
-  const analyses = await dialect.analyzeQueries(
+  const analyses = await dialect.analyzeQueries(materialized, [
+    {sqlPath: `${fixtureCase.name}.sql`, sqlContent: fixtureCase.query},
+  ]);
+  return simplifyAnalysis(analyses[0]);
+}
+
+/**
+ * Open a scratch postgres database, apply the fixture's `sql definitions`
+ * block, and return a disposable handle. Call once per file (cases
+ * inside share the schema).
+ */
+export async function materializeFor(definitions: string) {
+  const projectRoot = await mkdtemp(join(tmpdir(), 'sqlfu-pg-typegen-fixture-'));
+  await writeFile(join(projectRoot, 'definitions.sql'), definitions);
+  const dialect = pgDialect({adminUrl: TEST_ADMIN_URL});
+  const config: SqlfuProjectConfig = {
+    projectRoot,
+    definitions: join(projectRoot, 'definitions.sql'),
+    queries: join(projectRoot, 'sql'),
+    generate: {
+      validator: null,
+      prettyErrors: true,
+      sync: false,
+      importExtension: '.js',
+      authority: 'desired_schema',
+    },
+    dialect,
+  };
+  const materialized = await dialect.materializeTypegenSchema(stubHost(), config);
+  const dispose = materialized[Symbol.asyncDispose];
+  return {
     materialized,
-    sqlFiles.map((file) => ({sqlPath: file.path, sqlContent: file.content})),
-  );
-
-  const actual: Record<string, JsonAnalysis> = {};
-  for (const [i, file] of sqlFiles.entries()) {
-    const analysis = analyses[i];
-    const queryName = file.path.replace(/^sql\//, '').replace(/\.sql$/, '');
-    actual[queryName] = simplifyAnalysis(analysis);
-  }
-
-  const expected: Record<string, JsonAnalysis> = {};
-  for (const file of fixtureCase.outputFiles) {
-    if (!file.path.startsWith('analyses/')) continue;
-    const queryName = file.path.replace(/^analyses\//, '').replace(/\.json$/, '');
-    expected[queryName] = JSON.parse(file.content);
-  }
-
-  return {actual, expected};
+    [Symbol.asyncDispose]: async () => {
+      await dispose.call(materialized);
+      await rm(projectRoot, {recursive: true, force: true});
+    },
+  };
 }
 
 export function simplifyAnalysis(analysis: QueryAnalysis): JsonAnalysis {
@@ -72,30 +105,6 @@ export function simplifyAnalysis(analysis: QueryAnalysis): JsonAnalysis {
     queryType: descriptor.queryType,
     columns: descriptor.columns.map((c) => ({name: c.name, tsType: c.tsType, notNull: c.notNull})),
     parameters: descriptor.parameters.map((p) => ({name: p.name, tsType: p.tsType, notNull: p.notNull})),
-  };
-}
-
-interface ProjectConfigHandle extends SqlfuProjectConfig, AsyncDisposable {}
-
-async function projectConfigForCase(definitionsSql: string): Promise<ProjectConfigHandle> {
-  const projectRoot = await mkdtemp(join(tmpdir(), 'sqlfu-pg-typegen-fixture-'));
-  await writeFile(join(projectRoot, 'definitions.sql'), definitionsSql);
-  const dialect = pgDialect({adminUrl: TEST_ADMIN_URL});
-  return {
-    projectRoot,
-    definitions: join(projectRoot, 'definitions.sql'),
-    queries: join(projectRoot, 'sql'),
-    generate: {
-      validator: null,
-      prettyErrors: true,
-      sync: false,
-      importExtension: '.js',
-      authority: 'desired_schema',
-    },
-    dialect,
-    [Symbol.asyncDispose]: async () => {
-      await rm(projectRoot, {recursive: true, force: true});
-    },
   };
 }
 

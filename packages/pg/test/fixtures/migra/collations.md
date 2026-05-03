@@ -19,9 +19,6 @@ CREATE COLLATION numeric (provider = icu, locale = 'en-u-kn-true');
 ```
 
 ```sql (b.sql)
-
-
-
 CREATE COLLATION numeric (provider = icu, locale = 'en-u-kn-true');
 
 create table t(

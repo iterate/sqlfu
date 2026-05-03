@@ -22,7 +22,6 @@ CREATE TABLE "demo_gencol" (
     "the_column" TEXT               NULL GENERATED ALWAYS AS ('the original generated value') STORED, -- The column that is originally GENERATED, then changed not to be
     "the_column2" text
 );
-
 ```
 
 ```sql (b.sql)
@@ -42,7 +41,6 @@ CREATE TABLE "demo_gencol" (
     "the_column" text,
     "the_column2" TEXT               NULL GENERATED ALWAYS AS ('the original generated value') STORED -- The column that is originally GENERATED, then changed not to be
 );
-
 ```
 
 </details>
