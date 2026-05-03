@@ -2,6 +2,7 @@ import dedent from 'dedent';
 import {DatabaseSync} from 'node:sqlite';
 import {expect, test} from 'vitest';
 
+import {sqliteDialect} from '../../src/dialect.js';
 import {createNodeSqliteClient} from '../../src/index.js';
 import {applyMigrations, readMigrationHistory, type Migration} from '../../src/migrations/index.js';
 import {materializeMigrationsSchemaFor} from '../../src/materialize.js';
@@ -137,13 +138,18 @@ test('d1 preset silently accepts edits to an applied migration (no checksum colu
   expect(history).toHaveLength(1);
 });
 
-test('materializeMigrationsSchemaFor does not leak sqlfu_migrations into the baseline under preset: d1', async () => {
-  // Regression: sqlfu draft was emitting `drop table sqlfu_migrations` when a
-  // user had configured `preset: 'd1'`. The scratch DB in materialize was
-  // defaulting to the sqlfu preset (creating sqlfu_migrations), while the
-  // excludedTables list came from the user config (['d1_migrations']). The
-  // mismatch left sqlfu_migrations visible in the baseline schema, and the
-  // diff engine naturally concluded it should be dropped.
+test('materializeMigrationsSchemaFor does not leak any preset bookkeeping table into the baseline', async () => {
+  // Regression: sqlfu draft was previously emitting `drop table
+  // sqlfu_migrations` when a user had configured `preset: 'd1'`. The scratch
+  // DB in materialize was running migrations through `applyMigrations` —
+  // which created the preset's bookkeeping table — while the
+  // `excludedTables` list came from the user config and might not match.
+  //
+  // The fix: materializeMigrationsSchemaFor now concatenates migration
+  // contents and applies them directly through `dialect.materializeSchemaSql`,
+  // bypassing `applyMigrations` entirely. No bookkeeping table is created in
+  // the scratch DB, so neither `sqlfu_migrations` nor `d1_migrations` ever
+  // appears in the baseline regardless of `excludedTables`.
   const host = await createNodeHost();
   const baseline = await materializeMigrationsSchemaFor(
     host,
@@ -153,7 +159,7 @@ test('materializeMigrationsSchemaFor does not leak sqlfu_migrations into the bas
         content: 'create table posts (id integer primary key, slug text not null);',
       },
     ],
-    {excludedTables: ['d1_migrations'], preset: 'd1'},
+    {excludedTables: ['d1_migrations'], dialect: sqliteDialect()},
   );
 
   expect(baseline.toLowerCase()).not.toContain('sqlfu_migrations');
@@ -162,7 +168,7 @@ test('materializeMigrationsSchemaFor does not leak sqlfu_migrations into the bas
   expect(baseline.toLowerCase()).toContain('create table posts');
 });
 
-test('materializeMigrationsSchemaFor excludes sqlfu_migrations under preset: sqlfu (default)', async () => {
+test('materializeMigrationsSchemaFor returns the user schema verbatim with no bookkeeping table', async () => {
   const host = await createNodeHost();
   const baseline = await materializeMigrationsSchemaFor(
     host,
@@ -172,7 +178,7 @@ test('materializeMigrationsSchemaFor excludes sqlfu_migrations under preset: sql
         content: 'create table posts (id integer primary key, slug text not null);',
       },
     ],
-    {excludedTables: ['sqlfu_migrations']},
+    {excludedTables: ['sqlfu_migrations'], dialect: sqliteDialect()},
   );
 
   expect(baseline.toLowerCase()).not.toContain('sqlfu_migrations');

@@ -38,7 +38,8 @@ import {formatSql, type FormatSqlOptions} from './formatter.js';
 import type {SqlfuHost} from './host.js';
 import {diffBaselineSqlToDesiredSql} from './schemadiff/sqlite/index.js';
 import {quoteIdentifier as sqliteQuoteIdentifier} from './schemadiff/sqlite/identifiers.js';
-import type {AsyncClient, SqlfuProjectConfig} from './types.js';
+import {extractSchema as extractSqliteSchema} from './sqlite-text.js';
+import type {AsyncClient, Client, SqlfuProjectConfig} from './types.js';
 import type {VendoredQueryAnalysis, VendoredQueryInput} from './typegen/analyze-vendored-typesql.js';
 
 export type DiffSchemaInput = {
@@ -127,6 +128,34 @@ export type Dialect = {
   withMigrationLock?<T>(client: AsyncClient, fn: () => Promise<T>): Promise<T>;
 
   /**
+   * Apply `sourceSql` (a single DDL string — could be definitions.sql, could
+   * be concatenated migrations) to a scratch database, then extract and
+   * return the resulting schema as a canonical SQL string. Disposes the
+   * scratch database before returning.
+   *
+   * Sqlite materializes against `host.openScratchDb` (in-memory sqlite); pg
+   * uses its own connection (closed-over from the dialect's factory config)
+   * to `CREATE DATABASE sqlfu_<random>` and drop on completion.
+   */
+  materializeSchemaSql(
+    host: SqlfuHost,
+    input: {sourceSql: string; excludedTables?: string[]},
+  ): Promise<string>;
+
+  /**
+   * Extract the canonical schema from a live client. Used by the
+   * `live_schema` typegen authority and by drift checks against the user's
+   * actual database. Sqlite reads from `sqlite_schema` (the `'main'` db);
+   * pg reads from `pg_catalog` (the default `public` schema and any others
+   * the dialect's options say to include).
+   *
+   * Accepts either a `SyncClient` or `AsyncClient` so callers can pass any
+   * `client` regardless of driver shape; pg-flavored impls coerce to async
+   * (and error on a sync client, since no pg driver is sync today).
+   */
+  extractSchemaFromClient(client: Client, options?: {excludedTables?: string[]}): Promise<string>;
+
+  /**
    * Materialize the project's schema (per `config.generate.authority`) into a
    * dialect-specific form ready for typegen lookups + query analysis. Returned
    * handle is opaque to the caller and disposed via `Symbol.asyncDispose`.
@@ -195,6 +224,16 @@ export function sqliteDialect(): Dialect {
     quoteIdentifier: sqliteQuoteIdentifier,
     defaultMigrationTableDdl: sqliteSqlfuMigrationTableDdl,
     // withMigrationLock omitted — sqlite serializes writers at the file level
+
+    materializeSchemaSql: async (host, input) => {
+      await using database = await host.openScratchDb('materialize-schema');
+      if (input.sourceSql.trim()) {
+        await database.client.raw(input.sourceSql);
+      }
+      return extractSqliteSchema(database.client, 'main', {excludedTables: [...(input.excludedTables ?? [])]});
+    },
+    extractSchemaFromClient: async (client, options) =>
+      extractSqliteSchema(client, 'main', {excludedTables: [...(options?.excludedTables ?? [])]}),
 
     materializeTypegenSchema:
       sqliteTypegenImpls?.materializeTypegenSchema ?? (() => typegenStub('materializeTypegenSchema')),

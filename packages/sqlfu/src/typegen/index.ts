@@ -404,7 +404,7 @@ async function readDefinitionsAsSchemaSql(config: SqlfuProjectConfig, host: Sqlf
     }
     throw error;
   }
-  return materializeDefinitionsSchemaFor(host, definitionsSql);
+  return materializeDefinitionsSchemaFor(host, definitionsSql, {dialect: config.dialect});
 }
 
 async function replayMigrationFilesAsSchemaSql(config: SqlfuProjectConfig, host: SqlfuHost): Promise<string> {
@@ -414,10 +414,12 @@ async function replayMigrationFilesAsSchemaSql(config: SqlfuProjectConfig, host:
     );
   }
   const migrations = await readMigrationFiles(host, config);
-  // Concatenate into one SQL blob and replay raw. Going through `materializeMigrationsSchemaFor`
-  // would apply through `applyMigrations`, which creates the `sqlfu_migrations` bookkeeping
-  // table — noise for typegen, which wants the user's schema reflected as-is.
-  return materializeDefinitionsSchemaFor(host, migrations.map((migration) => migration.content).join('\n'));
+  // Concatenate into one SQL blob and replay raw. The materializeSchemaSql
+  // dialect method handles scratch-DB creation + schema extraction; no
+  // `applyMigrations` round-trip means no bookkeeping table noise.
+  return materializeDefinitionsSchemaFor(host, migrations.map((migration) => migration.content).join('\n'), {
+    dialect: config.dialect,
+  });
 }
 
 async function replayMigrationHistoryAsSchemaSql(config: SqlfuProjectConfig, host: SqlfuHost): Promise<string> {
@@ -443,7 +445,9 @@ async function replayMigrationHistoryAsSchemaSql(config: SqlfuProjectConfig, hos
     matched.push(file);
   }
 
-  return materializeDefinitionsSchemaFor(host, matched.map((migration) => migration.content).join('\n'));
+  return materializeDefinitionsSchemaFor(host, matched.map((migration) => migration.content).join('\n'), {
+    dialect: config.dialect,
+  });
 }
 
 async function readLiveSchema(config: SqlfuProjectConfig): Promise<string> {
@@ -453,7 +457,7 @@ async function readLiveSchema(config: SqlfuProjectConfig): Promise<string> {
   // bookkeeping is created in the first place. Without a `migrations` block there's no
   // bookkeeping in play; default to sqlfu's table name so we still strip it if present.
   const excludedTable = presetTableName(config.migrations?.preset ?? 'sqlfu');
-  return extractSchema(source.client, 'main', {excludedTables: [excludedTable]});
+  return config.dialect.extractSchemaFromClient(source.client, {excludedTables: [excludedTable]});
 }
 
 async function openLiveDb(
