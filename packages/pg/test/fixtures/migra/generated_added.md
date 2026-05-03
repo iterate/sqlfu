@@ -4,7 +4,7 @@ Lifted from `pgkit/packages/migra/test/fixtures/generated_added/`.
 
 ## generated_added
 
-<details data-skip="pg-version-dependent generated-column output">
+<details data-skip="upstream pgkit fixture is malformed — a.sql and b.sql leave demo_gencol identical (the meaningful diff is in commented-out SQL), so expected.sql cannot be produced by diffing them">
 <summary>input</summary>
 
 ```sql (a.sql)

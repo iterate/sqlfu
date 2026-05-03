@@ -1,6 +1,6 @@
 // @ts-nocheck — vendored from @pgkit/typegen; relaxed strict mode lives in src/vendor/tsconfig.json. See LICENSE.
 import * as assert from 'node:assert'
-import * as lodash from 'lodash'
+import lodash from 'lodash'
 import * as neverthrow from 'neverthrow'
 import * as pgsqlAST from 'pgsql-ast-parser'
 import * as pluralize from 'pluralize'

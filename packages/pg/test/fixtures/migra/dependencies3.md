@@ -4,7 +4,7 @@ Lifted from `pgkit/packages/migra/test/fixtures/dependencies3/`.
 
 ## dependencies3
 
-<details data-skip="dependency-statement ordering drifts">
+<details>
 <summary>input</summary>
 
 ```sql (a.sql)
@@ -38,15 +38,10 @@ create view "strange_view(what)" as select id::int * 2 as a from "strange_name((
 
 ```sql (expected.sql)
 drop view if exists "public"."strange_view(what)";
-
 drop view if exists "public"."switcharoo";
-
 alter table "public"."t" add column "b" integer;
-
-create or replace view "public"."strange_view(what)" as  SELECT (("strange_name(((yo?)))".id)::integer * 2) AS a
+create or replace view "public"."strange_view(what)" as  SELECT ((id)::integer * 2) AS a
    FROM "strange_name(((yo?)))";
-
-
 create materialized view "public"."switcharoo" as  SELECT 1 AS a;
 ```
 

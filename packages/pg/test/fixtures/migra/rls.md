@@ -4,7 +4,7 @@ Lifted from `pgkit/packages/migra/test/fixtures/rls/`.
 
 ## rls
 
-<details data-skip="needs test roles + RLS policy formatting matches pg16">
+<details>
 <summary>input</summary>
 
 ```sql (a.sql)
@@ -38,14 +38,12 @@ ALTER TABLE accounts2 ENABLE ROW LEVEL SECURITY;
 
 ```sql (expected.sql)
 drop policy "account_managers" on "public"."accounts";
-
 alter table "public"."accounts2" enable row level security;
-
 create policy "account_managers"
-on "public"."accounts"
-as restrictive
-for all
-to schemainspect_test_role
+  on "public"."accounts"
+  as restrictive
+  for all
+  to schemainspect_test_role
 using ((manager = CURRENT_USER));
 ```
 

@@ -4,7 +4,7 @@ Lifted from `pgkit/packages/migra/test/fixtures/dependencies2/`.
 
 ## dependencies2
 
-<details data-skip="dependency-statement ordering drifts">
+<details>
 <summary>input</summary>
 
 ```sql (a.sql)
@@ -32,22 +32,16 @@ create view x.q as select * from x.data;
 
 ```sql (expected.sql)
 drop view if exists "x"."q";
-
 drop table "x"."data";
-
 create table "x"."t_data" (
     "id" uuid,
     "name" text
-);
-
-
-create or replace view "x"."data" as  SELECT t_data.id,
-    t_data.name
+      );
+create or replace view "x"."data" as  SELECT id,
+    name
    FROM x.t_data;
-
-
-create or replace view "x"."q" as  SELECT data.id,
-    data.name
+create or replace view "x"."q" as  SELECT id,
+    name
    FROM x.data;
 ```
 

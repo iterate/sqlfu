@@ -34,3 +34,25 @@ export const startTempDatabase = () => createTempDatabase(TEST_ADMIN_URL);
 
 /** Spin up a pair (baseline + desired). Disposed via `await using`. */
 export const startTempDatabasePair = () => createTempDatabasePair(TEST_ADMIN_URL);
+
+/**
+ * Ensure cluster-wide roles referenced by lifted pgkit fixtures exist.
+ * Idempotent — calling twice is a no-op. Roles are cluster-scoped, so
+ * one creation suffices for all ephemeral scratch dbs.
+ *
+ * Currently only `schemainspect_test_role`, used by RLS/policy fixtures.
+ */
+export async function ensureFixtureRoles(): Promise<void> {
+  const {Client} = await import('pg');
+  const admin = new Client({connectionString: TEST_ADMIN_URL});
+  await admin.connect();
+  try {
+    await admin.query(`do $$ begin
+      if not exists (select 1 from pg_roles where rolname = 'schemainspect_test_role') then
+        create role schemainspect_test_role;
+      end if;
+    end $$`);
+  } finally {
+    await admin.end();
+  }
+}

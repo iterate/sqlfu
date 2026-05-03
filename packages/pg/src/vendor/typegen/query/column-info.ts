@@ -3,9 +3,9 @@ import {Client, sql, Transactable} from '../../schemainspect/pgkit-compat.js'
 import * as assert from 'node:assert'
 import {createHash} from 'node:crypto'
 
-import * as lodash from 'lodash'
+import lodash from 'lodash'
 import {Expr, Statement, toSql, parse, WithStatement} from 'pgsql-ast-parser'
-import {singular} from 'pluralize'
+import * as pluralize from 'pluralize'
 
 import {AnalysedQuery, AnalysedQueryField, DescribedQuery, QueryField} from '../types.js'
 import {tryOrDefault} from '../util.js'
@@ -665,7 +665,7 @@ const generateTagOptions = (query: DescribedQuery) => {
       lodash
         .kebabCase(item)
         .split('-')
-        .map(singular)
+        .map(pluralize.singular)
         .filter(part => !['query', 'result'].includes(part))
         .join('-'),
     )

@@ -4,7 +4,7 @@ Lifted from `pgkit/packages/migra/test/fixtures/privileges/`.
 
 ## privileges
 
-<details data-skip="needs 'schemainspect_test_role' role created in setup">
+<details data-skip="grant/revoke target is the superuser 'postgres' — postgres does not record ACL entries for superusers, so the diff is inherently empty when both sides connect as the same superuser. Would need a dedicated non-superuser test role to exercise.">
 <summary>input</summary>
 
 ```sql (a.sql)

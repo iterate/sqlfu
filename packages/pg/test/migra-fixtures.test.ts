@@ -15,7 +15,7 @@ import type {SqlfuHost} from 'sqlfu';
 
 import {pgDialect} from '../src/index.js';
 import {listFixtureFiles, parseFixtureMd} from './fixture-md.js';
-import {isPgReachable, TEST_ADMIN_URL} from './pg-fixture.js';
+import {ensureFixtureRoles, isPgReachable, TEST_ADMIN_URL} from './pg-fixture.js';
 
 const FIXTURES_DIR = new URL('./fixtures/migra/', import.meta.url).pathname;
 const stubHost = {} as unknown as SqlfuHost;
@@ -28,6 +28,7 @@ beforeAll(async () => {
         `Run 'docker compose -f packages/pg/test/docker-compose.yml up -d' first.`,
     );
   }
+  await ensureFixtureRoles();
 });
 
 describe('migra fixtures (lifted from pgkit)', () => {
