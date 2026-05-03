@@ -93,6 +93,10 @@ export const sql = sqlTag;
 export interface Queryable {
   any<TRow extends Record<string, unknown>>(query: SqlFragment): Promise<TRow[]>;
   oneFirst<TRow extends Record<string, unknown>>(query: SqlFragment): Promise<TRow[keyof TRow]>;
+  /** Used by vendored typegen — fetch zero-or-one row, return `undefined` when empty. */
+  maybeOne<TRow extends Record<string, unknown>>(query: SqlFragment): Promise<TRow | undefined>;
+  /** Used by vendored typegen — fetch exactly one row, throw when empty. */
+  one<TRow extends Record<string, unknown>>(query: SqlFragment): Promise<TRow>;
   /** Used only by `Migration.apply` and the vendored typegen analyzers. */
   query(query: SqlFragment): Promise<{rowCount?: number | null}>;
   /** Used by the vendored typegen for transactional analysis (savepoints + rollback). */
@@ -122,6 +126,17 @@ export function adaptAsyncClient(client: AsyncClient): Queryable {
       }
       const firstKey = Object.keys(first)[0];
       return first[firstKey] as TRow[keyof TRow];
+    },
+    async maybeOne<TRow extends Record<string, unknown>>(query: SqlFragment): Promise<TRow | undefined> {
+      const rows = await client.all<Record<string, unknown>>({sql: query.sql, args: query.args as never});
+      return rows[0] as TRow | undefined;
+    },
+    async one<TRow extends Record<string, unknown>>(query: SqlFragment): Promise<TRow> {
+      const rows = await client.all<Record<string, unknown>>({sql: query.sql, args: query.args as never});
+      if (rows.length === 0) {
+        throw new Error('schemainspect one expected exactly one row, got 0');
+      }
+      return rows[0] as TRow;
     },
     async query(query: SqlFragment): Promise<{rowCount?: number | null}> {
       const result = await client.run({sql: query.sql, args: query.args as never});

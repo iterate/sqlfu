@@ -3,7 +3,7 @@ import * as assert from 'node:assert'
 import lodash from 'lodash'
 import * as neverthrow from 'neverthrow'
 import * as pgsqlAST from 'pgsql-ast-parser'
-import * as pluralize from 'pluralize'
+import pluralize from 'pluralize'
 
 import {pascalCase} from '../util.js'
 

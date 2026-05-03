@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto'
 
 import lodash from 'lodash'
 import {Expr, Statement, toSql, parse, WithStatement} from 'pgsql-ast-parser'
-import * as pluralize from 'pluralize'
+import pluralize from 'pluralize'
 
 import {AnalysedQuery, AnalysedQueryField, DescribedQuery, QueryField} from '../types.js'
 import {tryOrDefault} from '../util.js'

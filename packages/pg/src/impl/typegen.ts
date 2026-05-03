@@ -261,13 +261,20 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
   }
 }
 
-/** Stringify an error including `.cause` chains so the test output is useful. */
+/**
+ * Stringify an error including `.cause` chains so the test output is useful.
+ * Set `SQLFU_PG_DEBUG=1` to include stack traces — useful when a vendored
+ * pipeline failure surfaces as a generic message and you need the call site.
+ */
 function formatError(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
+  const includeStacks = Boolean(process.env.SQLFU_PG_DEBUG);
   const parts: string[] = [error.message];
+  if (includeStacks && error.stack) parts.push(error.stack);
   let cause: unknown = (error as Error & {cause?: unknown}).cause;
   while (cause instanceof Error) {
     parts.push(`caused by: ${cause.message}`);
+    if (includeStacks && cause.stack) parts.push(cause.stack);
     cause = (cause as Error & {cause?: unknown}).cause;
   }
   return parts.join('\n  ');
