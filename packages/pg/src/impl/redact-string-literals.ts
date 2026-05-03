@@ -35,11 +35,11 @@
 //     string literals. Used before the AST pipeline (which uses
 //     `pgsql-ast-parser`, which has no grammar for dollar-quoting).
 //
-// The sentinel embeds a marker comment so a later pass can recognize
-// "this NULL was a redacted literal" and treat it as not-null without
-// needing to track positions out of band. Pg strips the comment during
-// parse — view definitions show `SELECT NULL::text` — so it's purely
-// metadata for our own analysis layer.
+// The temp-view substitute embeds a marker comment so a later pass can
+// recognize "this NULL was a redacted literal" without needing to track
+// positions out of band. Pg strips the comment during parse — view
+// definitions show `SELECT NULL::text` — so it's purely metadata for
+// our own analysis layer.
 
 export const REDACTION_MARKER = '/*sqlfu_redacted_literal*/';
 export const REDACTION_SUBSTITUTE = `null${REDACTION_MARKER}::text`;
@@ -54,14 +54,36 @@ export interface RedactOptions {
    * parse.
    */
   includeSingleQuoted: boolean;
+  /**
+   * Substitute shape for dollar-quoted strings (and, when
+   * `includeSingleQuoted` is true, all strings):
+   *
+   *   - `'null-cast'` — replace with `null::text` plus a marker
+   *     comment. Survives any downstream cast chain
+   *     (`null::text::int` evaluates to a null int). Required for
+   *     the temp-view path because pg constant-folds casts during
+   *     view creation. Loses the literal-not-null signal: in the
+   *     AST it shows up as a "cast of null", not a string literal.
+   *
+   *   - `'string-literal'` — replace with `'<original body>'`, with
+   *     embedded `'` doubled to `''`. The AST sees a real string
+   *     literal node, so `isNonNullableField` infers not-null. Pg
+   *     accepts the substitute as a text value; it only fails when
+   *     the literal is then cast to a non-text type
+   *     (`'foo'::int` errors). The AST path tolerates that:
+   *     `getColumnInfo`'s outer `tx.maybeOne` already has a
+   *     `.catch`, and our outer try/catch falls back to the temp-
+   *     view baseline.
+   */
+  dollarQuotedSubstitute: 'null-cast' | 'string-literal';
 }
 
 export function redactAllStringLiterals(sql: string): string {
-  return redact(sql, {includeSingleQuoted: true});
+  return redact(sql, {includeSingleQuoted: true, dollarQuotedSubstitute: 'null-cast'});
 }
 
 export function redactDollarQuotedStrings(sql: string): string {
-  return redact(sql, {includeSingleQuoted: false});
+  return redact(sql, {includeSingleQuoted: false, dollarQuotedSubstitute: 'string-literal'});
 }
 
 function redact(sql: string, options: RedactOptions): string {
@@ -129,7 +151,18 @@ function redact(sql: string, options: RedactOptions): string {
       const opener = scanDollarOpener(sql, i);
       if (opener) {
         const end = scanDollarQuoted(sql, i, opener.tag);
-        out += REDACTION_SUBSTITUTE;
+        if (options.dollarQuotedSubstitute === 'string-literal') {
+          // Pull out the inner body and re-emit as a single-quoted
+          // string. The AST pipeline will see a real `string` literal
+          // node and `isNonNullableField` will infer not-null.
+          const bodyStart = i + opener.openerLength;
+          const closerLength = `$${opener.tag}$`.length;
+          const bodyEnd = end - closerLength;
+          const body = sql.slice(bodyStart, bodyEnd);
+          out += `'${body.replaceAll("'", "''")}'`;
+        } else {
+          out += REDACTION_SUBSTITUTE;
+        }
         i = end;
         continue;
       }

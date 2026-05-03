@@ -4,21 +4,20 @@ Probes how `analyzeQueries` handles `$N` placeholders in places the
 regex-based `$N → NULL::<type>` substitution used to mis-substitute
 (`'$1'` inside a string literal, `$$..$$` dollar-quoted body, etc).
 
-The expected YAML below is hand-authored to reflect what a correctly-
-functioning typegen should produce. Most cases now pass thanks to
-`redact-string-literals.ts` (which strips string bodies before the
-regex sub or the vendored AST pipeline see them) plus the
-`getAliasInfo` patch in the vendored typegen (which previously
-silently dropped non-`ref`/`call` columns from per-field analysis).
+All cases now pass thanks to three changes:
 
-The one remaining red — `dollar-quoted-with-dollar` — exposes the
-`$$..$$` limitation: the redactor swaps the dollar-quoted body for
-`null::text` so the AST parser doesn't choke (`pgsql-ast-parser`
-has no grammar for dollar-quoting). After substitution the AST node
-is a *cast of null*, not a *literal*, so the vendored
-`isNonNullableField` doesn't recognise it as not-null. Single-quoted
-strings work fine because we don't redact them — pgsql-ast-parser
-handles those natively.
+  1. `redact-string-literals.ts` — a focused tokenizer that swaps
+     string bodies for safe substitutes before the regex sub or
+     the vendored AST pipeline see them.
+  2. The `getAliasInfo` patch in `vendor/typegen/query/parse.ts` —
+     it used to silently drop non-`ref`/`call` columns from per-
+     field analysis, so source-less columns like `select 1 as a`
+     never reached `isNonNullableField`.
+  3. Per-path redaction substitutes: temp-view path uses
+     `null::text` (cast-safe; survives constant-folding); AST path
+     uses a real single-quoted string literal preserving the
+     original body — so `pgsql-ast-parser` sees a `string` node
+     and `isNonNullableField` infers not-null.
 
 ```sql definitions
 create table t (x int not null);
@@ -123,12 +122,10 @@ parameters:
 
 `$1` inside a `$$…$$` dollar-quoted string. The redactor strips
 dollar-quoted bodies because pgsql-ast-parser has no grammar for
-`$$…$$`, but the substitute is `null::text` — which the AST sees
-as a *cast of null*, not a *literal*, so `isNonNullableField`
-doesn't recognise it as not-null and the column comes out
-nullable. Hand-written expected reflects what we'd want; actual is
-`notNull: false`. See the file-level prose for the bigger
-discussion.
+`$$…$$`, replacing them with a single-quoted string literal
+preserving the original body (with `'` → `''` escapes). The AST
+pipeline sees a real `string` node and `isNonNullableField`
+correctly infers not-null.
 
 ```sql
 select $$hello $1 world$$ as msg, x from t where x = $1

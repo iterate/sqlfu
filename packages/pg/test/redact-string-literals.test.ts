@@ -99,15 +99,24 @@ test('dollar-only redaction preserves single-quoted strings', () => {
   );
 });
 
-test('dollar-only redaction strips dollar-quoted strings', () => {
+test('dollar-only redaction rewrites dollar-quoted as a single-quoted literal', () => {
+  // Substitute is a real string literal so the AST sees a `string` node
+  // and `isNonNullableField` can infer not-null. Body is preserved
+  // verbatim (apart from `'` → `''` escaping).
   expect(redactDollarQuotedStrings(`select $$hi $1$$ as msg from t where x = $1`)).toBe(
-    `select ${REDACTION_SUBSTITUTE} as msg from t where x = $1`,
+    `select 'hi $1' as msg from t where x = $1`,
   );
 });
 
-test('dollar-only redaction strips tagged dollar-quoted strings', () => {
+test('dollar-only redaction handles tagged dollar-quoted strings', () => {
   expect(redactDollarQuotedStrings(`select $tag$hi $tag$ as msg from t`)).toBe(
-    `select ${REDACTION_SUBSTITUTE} as msg from t`,
+    `select 'hi ' as msg from t`,
+  );
+});
+
+test('dollar-only redaction escapes embedded single-quotes in the body', () => {
+  expect(redactDollarQuotedStrings(`select $$it's complex$$ as msg from t`)).toBe(
+    `select 'it''s complex' as msg from t`,
   );
 });
 
