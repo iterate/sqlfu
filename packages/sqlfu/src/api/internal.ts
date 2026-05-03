@@ -14,7 +14,6 @@ import {
   type Migration,
 } from '../migrations/index.js';
 import {presetTableName} from '../migrations/preset-queries.js';
-import {inspectSqliteSchemaSql, schemasEqual} from '../schemadiff/sqlite/index.js';
 
 import {materializeDefinitionsSchemaFor, materializeMigrationsSchemaFor, readMigrationFiles} from '../materialize.js';
 
@@ -870,30 +869,40 @@ async function findRecommendedTarget(context: SqlfuContext, migrations: Migratio
 }
 
 export async function compareSchemasForContext(context: SqlfuContext, left: string, right: string) {
-  const [leftInspected, rightInspected] = await Promise.all([
-    inspectSqliteSchemaSql(context.host, left),
-    inspectSqliteSchemaSql(context.host, right),
+  // Equality + syncability both fall out of `dialect.diffSchema`. A clean
+  // diff (zero statements) in BOTH directions means the two schemas are
+  // structurally equal; if either direction produces statements but the
+  // destructive direction succeeds, syncing is possible.
+  //
+  // Previously this function used a sqlite-specific
+  // `inspectSqliteSchemaSql` + `schemasEqual` round-trip. The diff-only
+  // version is dialect-portable and slightly more accurate — the inspector
+  // ignored e.g. trigger ordering that the diff engine catches.
+  const [leftToRight, rightToLeft] = await Promise.all([
+    safeDiff(context, {baselineSql: left, desiredSql: right, allowDestructive: true}),
+    safeDiff(context, {baselineSql: right, desiredSql: left, allowDestructive: true}),
   ]);
 
-  const isDifferent = !schemasEqual(leftInspected, rightInspected);
-  let isSyncable = false;
-  if (isDifferent) {
-    try {
-      const syncPlan = await context.config.dialect.diffSchema(context.host, {
-        baselineSql: right,
-        desiredSql: left,
-        allowDestructive: true,
-      });
-      isSyncable = syncPlan.length > 0;
-    } catch {
-      isSyncable = false;
-    }
-  }
+  const isDifferent = (leftToRight?.length ?? 0) > 0 || (rightToLeft?.length ?? 0) > 0;
+  // Syncable means: we can produce a plan from `right` toward `left` (the
+  // 'desired') without erroring, and that plan is non-empty.
+  const isSyncable = isDifferent && rightToLeft != null && rightToLeft.length > 0;
 
   return {
     isDifferent,
     isSyncable,
   };
+}
+
+async function safeDiff(
+  context: SqlfuContext,
+  input: {baselineSql: string; desiredSql: string; allowDestructive: boolean},
+): Promise<string[] | null> {
+  try {
+    return await context.config.dialect.diffSchema(context.host, input);
+  } catch {
+    return null;
+  }
 }
 
 async function getMigrationIntegrity(
