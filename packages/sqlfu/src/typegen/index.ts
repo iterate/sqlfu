@@ -2,7 +2,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import {analyzeVendoredTypesqlQueries} from './analyze-vendored-typesql.js';
-import {assertSqliteMaterialized, sqliteDialect, type DialectColumnInfo, type RelationInfo} from '../dialect.js';
+import {
+  assertSqliteMaterialized,
+  registerSqliteTypegenImpls,
+  type DialectColumnInfo,
+  type RelationInfo,
+} from '../dialect.js';
+import {quoteIdentifier as sqliteQuoteIdentifier} from '../schemadiff/sqlite/identifiers.js';
 import type {
   AdHocQueryAnalysis,
   JsonSchema,
@@ -2922,7 +2928,7 @@ export async function loadSchema(databasePath: string): Promise<ReadonlyMap<stri
 
 async function loadRelationColumns(client: Client, relationName: string): Promise<ReadonlyMap<string, TsColumn>> {
   const pragmaResult = await client.all<Record<string, unknown>>({
-    sql: `PRAGMA table_xinfo(${sqliteDialect.quoteIdentifier(relationName)})`,
+    sql: `PRAGMA table_xinfo(${sqliteQuoteIdentifier(relationName)})`,
     args: [],
   });
 
@@ -3210,22 +3216,25 @@ function mapSqliteTypeToTs(columnType: string): string {
   return 'number';
 }
 
-// Side-effect registration: install real sqlite typegen impls onto
-// `sqliteDialect`. See dialect.ts header for why this lives here. Heavy
-// entries (CLI, api/exports, ui/server) all transitively load this module,
-// so the real methods are in place before any caller invokes them.
-sqliteDialect.materializeTypegenSchema = async (host, config) => {
-  const databasePath = await materializeTypegenDatabase(config, host);
-  return {
-    dialect: 'sqlite',
-    databasePath,
-    [Symbol.asyncDispose]: async () => {
-      // Sqlite leaves the typegen db on disk between runs — the next
-      // materialize wipes it. No active disposal needed.
-    },
-  } satisfies AsyncDisposable & {dialect: string; databasePath: string};
-};
-sqliteDialect.loadSchemaForTypegen = async (materialized) => loadSchema(assertSqliteMaterialized(materialized).databasePath);
-sqliteDialect.analyzeQueries = async (materialized, queries) =>
-  analyzeVendoredTypesqlQueries(assertSqliteMaterialized(materialized).databasePath, queries);
+// Side-effect registration: install real sqlite typegen impls so they're
+// baked into every dialect produced by `sqliteDialect()` after this module
+// loads. See dialect.ts header for why this lives here. Heavy entries (CLI,
+// api/exports, ui/server) all transitively load this module, so the real
+// methods are in place before any caller invokes them.
+registerSqliteTypegenImpls({
+  materializeTypegenSchema: async (host, config) => {
+    const databasePath = await materializeTypegenDatabase(config, host);
+    return {
+      dialect: 'sqlite',
+      databasePath,
+      [Symbol.asyncDispose]: async () => {
+        // Sqlite leaves the typegen db on disk between runs — the next
+        // materialize wipes it. No active disposal needed.
+      },
+    } satisfies AsyncDisposable & {dialect: string; databasePath: string};
+  },
+  loadSchemaForTypegen: async (materialized) => loadSchema(assertSqliteMaterialized(materialized).databasePath),
+  analyzeQueries: async (materialized, queries) =>
+    analyzeVendoredTypesqlQueries(assertSqliteMaterialized(materialized).databasePath, queries),
+});
 

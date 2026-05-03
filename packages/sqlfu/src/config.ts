@@ -40,7 +40,7 @@ export function resolveProjectConfig(
       importExtension: fileConfig.generate?.importExtension ?? inferImportExtension(tsconfigPreferences),
       authority: fileConfig.generate?.authority ?? 'desired_schema',
     },
-    dialect: fileConfig.dialect || sqliteDialect,
+    dialect: fileConfig.dialect || sqliteDialect(),
   };
 }
 

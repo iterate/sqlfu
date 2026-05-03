@@ -66,7 +66,7 @@ export function readMigrationHistory(
   params: HistoryParams = {},
 ): MigrationHistoryRow[] | Promise<MigrationHistoryRow[]> {
   const preset = params.preset ?? 'sqlfu';
-  const dialect = params.dialect ?? sqliteDialect;
+  const dialect = params.dialect ?? sqliteDialect();
   return client.sync
     ? driveSync(readMigrationHistoryGen(client, preset, dialect))
     : driveAsync(readMigrationHistoryGen(client, preset, dialect));
@@ -102,7 +102,7 @@ export function applyMigrations(client: Client, params: ApplyMigrationsParams): 
   if (client.sync) {
     return driveSync(applyMigrationsGen(client, params));
   }
-  const dialect = params.dialect ?? sqliteDialect;
+  const dialect = params.dialect ?? sqliteDialect();
   const run = () => driveAsync(applyMigrationsGen(client, params));
   return dialect.withMigrationLock ? dialect.withMigrationLock(client, run) : run();
 }
@@ -133,7 +133,7 @@ export function replaceMigrationHistory(client: Client, params: ReplaceParams): 
 
 function* applyMigrationsGen(client: Client, params: ApplyMigrationsParams): DualGenerator<void> {
   const preset = params.preset ?? 'sqlfu';
-  const dialect = params.dialect ?? sqliteDialect;
+  const dialect = params.dialect ?? sqliteDialect();
   const shape = yield* ensureMigrationTableGen(client, preset, dialect);
   const appliedRaw = yield* awaited(client.all<MigrationHistoryRow>(selectHistoryQuery(shape)));
   const applied = appliedRaw.map((row) => ({...row, name: normalizeHistoryName(shape, row.name)}));
@@ -203,7 +203,7 @@ function* baselineMigrationHistoryGen(client: Client, params: BaselineParams): D
 
 function* replaceMigrationHistoryGen(client: Client, params: ReplaceParams): DualGenerator<void> {
   const preset = params.preset ?? 'sqlfu';
-  const dialect = params.dialect ?? sqliteDialect;
+  const dialect = params.dialect ?? sqliteDialect();
   const shape = yield* ensureMigrationTableGen(client, preset, dialect);
   yield client.run(deleteHistoryQuery(shape));
   for (const migration of params.migrations) {

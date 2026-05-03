@@ -3,10 +3,10 @@
  * dialect-neutral logic (CLI flow, schema diff orchestration, migration
  * runner, formatter, typegen) and dialect-specific implementations.
  *
- * The default `sqliteDialect` exported here is a thin aggregator over the
- * existing sqlite-specific functions in this package. A separate
- * `@sqlfu/pg` package will export `pgDialect` satisfying the same shape; the
- * main package never imports pg code.
+ * `sqliteDialect()` is a factory matching the shape `pgDialect({...})` will
+ * use for per-project config. It currently takes no parameters; it's a
+ * factory rather than a const so users learn the API once and don't have to
+ * remember which dialects need calling and which don't.
  *
  * **Wart: side-effect registration of sqlite typegen impls.** The strict-tier
  * import check (`scripts/check-strict-imports.ts`) bundles the runtime graph
@@ -16,12 +16,12 @@
  * dialect.ts cannot import them statically *or* dynamically without breaking
  * strict tier.
  *
- * Workaround: dialect.ts ships `sqliteDialect` with throwing stubs for the
- * three typegen methods. `typegen/index.ts` mutates them at module-load to
- * the real implementations. Every heavy entry (CLI, api, ui server) imports
- * `typegen/index.ts` somewhere in its graph, so the stubs only ever fire if
- * a strict-tier consumer somehow tries to invoke typegen — which is a bug
- * regardless. The error message points at the right next step.
+ * Workaround: dialect.ts ships throwing stubs for the three typegen methods.
+ * `typegen/index.ts` calls `registerSqliteTypegenImpls(...)` at module-load
+ * to install real implementations. Every heavy entry (CLI, api, ui server)
+ * imports `typegen/index.ts` somewhere in its graph, so the stubs only ever
+ * fire if a strict-tier consumer somehow tries to invoke typegen — which is
+ * a bug regardless. The error message points at the right next step.
  *
  * Cleaner alternatives we considered:
  *   1. Move `sqliteDialect` itself to a heavy entry. Breaks `defineConfig`
@@ -153,6 +153,26 @@ export type Dialect = {
 const sqliteSqlfuMigrationTableDdl = (tableName: string) =>
   `create table if not exists ${tableName} (\n  name text primary key check (name not like '%.sql'),\n  checksum text not null,\n  applied_at text not null\n);`;
 
+/** Real implementations registered by `typegen/index.ts` at module-load. */
+type SqliteTypegenImpls = {
+  materializeTypegenSchema: Dialect['materializeTypegenSchema'];
+  loadSchemaForTypegen: Dialect['loadSchemaForTypegen'];
+  analyzeQueries: Dialect['analyzeQueries'];
+};
+
+let sqliteTypegenImpls: SqliteTypegenImpls | null = null;
+
+/**
+ * Called by `typegen/index.ts` at module-load to install the heavy-tier
+ * typegen impls onto sqlite-dialect instances. After this runs, calls to
+ * `sqliteDialect()` return objects with real typegen methods. Before it
+ * runs (strict-tier paths), the typegen methods on a freshly-constructed
+ * dialect are throwing stubs.
+ */
+export function registerSqliteTypegenImpls(impls: SqliteTypegenImpls): void {
+  sqliteTypegenImpls = impls;
+}
+
 function typegenStub(methodName: string): never {
   throw new Error(
     `sqliteDialect.${methodName} requires loading sqlfu's typegen module — ` +
@@ -161,20 +181,28 @@ function typegenStub(methodName: string): never {
   );
 }
 
-export const sqliteDialect: Dialect = {
-  name: 'sqlite',
-  diffSchema: diffBaselineSqlToDesiredSql,
-  formatSql,
-  quoteIdentifier: sqliteQuoteIdentifier,
-  defaultMigrationTableDdl: sqliteSqlfuMigrationTableDdl,
-  // withMigrationLock omitted — sqlite serializes writers at the file level
+/**
+ * Build a fresh sqlite `Dialect`. Currently takes no parameters — exists as a
+ * factory for API parity with `pgDialect({...})` (see `@sqlfu/pg`), so users
+ * can write `defineConfig({dialect: sqliteDialect()})` or `pgDialect({...})`
+ * without remembering which is a value and which is a constructor.
+ */
+export function sqliteDialect(): Dialect {
+  return {
+    name: 'sqlite',
+    diffSchema: diffBaselineSqlToDesiredSql,
+    formatSql,
+    quoteIdentifier: sqliteQuoteIdentifier,
+    defaultMigrationTableDdl: sqliteSqlfuMigrationTableDdl,
+    // withMigrationLock omitted — sqlite serializes writers at the file level
 
-  // The three typegen methods below are stubs; `typegen/index.ts` mutates
-  // them to real implementations at module-load. See file header.
-  materializeTypegenSchema: () => typegenStub('materializeTypegenSchema'),
-  loadSchemaForTypegen: () => typegenStub('loadSchemaForTypegen'),
-  analyzeQueries: () => typegenStub('analyzeQueries'),
-};
+    materializeTypegenSchema:
+      sqliteTypegenImpls?.materializeTypegenSchema ?? (() => typegenStub('materializeTypegenSchema')),
+    loadSchemaForTypegen:
+      sqliteTypegenImpls?.loadSchemaForTypegen ?? (() => typegenStub('loadSchemaForTypegen')),
+    analyzeQueries: sqliteTypegenImpls?.analyzeQueries ?? (() => typegenStub('analyzeQueries')),
+  };
+}
 
 /**
  * Asserts a `MaterializedTypegenSchema` was produced by the sqlite dialect.

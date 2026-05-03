@@ -50,7 +50,7 @@ export function buildDemoConfig(): SqlfuProjectConfig {
     migrations: {path: `${DEMO_PROJECT_ROOT}/migrations`, prefix: 'iso', preset: 'sqlfu'},
     queries: `${DEMO_PROJECT_ROOT}/sql`,
     generate: {validator: null, prettyErrors: true, sync: false, importExtension: '.js', authority: 'desired_schema'},
-    dialect: sqliteDialect,
+    dialect: sqliteDialect(),
   };
 }
 
