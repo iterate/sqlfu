@@ -14,15 +14,18 @@ export async function isPgReachable(): Promise<boolean> {
   // Cheap reachability probe — open + close. If postgres isn't running we
   // surface a clear skip message in tests rather than 30s of mysterious
   // timeouts.
-  const {createClient} = await import('@pgkit/client');
-  const client = createClient(TEST_ADMIN_URL);
+  const {Client} = await import('pg');
+  const client = new Client({connectionString: TEST_ADMIN_URL});
   try {
-    await client.query(client.sql`select 1`);
+    await client.connect();
+    await client.query('select 1');
     return true;
   } catch {
     return false;
   } finally {
-    await client.end();
+    try {
+      await client.end();
+    } catch {}
   }
 }
 

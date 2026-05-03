@@ -28,9 +28,6 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@pgkit/client": "^0.6.1",
-    "@pgkit/migra": "^0.6.1",
-    "@pgkit/schemainspect": "^0.6.1",
     "pg": "^8.13.0",
     "sql-formatter": "^15.7.0"
   },

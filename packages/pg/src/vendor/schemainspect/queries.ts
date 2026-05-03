@@ -1,3 +1,4 @@
+// @ts-nocheck — vendored from @pgkit/schemainspect; relaxed strict mode lives in src/vendor/tsconfig.json. See LICENSE + index.ts.
 // Sqlfu vendor: dropped pgkit's `dumpQueries` codegen preset (it required
 // `eslint-plugin-mmkal`, which is a pgkit-specific dev dep we don't want
 // to pull in). The `export const queries` block below is the codegen

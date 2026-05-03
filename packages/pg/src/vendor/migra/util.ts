@@ -1,4 +1,4 @@
-// @ts-nocheck — vendored from @pgkit/schemainspect; relaxed strict mode lives in src/vendor/tsconfig.json. See LICENSE + index.ts.
+// @ts-nocheck — vendored from @pgkit; relaxed strict mode lives in src/vendor/tsconfig.json. See LICENSE.
 type Dict<T> = Record<string, T>
 
 // deviation from python: add_dependencies_for_modifications = true removed - not used
@@ -22,6 +22,7 @@ export function differences<T extends {equals: (other: T) => boolean}>(a: Dict<T
   return {added, removed, modified, unmodified, array: [added, removed, modified, unmodified]}
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const sortKeys = <T extends Record<string, any>>(obj: T) => {
   // replicating a kinda bug from python: they use `sorted(...)` which just does a < b, which is not the same as localeCompare
   return Object.fromEntries(Object.entries(obj).sort()) as T
@@ -48,12 +49,4 @@ export const isEqual = (a: unknown, b: unknown) => {
   }
 
   return JSON.stringify(a, replacer) === JSON.stringify(b, replacer)
-}
-
-export const maxBy = <T>(list: T[], fn: (x: T) => number) => {
-  const result = list.reduce<{item: T; value: number} | null>((max, item) => {
-    const value = fn(item)
-    return !max || value > max.value ? {item, value} : max
-  }, null)
-  return result?.item
 }

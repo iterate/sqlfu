@@ -1,3 +1,4 @@
+// @ts-nocheck — vendored from @pgkit/schemainspect; relaxed strict mode lives in src/vendor/tsconfig.json. See LICENSE + index.ts.
 import type {Queryable} from './pgkit-compat.js'
 
 export const connection_from_s_or_c = (s_or_c: Queryable) => {

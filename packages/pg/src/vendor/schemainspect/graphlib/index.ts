@@ -1,3 +1,4 @@
+// @ts-nocheck — vendored from @pgkit; relaxed strict mode lives in src/vendor/tsconfig.json. See LICENSE.
 /* eslint-disable mmkal/@typescript-eslint/no-dynamic-delete */
 /* eslint-disable max-depth */
 import {inspect} from 'node:util'

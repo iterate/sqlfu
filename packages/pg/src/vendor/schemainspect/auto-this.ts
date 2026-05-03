@@ -1,3 +1,4 @@
+// @ts-nocheck — vendored from @pgkit/schemainspect; relaxed strict mode lives in src/vendor/tsconfig.json. See LICENSE + index.ts.
 // look at: https://github.com/microsoft/TypeScript/issues/40451 - potential alternatives?
 // also https://github.com/microsoft/TypeScript/issues/26792
 export function AutoThisAssigner<T>(): new (params: T) => T

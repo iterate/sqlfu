@@ -1,3 +1,4 @@
+// @ts-nocheck — vendored from @pgkit/schemainspect; relaxed strict mode lives in src/vendor/tsconfig.json. See LICENSE + index.ts.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import {AutoThisAssigner, SomeOptional, SomeRequired} from './auto-this.js'

@@ -44,13 +44,15 @@ sqlTag.raw = (query: string): SqlFragment => ({sql: query, args: []});
 export const sql = sqlTag;
 
 /**
- * The Queryable surface schemainspect relies on. Intentionally narrower
- * than pgkit's full `Queryable` — if a vendored upstream change ever
- * pulls in another method, expand here rather than the full interface.
+ * The Queryable surface schemainspect + migra rely on. Intentionally
+ * narrower than pgkit's full `Queryable` — if a vendored upstream change
+ * ever pulls in another method, expand here rather than the full interface.
  */
 export interface Queryable {
   any<TRow extends Record<string, unknown>>(query: SqlFragment): Promise<TRow[]>;
   oneFirst<TRow extends Record<string, unknown>>(query: SqlFragment): Promise<TRow[keyof TRow]>;
+  /** Used only by `Migration.apply` to actually run statements; not on the read path. */
+  query(query: SqlFragment): Promise<{rowCount?: number | null}>;
 }
 
 /** Adapt sqlfu's `AsyncClient` to the narrow Queryable shape above. */
@@ -68,6 +70,10 @@ export function adaptAsyncClient(client: AsyncClient): Queryable {
       }
       const firstKey = Object.keys(first)[0];
       return first[firstKey] as TRow[keyof TRow];
+    },
+    async query(query: SqlFragment): Promise<{rowCount?: number | null}> {
+      const result = await client.run({sql: query.sql, args: query.args as never});
+      return {rowCount: result.rowsAffected ?? null};
     },
   };
 }
