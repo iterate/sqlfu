@@ -40,30 +40,42 @@ These are best-guess decisions; user can override on review.
 - [x] `quoteIdentifier` — pg double-quote, identical rule to sqlite.
 - [x] `defaultMigrationTableDdl(tableName)` — pg flavor with `timestamptz`.
 - [x] `withMigrationLock` — `pg_advisory_xact_lock(<deterministic FNV-1a 64-bit key>)` inside `client.transaction`.
-- [x] `diffSchema` — `@pgkit/migra` against two pgkit clients pointing at separate databases. Reads `SQLFU_PG_DIFF_BASELINE_URL` + `SQLFU_PG_DIFF_DESIRED_URL` from env. _Wart: env-var hack; user-facing config field comes later. Documented in source._
-- [x] `materializeTypegenSchema` — temp schema in the URL pointed at by `SQLFU_PG_TYPEGEN_URL`, `set search_path`, apply DDL, dispose drops the schema. _Wart: only the `'desired_schema'` authority is honored — schema-source readers in main sqlfu's typegen are sqlite-only, see "Wart watch" below._
-- [x] `loadSchemaForTypegen` — `pg_class` + `pg_attribute` + `pg_namespace` queries scoped to the materialized schema. Returns the dialect-neutral `RelationInfo` map.
-- [ ] `analyzeQueries` — typed stub returning `{ok: false, error: {name: 'PgAnalyzeQueriesNotImplemented'}}`. Real PREPARE-statement introspection is the largest remaining work; deferred to a follow-up so the rest of the package can land for review.
+- [x] `diffSchema` — `@pgkit/migra` against two ephemeral databases on the configured `adminUrl`. Each scratch db disposed via `Symbol.asyncDispose`.
+- [x] `materializeSchemaSql` (NEW) — `CREATE DATABASE`, apply DDL, render canonical schema via hand-rolled `pg_catalog` queries, drop database. _Wart: simplified DDL renderer; Phase C (vendoring) replaces with full schemainspect-derived extractor._
+- [x] `extractSchemaFromClient` (NEW) — same renderer as above but against a live AsyncClient. Throws on sync clients (no sync pg drivers exist).
+- [x] `materializeTypegenSchema` — `CREATE DATABASE`, apply DDL, return handle. Disposal closes the client and drops the database.
+- [x] `loadSchemaForTypegen` — `pg_class` + `pg_attribute` + `pg_namespace` queries scoped to the materialized database's `public` schema. Returns the dialect-neutral `RelationInfo` map.
+- [x] `analyzeQueries` — `PREPARE` + `pg_prepared_statements.parameter_types` + `EXECUTE`-with-NULLs (in a savepoint) for `result.fields`. Postgres is the parser. _Known limitation: INSERT/UPDATE/DELETE with RETURNING gets params right but result columns come back empty — EXECUTE-with-NULLs hits NOT NULL constraints. Tracked for a follow-up._
 
 ### Main-package additions
 
 - [x] `packages/sqlfu/src/adapters/pg.ts` — `NodePostgresLike` interface + `createNodePostgresClient(pool)` factory. Type-only; users install `pg` separately and pass a `Pool`. Transactions acquire a `PoolClient` via `pool.connect()`.
 
+### Phases
+
+- [x] **Phase A** — factory shape (`pgDialect({adminUrl})`), CREATE DATABASE + DROP DATABASE pattern via `Symbol.asyncDispose`, docker-compose-backed test fixtures (postgres:16 on port 5544). Removed the env-var hack and pglite/pglite-socket entirely. Tests skip with a clear message if pg isn't reachable.
+- [x] **Phase B** — real `analyzeQueries` via `PREPARE` + `pg_prepared_statements` + `EXECUTE`-NULLs.
+- [ ] **Phase C** — vendor `@pgkit/{schemainspect,migra}` and drop `@pgkit/client`. Status: not started in this PR. Plan:
+  1. Replace `@pgkit/client` usage in this package's own modules (`scratch-database.ts`, `schemadiff.ts`, `schema.ts`, `typegen.ts`) with raw `pg` via sqlfu's `createNodePostgresClient`. ~1-2 hours.
+  2. Vendor `@pgkit/schemainspect` source into `packages/pg/src/vendor/schemainspect/`. Adapt its internal `Queryable` usage to sqlfu's `AsyncClient`. License + attribution headers. ~3-4 hours.
+  3. Vendor `@pgkit/migra` similarly. ~1-2 hours.
+  4. Replace the hand-rolled `renderCanonicalSchema` in `src/impl/schema.ts` with a vendored `schemainspect`-derived extractor that handles triggers, sequences, custom types, FDWs, etc.
+  5. Drop `@pgkit/client`, `@pgkit/schemainspect`, `@pgkit/migra` from `package.json` deps.
+
+  Phase C is improvement, not unblock — the package works end-to-end today via Phase A+B. The user requested Phase C for "no pgkit/client dep" and "raw driver access for analyzeQueries". The driver-access goal is already satisfied (Phase B reaches `result.fields` through the pgkit Result type, equivalent to raw pg's). The dep-drop goal is what Phase C buys.
+
 ### Wart watch
 
-- **Materialization needs a real pg server.** Sqlite's typegen materializes to an on-disk file with zero infrastructure; pg's needs a connection. The `host.openScratchDb` interface as currently shaped doesn't help (it returns a sqlite scratch DB). Two choices:
-  1. Read `config.db` (the user-configured connection) and create a temp schema there. Requires `config.db` to be a pg server.
-  2. Add a `scratchDbUrl` config field for pg-only typegen scenarios.
-  Going with option 1 for now; documented in pgDialect.materializeTypegenSchema.
-- **Schema-source readers in typegen are sqlite-specific.** `readSchemaForAuthority` in `typegen/index.ts` reads `definitions.sql`, replays migrations, etc. — but the materialization helpers it calls (`materializeDefinitionsSchemaFor` etc.) all use `host.openScratchDb` (sqlite scratch). The pg version of `materializeTypegenSchema` will need its own readers OR the readers need a dialect-aware split. Going to start with a parallel readers stack in `@sqlfu/pg`; if there's a clean shared seam later, refactor in a follow-up.
+- **Schema-source readers in typegen are sqlite-coupled.** `readSchemaForAuthority` in main sqlfu's `typegen/index.ts` handles four authorities (`desired_schema`, `migrations`, `migration_history`, `live_schema`). The pg dialect today only honors `desired_schema` — the materializer reads `config.definitions` directly. The other three need dialect-aware splitting in main sqlfu (the `materializeMigrationsSchemaFor`/`extractSchemaFromClient` work on the `extract-dialect-interface` branch is a step toward this; finishing the `migrations` + `migration_history` authorities for pg requires an `applyMigrations` integration that respects pg's `withMigrationLock`).
 
 ### Tests
 
 - [x] Unit tests for the easy methods (formatSql, quoteIdentifier, defaultMigrationTableDdl).
-- [x] Integration test: pgDialect.diffSchema across the four cases (matching, create-table, refused-destructive, allowed-destructive). Uses `startPglitePairFixture` (two pglite-socket instances).
+- [x] Integration test: pgDialect.diffSchema across the four cases (matching, create-table, refused-destructive, allowed-destructive). Uses two CREATE DATABASE'd ephemeral databases per test.
 - [x] Integration test: pgDialect.materializeTypegenSchema → loadSchemaForTypegen against a table+view fixture.
-- [x] Integration test: pgDialect.analyzeQueries returns the typed stub.
-- [ ] Integration test: pgDialect.withMigrationLock blocks concurrent calls. _Tricky under pglite-socket because its query queue serializes everything in-process — the lock test would need a real pg server (or two pglite-socket processes), so it's deferred until the main migration-runner integration lands._
+- [x] Integration test: pgDialect.analyzeQueries — SELECT, INSERT...RETURNING (params only), broken-SQL (ok:false).
+- [x] Integration test: pgDialect.materializeSchemaSql with and without excludedTables.
+- [ ] Integration test: pgDialect.withMigrationLock blocks concurrent calls. Two real pg connections needed for genuine concurrency; deferred until the migration-runner integration with pg lands.
 
 ### Out of scope for this PR
 
