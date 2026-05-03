@@ -4,20 +4,20 @@ Probes how `analyzeQueries` handles `$N` placeholders in places the
 regex-based `$N → NULL::<type>` substitution used to mis-substitute
 (`'$1'` inside a string literal, `$$..$$` dollar-quoted body, etc).
 
-All cases now pass thanks to three changes:
+All cases pass thanks to two changes:
 
-  1. `redact-string-literals.ts` — a focused tokenizer that swaps
-     string bodies for safe substitutes before the regex sub or
-     the vendored AST pipeline see them.
+  1. `neutralize-string-literals.ts` — a focused tokenizer that
+     rewrites the parts of SQL that confuse our two downstream
+     pipelines, in-place, while preserving everything else. `$`
+     characters inside string bodies become `SQLFU_DOLLAR` (so the
+     regex `$N` substitution can't match a substring of a literal),
+     and `$$ … $$` dollar-quoted forms become plain `'…'` (so
+     `pgsql-ast-parser` can parse them). One pass; both pipelines
+     consume the same neutralized SQL.
   2. The `getAliasInfo` patch in `vendor/typegen/query/parse.ts` —
      it used to silently drop non-`ref`/`call` columns from per-
      field analysis, so source-less columns like `select 1 as a`
      never reached `isNonNullableField`.
-  3. Per-path redaction substitutes: temp-view path uses
-     `null::text` (cast-safe; survives constant-folding); AST path
-     uses a real single-quoted string literal preserving the
-     original body — so `pgsql-ast-parser` sees a `string` node
-     and `isNonNullableField` infers not-null.
 
 ```sql definitions
 create table t (x int not null);
@@ -62,11 +62,10 @@ parameters:
 
 ## string-literal-with-dollar
 
-`$1` inside a single-quoted string. The redactor strips the literal
-before the regex `$N` sub sees it (so the WHERE-clause `$1` is the
-only one substituted), and pgsql-ast-parser handles the original
-single-quoted string fine — so `isNonNullableField` sees a real
-string-literal node and infers not-null.
+`$1` inside a single-quoted string. The neutralizer rewrites the
+in-string `$` to `SQLFU_DOLLAR` so the regex `$N` sub matches only
+the WHERE-clause parameter; pgsql-ast-parser sees a real
+string-literal node and `isNonNullableField` infers not-null.
 
 ```sql
 select 'hello $1 world' as msg, x from t where x = $1
@@ -120,12 +119,11 @@ parameters:
 
 ## dollar-quoted-with-dollar
 
-`$1` inside a `$$…$$` dollar-quoted string. The redactor strips
-dollar-quoted bodies because pgsql-ast-parser has no grammar for
-`$$…$$`, replacing them with a single-quoted string literal
-preserving the original body (with `'` → `''` escapes). The AST
-pipeline sees a real `string` node and `isNonNullableField`
-correctly infers not-null.
+`$1` inside a `$$…$$` dollar-quoted string. The neutralizer
+rewrites dollar-quoted forms to single-quoted (pgsql-ast-parser
+has no grammar for `$$…$$`), preserving the body with `'` → `''`
+escapes and `$` → `SQLFU_DOLLAR` neutralisation. The AST sees a
+real `string` node and `isNonNullableField` infers not-null.
 
 ```sql
 select $$hello $1 world$$ as msg, x from t where x = $1
@@ -144,8 +142,8 @@ parameters:
 ## quoted-identifier-with-dollar
 
 A column named `"$1"` (yes, quoted identifiers can be that weird).
-The redactor recognises quoted identifiers as a distinct lexical
-form so the `$1` inside doesn't get mangled by the regex sub.
+The neutralizer recognises quoted identifiers as a distinct
+lexical form so the `$1` inside isn't mistaken for a string body.
 
 ```sql
 select "$1" from weirdo where "$1" = $1

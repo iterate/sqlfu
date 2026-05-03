@@ -20,7 +20,7 @@ import type {AsyncClient, Dialect, MaterializedTypegenSchema, QueryAnalysis, Que
 
 import {adaptAsyncClient} from '../vendor/schemainspect/pgkit-compat.js';
 import {getColumnInfo, type DescribedQuery} from '../vendor/typegen/index.js';
-import {redactAllStringLiterals, redactDollarQuotedStrings} from './redact-string-literals.js';
+import {neutralizeStringLiterals} from './neutralize-string-literals.js';
 import {createTempDatabase, type TempDatabaseHandle} from './scratch-database.js';
 
 type PgMaterializedHandle = MaterializedTypegenSchema & {
@@ -200,35 +200,30 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
       });
       const paramTypes = paramRow[0]?.parameter_types ?? [];
 
+      // Neutralize string literals before either downstream pass sees
+      // the SQL. `neutralizeStringLiterals` rewrites `$` characters
+      // *inside* string bodies to a benign placeholder so the regex
+      // `$N` substitution can't accidentally match a substring of a
+      // literal, and rewrites `$$ … $$` dollar-quoted forms to plain
+      // `'…'` so `pgsql-ast-parser` can parse them. See the file
+      // header for the empirical safety argument.
+      const neutralizedSql = neutralizeStringLiterals(query.sqlContent);
+
       // Pass 1: column baseline via temp view (Select-like queries only).
-      // The temp view's body goes through `redactAllStringLiterals` to
-      // strip every `'…'` / E'…' / $$…$$ body — that way any `$N` left
-      // in the SQL is necessarily a real parameter, never a substring of
-      // a literal. The redacted form survives any cast chain because
-      // pg accepts NULL through every conversion at constant-folding
-      // time. See `redact-string-literals.ts` for the sentinel and the
-      // marker comment we embed.
       const baselineColumns =
         queryType === 'Select'
-          ? await captureColumnBaseline(
-              client,
-              redactAllStringLiterals(query.sqlContent),
-              paramTypes,
-              viewName,
-            )
+          ? await captureColumnBaseline(client, neutralizedSql, paramTypes, viewName)
           : null;
 
-      // Pass 2: vendored AST pipeline. The vendored `pgsql-ast-parser`
-      // has no grammar for dollar-quoted strings, so we strip those
-      // (and only those) before handing the SQL over. Single-quoted
-      // strings stay intact — the parser handles them, and a future
-      // literal-not-null inference pass needs them visible. The `fields`
-      // here are intentionally empty; getColumnInfo populates result
+      // Pass 2: vendored AST pipeline. The same neutralized SQL flows
+      // through here — the AST sees real `string` literal nodes for
+      // both single-quoted and (formerly) dollar-quoted forms, so
+      // `isNonNullableField` can infer literal-not-null uniformly.
+      // `fields` is intentionally empty; getColumnInfo populates result
       // columns itself via the in-pg analyzer function + AST.
-      const sqlForAst = redactDollarQuotedStrings(query.sqlContent);
       const describedQuery: DescribedQuery = {
-        sql: sqlForAst,
-        template: [sqlForAst],
+        sql: neutralizedSql,
+        template: [neutralizedSql],
         fields: [],
         parameters: paramTypes.map((typeName, index) => ({
           name: `$${index + 1}`,
