@@ -123,7 +123,7 @@ async function createAuthorityFixture(input: {
       importExtension: '.js',
       authority: input.authority ?? 'desired_schema',
     },
-    dialect: sqliteDialect,
+    dialect: sqliteDialect(),
   };
 
   await writeFixtureFiles(root, {

@@ -2,7 +2,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import {analyzeVendoredTypesqlQueries} from './analyze-vendored-typesql.js';
-import {assertSqliteMaterialized, sqliteDialect, type DialectColumnInfo, type RelationInfo} from '../dialect.js';
+import {
+  assertSqliteMaterialized,
+  registerSqliteTypegenImpls,
+  type DialectColumnInfo,
+  type RelationInfo,
+} from '../dialect.js';
+import {quoteIdentifier as sqliteQuoteIdentifier} from '../schemadiff/sqlite/identifiers.js';
 import type {
   AdHocQueryAnalysis,
   JsonSchema,
@@ -398,7 +404,7 @@ async function readDefinitionsAsSchemaSql(config: SqlfuProjectConfig, host: Sqlf
     }
     throw error;
   }
-  return materializeDefinitionsSchemaFor(host, definitionsSql);
+  return materializeDefinitionsSchemaFor(host, definitionsSql, {dialect: config.dialect});
 }
 
 async function replayMigrationFilesAsSchemaSql(config: SqlfuProjectConfig, host: SqlfuHost): Promise<string> {
@@ -408,10 +414,12 @@ async function replayMigrationFilesAsSchemaSql(config: SqlfuProjectConfig, host:
     );
   }
   const migrations = await readMigrationFiles(host, config);
-  // Concatenate into one SQL blob and replay raw. Going through `materializeMigrationsSchemaFor`
-  // would apply through `applyMigrations`, which creates the `sqlfu_migrations` bookkeeping
-  // table — noise for typegen, which wants the user's schema reflected as-is.
-  return materializeDefinitionsSchemaFor(host, migrations.map((migration) => migration.content).join('\n'));
+  // Concatenate into one SQL blob and replay raw. The materializeSchemaSql
+  // dialect method handles scratch-DB creation + schema extraction; no
+  // `applyMigrations` round-trip means no bookkeeping table noise.
+  return materializeDefinitionsSchemaFor(host, migrations.map((migration) => migration.content).join('\n'), {
+    dialect: config.dialect,
+  });
 }
 
 async function replayMigrationHistoryAsSchemaSql(config: SqlfuProjectConfig, host: SqlfuHost): Promise<string> {
@@ -437,7 +445,9 @@ async function replayMigrationHistoryAsSchemaSql(config: SqlfuProjectConfig, hos
     matched.push(file);
   }
 
-  return materializeDefinitionsSchemaFor(host, matched.map((migration) => migration.content).join('\n'));
+  return materializeDefinitionsSchemaFor(host, matched.map((migration) => migration.content).join('\n'), {
+    dialect: config.dialect,
+  });
 }
 
 async function readLiveSchema(config: SqlfuProjectConfig): Promise<string> {
@@ -447,7 +457,7 @@ async function readLiveSchema(config: SqlfuProjectConfig): Promise<string> {
   // bookkeeping is created in the first place. Without a `migrations` block there's no
   // bookkeeping in play; default to sqlfu's table name so we still strip it if present.
   const excludedTable = presetTableName(config.migrations?.preset ?? 'sqlfu');
-  return extractSchema(source.client, 'main', {excludedTables: [excludedTable]});
+  return config.dialect.extractSchemaFromClient(source.client, {excludedTables: [excludedTable]});
 }
 
 async function openLiveDb(
@@ -2922,7 +2932,7 @@ export async function loadSchema(databasePath: string): Promise<ReadonlyMap<stri
 
 async function loadRelationColumns(client: Client, relationName: string): Promise<ReadonlyMap<string, TsColumn>> {
   const pragmaResult = await client.all<Record<string, unknown>>({
-    sql: `PRAGMA table_xinfo(${sqliteDialect.quoteIdentifier(relationName)})`,
+    sql: `PRAGMA table_xinfo(${sqliteQuoteIdentifier(relationName)})`,
     args: [],
   });
 
@@ -3210,22 +3220,25 @@ function mapSqliteTypeToTs(columnType: string): string {
   return 'number';
 }
 
-// Side-effect registration: install real sqlite typegen impls onto
-// `sqliteDialect`. See dialect.ts header for why this lives here. Heavy
-// entries (CLI, api/exports, ui/server) all transitively load this module,
-// so the real methods are in place before any caller invokes them.
-sqliteDialect.materializeTypegenSchema = async (host, config) => {
-  const databasePath = await materializeTypegenDatabase(config, host);
-  return {
-    dialect: 'sqlite',
-    databasePath,
-    [Symbol.asyncDispose]: async () => {
-      // Sqlite leaves the typegen db on disk between runs — the next
-      // materialize wipes it. No active disposal needed.
-    },
-  } satisfies AsyncDisposable & {dialect: string; databasePath: string};
-};
-sqliteDialect.loadSchemaForTypegen = async (materialized) => loadSchema(assertSqliteMaterialized(materialized).databasePath);
-sqliteDialect.analyzeQueries = async (materialized, queries) =>
-  analyzeVendoredTypesqlQueries(assertSqliteMaterialized(materialized).databasePath, queries);
+// Side-effect registration: install real sqlite typegen impls so they're
+// baked into every dialect produced by `sqliteDialect()` after this module
+// loads. See dialect.ts header for why this lives here. Heavy entries (CLI,
+// api/exports, ui/server) all transitively load this module, so the real
+// methods are in place before any caller invokes them.
+registerSqliteTypegenImpls({
+  materializeTypegenSchema: async (host, config) => {
+    const databasePath = await materializeTypegenDatabase(config, host);
+    return {
+      dialect: 'sqlite',
+      databasePath,
+      [Symbol.asyncDispose]: async () => {
+        // Sqlite leaves the typegen db on disk between runs — the next
+        // materialize wipes it. No active disposal needed.
+      },
+    } satisfies AsyncDisposable & {dialect: string; databasePath: string};
+  },
+  loadSchemaForTypegen: async (materialized) => loadSchema(assertSqliteMaterialized(materialized).databasePath),
+  analyzeQueries: async (materialized, queries) =>
+    analyzeVendoredTypesqlQueries(assertSqliteMaterialized(materialized).databasePath, queries),
+});
 

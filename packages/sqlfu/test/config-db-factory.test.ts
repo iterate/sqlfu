@@ -71,7 +71,7 @@ async function createFactoryFixture(input: {migrations?: Record<string, string>;
     definitions: path.join(root, 'definitions.sql'),
     queries: path.join(root, 'sql'),
     generate: {validator: null, prettyErrors: true, sync: false, importExtension: '.js', authority: 'desired_schema'},
-    dialect: sqliteDialect,
+    dialect: sqliteDialect(),
   };
 
   const host = await createNodeHost();

@@ -40,7 +40,7 @@ test('the goto shape works when destructive drops are explicitly enabled', async
       ],
     });
 
-    const diff = await sqliteDialect.diffSchema(sharedHost, {
+    const diff = await sqliteDialect().diffSchema(sharedHost, {
       baselineSql: await extractSchema(liveClient, 'main', {excludedTables: ['sqlfu_migrations']}),
       desiredSql: await extractSchema(targetClient, 'main', {excludedTables: ['sqlfu_migrations']}),
       allowDestructive: true,
@@ -83,7 +83,7 @@ test('diffSchemaSql rebuilds a table when sqlite needs semantic constraint chang
     `);
     await targetClient.raw(`create table a(b text not null unique);`);
 
-    const diff = await sqliteDialect.diffSchema(sharedHost, {
+    const diff = await sqliteDialect().diffSchema(sharedHost, {
       baselineSql: await extractSchema(liveClient),
       desiredSql: await extractSchema(targetClient),
       allowDestructive: true,
@@ -140,12 +140,12 @@ for (const fixtureCase of migraEquivalentFixtureCases) {
       ]);
 
       const [baselineToDesired, desiredToBaseline] = await Promise.all([
-        sqliteDialect.diffSchema(sharedHost, {
+        sqliteDialect().diffSchema(sharedHost, {
           baselineSql: baselineSchema,
           desiredSql: desiredSchema,
           allowDestructive: true,
         }),
-        sqliteDialect.diffSchema(sharedHost, {
+        sqliteDialect().diffSchema(sharedHost, {
           baselineSql: desiredSchema,
           desiredSql: baselineSchema,
           allowDestructive: true,
