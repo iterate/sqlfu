@@ -122,14 +122,59 @@ test('pgDialect.materializeTypegenSchema + loadSchemaForTypegen returns the rela
   });
 });
 
-test('pgDialect.analyzeQueries currently returns the typed stub', {timeout: 30_000}, async () => {
-  const sql = `create table users (id integer primary key, name text not null);`;
+test('pgDialect.analyzeQueries infers parameter and result types via PREPARE introspection', {timeout: 30_000}, async () => {
+  const sql = `create table users (id integer primary key, name text not null, bio text);`;
   await withProject(sql, async (config, host, dialect) => {
     await using materialized = await dialect.materializeTypegenSchema(host, config);
     const analyses = await dialect.analyzeQueries(materialized, [
-      {sqlPath: 'find-user.sql', sqlContent: 'select id, name from users where id = $1'},
+      {sqlPath: 'find-user.sql', sqlContent: 'select id, name, bio from users where id = $1'},
     ]);
+
     expect(analyses).toHaveLength(1);
-    expect(analyses[0]).toMatchObject({ok: false});
+    const [analysis] = analyses;
+    if (!analysis.ok) {
+      throw new Error(`expected ok analysis, got error: ${analysis.error.description}`);
+    }
+    expect(analysis.descriptor.queryType).toBe('Select');
+    expect(analysis.descriptor.parameters).toEqual([
+      {name: '$1', tsType: 'number', notNull: false, toDriver: 'identity', isArray: false},
+    ]);
+    expect(analysis.descriptor.columns.map((c) => c.name)).toEqual(['id', 'name', 'bio']);
+    expect(analysis.descriptor.columns.map((c) => c.tsType)).toEqual(['number', 'string', 'string']);
+  });
+});
+
+test('pgDialect.analyzeQueries reports parameters for INSERT', {timeout: 30_000}, async () => {
+  // INSERT/UPDATE/DELETE with RETURNING is a known limitation today —
+  // EXECUTE-with-NULLs hits NOT NULL constraints, so the result-column
+  // list comes back empty. Parameters are still reported correctly via
+  // pg_prepared_statements. Lifting result-columns for non-SELECT queries
+  // is a follow-up (likely needs CREATE TEMP VIEW or pg17's
+  // pg_prepared_statements.result_types).
+  const sql = `create table posts (id integer primary key, title text not null);`;
+  await withProject(sql, async (config, host, dialect) => {
+    await using materialized = await dialect.materializeTypegenSchema(host, config);
+    const analyses = await dialect.analyzeQueries(materialized, [
+      {sqlPath: 'create-post.sql', sqlContent: 'insert into posts (title) values ($1) returning id, title'},
+    ]);
+    const [analysis] = analyses;
+    if (!analysis.ok) {
+      throw new Error(`expected ok analysis, got error: ${analysis.error.description}`);
+    }
+    expect(analysis.descriptor.queryType).toBe('Insert');
+    expect(analysis.descriptor.parameters).toHaveLength(1);
+    expect(analysis.descriptor.parameters[0]).toMatchObject({tsType: 'string'});
+    // Columns may be empty today — see comment above.
+  });
+});
+
+test('pgDialect.analyzeQueries reports prepare-time errors as ok:false', {timeout: 30_000}, async () => {
+  const sql = `create table users (id integer primary key);`;
+  await withProject(sql, async (config, host, dialect) => {
+    await using materialized = await dialect.materializeTypegenSchema(host, config);
+    const analyses = await dialect.analyzeQueries(materialized, [
+      {sqlPath: 'broken.sql', sqlContent: 'select id from nonexistent_table'},
+    ]);
+    expect(analyses[0].ok).toBe(false);
   });
 });

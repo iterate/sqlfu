@@ -128,24 +128,138 @@ async function loadRelationColumns(
 }
 
 export const pgAnalyzeQueries: Dialect['analyzeQueries'] = async (materialized, queries) => {
-  // Sanity-check the handle so misuse fails loudly even before Phase B.
-  assertPgHandle(materialized);
-
-  // Phase B will replace this stub with PREPARE-statement introspection
-  // via raw `pg`. The materialize handle's pgkit client doesn't expose the
-  // wire-protocol Describe message, so the real impl needs direct driver
-  // access — which is why this lands after vendoring (Phase C).
-  return queries.map((query): QueryAnalysis => ({
-    sqlPath: query.sqlPath,
-    ok: false,
-    error: {
-      name: 'PgAnalyzeQueriesNotImplemented',
-      description:
-        'pgDialect.analyzeQueries is not yet implemented. The PREPARE-introspection path lands once Phase C ' +
-        'vendors @pgkit/{client,schemainspect,migra} and the dialect can reach the raw pg driver.',
-    },
-  }));
+  const {client} = assertPgHandle(materialized);
+  const analyses: QueryAnalysis[] = [];
+  for (const query of queries) {
+    analyses.push(await analyzeOneQuery(client, query));
+  }
+  return analyses;
 };
+
+/**
+ * Analyze a single query by:
+ *
+ *   1. Naming a temporary prepared statement.
+ *   2. `BEGIN` (so the inevitable `EXECUTE` step runs in a tx that we'll
+ *      `ROLLBACK` — protects against side effects from non-SELECT queries).
+ *   3. `PREPARE foo AS <user-sql>` — postgres parses + plans, attaches a
+ *      `parameter_types` (regtype[]) to `pg_prepared_statements`.
+ *   4. Read parameter types from `pg_prepared_statements`.
+ *   5. `EXECUTE foo(NULL, NULL, …)` to provoke a `RowDescription` reply
+ *      whose `dataTypeID`s give us the result column types.
+ *   6. `ROLLBACK`.
+ *
+ * Postgres is the parser; no third-party AST dep involved. Compared to
+ * sqlite's typesql route this is simpler in code and more accurate
+ * (postgres knows e.g. that `count(*)` is `bigint`, that `coalesce(a,b)`
+ * picks the more specific type, etc.).
+ */
+async function analyzeOneQuery(client: PgkitClient, query: QueryAnalysisInput): Promise<QueryAnalysis> {
+  const stmtName = `sqlfu_analyze_${Math.random().toString(36).slice(2, 12)}`;
+  const queryType = classifyQuery(query.sqlContent);
+
+  try {
+    await client.query(client.sql.raw('begin'));
+    try {
+      // PREPARE the statement — pg parses and validates here.
+      await client.query(client.sql.raw(`prepare ${quoteIdent(stmtName)} as ${query.sqlContent}`));
+
+      // Read param types via pg_prepared_statements. `parameter_types` is a
+      // regtype[] (textual type names like `'integer'`, `'text'`).
+      const paramRow = await client.maybeOne<{parameter_types: string[]}>(client.sql`
+        select parameter_types::text[] as parameter_types
+        from pg_prepared_statements
+        where name = ${stmtName}
+      `);
+      const paramTypes = paramRow?.parameter_types ?? [];
+
+      // EXECUTE with NULLs to provoke RowDescription. Wraps in savepoint
+      // so a failure (e.g. NOT NULL violation in INSERT VALUES (NULL))
+      // doesn't abort our outer rollback.
+      let resultFields: {name: string; dataTypeID: number}[] = [];
+      await client.query(client.sql.raw('savepoint exec_probe'));
+      try {
+        const executeArgs = paramTypes.map(() => 'null').join(', ');
+        const executeSql = paramTypes.length === 0
+          ? `execute ${quoteIdent(stmtName)}`
+          : `execute ${quoteIdent(stmtName)}(${executeArgs})`;
+        const result = await client.query(client.sql.raw(executeSql));
+        resultFields = result.fields.map((field) => ({name: field.name, dataTypeID: field.dataTypeID}));
+      } catch {
+        // EXECUTE blew up. We can still report parameter types but result
+        // columns are unknown — output an empty columns array.
+        await client.query(client.sql.raw('rollback to savepoint exec_probe'));
+      }
+
+      const parameters = paramTypes.map((typeName, index) => ({
+        name: `$${index + 1}`,
+        tsType: pgTypeToTs(typeName),
+        notNull: false, // pg can't tell us null-aware param types — assume nullable
+        toDriver: 'identity',
+        isArray: typeName.endsWith('[]'),
+      }));
+
+      const columns = await Promise.all(
+        resultFields.map(async (field) => ({
+          name: field.name,
+          tsType: await oidToTsType(client, field.dataTypeID),
+          notNull: false, // result-column nullability requires deeper analysis; punt
+        })),
+      );
+
+      return {
+        sqlPath: query.sqlPath,
+        ok: true,
+        descriptor: {
+          sql: query.sqlContent,
+          queryType,
+          multipleRowsResult: queryType === 'Select' || /\breturning\b/iu.test(query.sqlContent),
+          columns,
+          parameters,
+        },
+      };
+    } finally {
+      await client.query(client.sql.raw('rollback'));
+    }
+  } catch (error) {
+    return {
+      sqlPath: query.sqlPath,
+      ok: false,
+      error: {
+        name: 'PgQueryAnalysisFailed',
+        description: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+function classifyQuery(sql: string): 'Select' | 'Insert' | 'Update' | 'Delete' | 'Copy' | 'Ddl' {
+  const stripped = sql.replace(/^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)+/u, '').toLowerCase();
+  if (stripped.startsWith('select') || stripped.startsWith('with') || stripped.startsWith('values')) return 'Select';
+  if (stripped.startsWith('insert')) return 'Insert';
+  if (stripped.startsWith('update')) return 'Update';
+  if (stripped.startsWith('delete')) return 'Delete';
+  if (stripped.startsWith('copy')) return 'Copy';
+  return 'Ddl';
+}
+
+const oidTypeNameCache = new Map<number, string>();
+
+async function oidToTsType(client: PgkitClient, oid: number): Promise<string> {
+  let typeName = oidTypeNameCache.get(oid);
+  if (typeName == null) {
+    const row = await client.maybeOne<{type_name: string}>(client.sql`
+      select format_type(${oid}::oid, null) as type_name
+    `);
+    typeName = row?.type_name ?? 'unknown';
+    oidTypeNameCache.set(oid, typeName);
+  }
+  return pgTypeToTs(typeName);
+}
+
+function quoteIdent(name: string): string {
+  return `"${name.replaceAll('"', '""')}"`;
+}
 
 // Map a postgres `format_type` output to a TypeScript type. Conservative for
 // step one — covers the common types and falls back to `unknown`.
