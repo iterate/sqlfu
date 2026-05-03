@@ -23,8 +23,8 @@
     }
   },
   "scripts": {
-    "build": "tsgo -p tsconfig.build.json",
-    "typecheck": "tsgo -p tsconfig.typecheck.json",
+    "build": "tsgo -p tsconfig.build.json && tsgo -p src/vendor/tsconfig.build.json",
+    "typecheck": "tsgo -p tsconfig.typecheck.json && tsgo -p src/vendor/tsconfig.json",
     "test": "vitest"
   },
   "dependencies": {

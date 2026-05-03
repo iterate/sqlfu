@@ -102,9 +102,14 @@ export function applyMigrations(client: Client, params: ApplyMigrationsParams): 
   if (client.sync) {
     return driveSync(applyMigrationsGen(client, params));
   }
+  // tsgo-narrowing wart: even though `client.sync === true` early-returns
+  // above, the discriminated-union narrowing on the else path doesn't
+  // always carry through into the dialect call below. Manually re-typing
+  // via cast keeps the call site honest.
+  const asyncClient = client as AsyncClient;
   const dialect = params.dialect ?? sqliteDialect();
-  const run = () => driveAsync(applyMigrationsGen(client, params));
-  return dialect.withMigrationLock ? dialect.withMigrationLock(client, run) : run();
+  const run = () => driveAsync(applyMigrationsGen(asyncClient, params));
+  return dialect.withMigrationLock ? dialect.withMigrationLock(asyncClient, run) : run();
 }
 
 export function baselineMigrationHistory(client: SyncClient, params: BaselineParams): void;
