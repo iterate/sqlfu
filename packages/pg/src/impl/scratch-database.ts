@@ -7,19 +7,18 @@
 // Usage:
 //
 //   await using temp = await createTempDatabase(adminUrl);
-//   const client = createClient(temp.url);
-//   try {
-//     await client.query(client.sql.raw('create table ...'));
-//     // ...
-//   } finally {
-//     await client.end();
-//   }
+//   // ... connect to temp.url, do work ...
 //
 // The handle is `AsyncDisposable` — `await using` drops the database when
 // the block exits, no matter how the block exits (early return, throw,
 // success). No env-var indirection; the admin URL is supplied by the
 // dialect factory's config.
-import {createClient, type Client as PgkitClient} from '@pgkit/client';
+//
+// Uses `pg` directly (not `@pgkit/client`) to keep the scratch-management
+// layer light. Dialect modules that need richer query ergonomics still
+// reach for pgkit when they construct their own per-task clients against
+// the scratch URL.
+import {Client as PgClient} from 'pg';
 
 export interface TempDatabaseHandle extends AsyncDisposable {
   /** Connection URL pointing at the freshly-created database. */
@@ -40,12 +39,9 @@ export interface TempDatabaseHandle extends AsyncDisposable {
  */
 export async function createTempDatabase(adminUrl: string): Promise<TempDatabaseHandle> {
   const databaseName = uniqueDatabaseName();
-  const adminClient = createClient(adminUrl);
-  try {
-    await adminClient.query(adminClient.sql.raw(`create database ${quoteIdent(databaseName)}`));
-  } finally {
-    await adminClient.end();
-  }
+  await runOnAdmin(adminUrl, async (admin) => {
+    await admin.query(`create database ${quoteIdent(databaseName)}`);
+  });
   const url = swapDatabasePath(adminUrl, databaseName);
   return {
     url,
@@ -55,12 +51,9 @@ export async function createTempDatabase(adminUrl: string): Promise<TempDatabase
       // The dialect impls own their connections and must close them before
       // disposal. As a belt-and-braces, we issue a `with (force)` drop
       // (pg14+) so any leftover idle session gets terminated.
-      const cleanup = createClient(adminUrl);
-      try {
-        await cleanup.query(cleanup.sql.raw(`drop database if exists ${quoteIdent(databaseName)} with (force)`));
-      } finally {
-        await cleanup.end();
-      }
+      await runOnAdmin(adminUrl, async (admin) => {
+        await admin.query(`drop database if exists ${quoteIdent(databaseName)} with (force)`);
+      });
     },
   };
 }
@@ -104,17 +97,13 @@ export async function createTempDatabasePair(
   };
 }
 
-/** Convenience: open a scratch db, hand a connected client to `fn`, dispose. */
-export async function withTempDatabaseClient<T>(
-  adminUrl: string,
-  fn: (client: PgkitClient) => Promise<T>,
-): Promise<T> {
-  await using temp = await createTempDatabase(adminUrl);
-  const client = createClient(temp.url);
+async function runOnAdmin<T>(adminUrl: string, fn: (admin: PgClient) => Promise<T>): Promise<T> {
+  const admin = new PgClient({connectionString: adminUrl});
+  await admin.connect();
   try {
-    return await fn(client);
+    return await fn(admin);
   } finally {
-    await client.end();
+    await admin.end();
   }
 }
 

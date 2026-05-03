@@ -38,6 +38,9 @@ importers:
       '@pgkit/schemainspect':
         specifier: ^0.6.1
         version: 0.6.1(pg-query-stream@4.10.3(pg@8.20.0))
+      pg:
+        specifier: ^8.13.0
+        version: 8.20.0
       sql-formatter:
         specifier: ^15.7.0
         version: 15.7.3
@@ -54,9 +57,6 @@ importers:
       '@typescript/native-preview':
         specifier: ^7.0.0-dev.20260414.1
         version: 7.0.0-dev.20260420.1
-      pg:
-        specifier: ^8.13.0
-        version: 8.20.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
