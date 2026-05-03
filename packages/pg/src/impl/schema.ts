@@ -1,30 +1,27 @@
 // `materializeSchemaSql` + `extractSchemaFromClient` for postgres.
 //
-// `materializeSchemaSql` opens a scratch database, applies the user's DDL,
-// extracts the canonical schema, drops the database. Used by the diff
-// orchestration in main sqlfu's api/internal.ts (`materializeDefinitionsSchemaFor`,
-// `materializeMigrationsSchemaFor`).
+// Both methods share the same `renderCanonicalSchema` engine, which runs a
+// fixed set of `pg_catalog` queries through a `QueryRunner` callback. This
+// keeps the per-driver surface tiny — the runner is the only thing each
+// caller has to supply.
 //
-// `extractSchemaFromClient` reads schema from a live client. Used by the
-// `live_schema` typegen authority and by drift checks against the user's
-// production database. The output is a sequence of `create table` /
-// `create view` / index DDL statements joined into one canonical string.
+// Driver-agnostic: this module no longer reaches for `@pgkit/client`.
+// `materializeSchemaSql` opens a connection via sqlfu's
+// `createNodePostgresClient` (which wraps a `pg.Pool`); `extractSchemaFromClient`
+// uses the `AsyncClient` the caller passes in. Either way we go through
+// sqlfu's `AsyncClient` interface — single point where `pg` is touched.
 //
 // **Wart:** the schema-extraction path here uses ad-hoc pg_catalog queries.
-// We don't go through `@pgkit/schemainspect`'s richer schema-to-DDL render
-// because that would couple us to its internal types. Phase C (vendoring
-// schemainspect with adapters for sqlfu's AsyncClient) will replace this
-// with a more complete extractor that handles triggers, sequences,
-// custom types, foreign-data wrappers, etc.
-import {createClient} from '@pgkit/client';
-import type {AsyncClient, Dialect, SqlfuHost} from 'sqlfu';
+// Phase C5 (vendoring schemainspect with adapters for sqlfu's AsyncClient)
+// will replace this with a more complete extractor that handles triggers,
+// sequences, custom types, foreign-data wrappers, etc.
+import {Pool} from 'pg';
+import {createNodePostgresClient, type AsyncClient, type Dialect, type SqlfuHost} from 'sqlfu';
 
 import {createTempDatabase} from './scratch-database.js';
 
-// SQL queries shared between the two execution paths (pgkit client used
-// inside materializeSchemaSql; sqlfu AsyncClient used inside
-// extractSchemaFromClient). Both clients produce the same row shape — only
-// the placeholder syntax (positional `$1`) is dialect-portable here.
+// SQL queries shared between the two execution paths. Both use positional
+// `$1` placeholders.
 
 const TABLE_LIST_SQL = `
   select c.relname as name
@@ -93,25 +90,28 @@ type ColumnRow = {name: string; type_name: string; not_null: boolean; default_ex
 >;
 type DefRow = {def: string} & Record<string, unknown>;
 
-/**
- * Run a parametrized pg query. Each impl-side adapter (pgkit-backed or
- * sqlfu-AsyncClient-backed) supplies its own runner.
- */
+/** Run a parametrized pg query through a sqlfu `AsyncClient`. */
 type QueryRunner = <TRow extends Record<string, unknown>>(sql: string, args: unknown[]) => Promise<TRow[]>;
+
+function makeRunner(client: AsyncClient): QueryRunner {
+  return async <TRow extends Record<string, unknown>>(sql: string, args: unknown[]) =>
+    (await client.all({sql, args: args as never})) as TRow[];
+}
 
 export const pgMaterializeSchemaSql = (adminUrl: string): Dialect['materializeSchemaSql'] => {
   return async (_host: SqlfuHost, input) => {
     await using temp = await createTempDatabase(adminUrl);
-    const client = createClient(temp.url);
+    // Single-connection pool — we only use it for one pass of DDL + queries
+    // before disposal.
+    const pool = new Pool({connectionString: temp.url, max: 1});
+    const client = createNodePostgresClient(pool);
     try {
       if (input.sourceSql.trim()) {
-        await client.query(client.sql.raw(input.sourceSql));
+        await client.raw(input.sourceSql);
       }
-      const runner: QueryRunner = async <TRow extends Record<string, unknown>>(sql: string, args: unknown[]) =>
-        (await client.any<TRow>(client.sql.raw<TRow>(sql, args))) as TRow[];
-      return await renderCanonicalSchema(runner, {excludedTables: input.excludedTables ?? []});
+      return await renderCanonicalSchema(makeRunner(client), {excludedTables: input.excludedTables ?? []});
     } finally {
-      await client.end();
+      await pool.end();
     }
   };
 };
@@ -120,9 +120,7 @@ export const pgExtractSchemaFromClient: Dialect['extractSchemaFromClient'] = asy
   if (client.sync) {
     throw new Error('pgDialect.extractSchemaFromClient requires an AsyncClient (no sync pg drivers exist).');
   }
-  const runner: QueryRunner = async (sql, args) =>
-    (await (client as AsyncClient).all({sql, args: args as never})) as never;
-  return renderCanonicalSchema(runner, {excludedTables: options?.excludedTables ?? []});
+  return renderCanonicalSchema(makeRunner(client), {excludedTables: options?.excludedTables ?? []});
 };
 
 async function renderCanonicalSchema(

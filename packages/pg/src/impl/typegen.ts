@@ -1,22 +1,29 @@
 // Postgres typegen — three methods on the Dialect contract:
 //
-//   1. `materializeTypegenSchema` — open a scratch database (CREATE DATABASE
+//   1. `materializeTypegenSchema` — open a scratch database (`CREATE DATABASE`
 //      via the configured admin URL), apply the user's DDL, return a handle
 //      whose `Symbol.asyncDispose` drops the database.
 //   2. `loadSchemaForTypegen` — query `pg_catalog` for tables/views/columns,
 //      produce the dialect-neutral `RelationInfo` map.
 //   3. `analyzeQueries` — `PREPARE` each query and read parameter+result
-//      types from `pg_catalog`. Postgres becomes the parser. (Currently a
-//      typed stub; real impl lands in Phase B.)
-import {createClient, type Client as PgkitClient} from '@pgkit/client';
-import type {Dialect, MaterializedTypegenSchema, QueryAnalysis, QueryAnalysisInput, RelationInfo} from 'sqlfu';
+//      types from `pg_catalog`. Postgres becomes the parser. Phase C5 will
+//      layer AST-driven query rewriting (CTE flattening, DML+RETURNING →
+//      SELECT) and pg17 result_types on top.
+//
+// Driver-agnostic: every pg call here goes through sqlfu's `AsyncClient`
+// (via `createNodePostgresClient`). The only places `pg.Pool` is
+// instantiated are this file and `schema.ts`. Vendored schemainspect/migra
+// (Phase C2/C3) will adapt to the same interface.
+import {Pool} from 'pg';
+import {createNodePostgresClient} from 'sqlfu';
+import type {AsyncClient, Dialect, MaterializedTypegenSchema, QueryAnalysis, QueryAnalysisInput, RelationInfo} from 'sqlfu';
 
 import {createTempDatabase, type TempDatabaseHandle} from './scratch-database.js';
 
 type PgMaterializedHandle = MaterializedTypegenSchema & {
   readonly dialect: 'postgresql';
   readonly databaseName: string;
-  readonly client: PgkitClient;
+  readonly client: AsyncClient;
 };
 
 function assertPgHandle(materialized: MaterializedTypegenSchema): PgMaterializedHandle {
@@ -40,14 +47,15 @@ export const pgMaterializeTypegenSchema = (adminUrl: string): Dialect['materiali
     const definitionsSql = await readDefinitionsSqlBestEffort(host, config);
 
     const temp = await createTempDatabase(adminUrl);
-    const client = createClient(temp.url);
+    const pool = new Pool({connectionString: temp.url, max: 1});
+    const client = createNodePostgresClient(pool);
     try {
       if (definitionsSql.trim()) {
-        await client.query(client.sql.raw(definitionsSql));
+        await client.raw(definitionsSql);
       }
     } catch (error) {
       // Materialization failed — release the scratch db before propagating.
-      await client.end();
+      await pool.end();
       await temp[Symbol.asyncDispose]();
       throw error;
     }
@@ -58,7 +66,7 @@ export const pgMaterializeTypegenSchema = (adminUrl: string): Dialect['materiali
       client,
       [Symbol.asyncDispose]: async () => {
         try {
-          await client.end();
+          await pool.end();
         } finally {
           await temp[Symbol.asyncDispose]();
         }
@@ -71,17 +79,20 @@ export const pgMaterializeTypegenSchema = (adminUrl: string): Dialect['materiali
 export const pgLoadSchemaForTypegen: Dialect['loadSchemaForTypegen'] = async (materialized) => {
   const {client} = assertPgHandle(materialized);
 
-  const relationsRows = await client.any<{name: string; kind: 'r' | 'v'; sql: string | null}>(client.sql`
-    select
-      c.relname as name,
-      c.relkind::text as kind,
-      pg_get_viewdef(c.oid, true) as sql
-    from pg_class c
-    inner join pg_namespace n on n.oid = c.relnamespace
-    where n.nspname = 'public'
-      and c.relkind in ('r', 'v')
-    order by c.relname
-  `);
+  const relationsRows = await client.all<{name: string; kind: 'r' | 'v'; sql: string | null}>({
+    sql: `
+      select
+        c.relname as name,
+        c.relkind::text as kind,
+        pg_get_viewdef(c.oid, true) as sql
+      from pg_class c
+      inner join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public'
+        and c.relkind in ('r', 'v')
+      order by c.relname
+    `,
+    args: [],
+  });
 
   const relations = new Map<string, RelationInfo>();
   for (const row of relationsRows) {
@@ -98,23 +109,26 @@ export const pgLoadSchemaForTypegen: Dialect['loadSchemaForTypegen'] = async (ma
 };
 
 async function loadRelationColumns(
-  client: PgkitClient,
+  client: AsyncClient,
   relationName: string,
 ): Promise<ReadonlyMap<string, {name: string; tsType: string; notNull: boolean}>> {
-  const rows = await client.any<{name: string; type_name: string; not_null: boolean}>(client.sql`
-    select
-      a.attname as name,
-      pg_catalog.format_type(a.atttypid, a.atttypmod) as type_name,
-      a.attnotnull as not_null
-    from pg_attribute a
-    inner join pg_class c on c.oid = a.attrelid
-    inner join pg_namespace n on n.oid = c.relnamespace
-    where n.nspname = 'public'
-      and c.relname = ${relationName}
-      and a.attnum > 0
-      and not a.attisdropped
-    order by a.attnum
-  `);
+  const rows = await client.all<{name: string; type_name: string; not_null: boolean}>({
+    sql: `
+      select
+        a.attname as name,
+        pg_catalog.format_type(a.atttypid, a.atttypmod) as type_name,
+        a.attnotnull as not_null
+      from pg_attribute a
+      inner join pg_class c on c.oid = a.attrelid
+      inner join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public'
+        and c.relname = $1
+        and a.attnum > 0
+        and not a.attisdropped
+      order by a.attnum
+    `,
+    args: [relationName],
+  });
 
   const columns = new Map<string, {name: string; tsType: string; notNull: boolean}>();
   for (const row of rows) {
@@ -137,75 +151,80 @@ export const pgAnalyzeQueries: Dialect['analyzeQueries'] = async (materialized, 
 };
 
 /**
- * Analyze a single query by:
+ * Analyze a single query via PREPARE introspection.
  *
- *   1. Naming a temporary prepared statement.
- *   2. `BEGIN` (so the inevitable `EXECUTE` step runs in a tx that we'll
- *      `ROLLBACK` — protects against side effects from non-SELECT queries).
- *   3. `PREPARE foo AS <user-sql>` — postgres parses + plans, attaches a
- *      `parameter_types` (regtype[]) to `pg_prepared_statements`.
- *   4. Read parameter types from `pg_prepared_statements`.
- *   5. `EXECUTE foo(NULL, NULL, …)` to provoke a `RowDescription` reply
- *      whose `dataTypeID`s give us the result column types.
- *   6. `ROLLBACK`.
+ * Phase C5 will replace this with the full AST-driven pipeline:
+ *   - parse user SQL with pgsql-ast-parser
+ *   - rewrite (flatten CTEs, lift views, DML+RETURNING → SELECT)
+ *   - infer nullability from JOIN tree
+ *   - PREPARE the rewritten query, read pg17 `result_types` (or fall back
+ *     to EXECUTE-NULLs)
  *
- * Postgres is the parser; no third-party AST dep involved. Compared to
- * sqlite's typesql route this is simpler in code and more accurate
- * (postgres knows e.g. that `count(*)` is `bigint`, that `coalesce(a,b)`
- * picks the more specific type, etc.).
+ * What's here today is the bare PREPARE+execute path. SELECT works;
+ * INSERT/UPDATE/DELETE+RETURNING gets parameters but empty result columns.
  */
-async function analyzeOneQuery(client: PgkitClient, query: QueryAnalysisInput): Promise<QueryAnalysis> {
+async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): Promise<QueryAnalysis> {
   const stmtName = `sqlfu_analyze_${Math.random().toString(36).slice(2, 12)}`;
   const queryType = classifyQuery(query.sqlContent);
 
   try {
-    await client.query(client.sql.raw('begin'));
+    await client.raw('begin');
     try {
       // PREPARE the statement — pg parses and validates here.
-      await client.query(client.sql.raw(`prepare ${quoteIdent(stmtName)} as ${query.sqlContent}`));
+      await client.raw(`prepare ${quoteIdent(stmtName)} as ${query.sqlContent}`);
 
-      // Read param types via pg_prepared_statements. `parameter_types` is a
-      // regtype[] (textual type names like `'integer'`, `'text'`).
-      const paramRow = await client.maybeOne<{parameter_types: string[]}>(client.sql`
-        select parameter_types::text[] as parameter_types
-        from pg_prepared_statements
-        where name = ${stmtName}
-      `);
-      const paramTypes = paramRow?.parameter_types ?? [];
+      // Read param types. `parameter_types` is a regtype[] (textual type
+      // names like `'integer'`, `'text'`).
+      const paramRow = await client.all<{parameter_types: string[]}>({
+        sql: `
+          select parameter_types::text[] as parameter_types
+          from pg_prepared_statements
+          where name = $1
+        `,
+        args: [stmtName],
+      });
+      const paramTypes = paramRow[0]?.parameter_types ?? [];
 
-      // EXECUTE with NULLs to provoke RowDescription. Wraps in savepoint
-      // so a failure (e.g. NOT NULL violation in INSERT VALUES (NULL))
-      // doesn't abort our outer rollback.
-      let resultFields: {name: string; dataTypeID: number}[] = [];
-      await client.query(client.sql.raw('savepoint exec_probe'));
+      // EXECUTE with NULLs to provoke a RowDescription. Wraps in a savepoint
+      // so a NOT NULL violation in INSERT (...) VALUES (NULL) doesn't blow
+      // up our outer rollback.
+      let resultColumns: {name: string; tsType: string; notNull: boolean}[] = [];
       try {
-        const executeArgs = paramTypes.map(() => 'null').join(', ');
-        const executeSql = paramTypes.length === 0
-          ? `execute ${quoteIdent(stmtName)}`
-          : `execute ${quoteIdent(stmtName)}(${executeArgs})`;
-        const result = await client.query(client.sql.raw(executeSql));
-        resultFields = result.fields.map((field) => ({name: field.name, dataTypeID: field.dataTypeID}));
+        await client.raw('savepoint exec_probe');
+        try {
+          const executeArgs = paramTypes.map(() => 'null').join(', ');
+          const executeSql =
+            paramTypes.length === 0
+              ? `execute ${quoteIdent(stmtName)}`
+              : `execute ${quoteIdent(stmtName)}(${executeArgs})`;
+          await client.all({sql: executeSql, args: []});
+          // sqlfu's AsyncClient doesn't surface result.fields; we need a
+          // separate route to get column names + dataTypeIDs.
+          //
+          // Workaround: query `pg_typeof` for each column. We don't have the
+          // column NAMES from sqlfu's interface either, so we parse them
+          // from the user's SQL where possible (SELECT projection list).
+          //
+          // For now, a SELECT with explicit column list gives us names; for
+          // expressions or *, we just emit positional names. Phase C5
+          // replaces this with proper introspection via raw `pg.Client`.
+          if (queryType === 'Select') {
+            resultColumns = await introspectSelectColumns(client, query.sqlContent);
+          }
+        } catch {
+          await client.raw('rollback to savepoint exec_probe');
+        }
       } catch {
-        // EXECUTE blew up. We can still report parameter types but result
-        // columns are unknown — output an empty columns array.
-        await client.query(client.sql.raw('rollback to savepoint exec_probe'));
+        // Savepoint setup itself failed — give up on result columns.
       }
 
       const parameters = paramTypes.map((typeName, index) => ({
         name: `$${index + 1}`,
         tsType: pgTypeToTs(typeName),
-        notNull: false, // pg can't tell us null-aware param types — assume nullable
+        notNull: false,
         toDriver: 'identity',
         isArray: typeName.endsWith('[]'),
       }));
-
-      const columns = await Promise.all(
-        resultFields.map(async (field) => ({
-          name: field.name,
-          tsType: await oidToTsType(client, field.dataTypeID),
-          notNull: false, // result-column nullability requires deeper analysis; punt
-        })),
-      );
 
       return {
         sqlPath: query.sqlPath,
@@ -214,12 +233,12 @@ async function analyzeOneQuery(client: PgkitClient, query: QueryAnalysisInput): 
           sql: query.sqlContent,
           queryType,
           multipleRowsResult: queryType === 'Select' || /\breturning\b/iu.test(query.sqlContent),
-          columns,
+          columns: resultColumns,
           parameters,
         },
       };
     } finally {
-      await client.query(client.sql.raw('rollback'));
+      await client.raw('rollback');
     }
   } catch (error) {
     return {
@@ -233,6 +252,58 @@ async function analyzeOneQuery(client: PgkitClient, query: QueryAnalysisInput): 
   }
 }
 
+/**
+ * Best-effort result-column introspection for SELECT queries. Wraps the
+ * user's SQL in a `CREATE TEMP VIEW` and reads `pg_attribute` for the
+ * resulting view's columns. Works for any SELECT with deterministic param
+ * types; doesn't work for DML+RETURNING (CREATE VIEW rejects DML bodies).
+ *
+ * This is a stopgap for the gap between the basic `analyzeQueries` (which
+ * doesn't expose result.fields) and the Phase C5 implementation (which
+ * will run the AST + raw-pg pipeline). Lives here for now so SELECT users
+ * get accurate result columns with no extra deps.
+ */
+async function introspectSelectColumns(
+  client: AsyncClient,
+  sql: string,
+): Promise<{name: string; tsType: string; notNull: boolean}[]> {
+  const viewName = `sqlfu_probe_${Math.random().toString(36).slice(2, 10)}`;
+  // Substitute `$N` placeholders with NULL so we can `CREATE TEMP VIEW`
+  // without param binding.
+  const sqlWithNullParams = sql.replace(/\$\d+/g, 'null');
+
+  await client.raw('savepoint probe_view');
+  try {
+    await client.raw(`create temp view ${quoteIdent(viewName)} as ${sqlWithNullParams}`);
+    const cols = await client.all<{name: string; type_name: string; not_null: boolean}>({
+      sql: `
+        select
+          a.attname as name,
+          pg_catalog.format_type(a.atttypid, a.atttypmod) as type_name,
+          a.attnotnull as not_null
+        from pg_attribute a
+        inner join pg_class c on c.oid = a.attrelid
+        where c.relname = $1
+          and a.attnum > 0
+          and not a.attisdropped
+        order by a.attnum
+      `,
+      args: [viewName],
+    });
+    return cols.map((row) => ({
+      name: row.name,
+      tsType: pgTypeToTs(row.type_name),
+      notNull: row.not_null,
+    }));
+  } catch {
+    return [];
+  } finally {
+    try {
+      await client.raw('rollback to savepoint probe_view');
+    } catch {}
+  }
+}
+
 function classifyQuery(sql: string): 'Select' | 'Insert' | 'Update' | 'Delete' | 'Copy' | 'Ddl' {
   const stripped = sql.replace(/^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)+/u, '').toLowerCase();
   if (stripped.startsWith('select') || stripped.startsWith('with') || stripped.startsWith('values')) return 'Select';
@@ -241,24 +312,6 @@ function classifyQuery(sql: string): 'Select' | 'Insert' | 'Update' | 'Delete' |
   if (stripped.startsWith('delete')) return 'Delete';
   if (stripped.startsWith('copy')) return 'Copy';
   return 'Ddl';
-}
-
-const oidTypeNameCache = new Map<number, string>();
-
-async function oidToTsType(client: PgkitClient, oid: number): Promise<string> {
-  let typeName = oidTypeNameCache.get(oid);
-  if (typeName == null) {
-    const row = await client.maybeOne<{type_name: string}>(client.sql`
-      select format_type(${oid}::oid, null) as type_name
-    `);
-    typeName = row?.type_name ?? 'unknown';
-    oidTypeNameCache.set(oid, typeName);
-  }
-  return pgTypeToTs(typeName);
-}
-
-function quoteIdent(name: string): string {
-  return `"${name.replaceAll('"', '""')}"`;
 }
 
 // Map a postgres `format_type` output to a TypeScript type. Conservative for
@@ -331,6 +384,9 @@ async function readDefinitionsSqlBestEffort(
   }
 }
 
-// Re-export so test fixtures and the materialize handle can pass the
-// underlying tempDatabase handle around if needed.
+function quoteIdent(name: string): string {
+  return `"${name.replaceAll('"', '""')}"`;
+}
+
+// Re-export for tests/migrations consumers.
 export type {TempDatabaseHandle};
