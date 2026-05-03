@@ -45,12 +45,6 @@ importers:
         specifier: workspace:^
         version: link:../sqlfu
     devDependencies:
-      '@electric-sql/pglite':
-        specifier: ^0.4.5
-        version: 0.4.5
-      '@electric-sql/pglite-socket':
-        specifier: ^0.1.5
-        version: 0.1.5(@electric-sql/pglite@0.4.5)
       '@types/node':
         specifier: ^24.5.2
         version: 24.12.0
@@ -806,12 +800,6 @@ packages:
   '@ctrl/tinycolor@4.2.0':
     resolution: {integrity: sha512-kzyuwOAQnXJNLS9PSyrk0CWk35nWJW/zl/6KvnTBMFK65gm7U1/Z5BqjxeapjZCIhQcM/DsrEmcbRwDyXyXK4A==}
     engines: {node: '>=14'}
-
-  '@electric-sql/pglite-socket@0.1.5':
-    resolution: {integrity: sha512-/RAye+3EPKfO9nY4tljzxXmkT7yIpFDm0L3F+c28b+Z6uxPOjy/Zz/QEHYHXcrfuUC88/a9S72EO0+3E0j97wQ==}
-    hasBin: true
-    peerDependencies:
-      '@electric-sql/pglite': 0.4.5
 
   '@electric-sql/pglite@0.4.5':
     resolution: {integrity: sha512-aGG2zGEyZzGWKy8P+9ZoNUV0jxt1+hgbeTf+bVAYyxVZZLXg3/9aFlfLxb08AYZVAfAkQlQIysmWjhc5hwDG8g==}
@@ -7996,11 +7984,8 @@ snapshots:
 
   '@ctrl/tinycolor@4.2.0': {}
 
-  '@electric-sql/pglite-socket@0.1.5(@electric-sql/pglite@0.4.5)':
-    dependencies:
-      '@electric-sql/pglite': 0.4.5
-
-  '@electric-sql/pglite@0.4.5': {}
+  '@electric-sql/pglite@0.4.5':
+    optional: true
 
   '@emnapi/core@1.10.0':
     dependencies:

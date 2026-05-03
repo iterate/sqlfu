@@ -1,23 +1,21 @@
 // Postgres typegen — three methods on the Dialect contract:
 //
-//   1. `materializeTypegenSchema` — open a pg connection, create a uniquely-
-//      named temp schema, apply the user's DDL there, return a handle whose
-//      `Symbol.asyncDispose` drops the schema and closes the connection.
-//   2. `loadSchemaForTypegen` — query `information_schema` (and `pg_catalog`
-//      for view-column inference) to produce a `RelationInfo` map.
+//   1. `materializeTypegenSchema` — open a scratch database (CREATE DATABASE
+//      via the configured admin URL), apply the user's DDL, return a handle
+//      whose `Symbol.asyncDispose` drops the database.
+//   2. `loadSchemaForTypegen` — query `pg_catalog` for tables/views/columns,
+//      produce the dialect-neutral `RelationInfo` map.
 //   3. `analyzeQueries` — `PREPARE` each query and read parameter+result
-//      types from `pg_catalog`. Postgres becomes the parser; no third-party
-//      AST dep needed.
-//
-// Wart (carried over from schemadiff): typegen needs a real pg server to
-// materialize against. We currently read `SQLFU_PG_TYPEGEN_URL` from env.
-// A follow-up will surface a proper config field.
+//      types from `pg_catalog`. Postgres becomes the parser. (Currently a
+//      typed stub; real impl lands in Phase B.)
 import {createClient, type Client as PgkitClient} from '@pgkit/client';
 import type {Dialect, MaterializedTypegenSchema, QueryAnalysis, QueryAnalysisInput, RelationInfo} from 'sqlfu';
 
+import {createTempDatabase, type TempDatabaseHandle} from './scratch-database.js';
+
 type PgMaterializedHandle = MaterializedTypegenSchema & {
   readonly dialect: 'postgresql';
-  readonly schema: string;
+  readonly databaseName: string;
   readonly client: PgkitClient;
 };
 
@@ -30,54 +28,48 @@ function assertPgHandle(materialized: MaterializedTypegenSchema): PgMaterialized
   return materialized as PgMaterializedHandle;
 }
 
-export const pgMaterializeTypegenSchema: Dialect['materializeTypegenSchema'] = async (host, _config) => {
-  const url = process.env.SQLFU_PG_TYPEGEN_URL;
-  if (!url) {
-    throw new Error(
-      'pgDialect.materializeTypegenSchema requires a postgres connection URL. Set the `SQLFU_PG_TYPEGEN_URL` environment variable to a postgres URL with create-schema privileges. ' +
-        'A follow-up will replace this env-var hack with a proper config field.',
-    );
-  }
-  // TODO: read schema SQL using the same `readSchemaForAuthority` semantics
-  // as the sqlite dialect. The sqlite implementation lives in `typegen/index.ts`
-  // in the main package and depends on sqlite-specific helpers
-  // (`materializeDefinitionsSchemaFor` etc.). We need a dialect-neutral
-  // version that produces a single `string` of DDL (concatenated migrations,
-  // or the contents of `definitions.sql`, or extracted from a live db) given
-  // a `SqlfuProjectConfig` + `SqlfuHost`. Stub: read `definitions.sql`
-  // directly. This will miss the `'migrations'` and `'live_schema'`
-  // authorities until the helper is lifted out of sqlite-only land.
-  const definitionsSql = await readDefinitionsSqlBestEffort(host, _config);
+export const pgMaterializeTypegenSchema = (adminUrl: string): Dialect['materializeTypegenSchema'] => {
+  return async (host, config) => {
+    if (config.generate.authority !== 'desired_schema') {
+      throw new Error(
+        `pgDialect.materializeTypegenSchema currently only supports generate.authority='desired_schema' (got '${config.generate.authority}'). ` +
+          `A follow-up will lift the migration replay helpers out of sqlite-only land.`,
+      );
+    }
 
-  const schema = uniqueSchemaName();
-  // One client doing all the work — see schemadiff.ts for why we avoid the
-  // URL `-c search_path=...` trick under pglite-socket.
-  const client = createClient(url);
-  await client.query(client.sql.raw(`create schema "${schema.replaceAll('"', '""')}"`));
-  await client.query(client.sql.raw(`set search_path = "${schema.replaceAll('"', '""')}"`));
-  if (definitionsSql.trim()) {
-    await client.query(client.sql.raw(definitionsSql));
-  }
+    const definitionsSql = await readDefinitionsSqlBestEffort(host, config);
 
-  const handle: PgMaterializedHandle = {
-    dialect: 'postgresql',
-    schema,
-    client,
-    [Symbol.asyncDispose]: async () => {
-      try {
-        await client.query(client.sql.raw(`reset search_path`));
-        await client.query(client.sql.raw(`drop schema if exists "${schema.replaceAll('"', '""')}" cascade`));
-      } finally {
-        await client.end();
+    const temp = await createTempDatabase(adminUrl);
+    const client = createClient(temp.url);
+    try {
+      if (definitionsSql.trim()) {
+        await client.query(client.sql.raw(definitionsSql));
       }
-    },
+    } catch (error) {
+      // Materialization failed — release the scratch db before propagating.
+      await client.end();
+      await temp[Symbol.asyncDispose]();
+      throw error;
+    }
+
+    const handle: PgMaterializedHandle = {
+      dialect: 'postgresql',
+      databaseName: temp.databaseName,
+      client,
+      [Symbol.asyncDispose]: async () => {
+        try {
+          await client.end();
+        } finally {
+          await temp[Symbol.asyncDispose]();
+        }
+      },
+    };
+    return handle;
   };
-  return handle;
 };
 
 export const pgLoadSchemaForTypegen: Dialect['loadSchemaForTypegen'] = async (materialized) => {
-  const handle = assertPgHandle(materialized);
-  const {client, schema} = handle;
+  const {client} = assertPgHandle(materialized);
 
   const relationsRows = await client.any<{name: string; kind: 'r' | 'v'; sql: string | null}>(client.sql`
     select
@@ -86,15 +78,14 @@ export const pgLoadSchemaForTypegen: Dialect['loadSchemaForTypegen'] = async (ma
       pg_get_viewdef(c.oid, true) as sql
     from pg_class c
     inner join pg_namespace n on n.oid = c.relnamespace
-    where n.nspname = ${schema}
+    where n.nspname = 'public'
       and c.relkind in ('r', 'v')
     order by c.relname
   `);
 
   const relations = new Map<string, RelationInfo>();
-
   for (const row of relationsRows) {
-    const columns = await loadRelationColumns(client, schema, row.name);
+    const columns = await loadRelationColumns(client, row.name);
     relations.set(row.name, {
       kind: row.kind === 'v' ? 'view' : 'table',
       name: row.name,
@@ -108,7 +99,6 @@ export const pgLoadSchemaForTypegen: Dialect['loadSchemaForTypegen'] = async (ma
 
 async function loadRelationColumns(
   client: PgkitClient,
-  schema: string,
   relationName: string,
 ): Promise<ReadonlyMap<string, {name: string; tsType: string; notNull: boolean}>> {
   const rows = await client.any<{name: string; type_name: string; not_null: boolean}>(client.sql`
@@ -119,7 +109,7 @@ async function loadRelationColumns(
     from pg_attribute a
     inner join pg_class c on c.oid = a.attrelid
     inner join pg_namespace n on n.oid = c.relnamespace
-    where n.nspname = ${schema}
+    where n.nspname = 'public'
       and c.relname = ${relationName}
       and a.attnum > 0
       and not a.attisdropped
@@ -138,31 +128,24 @@ async function loadRelationColumns(
 }
 
 export const pgAnalyzeQueries: Dialect['analyzeQueries'] = async (materialized, queries) => {
-  const handle = assertPgHandle(materialized);
-  const {client} = handle;
+  // Sanity-check the handle so misuse fails loudly even before Phase B.
+  assertPgHandle(materialized);
 
-  const analyses: QueryAnalysis[] = [];
-  for (const query of queries) {
-    analyses.push(await analyzeOneQuery(client, query));
-  }
-  return analyses;
-};
-
-async function analyzeOneQuery(client: PgkitClient, query: QueryAnalysisInput): Promise<QueryAnalysis> {
-  // Strategy: PREPARE the SQL (postgres parses + plans), then read parameter
-  // and result types from pg_catalog via the prepared-statement metadata.
-  // This is a stub that returns a not-ok analysis — the real introspection
-  // will land in a follow-up commit. The tests will gate on this method's
-  // shape, not the full type inference.
-  return {
+  // Phase B will replace this stub with PREPARE-statement introspection
+  // via raw `pg`. The materialize handle's pgkit client doesn't expose the
+  // wire-protocol Describe message, so the real impl needs direct driver
+  // access — which is why this lands after vendoring (Phase C).
+  return queries.map((query): QueryAnalysis => ({
     sqlPath: query.sqlPath,
     ok: false,
     error: {
       name: 'PgAnalyzeQueriesNotImplemented',
-      description: 'pgDialect.analyzeQueries is not yet implemented. The PREPARE-introspection path lands in a follow-up commit.',
+      description:
+        'pgDialect.analyzeQueries is not yet implemented. The PREPARE-introspection path lands once Phase C ' +
+        'vendors @pgkit/{client,schemainspect,migra} and the dialect can reach the raw pg driver.',
     },
-  };
-}
+  }));
+};
 
 // Map a postgres `format_type` output to a TypeScript type. Conservative for
 // step one — covers the common types and falls back to `unknown`.
@@ -218,23 +201,10 @@ function pgTypeToTs(typeName: string): string {
   return 'unknown';
 }
 
-function uniqueSchemaName(): string {
-  return `sqlfu_typegen_${Math.random().toString(36).slice(2, 10)}`;
-}
-
 async function readDefinitionsSqlBestEffort(
   host: import('sqlfu').SqlfuHost,
   config: import('sqlfu').SqlfuProjectConfig,
 ): Promise<string> {
-  // For now, only the `'desired_schema'` authority is supported on the pg
-  // path. The other authorities (`'migrations'`, `'migration_history'`,
-  // `'live_schema'`) need dialect-neutral helpers in main sqlfu — see the
-  // wart called out in the file header.
-  if (config.generate.authority !== 'desired_schema') {
-    throw new Error(
-      `pgDialect.materializeTypegenSchema currently only supports generate.authority='desired_schema' (got '${config.generate.authority}'). A follow-up will lift the migration replay helpers out of sqlite-only land.`,
-    );
-  }
   try {
     return await host.fs.readFile(config.definitions);
   } catch (error) {
@@ -246,3 +216,7 @@ async function readDefinitionsSqlBestEffort(
     throw error;
   }
 }
+
+// Re-export so test fixtures and the materialize handle can pass the
+// underlying tempDatabase handle around if needed.
+export type {TempDatabaseHandle};

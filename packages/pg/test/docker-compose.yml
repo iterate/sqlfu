@@ -1,0 +1,25 @@
+# Postgres for `@sqlfu/pg` test runs. Mirror of pgkit's setup.
+#
+# Usage:
+#   docker compose -f packages/pg/test/docker-compose.yml up -d
+#   pnpm --filter @sqlfu/pg test
+#   docker compose -f packages/pg/test/docker-compose.yml down
+#
+# Tests connect to `postgresql://postgres:postgres@localhost:5544/postgres`
+# as admin and `CREATE DATABASE` per-test scratch databases. Port 5544 is
+# non-default to avoid stomping on a host-level pg install at 5432.
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    ports:
+      - "5544:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 1s
+      timeout: 5s
+      retries: 30

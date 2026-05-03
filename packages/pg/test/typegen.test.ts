@@ -1,23 +1,30 @@
-import {expect, test} from 'vitest';
+import {beforeAll, expect, test} from 'vitest';
 import {mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
-import type {SqlfuHost, SqlfuProjectConfig} from 'sqlfu';
+import type {Dialect, SqlfuHost, SqlfuProjectConfig} from 'sqlfu';
 
 import {pgDialect} from '../src/index.js';
-import {startPgliteFixture} from './pglite-fixture.js';
+import {isPgReachable, TEST_ADMIN_URL} from './pg-fixture.js';
 
-async function withProjectAndFixture<T>(
+beforeAll(async () => {
+  if (!(await isPgReachable())) {
+    throw new Error(
+      `Test postgres not reachable at ${TEST_ADMIN_URL}. ` +
+        `Run 'docker compose -f packages/pg/test/docker-compose.yml up -d' first.`,
+    );
+  }
+});
+
+async function withProject<T>(
   definitionsSql: string,
-  fn: (config: SqlfuProjectConfig, host: SqlfuHost) => Promise<T>,
+  fn: (config: SqlfuProjectConfig, host: SqlfuHost, dialect: Dialect) => Promise<T>,
 ): Promise<T> {
   const projectRoot = await mkdtemp(join(tmpdir(), 'sqlfu-pg-typegen-'));
   await writeFile(join(projectRoot, 'definitions.sql'), definitionsSql);
-  await using fixture = await startPgliteFixture();
-  const previous = process.env.SQLFU_PG_TYPEGEN_URL;
-  process.env.SQLFU_PG_TYPEGEN_URL = fixture.url;
   try {
+    const dialect = pgDialect({adminUrl: TEST_ADMIN_URL});
     const config: SqlfuProjectConfig = {
       projectRoot,
       definitions: join(projectRoot, 'definitions.sql'),
@@ -29,21 +36,17 @@ async function withProjectAndFixture<T>(
         importExtension: '.js',
         authority: 'desired_schema',
       },
-      dialect: pgDialect,
+      dialect,
     };
-    const host = createMinimalHost();
-    return await fn(config, host);
+    return await fn(config, createMinimalHost(), dialect);
   } finally {
-    if (previous == null) delete process.env.SQLFU_PG_TYPEGEN_URL;
-    else process.env.SQLFU_PG_TYPEGEN_URL = previous;
     await rm(projectRoot, {recursive: true, force: true});
   }
 }
 
 function createMinimalHost(): SqlfuHost {
   // The pg dialect's typegen methods only exercise `host.fs.readFile`. The
-  // rest of the host surface is irrelevant — return a partial that throws
-  // for everything else.
+  // rest of the host surface throws — fail-fast if any of it gets touched.
   const fsImpl: SqlfuHost['fs'] = {
     async readFile(path: string) {
       const fs = await import('node:fs/promises');
@@ -99,9 +102,9 @@ test('pgDialect.materializeTypegenSchema + loadSchemaForTypegen returns the rela
     create table users (id integer primary key, name text not null, bio text);
     create view active_users as select id, name from users where bio is not null;
   `;
-  await withProjectAndFixture(sql, async (config, host) => {
-    await using materialized = await pgDialect.materializeTypegenSchema(host, config);
-    const relations = await pgDialect.loadSchemaForTypegen(materialized);
+  await withProject(sql, async (config, host, dialect) => {
+    await using materialized = await dialect.materializeTypegenSchema(host, config);
+    const relations = await dialect.loadSchemaForTypegen(materialized);
 
     expect(relations.has('users')).toBe(true);
     expect(relations.has('active_users')).toBe(true);
@@ -119,12 +122,12 @@ test('pgDialect.materializeTypegenSchema + loadSchemaForTypegen returns the rela
   });
 });
 
-test('pgDialect.analyzeQueries currently throws a typed stub', {timeout: 30_000}, async () => {
+test('pgDialect.analyzeQueries currently returns the typed stub', {timeout: 30_000}, async () => {
   const sql = `create table users (id integer primary key, name text not null);`;
-  await withProjectAndFixture(sql, async (config, host) => {
-    await using materialized = await pgDialect.materializeTypegenSchema(host, config);
-    const analyses = await pgDialect.analyzeQueries(materialized, [
-      {sqlPath: 'find-user.sql', sqlContent: 'select id, name from users where id = :id'},
+  await withProject(sql, async (config, host, dialect) => {
+    await using materialized = await dialect.materializeTypegenSchema(host, config);
+    const analyses = await dialect.analyzeQueries(materialized, [
+      {sqlPath: 'find-user.sql', sqlContent: 'select id, name from users where id = $1'},
     ]);
     expect(analyses).toHaveLength(1);
     expect(analyses[0]).toMatchObject({ok: false});

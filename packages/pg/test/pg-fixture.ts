@@ -1,0 +1,33 @@
+// Test fixtures for `@sqlfu/pg`. The test runner expects a postgres server
+// reachable at the URL below — start one via docker-compose:
+//
+//   docker compose -f packages/pg/test/docker-compose.yml up -d
+//
+// Per-test fixtures (`startTempDatabase`, `startTempDatabasePair`) wrap
+// the dialect's own scratch helpers with the same `Symbol.asyncDispose`
+// pattern, so `await using` cleans up automatically.
+import {createTempDatabase, createTempDatabasePair} from '../src/impl/scratch-database.js';
+
+export const TEST_ADMIN_URL = process.env.SQLFU_PG_TEST_URL ?? 'postgresql://postgres:postgres@127.0.0.1:5544/postgres';
+
+export async function isPgReachable(): Promise<boolean> {
+  // Cheap reachability probe — open + close. If postgres isn't running we
+  // surface a clear skip message in tests rather than 30s of mysterious
+  // timeouts.
+  const {createClient} = await import('@pgkit/client');
+  const client = createClient(TEST_ADMIN_URL);
+  try {
+    await client.query(client.sql`select 1`);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await client.end();
+  }
+}
+
+/** Spin up a single ephemeral pg database. Disposed via `await using`. */
+export const startTempDatabase = () => createTempDatabase(TEST_ADMIN_URL);
+
+/** Spin up a pair (baseline + desired). Disposed via `await using`. */
+export const startTempDatabasePair = () => createTempDatabasePair(TEST_ADMIN_URL);
