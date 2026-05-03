@@ -53,16 +53,23 @@ These are best-guess decisions; user can override on review.
 
 ### Phases
 
-- [x] **Phase A** — factory shape (`pgDialect({adminUrl})`), CREATE DATABASE + DROP DATABASE pattern via `Symbol.asyncDispose`, docker-compose-backed test fixtures (postgres:16 on port 5544). Removed the env-var hack and pglite/pglite-socket entirely. Tests skip with a clear message if pg isn't reachable.
-- [x] **Phase B** — real `analyzeQueries` via `PREPARE` + `pg_prepared_statements` + `EXECUTE`-NULLs.
-- [ ] **Phase C** — vendor `@pgkit/{schemainspect,migra}` and drop `@pgkit/client`. Status: not started in this PR. Plan:
-  1. Replace `@pgkit/client` usage in this package's own modules (`scratch-database.ts`, `schemadiff.ts`, `schema.ts`, `typegen.ts`) with raw `pg` via sqlfu's `createNodePostgresClient`. ~1-2 hours.
-  2. Vendor `@pgkit/schemainspect` source into `packages/pg/src/vendor/schemainspect/`. Adapt its internal `Queryable` usage to sqlfu's `AsyncClient`. License + attribution headers. ~3-4 hours.
-  3. Vendor `@pgkit/migra` similarly. ~1-2 hours.
-  4. Replace the hand-rolled `renderCanonicalSchema` in `src/impl/schema.ts` with a vendored `schemainspect`-derived extractor that handles triggers, sequences, custom types, FDWs, etc.
-  5. Drop `@pgkit/client`, `@pgkit/schemainspect`, `@pgkit/migra` from `package.json` deps.
+- [x] **Phase A** — factory shape (`pgDialect({adminUrl})`), CREATE DATABASE + DROP DATABASE pattern via `Symbol.asyncDispose`, docker-compose-backed test fixtures (postgres:16 on port 5544). Removed env-var hacks and pglite/pglite-socket entirely.
+- [x] **Phase B** — real `analyzeQueries` via `PREPARE` + `pg_prepared_statements` + `EXECUTE`-NULLs (with a `CREATE TEMP VIEW` upgrade for SELECT result-column introspection).
+- [x] **Phase C2** — vendored `@pgkit/schemainspect` into `packages/pg/src/vendor/schemainspect/`. Internal `Queryable` shim adapts sqlfu's `AsyncClient`.
+- [x] **Phase C3** — vendored `@pgkit/migra` into `packages/pg/src/vendor/migra/`. `pgDialect.diffSchema` wired to the vendored migra. `@pgkit/{client,schemainspect,migra}` deps removed from package.json.
+- [x] **Phase C4** — `@pgkit/client` removed from this package's own modules (`scratch-database.ts`, `schemadiff.ts`, `schema.ts`, `typegen.ts`). Single point where `pg.Pool` is instantiated; everything downstream uses sqlfu's `AsyncClient` interface.
+- [ ] **Phase C5** — vendor `@pgkit/typegen` AST passes. Largest remaining chunk:
+  1. Add `pgsql-ast-parser` as a dev-only dep on `@sqlfu/pg`, scoped strictly to the vendored typegen module (no other code in the package or in main sqlfu touches it).
+  2. Lift the AST rewriting from pgkit/typegen: CTE flattening, view lifting, DML+RETURNING → SELECT, JOIN nullability propagation, subquery/aggregate/window-function handling.
+  3. Layer pg17's `pg_prepared_statements.result_types` over the existing PREPARE introspection — when available, skip the EXECUTE-NULLs trick entirely. Falls back on older pg.
+  4. Output to sqlfu's `QueryAnalysis` shape (the renderer is sqlfu's; we don't lift pgkit's output format).
+  5. Drop the hand-rolled `CREATE TEMP VIEW` SELECT introspection in favor of the AST + PREPARE pipeline.
 
-  Phase C is improvement, not unblock — the package works end-to-end today via Phase A+B. The user requested Phase C for "no pgkit/client dep" and "raw driver access for analyzeQueries". The driver-access goal is already satisfied (Phase B reaches `result.fields` through the pgkit Result type, equivalent to raw pg's). The dep-drop goal is what Phase C buys.
+  Estimated 6-10 hours of careful porting. Not started in this PR.
+
+- [ ] **Phase C6** — lift pgkit's test fixtures (schemainspect, migra, typegen) into sqlfu's region-based markdown/sql fixture format. Largest single artifact in pgkit; gives us hundreds of pg-edge-case regressions in one go. Not started.
+
+After Phase C: typegen handles result-column nullability, INSERT/UPDATE/DELETE+RETURNING result columns, CTEs, view-flattening, and subquery types — closing the gap with pgkit/typegen. Phases A, B, C2, C3, C4 already make the package usable end-to-end against real postgres for SELECT typegen + schemadiff + materialization.
 
 ### Wart watch
 
