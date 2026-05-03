@@ -20,6 +20,7 @@ import type {AsyncClient, Dialect, MaterializedTypegenSchema, QueryAnalysis, Que
 
 import {adaptAsyncClient} from '../vendor/schemainspect/pgkit-compat.js';
 import {getColumnInfo, type DescribedQuery} from '../vendor/typegen/index.js';
+import {redactAllStringLiterals, redactDollarQuotedStrings} from './redact-string-literals.js';
 import {createTempDatabase, type TempDatabaseHandle} from './scratch-database.js';
 
 type PgMaterializedHandle = MaterializedTypegenSchema & {
@@ -200,17 +201,34 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
       const paramTypes = paramRow[0]?.parameter_types ?? [];
 
       // Pass 1: column baseline via temp view (Select-like queries only).
+      // The temp view's body goes through `redactAllStringLiterals` to
+      // strip every `'…'` / E'…' / $$…$$ body — that way any `$N` left
+      // in the SQL is necessarily a real parameter, never a substring of
+      // a literal. The redacted form survives any cast chain because
+      // pg accepts NULL through every conversion at constant-folding
+      // time. See `redact-string-literals.ts` for the sentinel and the
+      // marker comment we embed.
       const baselineColumns =
         queryType === 'Select'
-          ? await captureColumnBaseline(client, query.sqlContent, paramTypes, viewName)
+          ? await captureColumnBaseline(
+              client,
+              redactAllStringLiterals(query.sqlContent),
+              paramTypes,
+              viewName,
+            )
           : null;
 
-      // Pass 2: vendored AST pipeline. The `fields` here are
-      // intentionally empty — getColumnInfo populates result columns
-      // itself via the in-pg analyzer function + AST.
+      // Pass 2: vendored AST pipeline. The vendored `pgsql-ast-parser`
+      // has no grammar for dollar-quoted strings, so we strip those
+      // (and only those) before handing the SQL over. Single-quoted
+      // strings stay intact — the parser handles them, and a future
+      // literal-not-null inference pass needs them visible. The `fields`
+      // here are intentionally empty; getColumnInfo populates result
+      // columns itself via the in-pg analyzer function + AST.
+      const sqlForAst = redactDollarQuotedStrings(query.sqlContent);
       const describedQuery: DescribedQuery = {
-        sql: query.sqlContent,
-        template: [query.sqlContent],
+        sql: sqlForAst,
+        template: [sqlForAst],
         fields: [],
         parameters: paramTypes.map((typeName, index) => ({
           name: `$${index + 1}`,
@@ -225,10 +243,22 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
         source: '',
       };
 
+      // The vendored AST pipeline can throw on weird-but-valid SQL the
+      // parser can't handle (or on internal analyzer assertions). Don't
+      // let that take down the whole analysis — we may still have a
+      // perfectly good baseline from the temp-view pass.
       const queryable = adaptAsyncClient(client);
-      const analysed = await getColumnInfo(queryable as never, describedQuery, ((regtype: string) =>
-        pgTypeToTs(regtype)) as never);
-      const analysedFields: AnalysedField[] = analysed.fields ?? [];
+      let analysedFields: AnalysedField[] = [];
+      try {
+        const analysed = await getColumnInfo(queryable as never, describedQuery, ((regtype: string) =>
+          pgTypeToTs(regtype)) as never);
+        analysedFields = analysed.fields ?? [];
+      } catch (astError) {
+        if (process.env.SQLFU_PG_DEBUG) {
+          // eslint-disable-next-line no-console
+          console.warn('vendored AST pipeline threw, falling back to baseline:', astError);
+        }
+      }
 
       const columns = mergeColumns(baselineColumns, analysedFields);
 
