@@ -142,4 +142,15 @@ async function confirmAndRunSchemaCommand(page: Page, button: Locator) {
     dialog.getByRole('button', {name: 'Confirm', exact: true}).click(),
   ]);
   await expect(dialog).not.toBeVisible();
+  // The `schema/command` RPC is a streaming async-generator: the
+  // browser keeps the response open until the command finishes
+  // (transaction commit, post-flight checks, post-command schema
+  // re-fetch). The `submitConfirmation` response only confirms the
+  // user's confirmation reached the backend; the underlying command
+  // continues. Waiting for `networkidle` here lets the streaming
+  // response close and the post-command schema refresh complete
+  // before the spec proceeds — without this, fixture teardown can
+  // race the still-running command and tear down its pg database
+  // out from under live pool connections.
+  await page.waitForLoadState('networkidle');
 }

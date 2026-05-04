@@ -52,18 +52,6 @@ export interface NodePostgresPoolClientLike {
 }
 
 export function createNodePostgresClient(pool: NodePostgresLike): AsyncClient<NodePostgresLike> {
-  // node-postgres pools emit `error` events when an *idle* connection
-  // dies (e.g. server-initiated `terminating connection due to
-  // administrator command` after a `DROP DATABASE … WITH (FORCE)`).
-  // With no listener, that becomes an unhandled error that crashes the
-  // whole node process. Attach a no-op listener so the error becomes a
-  // recoverable signal: the pool will reconnect on the next checkout.
-  // (Callers can still subscribe to `pool.on('error', …)` themselves to
-  // observe; we just guarantee the event has at least one listener.)
-  type WithOn = NodePostgresLike & {on?: (event: 'error', listener: (error: unknown) => void) => unknown};
-  if (typeof (pool as WithOn).on === 'function') {
-    (pool as WithOn).on?.('error', () => {});
-  }
   // `all`/`run`/`iterate` accept SQL with sqlite-style `?` placeholders.
   // Rewrite to pg's `$N` form before executing — same `rewriteForPg`
   // call site that `prepare(...)` uses internally. Skipping this is a
