@@ -134,6 +134,22 @@ async function pgMigrationApplied(dbName: string, migrationName: string): Promis
 }
 
 async function confirmAndRunSchemaCommand(page: Page, button: Locator) {
+  // The button click opens a streaming `schema/command` request: the
+  // server keeps the response open until the command finishes
+  // (transaction commit, post-flight checks, post-command schema
+  // re-fetch). The `submitConfirmation` RPC is a *separate* request
+  // that just hands the user's confirmation back to the streaming
+  // generator; it returns long before the command itself does.
+  //
+  // We capture the streaming response when the button is clicked and
+  // wait for its body to fully close at the end of the helper. Without
+  // this, the spec moves on while the command is mid-flight and
+  // fixture teardown races the still-running command — for pg, that
+  // race ends with `DROP DATABASE … WITH FORCE` killing live pool
+  // connections, which (no listener) crashes the dev server.
+  const commandResponsePromise = page.waitForResponse((response) =>
+    response.url().includes('/api/rpc/schema/command'),
+  );
   await button.click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
@@ -142,15 +158,6 @@ async function confirmAndRunSchemaCommand(page: Page, button: Locator) {
     dialog.getByRole('button', {name: 'Confirm', exact: true}).click(),
   ]);
   await expect(dialog).not.toBeVisible();
-  // The `schema/command` RPC is a streaming async-generator: the
-  // browser keeps the response open until the command finishes
-  // (transaction commit, post-flight checks, post-command schema
-  // re-fetch). The `submitConfirmation` response only confirms the
-  // user's confirmation reached the backend; the underlying command
-  // continues. Waiting for `networkidle` here lets the streaming
-  // response close and the post-command schema refresh complete
-  // before the spec proceeds — without this, fixture teardown can
-  // race the still-running command and tear down its pg database
-  // out from under live pool connections.
-  await page.waitForLoadState('networkidle');
+  const commandResponse = await commandResponsePromise;
+  await commandResponse.finished();
 }
