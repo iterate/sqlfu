@@ -316,7 +316,7 @@ export async function applySyncSql(context: SqlfuContext, confirm: SqlfuCommandC
         'sync could not apply definitions.sql safely to the current database.',
         'Create a migration with `sqlfu draft`, edit it if needed, then run `sqlfu migrate`.',
         '',
-        `Cause: ${summarizeSqlite3defError(error)}`,
+        `Cause: ${summarizeErrorLastLine(error)}`,
       ].join('\n'),
     );
   }
@@ -369,7 +369,7 @@ export async function applyMigrateSql(context: SqlfuContext, confirm: SqlfuComma
     throw new Error(
       formatMigrateFailure({
         failedName,
-        cause: summarizeSqlite3defError(error),
+        cause: summarizeErrorLastLine(error),
         postFailure,
       }),
     );
@@ -918,7 +918,14 @@ async function getMigrationIntegrity(
   return (await host.digest(currentContent)) === appliedChecksum ? ('ok' as const) : ('checksum mismatch' as const);
 }
 
-function summarizeSqlite3defError(error: unknown) {
+/**
+ * Stringify an error to its last non-empty line, with a leading
+ * `YYYY/MM/DD HH:MM:SS ` timestamp stripped. Originally introduced for
+ * the sqlite3def-formatted multi-line errors (hence the previous name)
+ * but it's been generic since — works for pg, sqlite, and anything else
+ * where we just want the actionable bit at the end of an error chain.
+ */
+function summarizeErrorLastLine(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   const line =
     message

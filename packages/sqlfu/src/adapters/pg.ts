@@ -52,14 +52,35 @@ export interface NodePostgresPoolClientLike {
 }
 
 export function createNodePostgresClient(pool: NodePostgresLike): AsyncClient<NodePostgresLike> {
+  // node-postgres pools emit `error` events when an *idle* connection
+  // dies (e.g. server-initiated `terminating connection due to
+  // administrator command` after a `DROP DATABASE … WITH (FORCE)`).
+  // With no listener, that becomes an unhandled error that crashes the
+  // whole node process. Attach a no-op listener so the error becomes a
+  // recoverable signal: the pool will reconnect on the next checkout.
+  // (Callers can still subscribe to `pool.on('error', …)` themselves to
+  // observe; we just guarantee the event has at least one listener.)
+  type WithOn = NodePostgresLike & {on?: (event: 'error', listener: (error: unknown) => void) => unknown};
+  if (typeof (pool as WithOn).on === 'function') {
+    (pool as WithOn).on?.('error', () => {});
+  }
+  // `all`/`run`/`iterate` accept SQL with sqlite-style `?` placeholders.
+  // Rewrite to pg's `$N` form before executing — same `rewriteForPg`
+  // call site that `prepare(...)` uses internally. Skipping this is a
+  // silent landmine: pg sees `?` as illegal syntax and complains about
+  // the next character (typically a comma in a values list), masking
+  // the real cause. `iterate` chains through `all` so it inherits the
+  // rewrite for free.
   const all: AsyncClient<NodePostgresLike>['all'] = async <TRow extends ResultRow = ResultRow>(
     sqlQuery: SqlQuery,
   ): Promise<TRow[]> => {
-    const result = await pool.query<Record<string, unknown>>(sqlQuery.sql, sqlQuery.args as unknown[]);
+    const {sql, args} = rewriteForPg(sqlQuery.sql, sqlQuery.args);
+    const result = await pool.query<Record<string, unknown>>(sql, args);
     return result.rows as unknown as TRow[];
   };
   const run: AsyncClient<NodePostgresLike>['run'] = async (sqlQuery: SqlQuery) => {
-    const result = await pool.query(sqlQuery.sql, sqlQuery.args as unknown[]);
+    const {sql, args} = rewriteForPg(sqlQuery.sql, sqlQuery.args);
+    const result = await pool.query(sql, args);
     return {
       rowsAffected: result.rowCount ?? undefined,
       lastInsertRowid: null,
@@ -143,7 +164,17 @@ export function createNodePostgresClient(pool: NodePostgresLike): AsyncClient<No
       const session = await pool.connect();
       try {
         const sessionPool: NodePostgresLike = {
-          query: (text, values) => session.query(text, values),
+          // Only forward `values` when it's actually defined — node-postgres
+          // switches to the extended query protocol the moment a `values`
+          // arg is present, even an `undefined` one. Extended protocol
+          // doesn't accept multi-statement SQL, so any `tx.raw()` of a
+          // multi-statement migration would fail with an opaque
+          // `syntax error at or near ","` (node-postgres parses the second
+          // statement's first comma as if it ended a previous parameterized
+          // call). Forwarding only the args the caller passed keeps simple-
+          // query-protocol calls on the simple path.
+          query: (text, values) =>
+            values === undefined ? session.query(text) : session.query(text, values),
         };
         const sessionClient = createNodePostgresClient(sessionPool);
         return await surroundWithBeginCommitRollbackAsync(sessionClient, fn);
