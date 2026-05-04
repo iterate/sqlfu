@@ -19,14 +19,16 @@ export const pgDefaultMigrationTableDdl: Dialect['defaultMigrationTableDdl'] = (
   `create table if not exists ${tableName} (\n  name text primary key check (name not like '%.sql'),\n  checksum text not null,\n  applied_at timestamptz not null\n);`;
 
 export const pgWithMigrationLock: NonNullable<Dialect['withMigrationLock']> = async (client, fn) => {
-  // Run the entire migration sequence inside a single transaction so the
-  // advisory lock (which is `_xact_` flavored) holds for the duration. This
-  // does mean the migrations themselves run inside this transaction — which
-  // matches sqlfu's per-migration transaction model (each migration is
-  // applied transactionally; the outer wrapper here just adds a serialization
-  // gate).
-  return client.transaction(async () => {
-    await client.raw(`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`);
+  // The advisory lock has to live on the same session as the surrounding
+  // transaction — `pg_advisory_xact_lock` is bound to the *connection*
+  // running it, and is released when that connection's transaction
+  // commits/rolls back. So we acquire the lock via the transaction's
+  // `tx` client (which is session-bound to a single PoolClient), not
+  // via the outer `client` (whose `raw` checks out a fresh pool
+  // connection per call — that connection would return to the pool
+  // immediately, releasing the lock before `fn` even starts).
+  return client.transaction(async (tx) => {
+    await tx.raw(`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`);
     return fn();
   });
 };
