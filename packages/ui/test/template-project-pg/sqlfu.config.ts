@@ -25,6 +25,13 @@ export default defineConfig({
   // to do it explicitly.
   db: () => {
     const pool = new Pool({connectionString: projectUrl});
+    // Per-test fixtures drop their database while the dev server still has
+    // a live pg connection to it. Postgres terminates the connection, the
+    // pool surfaces that as an `error` event, and an unhandled `error` on
+    // an `EventEmitter` crashes the host process. Production users build
+    // their own pool and add this listener themselves; here we add it so
+    // the dev-server-under-test survives fixture teardown.
+    pool.on('error', () => {});
     return {
       client: createNodePostgresClient(pool),
       async [Symbol.asyncDispose]() {

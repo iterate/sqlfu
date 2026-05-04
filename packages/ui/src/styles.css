@@ -1184,6 +1184,20 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.schema-command-status {
+  font-size: 0.92rem;
+  margin: 0;
+}
+
+.schema-command-status.running {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.schema-command-status.success {
+  color: var(--ok, #2f7d2f);
+}
+
 .schema-recommendation-table {
   display: table;
   width: 100%;

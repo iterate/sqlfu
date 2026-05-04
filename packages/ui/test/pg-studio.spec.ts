@@ -48,7 +48,7 @@ test('sqlfu draft writes a pg migration that captures the desired schema', async
   await page.goto('/#schema');
   await expect(page.getByRole('heading', {name: 'Schema', exact: true})).toBeVisible();
 
-  await confirmAndRunSchemaCommand(page, page.getByRole('button', {name: 'sqlfu draft'}));
+  await confirmAndRunSchemaCommand(page, page.getByRole('button', {name: 'sqlfu draft'}), 'sqlfu draft');
 
   await expect
     .poll(async () => {
@@ -87,7 +87,7 @@ test('sqlfu migrate applies a pending pg migration to the live db', async ({page
   await page.goto('/#schema');
   await expect(page.getByRole('heading', {name: 'Schema', exact: true})).toBeVisible();
 
-  await confirmAndRunSchemaCommand(page, page.getByRole('button', {name: 'sqlfu migrate'}));
+  await confirmAndRunSchemaCommand(page, page.getByRole('button', {name: 'sqlfu migrate'}), 'sqlfu migrate');
 
   // Migration ran → table exists. Poll because the command is streamed
   // and the confirm response returns before the apply completes.
@@ -133,31 +133,24 @@ async function pgMigrationApplied(dbName: string, migrationName: string): Promis
   }
 }
 
-async function confirmAndRunSchemaCommand(page: Page, button: Locator) {
-  // The button click opens a streaming `schema/command` request: the
-  // server keeps the response open until the command finishes
-  // (transaction commit, post-flight checks, post-command schema
-  // re-fetch). The `submitConfirmation` RPC is a *separate* request
-  // that just hands the user's confirmation back to the streaming
-  // generator; it returns long before the command itself does.
-  //
-  // We capture the streaming response when the button is clicked and
-  // wait for its body to fully close at the end of the helper. Without
-  // this, the spec moves on while the command is mid-flight and
-  // fixture teardown races the still-running command — for pg, that
-  // race ends with `DROP DATABASE … WITH FORCE` killing live pool
-  // connections, which (no listener) crashes the dev server.
-  const commandResponsePromise = page.waitForResponse((response) =>
-    response.url().includes('/api/rpc/schema/command'),
-  );
+async function confirmAndRunSchemaCommand(page: Page, button: Locator, commandLabel: string) {
+  // The button click starts a streaming `schema/command` request that
+  // keeps running well after the user's confirmation reaches the
+  // backend. The schema panel's `runCommandMutation` surfaces a
+  // `<commandLabel> succeeded` (or `Running …`) status line that
+  // settles only when the streaming command finishes. Waiting on
+  // that text is the same signal a real user would look at — and
+  // means the spec is asserting on observable UI state, not on
+  // an internal network detail. It also means fixture teardown
+  // can't race a still-running command and tear down its pg
+  // database out from under live pool connections.
   await button.click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
-  await Promise.all([
-    page.waitForResponse((response) => response.url().includes('/api/rpc/schema/submitConfirmation')),
-    dialog.getByRole('button', {name: 'Confirm', exact: true}).click(),
-  ]);
+  await dialog.getByRole('button', {name: 'Confirm', exact: true}).click();
   await expect(dialog).not.toBeVisible();
-  const commandResponse = await commandResponsePromise;
-  await commandResponse.finished();
+  // Pg `sqlfu migrate` needs to spin up pg-migra under docker — longer than
+  // the global 15s expect timeout. 30s leaves headroom for cold container
+  // starts in CI without papering over real regressions.
+  await expect(page.getByText(`${commandLabel} succeeded`)).toBeVisible({timeout: 30_000});
 }

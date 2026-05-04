@@ -3,6 +3,12 @@ import {defineConfig} from '@playwright/test';
 export default defineConfig({
   testDir: './test',
   timeout: 30_000,
+  // Default `expect` timeout (5s) is tight when pg specs run concurrently
+  // with sqlite ones — the dev server services a real postgres database
+  // for some workers and the renders gate on that. 15s is comfortably
+  // longer than typical pg page loads under contention without masking
+  // real regressions, and well within the per-test 30s ceiling.
+  expect: {timeout: 15_000},
   // Snapshots are used for pure-algorithm output (no browser rendering), so
   // drop Playwright's default {platform} suffix — one file works on mac + linux.
   snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{arg}{ext}',
