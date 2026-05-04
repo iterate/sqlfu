@@ -47,4 +47,22 @@ TDD against Playwright. Mirror the existing `packages/ui/test/template-project/`
 
 ## Notes during implementation
 
-(Append as I go.)
+### Initial scaffold + first failing spec
+
+- `packages/ui/test/template-project-pg/` mirrors the sqlite template with a pg dialect config. The config derives its database name from `path.basename(projectRoot)` so each test directory automatically gets its own pg scratch db.
+- `packages/ui/test/pg-fixture.ts` extends the base playwright fixture: per-test slug → unique projectDir + unique pg db (`sqlfu_ui_<slug>`). The fixture creates the db on entry and drops it on exit.
+- Added `pg` and `@sqlfu/pg` as devDependencies on `packages/ui`.
+- Added `packages/ui/test/pg-studio.spec.ts` — first smoke spec: open the studio for a pg project, expect to see "posts" (the table from `definitions.sql`).
+- **Two real gaps surfaced** while getting the spec to a deterministic red:
+
+  1. **`db` factory contract**: `host.openDb(config)` does `await using database = await config.db()` — the factory must return a `DisposableAsyncClient` (with `client` + `[Symbol.asyncDispose]`), not a bare `AsyncClient`. The string form (`db: './app.sqlite'`) wraps it for you in `openLocalSqliteFile`; the factory form has to do it explicitly. Fixed in the template's `sqlfu.config.ts` — needs to be documented in `docs/configuration.md` (or wherever pg-config examples live) so users discover this without a 500.
+
+  2. **`schema/get` RPC queries `sqlite_master` directly** (`packages/sqlfu/src/ui/router.ts` ~line 218): `select name, type, sql from sqlite_master where type in ('table', 'view') and ${excludeReservedSqliteObjects}`. Hits postgres with `relation "sqlite_master" does not exist`. The dialect already has `loadSchemaForTypegen` which returns the same name+kind+columns shape we need here; or we can add a thinner `Dialect.listRelations(client)` that returns just the names + sql/definition. Either way: route the RPC through the dialect.
+
+### Next steps for the morning
+
+1. Re-route `schema.get` through a dialect method. Other RPCs in `router.ts` likely have the same shape (grep for `sqlite_master`, `PRAGMA`). Each is a per-RPC fix.
+2. Once `schema/get` works, the smoke spec turns green and the next red surfaces — repeat.
+3. Probable hot spots from skim: `getRelationColumns`, `getRelationCount`, query-runner endpoints, migration-list endpoints. All probably need the same dialect-routing treatment.
+
+The pattern is: **the UI server reaches into sqlite system tables instead of going through `dialect.*` methods**. Fixing each one is mechanical; the design question is whether to grow `Dialect` with a few more methods or to repurpose existing ones (`loadSchemaForTypegen` covers most of `schema/get`'s needs already).
