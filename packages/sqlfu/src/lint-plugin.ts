@@ -328,13 +328,18 @@ const formatSqlRule: Rule.RuleModule = {
         type: 'object',
         properties: {
           clientIdentifierPattern: {type: 'string'},
+          dialect: {type: 'string', enum: ['sqlite', 'postgresql']},
         },
         additionalProperties: false,
       },
     ],
   },
   create(context) {
-    const options = (context.options[0] || {}) as {clientIdentifierPattern?: string};
+    const options = (context.options[0] || {}) as {
+      clientIdentifierPattern?: string;
+      dialect?: 'sqlite' | 'postgresql';
+    };
+    const language = options.dialect;
     const sourceCode = context.sourceCode || context.getSourceCode();
 
     // Shape 1: inline SQL passed to a recognized client call.
@@ -348,7 +353,7 @@ const formatSqlRule: Rule.RuleModule = {
         const normalized = stripLeadingIndent(raw, indent);
         let formatted: string;
         try {
-          formatted = formatSql(normalized, {style: 'sqlfu'});
+          formatted = formatSql(normalized, {style: 'sqlfu', language});
         } catch {
           // Formatter failed — probably unparseable SQL. Skip silently.
           return;
@@ -378,7 +383,7 @@ const formatSqlRule: Rule.RuleModule = {
           // Backticks and `${` inside the SQL are backslash-escaped by the
           // processor; recover the true file bytes before formatting.
           const sql = unescapeWrappedSql(raw);
-          const formatted = formatSqlFileContents(sql);
+          const formatted = formatSqlFileContents(sql, {language});
           if (formatted === sql) return;
           context.report({
             node,

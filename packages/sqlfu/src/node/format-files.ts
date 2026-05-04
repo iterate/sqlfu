@@ -1,21 +1,25 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import {formatSqlFileContents} from '../formatter.js';
+import {formatSqlFileContents, type SqlFormatLanguage} from '../formatter.js';
 
 export interface FormatSqlFilesResult {
   formatted: string[];
   unchanged: string[];
 }
 
-export async function formatSqlFiles(patterns: string[], cwd: string): Promise<FormatSqlFilesResult> {
+export async function formatSqlFiles(
+  patterns: string[],
+  cwd: string,
+  options: {language?: SqlFormatLanguage} = {},
+): Promise<FormatSqlFilesResult> {
   const files = await resolveSqlFiles(patterns, cwd);
   const formatted: string[] = [];
   const unchanged: string[] = [];
 
   for (const filePath of files) {
     const original = await fs.readFile(filePath, 'utf8');
-    const next = formatSqlFileContents(original);
+    const next = formatSqlFileContents(original, {language: options.language});
     const displayPath = toPosix(path.relative(cwd, filePath) || path.basename(filePath));
     if (next === original) {
       unchanged.push(displayPath);
