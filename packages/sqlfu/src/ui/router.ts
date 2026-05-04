@@ -11,10 +11,9 @@ import {
   type CheckAnalysis,
   type SqlfuCommandConfirmParams,
 } from '../api/internal.js';
-import {sqliteDialect} from '../dialect.js';
+import {type Dialect, sqliteDialect} from '../dialect.js';
 import {SqlfuError, type SqlfuErrorKind} from '../errors.js';
-import {quoteIdentifier as sqliteQuoteIdentifier} from '../schemadiff/sqlite/identifiers.js';
-import {excludeReservedSqliteObjects, splitSqlStatements, sqlReturnsRows} from '../sqlite-text.js';
+import {sqlReturnsRows} from '../sqlite-text.js';
 import type {
   AdHocSqlParams,
   AdHocSqlResult,
@@ -212,7 +211,7 @@ export const uiRouter = {
       const config = requireProjectConfig(context.project);
       await using database = await context.host.openDb(config);
       const client = database.client;
-      const relations = await listLiveRelations(client, config.dialect.name);
+      const relations = await config.dialect.listLiveRelations(client);
 
       return {
         projectName: basename(config.projectRoot),
@@ -221,8 +220,8 @@ export const uiRouter = {
           relations.map(async (relation) => ({
             name: relation.name,
             kind: relation.kind,
-            rowCount: await getRelationCount(client, relation.name, config.dialect.name),
-            columns: await getRelationColumns(client, relation.name, config.dialect.name),
+            rowCount: await getRelationCount(client, config.dialect, relation.name),
+            columns: await config.dialect.getRelationColumns(client, relation.name),
             sql: relation.sql,
           })),
         ),
@@ -380,7 +379,7 @@ export const uiRouter = {
       .handler(async ({context, input}) => {
         const config = requireProjectConfig(context.project);
         await using database = await context.host.openDb(config);
-        return await getTableRows(database.client, input.relationName, input.page);
+        return await getTableRows(database.client, config.dialect, input.relationName, input.page);
       }),
     save: uiBase
       .input(
@@ -395,7 +394,7 @@ export const uiRouter = {
       .handler(async ({context, input}) => {
         const config = requireProjectConfig(context.project);
         await using database = await context.host.openDb(config);
-        return await saveTableRows(database.client, input.relationName, input);
+        return await saveTableRows(database.client, config.dialect, input.relationName, input);
       }),
     delete: uiBase
       .input(
@@ -409,7 +408,7 @@ export const uiRouter = {
       .handler(async ({context, input}) => {
         const config = requireProjectConfig(context.project);
         await using database = await context.host.openDb(config);
-        return await deleteTableRow(database.client, input.relationName, input);
+        return await deleteTableRow(database.client, config.dialect, input.relationName, input);
       }),
   },
   sql: {
@@ -910,124 +909,37 @@ function encodeScalar(
   return JSON.stringify(value);
 }
 
-interface LiveRelation {
-  name: string;
-  kind: 'table' | 'view';
-  sql: string | undefined;
-}
-
-async function listLiveRelations(client: Client, dialectName: string): Promise<LiveRelation[]> {
-  if (dialectName === 'postgresql') {
-    const rows = await client.all<{name: string; kind: string; sql: string | null}>({
-      sql: `
-        select c.relname as name,
-               c.relkind::text as kind,
-               case when c.relkind = 'v' then pg_get_viewdef(c.oid, true) else null end as sql
-        from pg_class c
-        join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname = 'public'
-          and c.relkind in ('r', 'v')
-        order by c.relkind, c.relname
-      `,
-      args: [],
-    });
-    return rows.map((row) => ({
-      name: row.name,
-      kind: row.kind === 'v' ? 'view' : 'table',
-      sql: row.sql ?? undefined,
-    }));
-  }
-  const rows = await client.all<{name: string; type: string; sql: string | null}>({
-    sql: `
-      select name, type, sql
-      from sqlite_master
-      where type in ('table', 'view')
-        and ${excludeReservedSqliteObjects}
-      order by type, name
-    `,
-    args: [],
-  });
-  return rows.map((row) => ({
-    name: String(row.name),
-    kind: row.type === 'view' ? 'view' : 'table',
-    sql: typeof row.sql === 'string' ? row.sql : undefined,
-  }));
-}
-
-async function getRelationColumns(
-  client: Client,
-  relationName: string,
-  dialectName: string = 'sqlite',
-): Promise<StudioColumn[]> {
-  if (dialectName === 'postgresql') {
-    const rows = await client.all<{name: string; type: string; not_null: boolean; primary_key: boolean}>({
-      sql: `
-        select a.attname as name,
-               pg_catalog.format_type(a.atttypid, a.atttypmod) as type,
-               a.attnotnull as not_null,
-               coalesce((
-                 select i.indisprimary
-                 from pg_index i
-                 where i.indrelid = a.attrelid
-                   and a.attnum = any(i.indkey)
-                   and i.indisprimary
-                 limit 1
-               ), false) as primary_key
-        from pg_attribute a
-        join pg_class c on c.oid = a.attrelid
-        join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname = 'public'
-          and c.relname = $1
-          and a.attnum > 0
-          and not a.attisdropped
-        order by a.attnum
-      `,
-      args: [relationName],
-    });
-    return rows.map((row) => ({
-      name: row.name,
-      type: row.type,
-      notNull: row.not_null,
-      primaryKey: row.primary_key,
-    }));
-  }
-  const rows = await client.all<Record<string, unknown>>({
-    sql: `PRAGMA table_xinfo(${sqliteQuoteIdentifier(relationName)})`,
-    args: [],
-  });
-  return rows
-    .filter((row) => Number(row.hidden ?? 0) === 0)
-    .map((row) => ({
-      name: String(row.name),
-      type: typeof row.type === 'string' ? row.type : '',
-      notNull: Number(row.notnull ?? 0) === 1,
-      primaryKey: Number(row.pk ?? 0) >= 1,
-    }));
-}
-
-async function getRelationCount(client: Client, relationName: string, dialectName: string) {
-  const quote = dialectName === 'postgresql' ? pgQuoteIdentifier : sqliteQuoteIdentifier;
+async function getRelationCount(client: Client, dialect: Dialect, relationName: string) {
   const rows = await client.all<{count: number | string}>({
-    sql: `select count(*) as count from ${quote(relationName)}`,
+    sql: `select count(*) as count from ${dialect.quoteIdentifier(relationName)}`,
     args: [],
   });
   return Number(rows[0]?.count ?? 0);
 }
 
-function pgQuoteIdentifier(name: string): string {
-  return `"${name.replaceAll('"', '""')}"`;
-}
-
-async function getTableRows(client: Client, relationName: string, page: number): Promise<TableRowsResponse> {
+async function getTableRows(
+  client: Client,
+  dialect: Dialect,
+  relationName: string,
+  page: number,
+): Promise<TableRowsResponse> {
   const safePage = Math.max(0, page);
   const pageSize = 25;
-  const relation = await getRelationInfo(client, relationName);
-  const relationColumns = await getRelationColumns(client, relationName);
+  const relation = await dialect.getRelationInfo(client, relationName);
+  const relationColumns = await dialect.getRelationColumns(client, relationName);
   const columns = relationColumns.map((column) => column.name);
   const primaryKeyColumns = relationColumns.filter((column) => column.primaryKey).map((column) => column.name);
-  const includeRowid = relation.type === 'table' && primaryKeyColumns.length === 0;
+  // sqlite-only: when a table lacks an explicit primary key, fall back
+  // to the `rowid` pseudo-column so we can still build stable row keys.
+  // Pg has no equivalent (`ctid` shifts on VACUUM, `oid` is deprecated),
+  // so for pg we just degrade to a non-editable view of the rows. A
+  // user who wants to edit a pg table without a PK has to add one.
+  const includeRowid =
+    dialect.name === 'sqlite' && relation.kind === 'table' && primaryKeyColumns.length === 0;
+  const editable = relation.kind === 'table' && (primaryKeyColumns.length > 0 || includeRowid);
+  const quoted = dialect.quoteIdentifier(relationName);
   const rows = await client.all<Record<string, unknown>>({
-    sql: `select ${includeRowid ? 'rowid as "__sqlfu_rowid__", ' : ''}* from ${sqliteQuoteIdentifier(relationName)} limit ? offset ?`,
+    sql: `select ${includeRowid ? 'rowid as "__sqlfu_rowid__", ' : ''}* from ${quoted} limit ? offset ?`,
     args: [pageSize, safePage * pageSize],
   });
   const materializedRows = rows.map(materializeRow);
@@ -1036,8 +948,8 @@ async function getTableRows(client: Client, relationName: string, page: number):
     relation: relationName,
     page: safePage,
     pageSize,
-    editable: relation.type === 'table',
-    rowKeys: relation.type === 'table' ? materializedRows.map((row) => buildTableRowKey(row, primaryKeyColumns)) : [],
+    editable,
+    rowKeys: editable ? materializedRows.map((row) => buildTableRowKey(row, primaryKeyColumns)) : [],
     columns,
     rows: materializedRows.map(stripInternalRowValues),
   };
@@ -1045,6 +957,7 @@ async function getTableRows(client: Client, relationName: string, page: number):
 
 async function saveTableRows(
   client: Client,
+  dialect: Dialect,
   relationName: string,
   input: {
     page: number;
@@ -1053,8 +966,8 @@ async function saveTableRows(
     rowKeys: TableRowKey[];
   },
 ): Promise<TableRowsResponse> {
-  const relation = await getRelationInfo(client, relationName);
-  if (relation.type !== 'table') {
+  const relation = await dialect.getRelationInfo(client, relationName);
+  if (relation.kind !== 'table') {
     throw new Error(`Relation "${relationName}" is not editable`);
   }
 
@@ -1090,16 +1003,17 @@ async function saveTableRows(
   for (const row of changedRows) {
     const statement =
       row.rowKey.kind === 'new'
-        ? buildInsertRowStatement(relationName, row.nextRow, row.changedColumns)
-        : buildUpdateRowStatement(relationName, row.rowKey, row.originalRow, row.nextRow, row.changedColumns);
+        ? buildInsertRowStatement(dialect, relationName, row.nextRow, row.changedColumns)
+        : buildUpdateRowStatement(dialect, relationName, row.rowKey, row.originalRow, row.nextRow, row.changedColumns);
     await client.run({sql: statement.sql, args: statement.args as QueryArg[]});
   }
 
-  return await getTableRows(client, relationName, input.page);
+  return await getTableRows(client, dialect, relationName, input.page);
 }
 
 async function deleteTableRow(
   client: Client,
+  dialect: Dialect,
   relationName: string,
   input: {
     page: number;
@@ -1107,8 +1021,8 @@ async function deleteTableRow(
     rowKey: TableRowKey | undefined;
   },
 ): Promise<TableRowsResponse> {
-  const relation = await getRelationInfo(client, relationName);
-  if (relation.type !== 'table') {
+  const relation = await dialect.getRelationInfo(client, relationName);
+  if (relation.kind !== 'table') {
     throw new Error(`Relation "${relationName}" is not editable`);
   }
 
@@ -1117,13 +1031,13 @@ async function deleteTableRow(
     throw new Error('Delete row payload is malformed');
   }
 
-  const statement = buildDeleteRowStatement(relationName, input.rowKey, originalRow);
+  const statement = buildDeleteRowStatement(dialect, relationName, input.rowKey, originalRow);
   const result = await client.run({sql: statement.sql, args: statement.args as QueryArg[]});
   if (result.rowsAffected !== 1) {
     throw new Error(`Delete affected ${result.rowsAffected ?? 0} rows`);
   }
 
-  return await getTableRows(client, relationName, input.page);
+  return await getTableRows(client, dialect, relationName, input.page);
 }
 
 function slugifyQueryName(value: string) {
@@ -1190,19 +1104,6 @@ function materializeRow(row: object) {
   );
 }
 
-async function getRelationInfo(client: Client, relationName: string) {
-  const row = (
-    await client.all<{name: string; type: 'table' | 'view'; sql: string | null}>({
-      sql: `select name, type, sql from sqlite_schema where name = ?`,
-      args: [relationName],
-    })
-  )[0];
-  if (!row || (row.type !== 'table' && row.type !== 'view')) {
-    throw new Error(`Unknown relation "${relationName}"`);
-  }
-  return row;
-}
-
 function buildTableRowKey(row: Record<string, unknown>, primaryKeyColumns: string[]): TableRowKey {
   if (primaryKeyColumns.length > 0) {
     return {
@@ -1228,7 +1129,7 @@ function stripInternalRowValues(row: Record<string, unknown>) {
   return nextRow;
 }
 
-function buildRowWhereClause(rowKey: TableRowKey, _originalRow: Record<string, unknown>) {
+function buildRowWhereClause(dialect: Dialect, rowKey: TableRowKey, _originalRow: Record<string, unknown>) {
   if (rowKey.kind === 'new') {
     throw new Error('New rows do not have a where clause');
   }
@@ -1243,59 +1144,66 @@ function buildRowWhereClause(rowKey: TableRowKey, _originalRow: Record<string, u
   return {
     sql: entries
       .map(([column, value]) =>
-        value == null ? `${sqliteQuoteIdentifier(column)} is null` : `${sqliteQuoteIdentifier(column)} = ?`,
+        value == null ? `${dialect.quoteIdentifier(column)} is null` : `${dialect.quoteIdentifier(column)} = ?`,
       )
       .join(' and '),
     args: entries.flatMap(([, value]) => (value == null ? [] : [normalizeDbValue(value)])),
   };
 }
 
-function buildExactRowMatchClause(row: Record<string, unknown>) {
+function buildExactRowMatchClause(dialect: Dialect, row: Record<string, unknown>) {
   const entries = Object.entries(row);
   return {
     sql: entries
       .map(([column, value]) =>
-        value == null ? `${sqliteQuoteIdentifier(column)} is null` : `${sqliteQuoteIdentifier(column)} = ?`,
+        value == null ? `${dialect.quoteIdentifier(column)} is null` : `${dialect.quoteIdentifier(column)} = ?`,
       )
       .join(' and '),
     args: entries.flatMap(([, value]) => (value == null ? [] : [normalizeDbValue(value)])),
   };
 }
 
-function buildInsertRowStatement(relationName: string, nextRow: Record<string, unknown>, changedColumns: string[]) {
-  const columns = changedColumns.map((column) => sqliteQuoteIdentifier(column)).join(', ');
+function buildInsertRowStatement(
+  dialect: Dialect,
+  relationName: string,
+  nextRow: Record<string, unknown>,
+  changedColumns: string[],
+) {
+  const columns = changedColumns.map((column) => dialect.quoteIdentifier(column)).join(', ');
   const placeholders = changedColumns.map(() => '?').join(', ');
   return {
-    sql: `insert into ${sqliteQuoteIdentifier(relationName)} (${columns}) values (${placeholders})`,
+    sql: `insert into ${dialect.quoteIdentifier(relationName)} (${columns}) values (${placeholders})`,
     args: changedColumns.map((column) => normalizeDbValue(nextRow[column])),
   };
 }
 
 function buildUpdateRowStatement(
+  dialect: Dialect,
   relationName: string,
   rowKey: TableRowKey,
   originalRow: Record<string, unknown>,
   nextRow: Record<string, unknown>,
   changedColumns: string[],
 ) {
-  const setSql = changedColumns.map((column) => `${sqliteQuoteIdentifier(column)} = ?`).join(', ');
+  const setSql = changedColumns.map((column) => `${dialect.quoteIdentifier(column)} = ?`).join(', ');
   const setArgs = changedColumns.map((column) => normalizeDbValue(nextRow[column]));
-  const whereClause = buildRowWhereClause(rowKey, originalRow);
+  const whereClause = buildRowWhereClause(dialect, rowKey, originalRow);
   return {
-    sql: `update ${sqliteQuoteIdentifier(relationName)} set ${setSql} where ${whereClause.sql}`,
+    sql: `update ${dialect.quoteIdentifier(relationName)} set ${setSql} where ${whereClause.sql}`,
     args: [...setArgs, ...whereClause.args],
   };
 }
 
 function buildDeleteRowStatement(
+  dialect: Dialect,
   relationName: string,
   rowKey: Exclude<TableRowKey, {kind: 'new'}>,
   originalRow: Record<string, unknown>,
 ) {
-  const rowKeyWhereClause = buildRowWhereClause(rowKey, originalRow);
-  const originalRowWhereClause = buildExactRowMatchClause(originalRow);
+  const rowKeyWhereClause = buildRowWhereClause(dialect, rowKey, originalRow);
+  const originalRowWhereClause = buildExactRowMatchClause(dialect, originalRow);
   return {
-    sql: `delete from ${sqliteQuoteIdentifier(relationName)} where (${rowKeyWhereClause.sql}) and (${originalRowWhereClause.sql})`,
+    sql: `delete from ${dialect.quoteIdentifier(relationName)} where (${rowKeyWhereClause.sql}) and (${originalRowWhereClause.sql})`,
     args: [...rowKeyWhereClause.args, ...originalRowWhereClause.args],
   };
 }
