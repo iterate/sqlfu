@@ -59,10 +59,22 @@ TDD against Playwright. Mirror the existing `packages/ui/test/template-project/`
 
   2. **`schema/get` RPC queries `sqlite_master` directly** (`packages/sqlfu/src/ui/router.ts` ~line 218): `select name, type, sql from sqlite_master where type in ('table', 'view') and ${excludeReservedSqliteObjects}`. Hits postgres with `relation "sqlite_master" does not exist`. The dialect already has `loadSchemaForTypegen` which returns the same name+kind+columns shape we need here; or we can add a thinner `Dialect.listRelations(client)` that returns just the names + sql/definition. Either way: route the RPC through the dialect.
 
-### Next steps for the morning
+### `schema.get` now works for pg (smoke spec green)
 
-1. Re-route `schema.get` through a dialect method. Other RPCs in `router.ts` likely have the same shape (grep for `sqlite_master`, `PRAGMA`). Each is a per-RPC fix.
-2. Once `schema/get` works, the smoke spec turns green and the next red surfaces — repeat.
-3. Probable hot spots from skim: `getRelationColumns`, `getRelationCount`, query-runner endpoints, migration-list endpoints. All probably need the same dialect-routing treatment.
+Inlined a pg branch directly in `packages/sqlfu/src/ui/router.ts` for three sqlite-only call sites:
 
-The pattern is: **the UI server reaches into sqlite system tables instead of going through `dialect.*` methods**. Fixing each one is mechanical; the design question is whether to grow `Dialect` with a few more methods or to repurpose existing ones (`loadSchemaForTypegen` covers most of `schema/get`'s needs already).
+- `listLiveRelations(client, dialectName)` — was an inline `select ... from sqlite_master ...`. Now branches: pg uses `pg_class` + `pg_namespace` (public schema, table/view kind); sqlite path unchanged.
+- `getRelationColumns(client, relationName, dialectName)` — was `PRAGMA table_xinfo(...)`. Now branches: pg uses `pg_attribute` + `pg_class` (with primary-key detection via `pg_index`); sqlite path unchanged. `dialectName` defaults to `'sqlite'` so all the *other* call sites that don't know the dialect yet keep working.
+- `getRelationCount(client, relationName, dialectName)` — count is dialect-neutral, but the identifier quoting differs. Branches between `sqliteQuoteIdentifier` and the new `pgQuoteIdentifier`.
+
+Smoke spec is now green (`pg-studio.spec.ts > studio renders the schema for a pg project`). All 67 existing sqlite specs still pass — no regressions.
+
+### Next steps
+
+1. **Migrate the other 21 sqlite-only call sites in `router.ts`.** Quick scan: any reference to `sqlite_master`, `PRAGMA`, `sqliteQuoteIdentifier`, or `getRelationColumns(client, name)` (no third arg — defaulting to sqlite). Each will fail when its corresponding RPC is exercised by a pg-flavored spec.
+
+2. **Decide: inline branches forever, or hoist into Dialect methods?** The current "pass `dialectName` as a string" pattern is fine for the few call sites we have today, but if the count grows past ~5-6 it's worth defining `Dialect.listLiveRelations(client)` / `Dialect.getRelationColumns(client, name)` / etc. and removing the `if (dialectName === 'postgresql')` branches from `router.ts` entirely. Either path is good; the inline branches are the cheaper *commit*, the Dialect methods are the cheaper *long-term maintenance*.
+
+3. **Add more pg-side specs.** The smoke spec just asserts a table name is visible. The morning sweep should add one spec per "class of UI feature" (query runner, drift cards, migration list, sync flow) and let the reds surface the remaining sqlite-isms.
+
+4. **Document the `db` factory disposable contract.** Pg users hitting that 500 will be confused. The fix in `template-project-pg/sqlfu.config.ts` is documented inline; needs a parallel mention in user-facing docs.

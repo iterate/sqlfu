@@ -212,27 +212,18 @@ export const uiRouter = {
       const config = requireProjectConfig(context.project);
       await using database = await context.host.openDb(config);
       const client = database.client;
-      const relations = await client.all<{name: string; type: string; sql: string | null}>({
-        sql: `
-          select name, type, sql
-          from sqlite_master
-          where type in ('table', 'view')
-            and ${excludeReservedSqliteObjects}
-          order by type, name
-        `,
-        args: [],
-      });
+      const relations = await listLiveRelations(client, config.dialect.name);
 
       return {
         projectName: basename(config.projectRoot),
         projectRoot: config.projectRoot,
         relations: await Promise.all(
           relations.map(async (relation) => ({
-            name: String(relation.name),
-            kind: (relation.type === 'view' ? 'view' : 'table') as 'table' | 'view',
-            rowCount: await getRelationCount(client, String(relation.name)),
-            columns: await getRelationColumns(client, String(relation.name)),
-            sql: typeof relation.sql === 'string' ? relation.sql : undefined,
+            name: relation.name,
+            kind: relation.kind,
+            rowCount: await getRelationCount(client, relation.name, config.dialect.name),
+            columns: await getRelationColumns(client, relation.name, config.dialect.name),
+            sql: relation.sql,
           })),
         ),
       };
@@ -919,7 +910,87 @@ function encodeScalar(
   return JSON.stringify(value);
 }
 
-async function getRelationColumns(client: Client, relationName: string): Promise<StudioColumn[]> {
+interface LiveRelation {
+  name: string;
+  kind: 'table' | 'view';
+  sql: string | undefined;
+}
+
+async function listLiveRelations(client: Client, dialectName: string): Promise<LiveRelation[]> {
+  if (dialectName === 'postgresql') {
+    const rows = await client.all<{name: string; kind: string; sql: string | null}>({
+      sql: `
+        select c.relname as name,
+               c.relkind::text as kind,
+               case when c.relkind = 'v' then pg_get_viewdef(c.oid, true) else null end as sql
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public'
+          and c.relkind in ('r', 'v')
+        order by c.relkind, c.relname
+      `,
+      args: [],
+    });
+    return rows.map((row) => ({
+      name: row.name,
+      kind: row.kind === 'v' ? 'view' : 'table',
+      sql: row.sql ?? undefined,
+    }));
+  }
+  const rows = await client.all<{name: string; type: string; sql: string | null}>({
+    sql: `
+      select name, type, sql
+      from sqlite_master
+      where type in ('table', 'view')
+        and ${excludeReservedSqliteObjects}
+      order by type, name
+    `,
+    args: [],
+  });
+  return rows.map((row) => ({
+    name: String(row.name),
+    kind: row.type === 'view' ? 'view' : 'table',
+    sql: typeof row.sql === 'string' ? row.sql : undefined,
+  }));
+}
+
+async function getRelationColumns(
+  client: Client,
+  relationName: string,
+  dialectName: string = 'sqlite',
+): Promise<StudioColumn[]> {
+  if (dialectName === 'postgresql') {
+    const rows = await client.all<{name: string; type: string; not_null: boolean; primary_key: boolean}>({
+      sql: `
+        select a.attname as name,
+               pg_catalog.format_type(a.atttypid, a.atttypmod) as type,
+               a.attnotnull as not_null,
+               coalesce((
+                 select i.indisprimary
+                 from pg_index i
+                 where i.indrelid = a.attrelid
+                   and a.attnum = any(i.indkey)
+                   and i.indisprimary
+                 limit 1
+               ), false) as primary_key
+        from pg_attribute a
+        join pg_class c on c.oid = a.attrelid
+        join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public'
+          and c.relname = $1
+          and a.attnum > 0
+          and not a.attisdropped
+        order by a.attnum
+      `,
+      args: [relationName],
+    });
+    return rows.map((row) => ({
+      name: row.name,
+      type: row.type,
+      notNull: row.not_null,
+      primaryKey: row.primary_key,
+    }));
+  }
   const rows = await client.all<Record<string, unknown>>({
     sql: `PRAGMA table_xinfo(${sqliteQuoteIdentifier(relationName)})`,
     args: [],
@@ -934,12 +1005,17 @@ async function getRelationColumns(client: Client, relationName: string): Promise
     }));
 }
 
-async function getRelationCount(client: Client, relationName: string) {
-  const rows = await client.all<{count: number}>({
-    sql: `select count(*) as count from ${sqliteQuoteIdentifier(relationName)}`,
+async function getRelationCount(client: Client, relationName: string, dialectName: string) {
+  const quote = dialectName === 'postgresql' ? pgQuoteIdentifier : sqliteQuoteIdentifier;
+  const rows = await client.all<{count: number | string}>({
+    sql: `select count(*) as count from ${quote(relationName)}`,
     args: [],
   });
   return Number(rows[0]?.count ?? 0);
+}
+
+function pgQuoteIdentifier(name: string): string {
+  return `"${name.replaceAll('"', '""')}"`;
 }
 
 async function getTableRows(client: Client, relationName: string, page: number): Promise<TableRowsResponse> {
