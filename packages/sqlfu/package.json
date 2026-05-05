@@ -71,7 +71,7 @@
     "@clack/prompts": "^1.2.0",
     "@orpc/server": "^1.13.13",
     "arktype": "^2.2.0",
-    "trpc-cli": "https://pkg.pr.new/mmkal/trpc-cli/trpc-cli@cb2e069"
+    "trpc-cli": "^0.14.1"
   },
   "peerDependencies": {
     "@sqlfu/ui": "workspace:*"

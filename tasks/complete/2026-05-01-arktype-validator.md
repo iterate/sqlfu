@@ -15,9 +15,9 @@ Done after PR review correction. `packages/sqlfu` first-party CLI/UI router
 inputs use Arktype schemas and the runtime dependency list no longer includes
 Zod. Generated validator support remains intact for Arktype, Valibot, Zod, and
 Zod Mini. CLI command inputs now use Arktype object schemas unioned with
-`undefined`, restoring omitted-input call-sites while relying on the trpc-cli
-optional-union JSON Schema fix. The `sqlfu_types` metadata-table implementation
-is split to the stacked follow-up branch.
+`undefined`, restoring omitted-input call-sites while relying on the released
+trpc-cli optional-union JSON Schema fix. The `sqlfu_types` metadata-table
+implementation is split to the stacked follow-up branch.
 
 ## Summary Ask
 
@@ -82,9 +82,8 @@ Zod Mini support remains public API.
   dependencies. Zod and Zod Mini stay in `SqlfuValidator`; `packages/sqlfu`
   itself stops importing Zod in first-party runtime code.
 - Optional CLI command schemas originally needed a local `toJsonSchema` mutation
-  shim for trpc-cli. That is now handled in trpc-cli PR #195, so this branch
-  uses direct `schema.or('undefined')` unions and temporarily depends on the
-  pkg.pr.new build for that PR.
+  shim for trpc-cli. That is now handled by trpc-cli `0.14.1`, so this branch
+  uses direct `schema.or('undefined')` unions with a normal semver dependency.
 
 ## Verification Log
 
@@ -111,11 +110,12 @@ Zod Mini support remains public API.
   - `pnpm --filter sqlfu test --run test/migrations/migrations.test.ts test/migrations/edge-cases.test.ts test/migrations/prefix-config.test.ts`
   - `pnpm --filter sqlfu test --run test/cli-config.test.ts test/ui-server.test.ts`
   - `pnpm --filter sqlfu test --run`
-- Passing checks after restoring direct `.or('undefined')` CLI inputs on the
-  trpc-cli #195 pkg.pr.new build:
+- Passing checks after restoring direct `.or('undefined')` CLI inputs on
+  `trpc-cli@0.14.1`:
   - `pnpm --filter sqlfu build`
   - `node packages/sqlfu/bin/sqlfu.js serve --help`
   - `node packages/sqlfu/bin/sqlfu.js migrate --help`
   - `pnpm --filter sqlfu test --run test/cli-config.test.ts test/init.test.ts`
   - `pnpm --filter sqlfu typecheck`
+  - `pnpm --filter sqlfu test --run test/ui-server.test.ts`
   - `pnpm --filter sqlfu test --run`
