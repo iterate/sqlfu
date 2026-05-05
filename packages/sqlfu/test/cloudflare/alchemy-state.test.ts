@@ -133,7 +133,11 @@ test('readAlchemyD1State throws actionably when the state file is for a differen
 });
 
 async function alchemyStateFixture(files: Record<string, string>) {
-  const root = path.join(repoRoot, 'tmp', `alchemy-state-fixture-ignoreme-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const root = path.join(
+    repoRoot,
+    'tmp',
+    `alchemy-state-fixture-ignoreme-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  );
   const alchemyDir = path.join(root, '.alchemy');
   await fs.mkdir(alchemyDir, {recursive: true});
 

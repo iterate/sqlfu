@@ -156,7 +156,10 @@ type AppEvents = {
 };
 
 async function createTestApp() {
-  const dbPath = path.join(os.tmpdir(), `sqlfu-outbox-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.db`);
+  const dbPath = path.join(
+    os.tmpdir(),
+    `sqlfu-outbox-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.db`,
+  );
   const database = new DatabaseSync(dbPath);
   const client = createNodeSqliteClient(database);
   bootstrapAppSchema(client);

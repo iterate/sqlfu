@@ -55,8 +55,7 @@ export function CodeSurface({
 
   const cursorOpacity = cursor ? (Math.floor(frame / 12) % 2 === 0 ? 1 : 0) : 0;
 
-  const tabColor =
-    accent === 'generated' ? theme.accent : theme.codeMuted;
+  const tabColor = accent === 'generated' ? theme.accent : theme.codeMuted;
 
   return (
     <div
@@ -105,11 +104,7 @@ export function CodeSurface({
           const lineNumber = lineIndex + 1;
           const isAdd = addLines?.includes(lineNumber);
           const isRemove = removeLines?.includes(lineNumber);
-          const background = isRemove
-            ? theme.highlightRemove
-            : isAdd
-              ? theme.highlightAdd
-              : 'transparent';
+          const background = isRemove ? theme.highlightRemove : isAdd ? theme.highlightAdd : 'transparent';
           return (
             <div
               key={lineIndex}
@@ -231,9 +226,7 @@ export function TerminalStrip({
           }}
         />
       </div>
-      {showOutput ? (
-        <div style={{color: theme.terminalDim, whiteSpace: 'pre-wrap'}}>{output}</div>
-      ) : null}
+      {showOutput ? <div style={{color: theme.terminalDim, whiteSpace: 'pre-wrap'}}>{output}</div> : null}
     </div>
   );
 }
@@ -266,7 +259,7 @@ export function FileTree({
     >
       {entries.map((entry) => {
         const base = entry.kind === 'dir' ? theme.codeKeyword : theme.codeText;
-        const flashAlpha = entry.highlight ? highlightFlash ?? 0 : 0;
+        const flashAlpha = entry.highlight ? (highlightFlash ?? 0) : 0;
         return (
           <div
             key={entry.name}
@@ -320,15 +313,7 @@ export function Caption({text, opacity}: {text: string; opacity: number}) {
   );
 }
 
-export function useEasedProgress({
-  start,
-  end,
-  hold = 0,
-}: {
-  start: number;
-  end: number;
-  hold?: number;
-}) {
+export function useEasedProgress({start, end, hold = 0}: {start: number; end: number; hold?: number}) {
   const frame = useCurrentFrame();
   const raw = interpolate(frame, [start, end], [0, 1], {
     extrapolateLeft: 'clamp',

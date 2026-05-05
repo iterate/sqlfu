@@ -193,7 +193,13 @@ test('format-sql: preserves template indentation on multi-line autofix', () => {
     valid: [],
     invalid: [
       {
-        code: ['function load() {', '  return client.all(`', '    SELECT id, name FROM users WHERE id = 1', '  `)', '}'].join('\n'),
+        code: [
+          'function load() {',
+          '  return client.all(`',
+          '    SELECT id, name FROM users WHERE id = 1',
+          '  `)',
+          '}',
+        ].join('\n'),
         errors: 1,
         output: [
           'function load() {',

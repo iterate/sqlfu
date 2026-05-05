@@ -46,7 +46,10 @@ export async function findCloudflareD1ByName(options: FindCloudflareD1ByNameOpti
   }
 
   if (!response.ok || envelope?.success === false) {
-    const cfErrors = envelope?.errors?.map((e) => e.message).filter(Boolean).join('; ');
+    const cfErrors = envelope?.errors
+      ?.map((e) => e.message)
+      .filter(Boolean)
+      .join('; ');
     throw new Error(
       `Cloudflare D1 list failed (${response.status} ${response.statusText}): ${cfErrors || responseText || 'no body'}`,
     );
@@ -54,9 +57,7 @@ export async function findCloudflareD1ByName(options: FindCloudflareD1ByNameOpti
 
   const matches = envelope?.result || [];
   if (matches.length === 0) {
-    throw new Error(
-      `No Cloudflare D1 database found for name "${options.name}" in account ${options.accountId}.`,
-    );
+    throw new Error(`No Cloudflare D1 database found for name "${options.name}" in account ${options.accountId}.`);
   }
   if (matches.length > 1) {
     const ids = matches.map((m) => m.uuid).join(', ');

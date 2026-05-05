@@ -1,13 +1,6 @@
 import {mapSqliteDriverError} from './errors.js';
 import {bindAsyncSql, bindSyncSql} from './sql.js';
-import type {
-  AsyncClient,
-  PreparedStatement,
-  ResultRow,
-  SqlQuery,
-  SyncClient,
-  SyncPreparedStatement,
-} from './types.js';
+import type {AsyncClient, PreparedStatement, ResultRow, SqlQuery, SyncClient, SyncPreparedStatement} from './types.js';
 
 /**
  * Wrap a `SyncClient` so every error from `all` / `run` / `raw` / `iterate`
@@ -21,8 +14,7 @@ import type {
  * error contract as queries outside it.
  */
 export function wrapSyncClientErrors<TDriver>(client: SyncClient<TDriver>): SyncClient<TDriver> {
-  const mapQuery = (error: unknown, query: SqlQuery) =>
-    mapSqliteDriverError(error, {query, system: client.system});
+  const mapQuery = (error: unknown, query: SqlQuery) => mapSqliteDriverError(error, {query, system: client.system});
 
   const wrapped: Omit<SyncClient<TDriver>, 'sql'> & {sql: SyncClient<TDriver>['sql']} = {
     driver: client.driver,
@@ -91,7 +83,9 @@ export function wrapSyncClientErrors<TDriver>(client: SyncClient<TDriver>): Sync
       };
     },
     transaction: (<TResult>(fn: (tx: SyncClient<TDriver>) => TResult) =>
-      client.transaction((tx: SyncClient<TDriver>) => fn(wrapSyncClientErrors(tx)))) as SyncClient<TDriver>['transaction'],
+      client.transaction((tx: SyncClient<TDriver>) =>
+        fn(wrapSyncClientErrors(tx)),
+      )) as SyncClient<TDriver>['transaction'],
     sql: undefined as unknown as SyncClient<TDriver>['sql'],
   };
   wrapped.sql = bindSyncSql(wrapped);
@@ -99,8 +93,7 @@ export function wrapSyncClientErrors<TDriver>(client: SyncClient<TDriver>): Sync
 }
 
 export function wrapAsyncClientErrors<TDriver>(client: AsyncClient<TDriver>): AsyncClient<TDriver> {
-  const mapQuery = (error: unknown, query: SqlQuery) =>
-    mapSqliteDriverError(error, {query, system: client.system});
+  const mapQuery = (error: unknown, query: SqlQuery) => mapSqliteDriverError(error, {query, system: client.system});
 
   const wrapped: Omit<AsyncClient<TDriver>, 'sql'> & {sql: AsyncClient<TDriver>['sql']} = {
     driver: client.driver,

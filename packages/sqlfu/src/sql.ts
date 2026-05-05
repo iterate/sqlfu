@@ -142,10 +142,8 @@ export function join(values: SqlValue[], separator = ', '): SqlFragment {
 }
 
 export function bindSyncSql(client: SyncClient): SyncSqlTag {
-  const boundSql = <TRow extends ResultRow = ResultRow>(
-    strings: TemplateStringsArray,
-    ...values: SqlValue[]
-  ) => new SyncBoundRows<TRow>(client, sql(strings, ...values));
+  const boundSql = <TRow extends ResultRow = ResultRow>(strings: TemplateStringsArray, ...values: SqlValue[]) =>
+    new SyncBoundRows<TRow>(client, sql(strings, ...values));
 
   boundSql.all = <TRow extends ResultRow = ResultRow>(strings: TemplateStringsArray, ...values: SqlValue[]) =>
     client.all<TRow>(sql(strings, ...values));
@@ -157,10 +155,8 @@ export function bindSyncSql(client: SyncClient): SyncSqlTag {
 }
 
 export function bindAsyncSql(client: AsyncClient): AsyncSqlTag {
-  const boundSql = <TRow extends ResultRow = ResultRow>(
-    strings: TemplateStringsArray,
-    ...values: SqlValue[]
-  ) => new AsyncBoundRows<TRow>(client, sql(strings, ...values));
+  const boundSql = <TRow extends ResultRow = ResultRow>(strings: TemplateStringsArray, ...values: SqlValue[]) =>
+    new AsyncBoundRows<TRow>(client, sql(strings, ...values));
 
   boundSql.all = <TRow extends ResultRow = ResultRow>(strings: TemplateStringsArray, ...values: SqlValue[]) =>
     client.all<TRow>(sql(strings, ...values));

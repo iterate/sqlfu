@@ -43,7 +43,11 @@ test('createD1HttpClient.run() exposes rowsAffected + lastInsertRowid', async ()
   });
 
   const client = createD1HttpClient({
-    accountId: 'acct', apiToken: 'tok', databaseId: 'db', apiBase: cf.url, fetch: cf.fetch,
+    accountId: 'acct',
+    apiToken: 'tok',
+    databaseId: 'db',
+    apiBase: cf.url,
+    fetch: cf.fetch,
   });
 
   const result = await client.run({
@@ -56,11 +60,18 @@ test('createD1HttpClient.run() exposes rowsAffected + lastInsertRowid', async ()
 
 test('createD1HttpClient surfaces Cloudflare API errors actionably', async () => {
   await using cf = await fakeCloudflareApi({
-    onQuery: () => ({status: 400, body: {success: false, errors: [{code: 7500, message: 'no such table: nope'}], messages: [], result: []}}),
+    onQuery: () => ({
+      status: 400,
+      body: {success: false, errors: [{code: 7500, message: 'no such table: nope'}], messages: [], result: []},
+    }),
   });
 
   const client = createD1HttpClient({
-    accountId: 'acct', apiToken: 'tok', databaseId: 'db', apiBase: cf.url, fetch: cf.fetch,
+    accountId: 'acct',
+    apiToken: 'tok',
+    databaseId: 'db',
+    apiBase: cf.url,
+    fetch: cf.fetch,
   });
 
   await expect(client.all({sql: 'select * from nope', args: [], name: 'q'})).rejects.toThrow(/no such table: nope/);

@@ -150,10 +150,7 @@ function normalizeErrorMessage(value: string): string {
 async function updateFormatterFixtureCase(fixturePath: string, testName: string): Promise<void> {
   const contents = await fs.readFile(fixturePath, 'utf8');
   const defaultConfig = parseDefaultConfig(contents);
-  const regionPattern = new RegExp(
-    `^-- #region: ${escapeRegex(testName)}\\n(?<body>[\\s\\S]*?)^-- #endregion$`,
-    'm',
-  );
+  const regionPattern = new RegExp(`^-- #region: ${escapeRegex(testName)}\\n(?<body>[\\s\\S]*?)^-- #endregion$`, 'm');
   const match = regionPattern.exec(contents);
   if (!match) {
     throw new Error(`Region "${testName}" not found in ${fixturePath}`);

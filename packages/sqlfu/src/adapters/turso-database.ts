@@ -1,13 +1,7 @@
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
 import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
-import type {
-  AsyncClient,
-  PreparedStatement,
-  PreparedStatementParams,
-  ResultRow,
-  SqlQuery,
-} from '../types.js';
+import type {AsyncClient, PreparedStatement, PreparedStatementParams, ResultRow, SqlQuery} from '../types.js';
 
 export interface TursoDatabaseStatementLike<TRow extends ResultRow = ResultRow> {
   reader: boolean;

@@ -286,9 +286,7 @@ function groupForeignKeys(
     .sort((left, right) => stableStringify(left).localeCompare(stableStringify(right)));
 }
 
-function sortUniqueConstraints(
-  uniqueConstraints: SqliteUniqueConstraint[],
-): SqliteUniqueConstraint[] {
+function sortUniqueConstraints(uniqueConstraints: SqliteUniqueConstraint[]): SqliteUniqueConstraint[] {
   return [...uniqueConstraints].sort((left, right) =>
     left.columns.join('\u0000').localeCompare(right.columns.join('\u0000')),
   );
