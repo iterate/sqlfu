@@ -141,6 +141,74 @@ test('generate with runtime: effect-v3 returns programs that use Effect SQL cont
   ]);
 });
 
+test('generate with runtime: effect-v3 decodes sqlfu_types JSON result columns', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create view sqlfu_types as
+      select
+        'slack_payload' as name,
+        'json' as encoding,
+        'typescript' as format,
+        '{
+          action: "message" | "reaction";
+          content: string
+        }' as definition;
+
+      create table slack_webhooks (
+        id integer primary key,
+        payload slack_payload not null,
+        created_at integer not null
+      );
+    `,
+    files: {
+      'sql/slack-webhooks.sql': dedent`
+        /** @name recordSlackWebhook */
+        insert into slack_webhooks (payload, created_at) values (:payload, :createdAt);
+
+        /** @name listSlackWebhooks */
+        select id, payload, created_at from slack_webhooks order by id;
+      `,
+    },
+    config: {generate: {experimentalJsonTypes: true, runtime: 'effect-v3'}},
+  });
+
+  await project.generate();
+  const generatedModule = await project.readText('sql/.generated/slack-webhooks.sql.ts');
+  expect(generatedModule).toContain('JSON.stringify(params.payload)');
+  expect(generatedModule).toContain(`payload: (JSON.parse(row.payload) as listSlackWebhooks.Result["payload"])`);
+  expect(generatedModule).toContain('sqlClient.unsafe<any>');
+
+  const {listSlackWebhooks, recordSlackWebhook} = await project.importTranspiledModule<{
+    recordSlackWebhook: (params: {
+      payload: {action: 'message' | 'reaction'; content: string};
+      createdAt: number;
+    }) => Effect.Effect<unknown>;
+    listSlackWebhooks: () => Effect.Effect<
+      Array<{id: number; payload: {action: 'message' | 'reaction'; content: string}; created_at: number}>
+    >;
+  }>('sql/.generated/slack-webhooks.sql.ts');
+
+  const payload = {
+    action: 'reaction' as const,
+    content: 'thumbsup',
+  };
+
+  const rows = await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* recordSlackWebhook({payload, createdAt: 456});
+      return yield* listSlackWebhooks();
+    }).pipe(Effect.provide(SqliteClient.layer({filename: project.databasePath}))),
+  );
+
+  expect(rows).toEqual([
+    {
+      id: 1,
+      payload,
+      created_at: 456,
+    },
+  ]);
+});
+
 test('generated annotated queries expand inferred list and object params at runtime', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: `create table posts (id integer primary key, slug text not null, title text not null);`,
