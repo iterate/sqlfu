@@ -1,10 +1,12 @@
 import dedent from 'dedent';
+import * as Effect from 'effect/Effect';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {ts} from 'ts-morph';
 import {expect, test} from 'vitest';
+import {SqliteClient} from '@effect/sql-sqlite-node';
 
 import {createNodeSqliteClient} from '../../src/index.js';
 import {generateQueryTypes} from '../../src/typegen/index.js';
@@ -86,9 +88,7 @@ test('generate with validator: zod validates params and rows at runtime', async 
 
   // zod's `prettifyError` formats the issue list into a readable per-line message; the test
   // just checks that the slug issue makes it to the thrown Error's message.
-  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(
-    /Invalid input[\s\S]+slug/,
-  );
+  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(/Invalid input[\s\S]+slug/);
 
   // Result-schema parse path — feed the wrapper a client that returns rows with a bogus `id`
   // so the post-query validation fires.
@@ -96,12 +96,49 @@ test('generate with validator: zod validates params and rows at runtime', async 
     ...client,
     all: async () => [{id: 'not-a-number', slug: 'oops', title: null}],
   };
-  await expect(mod.findPostBySlug(badClient as never, {slug: 'x'})).rejects.toThrow(
-    /Invalid input[\s\S]+id/,
-  );
+  await expect(mod.findPostBySlug(badClient as never, {slug: 'x'})).rejects.toThrow(/Invalid input[\s\S]+id/);
 
   expect(typeof mod.findPostBySlug.sql).toBe('string');
   expect(mod.findPostBySlug.sql).toContain('from posts where slug = ?');
+});
+
+test('generate with runtime: effect-v3 returns programs that use Effect SQL context', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create table posts (
+        id integer primary key,
+        slug text not null,
+        title text not null
+      );
+    `,
+    files: {
+      'sql/list-posts.sql': `select id, slug, title from posts order by id limit :limit;`,
+    },
+    config: {generate: {runtime: 'effect-v3'}},
+  });
+
+  await project.generate();
+  await project.applyStatements(dedent`
+    insert into posts (slug, title) values
+      ('hello', 'Hello'),
+      ('second', 'Second'),
+      ('third', 'Third');
+  `);
+
+  const {listPosts} = await project.importTranspiledModule<{
+    listPosts: (params: {limit: number}) => Effect.Effect<Array<{id: number; slug: string; title: string}>>;
+  }>('sql/.generated/list-posts.sql.ts');
+
+  const posts = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* listPosts({limit: 2});
+    }).pipe(Effect.provide(SqliteClient.layer({filename: project.databasePath}))),
+  );
+
+  expect(posts).toEqual([
+    {id: 1, slug: 'hello', title: 'Hello'},
+    {id: 2, slug: 'second', title: 'Second'},
+  ]);
 });
 
 test('generated annotated queries expand inferred list and object params at runtime', async () => {
@@ -150,10 +187,19 @@ test('generated annotated queries expand inferred list and object params at runt
   ]);
 
   const mod = await project.importTranspiledModule<{
-    insertPost: (client: unknown, params: {post: {slug: string; title: string}}) => Promise<{id: number; slug: string; title: string}>;
-    insertPosts: (client: unknown, params: {posts: {slug: string; title: string} | {slug: string; title: string}[]}) => Promise<unknown>;
+    insertPost: (
+      client: unknown,
+      params: {post: {slug: string; title: string}},
+    ) => Promise<{id: number; slug: string; title: string}>;
+    insertPosts: (
+      client: unknown,
+      params: {posts: {slug: string; title: string} | {slug: string; title: string}[]},
+    ) => Promise<unknown>;
     listPostsByIds: (client: unknown, params: {ids: number[]}) => Promise<{id: number; slug: string; title: string}[]>;
-    listPostsBySlugAndTitle: (client: unknown, params: {posts: {slug: string; title: string}[]}) => Promise<{id: number; slug: string; title: string}[]>;
+    listPostsBySlugAndTitle: (
+      client: unknown,
+      params: {posts: {slug: string; title: string}[]},
+    ) => Promise<{id: number; slug: string; title: string}[]>;
   }>('sql/.generated/posts.sql.ts');
 
   using database = project.openDatabase();
@@ -189,9 +235,7 @@ test('generated annotated queries expand inferred list and object params at runt
     {id: 1, slug: 'one', title: 'One'},
     {id: 4, slug: 'four', title: 'Four'},
   ]);
-  await expect(mod.listPostsByIds(client, {ids: []})).rejects.toThrow(
-    'Parameter "ids" must be a non-empty array',
-  );
+  await expect(mod.listPostsByIds(client, {ids: []})).rejects.toThrow('Parameter "ids" must be a non-empty array');
   await expect(mod.listPostsBySlugAndTitle(client, {posts: []})).rejects.toThrow(
     'Parameter "posts" must be a non-empty array',
   );
@@ -367,9 +411,7 @@ test('generate with validator: valibot validates inputs at runtime via standard 
   });
   // Valibot's pretty path inlines the Standard Schema result-guard + calls the re-exported
   // `prettifyStandardSchemaError` for a readable message.
-  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(
-    /Invalid type[\s\S]+slug/,
-  );
+  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(/Invalid type[\s\S]+slug/);
 });
 
 test('generate with validator: zod-mini validates at runtime via standard schema', async () => {
@@ -396,9 +438,7 @@ test('generate with validator: zod-mini validates at runtime via standard schema
     slug: 'hello',
     title: 'Hello',
   });
-  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(
-    /Invalid input[\s\S]+slug/,
-  );
+  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(/Invalid input[\s\S]+slug/);
 });
 
 test('generate with validator: arktype validates at runtime via standard schema', async () => {
@@ -499,6 +539,7 @@ async function createRuntimeFixture(input: {
       validator?: 'arktype' | 'valibot' | 'zod' | 'zod-mini' | null;
       prettyErrors?: boolean;
       sync?: boolean;
+      runtime?: 'sqlfu' | 'effect-v3' | 'effect-v4-unstable';
       importExtension?: '.js' | '.ts';
     };
   };
@@ -526,6 +567,7 @@ async function createRuntimeFixture(input: {
   await applyDefinitionsToDatabase(dbPath, input.definitionsSql);
 
   return {
+    databasePath: dbPath,
     async generate() {
       await inWorkingDirectory(root, () => generateQueryTypes());
     },
@@ -611,6 +653,9 @@ function rewriteBareImports(source: string): string {
     'zod/mini': pathToFileURL(path.join(packageRoot, 'node_modules', 'zod', 'mini', 'index.js')).href,
     valibot: pathToFileURL(path.join(packageRoot, 'node_modules', 'valibot', 'dist', 'index.mjs')).href,
     arktype: pathToFileURL(path.join(packageRoot, 'node_modules', 'arktype', 'out', 'index.js')).href,
+    '@effect/sql': pathToFileURL(path.join(packageRoot, 'node_modules', '@effect', 'sql', 'dist', 'esm', 'index.js'))
+      .href,
+    'effect/Effect': pathToFileURL(path.join(packageRoot, 'node_modules', 'effect', 'dist', 'esm', 'Effect.js')).href,
   };
   return source.replace(/from\s+["']([^"']+)["']/g, (match, specifier) => {
     const replacement = mapping[specifier];

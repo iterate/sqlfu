@@ -89,6 +89,8 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@effect/sql": "^0.51.1",
+    "@effect/sql-sqlite-node": "^0.52.0",
     "@hono/node-server": "^1.19.14",
     "@libsql/client": "^0.17.2",
     "@opentelemetry/api": "^1.9.1",
@@ -111,6 +113,7 @@
     "dedent": "^1.7.2",
     "devalue": "^5.7.1",
     "dotenv": "^17.4.2",
+    "effect": "^3.21.2",
     "esbuild": "^0.25.0",
     "eslint": "^9.36.0",
     "execa": "^9.6.1",
@@ -127,14 +130,22 @@
     "vitest": "^4.1.1"
   },
   "peerDependencies": {
+    "@effect/sql": "^0.51.1",
     "@sqlfu/ui": "workspace:*",
-    "better-auth": "^1.6.9"
+    "better-auth": "^1.6.9",
+    "effect": "^3.21.2 || ^4.0.0-beta.60"
   },
   "peerDependenciesMeta": {
+    "@effect/sql": {
+      "optional": true
+    },
     "@sqlfu/ui": {
       "optional": true
     },
     "better-auth": {
+      "optional": true
+    },
+    "effect": {
       "optional": true
     }
   }
