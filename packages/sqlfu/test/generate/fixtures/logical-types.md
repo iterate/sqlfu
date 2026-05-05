@@ -14,15 +14,20 @@ export default {
 
 </details>
 
-## keeps TypeScript defaults in validator wrapper types without generating schemas
+## keeps sqlfu_types ts_type values in validator wrapper types without generating schemas
 
 <details data-outputs="sql/.generated/**/*.ts">
 <summary>input</summary>
 
 ```sql (definitions.sql)
-create table sqlfu_types (
-  json_slack_payload text default '{ action: "message" | "reaction"; content: string }'
-);
+create view sqlfu_types as
+select
+  'json_slack_payload' as name,
+  'json' as storage,
+  '{
+    action: "message" | "reaction";
+    content: string
+  }' as ts_type;
 
 create table slack_webhooks (
   id integer primary key,
@@ -83,7 +88,10 @@ export const recordSlackWebhook = Object.assign(
 
 export namespace recordSlackWebhook {
 	export type Params = {
-		payload: { action: "message" | "reaction"; content: string };
+		payload: {
+		  action: "message" | "reaction";
+		  content: string
+		};
 	};
 }
 
@@ -118,7 +126,10 @@ export const listSlackWebhooks = Object.assign(
 export namespace listSlackWebhooks {
 	export type Result = {
 		id: number;
-		payload: { action: "message" | "reaction"; content: string };
+		payload: {
+		  action: "message" | "reaction";
+		  content: string
+		};
 	};
 }
 ```
@@ -129,21 +140,29 @@ export namespace listSlackWebhooks {
 
 export type SlackWebhooksRow = {
 	id: number;
-	payload: { action: "message" | "reaction"; content: string };
+	payload: {
+	  action: "message" | "reaction";
+	  content: string
+	};
 };
 ```
 
 </details>
 
-## uses sqlfu_types TypeScript defaults for typed JSON columns
+## uses sqlfu_types view rows for typed JSON columns
 
 <details data-outputs="sql/.generated/**/*.ts">
 <summary>input</summary>
 
 ```sql (definitions.sql)
-create table sqlfu_types (
-  json_slack_payload text default '{ action: "message" | "reaction"; content: string }'
-);
+create view sqlfu_types as
+select
+  'json_slack_payload' as name,
+  'json' as storage,
+  '{
+    action: "message" | "reaction";
+    content: string
+  }' as ts_type;
 
 create table slack_webhooks (
   id integer primary key,
@@ -187,7 +206,10 @@ export const recordSlackWebhook = Object.assign(
 
 export namespace recordSlackWebhook {
 	export type Params = {
-		payload: { action: "message" | "reaction"; content: string };
+		payload: {
+		  action: "message" | "reaction";
+		  content: string
+		};
 		createdAt: number;
 	};
 }
@@ -215,7 +237,10 @@ export const listSlackWebhooks = Object.assign(
 export namespace listSlackWebhooks {
 	export type Result = {
 		id: number;
-		payload: { action: "message" | "reaction"; content: string };
+		payload: {
+		  action: "message" | "reaction";
+		  content: string
+		};
 		created_at: number;
 	};
 }
@@ -227,7 +252,10 @@ export namespace listSlackWebhooks {
 
 export type SlackWebhooksRow = {
 	id: number;
-	payload: { action: "message" | "reaction"; content: string };
+	payload: {
+	  action: "message" | "reaction";
+	  content: string
+	};
 	created_at: number;
 };
 ```

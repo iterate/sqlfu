@@ -257,12 +257,17 @@ test('generate stringifies json declared-type inputs and parses json result colu
   ]);
 });
 
-test('generate uses sqlfu_types TypeScript defaults for typed JSON logical columns', async () => {
+test('generate uses sqlfu_types view rows for typed JSON logical columns', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
-      create table sqlfu_types (
-        json_slack_payload text default '{ action: "message" | "reaction"; content: string }'
-      );
+      create view sqlfu_types as
+      select
+        'json_slack_payload' as name,
+        'json' as storage,
+        '{
+          action: "message" | "reaction";
+          content: string
+        }' as ts_type;
 
       create table slack_webhooks (
         id integer primary key,
@@ -285,22 +290,25 @@ test('generate uses sqlfu_types TypeScript defaults for typed JSON logical colum
   const generatedModule = await project.readText('sql/.generated/slack-webhooks.sql.ts');
   const generatedTables = await project.readText('sql/.generated/tables.ts');
 
-  expect(generatedModule).toContain('payload: { action: "message" | "reaction"; content: string };');
+  expect(generatedModule).toContain('action: "message" | "reaction";');
+  expect(generatedModule).toContain('content: string');
   expect(generatedModule).toContain('JSON.stringify(params.payload)');
-  expect(generatedModule).toContain(
-    'payload: (listSlackWebhooksParseJsonValue(row.payload) as { action: "message" | "reaction"; content: string })',
-  );
-  expect(generatedTables).toContain('payload: { action: "message" | "reaction"; content: string };');
+  expect(generatedModule).toContain('payload: (listSlackWebhooksParseJsonValue(row.payload) as {');
+  expect(generatedTables).toContain('payload: {');
   expect(generatedTables).not.toContain('SqlfuTypesRow');
 
   const catalog = JSON.parse(await project.readText('.sqlfu/query-catalog.json'));
+  const payloadType = `{
+  action: "message" | "reaction";
+  content: string
+}`;
   expect(catalog.queries).toMatchObject([
     {
       functionName: 'recordSlackWebhook',
       args: [
         {
           name: 'payload',
-          tsType: '{ action: "message" | "reaction"; content: string }',
+          tsType: payloadType,
           driverEncoding: 'json',
         },
         {name: 'createdAt', tsType: 'number', driverEncoding: 'identity'},
@@ -310,7 +318,7 @@ test('generate uses sqlfu_types TypeScript defaults for typed JSON logical colum
       functionName: 'listSlackWebhooks',
       columns: [
         {name: 'id', tsType: 'number'},
-        {name: 'payload', tsType: '{ action: "message" | "reaction"; content: string }'},
+        {name: 'payload', tsType: payloadType},
         {name: 'created_at', tsType: 'number'},
       ],
     },
@@ -350,11 +358,11 @@ test('generate uses sqlfu_types TypeScript defaults for typed JSON logical colum
   ]);
 });
 
-test('generate rejects sqlfu_types columns without TypeScript defaults', async () => {
+test('generate rejects the old sqlfu_types table metadata shape', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
       create table sqlfu_types (
-        json_slack_payload text
+        json_slack_payload text default '{ action: "message" | "reaction"; content: string }'
       );
 
       create table slack_webhooks (
@@ -367,7 +375,29 @@ test('generate rejects sqlfu_types columns without TypeScript defaults', async (
     },
   });
 
-  await expect(project.generate()).rejects.toThrow(/sqlfu_types\.json_slack_payload.*TypeScript type string default/);
+  await expect(project.generate()).rejects.toThrow(/sqlfu_types must be a view/);
+});
+
+test('generate rejects unsupported sqlfu_types storage values', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create view sqlfu_types as
+      select
+        'json_slack_payload' as name,
+        'blob' as storage,
+        '{ action: "message" | "reaction"; content: string }' as ts_type;
+
+      create table slack_webhooks (
+        id integer primary key,
+        payload json_slack_payload not null
+      );
+    `,
+    files: {
+      'sql/list-slack-webhooks.sql': `select id, payload from slack_webhooks;`,
+    },
+  });
+
+  await expect(project.generate()).rejects.toThrow(/sqlfu_types row 1\.storage must be "json"/);
 });
 
 test('generate supports multiline @name comments in multi-query files', async () => {

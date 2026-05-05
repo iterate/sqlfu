@@ -1147,7 +1147,7 @@ async function writeTablesFile(
     const fieldLines: string[] = [];
     for (const column of relation.columns.values()) {
       const suffix = column.notNull ? '' : ' | null';
-      fieldLines.push(`\t${column.name}: ${column.tsType}${suffix};`);
+      fieldLines.push(...renderTypePropertyLines('\t', column.name, false, `${column.tsType}${suffix}`));
     }
     return [`export type ${typeName} = {`, ...fieldLines, `};`].join('\n');
   });
@@ -2360,11 +2360,29 @@ function renderObjectTypeBody(
   fields: GeneratedField[],
   fieldKind: 'parameter' | 'result',
 ): string {
-  const lines = fields.map((field) => {
+  const lines = fields.flatMap((field) => {
     const optional = fieldKind === 'parameter' ? Boolean(field.optional) : !field.notNull;
-    return `\t\t${field.name}${optional ? '?' : ''}: ${fieldTypeExpression(field, fieldKind)};`;
+    return renderTypePropertyLines('\t\t', field.name, optional, fieldTypeExpression(field, fieldKind));
   });
   return [`{`, ...lines, `\t}`].join('\n');
+}
+
+function renderTypePropertyLines(
+  indent: string,
+  name: string,
+  optional: boolean,
+  typeExpression: string,
+): string[] {
+  const lines = typeExpression.split('\n');
+  if (lines.length === 1) {
+    return [`${indent}${name}${optional ? '?' : ''}: ${typeExpression};`];
+  }
+
+  return [
+    `${indent}${name}${optional ? '?' : ''}: ${lines[0]}`,
+    ...lines.slice(1, -1).map((line) => `${indent}${line}`),
+    `${indent}${lines[lines.length - 1]};`,
+  ];
 }
 
 function fieldTypeExpression(field: GeneratedField, fieldKind: 'parameter' | 'result'): string {
@@ -3007,31 +3025,55 @@ async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, Rel
 }
 
 async function loadSqlfuTypes(client: Client): Promise<ReadonlyMap<string, LogicalTypeInfo>> {
-  const pragmaResult = await client.all<Record<string, unknown>>({
-    sql: `PRAGMA table_xinfo("sqlfu_types")`,
+  const metadataObjects = await client.all<{name: string; type: string}>({
+    sql: `
+      select name, type
+      from sqlite_schema
+      where lower(name) = 'sqlfu_types'
+        and type in ('table', 'view')
+      order by name
+    `,
     args: [],
   });
-  const logicalTypes = new Map<string, LogicalTypeInfo>();
 
-  for (const row of pragmaResult) {
-    if (Number(row.hidden || 0) !== 0) {
-      continue;
+  const logicalTypes = new Map<string, LogicalTypeInfo>();
+  if (metadataObjects.length === 0) {
+    return logicalTypes;
+  }
+
+  const metadataObject = metadataObjects[0]!;
+  if (metadataObject.type !== 'view') {
+    throw new Error('sqlfu_types must be a view that selects name, storage, and ts_type columns.');
+  }
+
+  const typeRows = await client.all<Record<string, unknown>>({
+    sql: `select name, storage, ts_type from sqlfu_types`,
+    args: [],
+  });
+
+  for (let index = 0; index < typeRows.length; index += 1) {
+    const row = typeRows[index]!;
+    const location = `sqlfu_types row ${index + 1}`;
+    const name = requireString(row.name, `${location}.name`);
+    const storage = requireString(row.storage, `${location}.storage`);
+    const tsType = normalizePlainTsType(requireString(row.ts_type, `${location}.ts_type`), `${location}.ts_type`);
+
+    if (storage !== 'json') {
+      throw new Error(`${location}.storage must be "json"; got ${JSON.stringify(storage)}.`);
     }
 
-    const name = String(row.name);
-    const location = `sqlfu_types.${name}`;
     if (!name.toLowerCase().startsWith('json_')) {
       throw new Error(`${location} is not supported yet. sqlfu_types logical type names must start with "json_".`);
     }
 
-    const declaredType = typeof row.type === 'string' ? row.type : '';
-    if (!hasTextAffinity(declaredType)) {
-      throw new Error(`${location} must be declared with TEXT affinity because json_* logical types store JSON text.`);
+    const key = normalizeDeclaredType(name);
+    if (logicalTypes.has(key)) {
+      throw new Error(`${location}.name duplicates sqlfu_types logical type ${JSON.stringify(name)}.`);
     }
 
-    logicalTypes.set(normalizeDeclaredType(name), {
+    logicalTypes.set(key, {
       logicalType: 'json',
-      tsType: parseSqliteStringDefault(row.dflt_value, location),
+      tsType,
     });
   }
 
@@ -3322,11 +3364,15 @@ function jsonDecodedRowExpression(
   const decodedFields = jsonFields
     .map((field) => {
       const parsedValue = `${parseFunctionName}(${rowExpression}.${field.name})`;
-      const value = field.tsType === 'unknown' ? parsedValue : `(${parsedValue} as ${field.tsType})`;
+      const value = field.tsType === 'unknown' ? parsedValue : `(${parsedValue} as ${inlineTsType(field.tsType)})`;
       return `${field.name}: ${value}`;
     })
     .join(', ');
   return `({...${rowExpression}, ${decodedFields}})`;
+}
+
+function inlineTsType(tsType: string): string {
+  return tsType.split('\n').map((line) => line.trim()).filter(Boolean).join(' ');
 }
 
 function extractSelectClause(sql: string): string | undefined {
@@ -3476,11 +3522,6 @@ function mapSqliteTypeToTs(columnType: string): string {
   return 'number';
 }
 
-function hasTextAffinity(columnType: string): boolean {
-  const normalized = columnType.trim().toUpperCase();
-  return normalized.includes('CHAR') || normalized.includes('CLOB') || normalized.includes('TEXT');
-}
-
 function logicalTypeForDeclaredSqliteType(columnType: string): LogicalType | undefined {
   return normalizeDeclaredType(columnType) === 'json' ? 'json' : undefined;
 }
@@ -3489,68 +3530,34 @@ function normalizeDeclaredType(columnType: string): string {
   return columnType.trim().toLowerCase();
 }
 
-function parseSqliteStringDefault(rawDefault: unknown, location: string): string {
-  if (typeof rawDefault !== 'string') {
-    throw new Error(`${location} must have a TypeScript type string default.`);
+function requireString(value: unknown, location: string): string {
+  if (typeof value === 'string') {
+    return value;
   }
-
-  let value = rawDefault.trim();
-  while (isParenthesizedSqlExpression(value)) {
-    value = value.slice(1, -1).trim();
-  }
-
-  if (!/^'(?:''|[^'])*'$/.test(value)) {
-    throw new Error(`${location} must have a TypeScript type string default.`);
-  }
-
-  const tsType = value.slice(1, -1).replaceAll("''", "'").trim();
-  if (!tsType) {
-    throw new Error(`${location} must have a non-empty TypeScript type string default.`);
-  }
-  return tsType;
+  throw new Error(`${location} must be a string.`);
 }
 
-function isParenthesizedSqlExpression(value: string): boolean {
-  if (!value.startsWith('(') || !value.endsWith(')')) {
-    return false;
-  }
-
-  let depth = 0;
-  let quote: "'" | '"' | null = null;
-  for (let index = 0; index < value.length; index += 1) {
-    const char = value[index]!;
-    const next = value[index + 1];
-
-    if (quote) {
-      if (char === quote) {
-        if (next === quote) {
-          index += 1;
-          continue;
-        }
-        quote = null;
+function normalizePlainTsType(value: string, location: string): string {
+  const lines = value.replaceAll('\r\n', '\n').trim().split('\n');
+  const nonBlankTailLines = lines.slice(1).filter((line) => line.trim());
+  const commonIndent =
+    nonBlankTailLines.length > 0
+      ? Math.min(...nonBlankTailLines.map((line) => line.match(/^\s*/)?.[0].length || 0))
+      : 0;
+  const normalized = [
+    lines[0]!.trimEnd(),
+    ...lines.slice(1).map((line) => {
+      if (!line.trim()) {
+        return '';
       }
-      continue;
-    }
+      return line.slice(Math.min(commonIndent, line.match(/^\s*/)?.[0].length || 0)).trimEnd();
+    }),
+  ].join('\n').trim();
 
-    if (char === "'" || char === '"') {
-      quote = char;
-      continue;
-    }
-
-    if (char === '(') {
-      depth += 1;
-      continue;
-    }
-
-    if (char === ')') {
-      depth -= 1;
-      if (depth === 0 && index < value.length - 1) {
-        return false;
-      }
-    }
+  if (normalized) {
+    return normalized;
   }
-
-  return depth === 0;
+  throw new Error(`${location} must be a non-empty TypeScript type string.`);
 }
 
 function escapeSqliteIdentifier(value: string): string {
