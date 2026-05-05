@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import dedent from 'dedent';
+import {execa} from 'execa';
 import {expect, test} from 'vitest';
 
 import {createSqlfuCli, runSqlfuCli} from '../src/node/sqlfu-cli.js';
@@ -47,6 +48,15 @@ test('commands that do not need config do not load the selected config file', as
   await runCli(['kill', '--port', '59999', '--config', 'missing.sqlfu.config.ts']);
 
   void cwd;
+});
+
+test('help exposes flags for optional Arktype CLI inputs', async () => {
+  const serveHelp = await runBuiltCliAndCollectOutput(['serve', '--help']);
+  expect(serveHelp).toContain('--port [number]');
+  expect(serveHelp).toContain('--ui [boolean]');
+
+  const migrateHelp = await runBuiltCliAndCollectOutput(['migrate', '--help']);
+  expect(migrateHelp).toContain('-y, --yes [boolean]');
 });
 
 test('createSqlfuCli can still receive a config path programmatically', async () => {
@@ -131,6 +141,11 @@ async function runCli(argv: string[], cli?: Awaited<ReturnType<typeof createSqlf
     }
     throw error;
   }
+}
+
+async function runBuiltCliAndCollectOutput(argv: string[]) {
+  const cli = await execa('node', [path.join(import.meta.dirname, '..', 'dist', 'cli.js'), ...argv]);
+  return [cli.stdout, cli.stderr].filter(Boolean).join('\n');
 }
 
 function chdir(cwd: string) {

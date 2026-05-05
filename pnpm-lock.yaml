@@ -42,8 +42,8 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0
       trpc-cli:
-        specifier: ^0.14.0
-        version: 0.14.0(@orpc/server@1.13.13(@opentelemetry/api@1.9.1)(crossws@0.3.5)(ws@8.20.0))(valibot@1.3.1(typescript@5.9.3))(zod@4.3.6)
+        specifier: https://pkg.pr.new/mmkal/trpc-cli/trpc-cli@cb2e069
+        version: https://pkg.pr.new/mmkal/trpc-cli/trpc-cli@cb2e069(@orpc/server@1.13.13(@opentelemetry/api@1.9.1)(crossws@0.3.5)(ws@8.20.0))(valibot@1.3.1(typescript@5.9.3))(zod@4.3.6)
     devDependencies:
       '@hono/node-server':
         specifier: ^1.19.14
@@ -6425,8 +6425,9 @@ packages:
   trough@2.2.0:
     resolution: {integrity: sha512-tmMpK00BjZiUyVyvrBK7knerNgmgvcV/KLVyuma/SC+TQN167GrMRciANTz09+k3zW8L8t60jWO1GpfkZdjTaw==}
 
-  trpc-cli@0.14.0:
-    resolution: {integrity: sha512-Ibin1oLB6gGWfx/YfzbS+GYy3t2RbMUm+qUal8VYtGMt5kpwL6FteMNz1Mk9x7w0jB72xGxQm4B5VWtnO/Nihw==}
+  trpc-cli@https://pkg.pr.new/mmkal/trpc-cli/trpc-cli@cb2e069:
+    resolution: {tarball: https://pkg.pr.new/mmkal/trpc-cli/trpc-cli@cb2e069}
+    version: 0.0.0-dev-20260505103656
     engines: {node: '>=18'}
     hasBin: true
     peerDependencies:
@@ -13961,7 +13962,7 @@ snapshots:
 
   trough@2.2.0: {}
 
-  trpc-cli@0.14.0(@orpc/server@1.13.13(@opentelemetry/api@1.9.1)(crossws@0.3.5)(ws@8.20.0))(valibot@1.3.1(typescript@5.9.3))(zod@4.3.6):
+  trpc-cli@https://pkg.pr.new/mmkal/trpc-cli/trpc-cli@cb2e069(@orpc/server@1.13.13(@opentelemetry/api@1.9.1)(crossws@0.3.5)(ws@8.20.0))(valibot@1.3.1(typescript@5.9.3))(zod@4.3.6):
     dependencies:
       commander: 14.0.3
     optionalDependencies:
