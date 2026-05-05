@@ -102,7 +102,7 @@ test('generate with validator: zod validates params and rows at runtime', async 
   expect(mod.findPostBySlug.sql).toContain('from posts where slug = ?');
 });
 
-test('generate with runtime: effect returns programs that use Effect SQL context', async () => {
+test('generate with runtime: effect-v3 returns programs that use Effect SQL context', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
       create table posts (
@@ -114,7 +114,7 @@ test('generate with runtime: effect returns programs that use Effect SQL context
     files: {
       'sql/list-posts.sql': `select id, slug, title from posts order by id limit :limit;`,
     },
-    config: {generate: {runtime: 'effect'}},
+    config: {generate: {runtime: 'effect-v3'}},
   });
 
   await project.generate();
@@ -539,7 +539,7 @@ async function createRuntimeFixture(input: {
       validator?: 'arktype' | 'valibot' | 'zod' | 'zod-mini' | null;
       prettyErrors?: boolean;
       sync?: boolean;
-      runtime?: 'client' | 'effect';
+      runtime?: 'sqlfu' | 'effect-v3' | 'effect-v4-unstable';
       importExtension?: '.js' | '.ts';
     };
   };

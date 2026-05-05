@@ -37,7 +37,7 @@ export function resolveProjectConfig(
       validator: fileConfig.generate?.validator ?? null,
       prettyErrors: fileConfig.generate?.prettyErrors !== false,
       sync: fileConfig.generate?.sync === true,
-      runtime: fileConfig.generate?.runtime || 'client',
+      runtime: fileConfig.generate?.runtime || 'sqlfu',
       importExtension: fileConfig.generate?.importExtension ?? inferImportExtension(tsconfigPreferences),
       authority: fileConfig.generate?.authority ?? 'desired_schema',
     },
@@ -49,7 +49,7 @@ export function inferImportExtension(tsconfigPreferences: TsconfigPreferences): 
 }
 
 const validValidators: SqlfuValidator[] = ['arktype', 'valibot', 'zod', 'zod-mini'];
-const validGenerateRuntimes: SqlfuGenerateRuntime[] = ['client', 'effect'];
+const validGenerateRuntimes: SqlfuGenerateRuntime[] = ['sqlfu', 'effect-v3', 'effect-v4-unstable'];
 const validAuthorities: SqlfuAuthority[] = ['desired_schema', 'migrations', 'migration_history', 'live_schema'];
 const validPrefixes: SqlfuMigrationPrefix[] = ['iso', 'four-digit'];
 const validPresets: SqlfuMigrationPreset[] = ['sqlfu', 'd1'];

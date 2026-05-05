@@ -295,7 +295,7 @@ async function ensureDatabase(host: SqlfuHost, projectRoot: string) {
       validator: null,
       prettyErrors: true,
       sync: false,
-      runtime: 'client',
+      runtime: 'sqlfu',
       importExtension: '.js',
       authority: 'desired_schema',
     },

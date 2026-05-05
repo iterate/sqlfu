@@ -159,6 +159,7 @@ async function ensureTypecheckProject(): Promise<Project> {
         arktype: [path.join(packageRoot, 'node_modules', 'arktype')],
         '@effect/sql': [path.join(packageRoot, 'node_modules', '@effect', 'sql', 'dist', 'dts', 'index.d.ts')],
         '@effect/sql/*': [path.join(packageRoot, 'node_modules', '@effect', 'sql', 'dist', 'dts', '*.d.ts')],
+        'effect/unstable/sql': [path.join(packageRoot, 'test', 'generate', 'effect-v4-unstable-sql.d.ts')],
         'effect/*': [path.join(packageRoot, 'node_modules', 'effect', 'dist', 'dts', '*.d.ts')],
       },
       types: ['node'],

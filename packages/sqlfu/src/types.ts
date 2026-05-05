@@ -107,7 +107,7 @@ export interface SqlRowsPromise<TRow extends ResultRow = ResultRow> extends Prom
 export type SqlValue = QueryArg | SqlFragment;
 
 export type SqlfuValidator = 'arktype' | 'valibot' | 'zod' | 'zod-mini';
-export type SqlfuGenerateRuntime = 'client' | 'effect';
+export type SqlfuGenerateRuntime = 'sqlfu' | 'effect-v3' | 'effect-v4-unstable';
 
 /**
  * Schema source of truth for `sqlfu generate`. Controls where typegen reads
@@ -170,11 +170,14 @@ export interface SqlfuGenerateConfig {
   /**
    * Runtime API emitted by `sqlfu generate`.
    *
-   * - `'client'` / omitted = existing sqlfu `Client` wrappers.
-   * - `'effect'` = generated functions return Effect values and require
+   * - `'sqlfu'` / omitted = existing sqlfu `Client` wrappers.
+   * - `'effect-v3'` = generated functions return Effect values and require
    *   `@effect/sql`'s `SqlClient.SqlClient` from the Effect environment.
+   * - `'effect-v4-unstable'` = generated functions return Effect values and
+   *   require Effect v4 beta's `effect/unstable/sql` `SqlClient.SqlClient`
+   *   from the Effect environment.
    *
-   * The Effect runtime is experimental.
+   * Effect runtimes are experimental.
    */
   runtime?: SqlfuGenerateRuntime;
   /**

@@ -79,7 +79,7 @@ select id from posts;
 <details>
 <summary>error</summary>
 
-"generate\.runtime" must be one of 'client', 'effect', or undefined
+"generate\.runtime" must be one of 'sqlfu', 'effect-v3', 'effect-v4-unstable', or undefined
 
 </details>
 

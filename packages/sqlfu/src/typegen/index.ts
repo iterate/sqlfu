@@ -196,6 +196,14 @@ type LocalNames = {
   resultSchema: string;
 };
 
+function isEffectSqlRuntime(runtime: SqlfuGenerateRuntime): runtime is 'effect-v3' | 'effect-v4-unstable' {
+  return runtime === 'effect-v3' || runtime === 'effect-v4-unstable';
+}
+
+function effectSqlImportSpecifier(runtime: 'effect-v3' | 'effect-v4-unstable'): string {
+  return runtime === 'effect-v4-unstable' ? 'effect/unstable/sql' : '@effect/sql';
+}
+
 function renderDdlWrapper(input: {
   functionName: string;
   sql: string;
@@ -207,10 +215,10 @@ function renderDdlWrapper(input: {
   const sqlName = input.localNames?.sql || 'sql';
   const queryName = input.localNames?.query || 'query';
 
-  if (input.runtime === 'effect') {
+  if (isEffectSqlRuntime(input.runtime)) {
     return [
       `import * as Effect from 'effect/Effect';`,
-      `import {SqlClient} from '@effect/sql';`,
+      `import {SqlClient} from '${effectSqlImportSpecifier(input.runtime)}';`,
       ``,
       ...renderSqlConstant(input.sql, sqlName),
       `const ${queryName} = { ${objectProperty('sql', sqlName)}, args: [], name: ${JSON.stringify(functionName)} };`,
@@ -1394,15 +1402,16 @@ function renderQueryWrapper(input: {
   runtime: SqlfuGenerateRuntime;
   localNames?: LocalNames;
 }): string {
-  if (input.runtime === 'effect') {
+  if (isEffectSqlRuntime(input.runtime)) {
     if (input.validator !== null) {
-      throw new Error("generate.runtime: 'effect' cannot be combined with generate.validator yet.");
+      throw new Error(`generate.runtime: '${input.runtime}' cannot be combined with generate.validator yet.`);
     }
     return renderEffectSqlQueryWrapper({
       functionName: input.functionName,
       sourceSql: input.sourceSql,
       descriptor: input.descriptor,
       parameterExpansions: input.parameterExpansions,
+      runtime: input.runtime,
       localNames: input.localNames,
     });
   }
@@ -1522,6 +1531,7 @@ function renderEffectSqlQueryWrapper(input: {
   sourceSql: string;
   descriptor: GeneratedQueryDescriptor;
   parameterExpansions: ParameterExpansion[];
+  runtime: 'effect-v3' | 'effect-v4-unstable';
   localNames?: LocalNames;
 }): string {
   const functionName = input.functionName;
@@ -1579,7 +1589,7 @@ function renderEffectSqlQueryWrapper(input: {
 
   return [
     `import * as Effect from 'effect/Effect';`,
-    `import {SqlClient} from '@effect/sql';`,
+    `import {SqlClient} from '${effectSqlImportSpecifier(input.runtime)}';`,
     ``,
     ...renderSqlConstant(input.descriptor.sql, sqlName),
     ...renderJsonParseHelper(jsonParseFunctionName),

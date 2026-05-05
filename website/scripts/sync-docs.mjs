@@ -96,7 +96,7 @@ const docs = [
     title: 'Effect SQL runtime',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'effect-sql.md'),
     description:
-      'Experimental native @effect/sql generation: query functions return Effect values and read SqlClient from the environment.',
+      'Experimental native Effect SQL generation: query functions return Effect values and read SqlClient from the environment.',
   },
   {
     slug: 'id-helpers',
