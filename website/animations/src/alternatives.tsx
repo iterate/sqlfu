@@ -43,11 +43,7 @@ export const AltADraft = () => <DraftShort />;
  */
 export const AltBSchema = () => (
   <PanelBackdrop>
-    <TerminalOnlyCard
-      commands={[
-        {cmd: 'cat definitions.sql', output: definitionsAfterFK.trim()},
-      ]}
-    />
+    <TerminalOnlyCard commands={[{cmd: 'cat definitions.sql', output: definitionsAfterFK.trim()}]} />
     <Caption text="schema lives in sql." opacity={fadeInLate()} />
   </PanelBackdrop>
 );
@@ -179,9 +175,7 @@ function SchemaFromAnim1({showreel, playful}: {showreel?: boolean; playful?: boo
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
-  const springy = playful
-    ? 1 + Math.sin(frame / 8) * 0.004
-    : 1;
+  const springy = playful ? 1 + Math.sin(frame / 8) * 0.004 : 1;
   return (
     <PanelBackdrop>
       <CodeSurface
@@ -219,8 +213,17 @@ function GenerateShort({playful}: {playful?: boolean} = {}) {
   const scale = playful ? 1 + Math.abs(Math.sin(frame / 20)) * 0.01 : 1;
   return (
     <PanelBackdrop>
-      <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, height: '100%', transform: `scale(${scale})`}}>
-        <CodeSurface title="sql/user-by-id.sql" language="sql" source={userByIdSql} charCount={left} cursor={frame < 36} fontSize={26} />
+      <div
+        style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, height: '100%', transform: `scale(${scale})`}}
+      >
+        <CodeSurface
+          title="sql/user-by-id.sql"
+          language="sql"
+          source={userByIdSql}
+          charCount={left}
+          cursor={frame < 36}
+          fontSize={26}
+        />
         <CodeSurface
           title="sql/.generated/user-by-id.sql.ts"
           language="ts"
@@ -255,7 +258,16 @@ function DraftShort({playful}: {playful?: boolean} = {}) {
   const scale = playful ? 1 + Math.sin(frame / 14) * 0.005 : 1;
   return (
     <PanelBackdrop>
-      <div style={{display: 'grid', gridTemplateColumns: '1.2fr 1fr', gridTemplateRows: '1.4fr 1fr', gap: 20, height: '100%', transform: `scale(${scale})`}}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1.2fr 1fr',
+          gridTemplateRows: '1.4fr 1fr',
+          gap: 20,
+          height: '100%',
+          transform: `scale(${scale})`,
+        }}
+      >
         <CodeSurface
           title="definitions.sql"
           language="sql"
@@ -283,11 +295,7 @@ function DraftShort({playful}: {playful?: boolean} = {}) {
   );
 }
 
-function TerminalOnlyCard({
-  commands,
-}: {
-  commands: {cmd: string; output?: string}[];
-}) {
+function TerminalOnlyCard({commands}: {commands: {cmd: string; output?: string}[]}) {
   const frame = useCurrentFrame();
   const beats = commands.length;
   const beatDuration = Math.floor(300 / beats);

@@ -18,6 +18,22 @@ npx skills add mmkal/sqlfu/skills/using-sqlfu
 The skill is self-contained. It does not depend on the `sqlfu` package itself,
 and the `SKILL.md` format is agent-agnostic.
 
+## Bootstrap from the docs index
+
+If your coding agent can fetch URLs but does not have the skill installed, paste
+this at the start of a sqlfu task:
+
+```text
+You are a sqlfu assistant. Read https://sqlfu.dev/llms.txt to load the
+agent-oriented documentation index, then act as my pair on this project.
+
+Goal: help me edit a sqlfu project while keeping SQL as the authored source.
+Inspect sqlfu.config.ts, definitions.sql, migrations/, sql/*.sql, and generated
+wrappers before making changes. Use npx sqlfu check, draft, migrate, generate,
+and format according to the docs. Do not hand-edit generated wrappers unless I
+explicitly ask for that.
+```
+
 ## When to use it
 
 Use the skill when agents are likely to edit application code, migrations, query

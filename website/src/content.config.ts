@@ -21,6 +21,8 @@ export const collections = {
       slug: z.string(),
       date: z.string(),
       description: z.string().optional(),
+      heroImage: z.string().optional(),
+      heroAlt: z.string().optional(),
     }),
   }),
 };

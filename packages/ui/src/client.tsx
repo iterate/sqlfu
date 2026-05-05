@@ -63,10 +63,7 @@ initThemeOnLoad();
  * no cross-tab sync, no `isPersistent` / `removeItem` affordances — but fine
  * for scratch drafts where cross-tab sync is actively undesirable.
  */
-function useSessionStorageState<T>(
-  key: string,
-  defaultValue: T,
-): [T, (next: T | ((current: T) => T)) => void] {
+function useSessionStorageState<T>(key: string, defaultValue: T): [T, (next: T | ((current: T) => T)) => void] {
   const [value, setValue] = useState<T>(() => {
     if (typeof window === 'undefined') return defaultValue;
     const raw = window.sessionStorage.getItem(key);
@@ -339,8 +336,8 @@ function StartupFailureScreen(input: {error: unknown}) {
                     Stop the local backend (Ctrl+C in the terminal running <code>npx sqlfu</code>).
                   </li>
                   <li>
-                    Run <code>npm install -g sqlfu@latest</code>, or start it with{' '}
-                    <code>npx sqlfu@latest</code> next time.
+                    Run <code>npm install -g sqlfu@latest</code>, or start it with <code>npx sqlfu@latest</code> next
+                    time.
                   </li>
                   <li>Reload this page.</li>
                 </ol>
@@ -436,13 +433,11 @@ function StartupFailureScreen(input: {error: unknown}) {
               <>
                 <h2>Why am I seeing this?</h2>
                 <p>
-                  The hosted UI on <code>sqlfu.dev/ui</code> tracks the latest sqlfu release. When your local
-                  backend falls outside <code>{startupError.supportedRange}</code>, the RPC contracts do not line up
-                  and the UI would otherwise surface cryptic 4xx or 5xx errors.
+                  The hosted UI on <code>sqlfu.dev/ui</code> tracks the latest sqlfu release. When your local backend
+                  falls outside <code>{startupError.supportedRange}</code>, the RPC contracts do not line up and the UI
+                  would otherwise surface cryptic 4xx or 5xx errors.
                 </p>
-                <p>
-                  Upgrading the local backend is the fix. Your project data is untouched.
-                </p>
+                <p>Upgrading the local backend is the fix. Your project data is untouched.</p>
               </>
             ) : null}
           </section>
@@ -587,9 +582,7 @@ function Studio() {
             <a
               key={relation.name}
               className={
-                route.kind === 'table' && selectedTable?.name === relation.name
-                  ? 'nav-link active'
-                  : 'nav-link'
+                route.kind === 'table' && selectedTable?.name === relation.name ? 'nav-link active' : 'nav-link'
               }
               href={`#table/${encodeURIComponent(relation.name)}`}
               title={relation.name}
@@ -608,11 +601,7 @@ function Studio() {
           {catalogQuery.data.queries.map((query) => (
             <a
               key={query.id}
-              className={
-                route.kind === 'query' && selectedQuery?.id === query.id
-                  ? 'nav-link active'
-                  : 'nav-link'
-              }
+              className={route.kind === 'query' && selectedQuery?.id === query.id ? 'nav-link active' : 'nav-link'}
               href={`#query/${encodeURIComponent(query.id)}`}
               title={query.id}
             >
@@ -1360,10 +1349,7 @@ function QueryPanel(input: {entry: QueryCatalogEntry; relations: StudioRelation[
       await invalidateSchemaContent();
     },
   });
-  const [renameDraft, setRenameDraft] = useSessionStorageState<string>(
-    `sqlfu-ui/query-rename/${entry.id}`,
-    entry.id,
-  );
+  const [renameDraft, setRenameDraft] = useSessionStorageState<string>(`sqlfu-ui/query-rename/${entry.id}`, entry.id);
   const [sqlDraft, setSqlDraft] = useSessionStorageState<string>(
     `sqlfu-ui/query-sql/${entry.id}`,
     entry.sqlFileContent,
@@ -1892,9 +1878,7 @@ function DataTable(input: {
             joinCellClassNames(
               selectedRowIndex === rowIndex ? 'selected-row' : undefined,
               dirty ? 'dirty-cell' : undefined,
-              selectedCell?.rowId === rowIndex && selectedCell.columnId === column
-                ? 'cell-expand-active'
-                : undefined,
+              selectedCell?.rowId === rowIndex && selectedCell.columnId === column ? 'cell-expand-active' : undefined,
             ),
             meta,
           );
@@ -2006,8 +1990,7 @@ function DataTable(input: {
 
 function DataCellExpandTrigger(input: {meta: DataCellMeta}) {
   const [mode, setMode] = useState<'diff' | 'original' | 'draft'>('diff');
-  const showDiffTabs =
-    input.meta.dirty && input.meta.originalText !== 'null' && input.meta.originalText !== '';
+  const showDiffTabs = input.meta.dirty && input.meta.originalText !== 'null' && input.meta.originalText !== '';
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
@@ -2423,18 +2406,20 @@ function isEmptyDraftRow(row: Record<string, unknown>, columnNames: string[]): b
 
 function buildDeleteRowPreviewSql(
   relationName: string,
-  rowKey: {kind: 'rowid'; value: number} | {kind: 'primaryKey'; values: Readonly<Record<string, unknown>>} | {kind: 'new'; value: string},
+  rowKey:
+    | {kind: 'rowid'; value: number}
+    | {kind: 'primaryKey'; values: Readonly<Record<string, unknown>>}
+    | {kind: 'new'; value: string},
 ): string {
   const quoted = `"${relationName.replaceAll('"', '""')}"`;
   if (rowKey.kind === 'rowid') {
     return `delete from ${quoted}\nwhere rowid = ${rowKey.value};`;
   }
   if (rowKey.kind === 'primaryKey') {
-    const conditions = Object.entries(rowKey.values).map(
-      ([column, value]) =>
-        value == null
-          ? `"${column.replaceAll('"', '""')}" is null`
-          : `"${column.replaceAll('"', '""')}" = ${formatSqlLiteralPreview(value)}`,
+    const conditions = Object.entries(rowKey.values).map(([column, value]) =>
+      value == null
+        ? `"${column.replaceAll('"', '""')}" is null`
+        : `"${column.replaceAll('"', '""')}" = ${formatSqlLiteralPreview(value)}`,
     );
     return `delete from ${quoted}\nwhere ${conditions.join(' and ')};`;
   }

@@ -1,10 +1,12 @@
 import dedent from 'dedent';
+import * as Effect from 'effect/Effect';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {ts} from 'ts-morph';
 import {expect, test} from 'vitest';
+import {SqliteClient} from '@effect/sql-sqlite-node';
 
 import {createNodeSqliteClient} from '../../src/index.js';
 import {generateQueryTypes} from '../../src/typegen/index.js';
@@ -86,9 +88,7 @@ test('generate with validator: zod validates params and rows at runtime', async 
 
   // zod's `prettifyError` formats the issue list into a readable per-line message; the test
   // just checks that the slug issue makes it to the thrown Error's message.
-  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(
-    /Invalid input[\s\S]+slug/,
-  );
+  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(/Invalid input[\s\S]+slug/);
 
   // Result-schema parse path — feed the wrapper a client that returns rows with a bogus `id`
   // so the post-query validation fires.
@@ -96,12 +96,117 @@ test('generate with validator: zod validates params and rows at runtime', async 
     ...client,
     all: async () => [{id: 'not-a-number', slug: 'oops', title: null}],
   };
-  await expect(mod.findPostBySlug(badClient as never, {slug: 'x'})).rejects.toThrow(
-    /Invalid input[\s\S]+id/,
-  );
+  await expect(mod.findPostBySlug(badClient as never, {slug: 'x'})).rejects.toThrow(/Invalid input[\s\S]+id/);
 
   expect(typeof mod.findPostBySlug.sql).toBe('string');
   expect(mod.findPostBySlug.sql).toContain('from posts where slug = ?');
+});
+
+test('generate with runtime: effect-v3 returns programs that use Effect SQL context', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create table posts (
+        id integer primary key,
+        slug text not null,
+        title text not null
+      );
+    `,
+    files: {
+      'sql/list-posts.sql': `select id, slug, title from posts order by id limit :limit;`,
+    },
+    config: {generate: {runtime: 'effect-v3'}},
+  });
+
+  await project.generate();
+  await project.applyStatements(dedent`
+    insert into posts (slug, title) values
+      ('hello', 'Hello'),
+      ('second', 'Second'),
+      ('third', 'Third');
+  `);
+
+  const {listPosts} = await project.importTranspiledModule<{
+    listPosts: (params: {limit: number}) => Effect.Effect<Array<{id: number; slug: string; title: string}>>;
+  }>('sql/.generated/list-posts.sql.ts');
+
+  const posts = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* listPosts({limit: 2});
+    }).pipe(Effect.provide(SqliteClient.layer({filename: project.databasePath}))),
+  );
+
+  expect(posts).toEqual([
+    {id: 1, slug: 'hello', title: 'Hello'},
+    {id: 2, slug: 'second', title: 'Second'},
+  ]);
+});
+
+test('generate with runtime: effect-v3 decodes sqlfu_types JSON result columns', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create view sqlfu_types as
+      select
+        'slack_payload' as name,
+        'json' as encoding,
+        'typescript' as format,
+        '{
+          action: "message" | "reaction";
+          content: string
+        }' as definition;
+
+      create table slack_webhooks (
+        id integer primary key,
+        payload slack_payload not null,
+        created_at integer not null
+      );
+    `,
+    files: {
+      'sql/slack-webhooks.sql': dedent`
+        /** @name recordSlackWebhook */
+        insert into slack_webhooks (payload, created_at) values (:payload, :createdAt);
+
+        /** @name listSlackWebhooks */
+        select id, payload, created_at from slack_webhooks order by id;
+      `,
+    },
+    config: {generate: {experimentalJsonTypes: true, runtime: 'effect-v3'}},
+  });
+
+  await project.generate();
+  const generatedModule = await project.readText('sql/.generated/slack-webhooks.sql.ts');
+  expect(generatedModule).toContain('JSON.stringify(params.payload)');
+  expect(generatedModule).toContain(`payload: (JSON.parse(row.payload) as listSlackWebhooks.Result["payload"])`);
+  expect(generatedModule).toContain('sqlClient.unsafe<any>');
+
+  const {listSlackWebhooks, recordSlackWebhook} = await project.importTranspiledModule<{
+    recordSlackWebhook: (params: {
+      payload: {action: 'message' | 'reaction'; content: string};
+      createdAt: number;
+    }) => Effect.Effect<unknown>;
+    listSlackWebhooks: () => Effect.Effect<
+      Array<{id: number; payload: {action: 'message' | 'reaction'; content: string}; created_at: number}>
+    >;
+  }>('sql/.generated/slack-webhooks.sql.ts');
+
+  const payload = {
+    action: 'reaction' as const,
+    content: 'thumbsup',
+  };
+
+  const rows = await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* recordSlackWebhook({payload, createdAt: 456});
+      return yield* listSlackWebhooks();
+    }).pipe(Effect.provide(SqliteClient.layer({filename: project.databasePath}))),
+  );
+
+  expect(rows).toEqual([
+    {
+      id: 1,
+      payload,
+      created_at: 456,
+    },
+  ]);
 });
 
 test('generated annotated queries expand inferred list and object params at runtime', async () => {
@@ -150,10 +255,19 @@ test('generated annotated queries expand inferred list and object params at runt
   ]);
 
   const mod = await project.importTranspiledModule<{
-    insertPost: (client: unknown, params: {post: {slug: string; title: string}}) => Promise<{id: number; slug: string; title: string}>;
-    insertPosts: (client: unknown, params: {posts: {slug: string; title: string} | {slug: string; title: string}[]}) => Promise<unknown>;
+    insertPost: (
+      client: unknown,
+      params: {post: {slug: string; title: string}},
+    ) => Promise<{id: number; slug: string; title: string}>;
+    insertPosts: (
+      client: unknown,
+      params: {posts: {slug: string; title: string} | {slug: string; title: string}[]},
+    ) => Promise<unknown>;
     listPostsByIds: (client: unknown, params: {ids: number[]}) => Promise<{id: number; slug: string; title: string}[]>;
-    listPostsBySlugAndTitle: (client: unknown, params: {posts: {slug: string; title: string}[]}) => Promise<{id: number; slug: string; title: string}[]>;
+    listPostsBySlugAndTitle: (
+      client: unknown,
+      params: {posts: {slug: string; title: string}[]},
+    ) => Promise<{id: number; slug: string; title: string}[]>;
   }>('sql/.generated/posts.sql.ts');
 
   using database = project.openDatabase();
@@ -189,15 +303,13 @@ test('generated annotated queries expand inferred list and object params at runt
     {id: 1, slug: 'one', title: 'One'},
     {id: 4, slug: 'four', title: 'Four'},
   ]);
-  await expect(mod.listPostsByIds(client, {ids: []})).rejects.toThrow(
-    'Parameter "ids" must be a non-empty array',
-  );
+  await expect(mod.listPostsByIds(client, {ids: []})).rejects.toThrow('Parameter "ids" must be a non-empty array');
   await expect(mod.listPostsBySlugAndTitle(client, {posts: []})).rejects.toThrow(
     'Parameter "posts" must be a non-empty array',
   );
 });
 
-test('generate stringifies json declared-type inputs and parses json result columns', async () => {
+test('generate leaves sqlite json declared-type columns alone by default', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
       create table webhooks (
@@ -215,6 +327,50 @@ test('generate stringifies json declared-type inputs and parses json result colu
         select id, type, payload from webhooks order by id;
       `,
     },
+  });
+
+  await project.generate();
+  const generatedModule = await project.readText('sql/.generated/webhooks.sql.ts');
+  const generatedTables = await project.readText('sql/.generated/tables.ts');
+
+  expect(generatedModule).not.toContain('JSON.stringify(params.payload)');
+  expect(generatedModule).not.toContain('JSON.parse');
+  expect(generatedTables).toContain('payload: number;');
+  const catalog = JSON.parse(await project.readText('.sqlfu/query-catalog.json'));
+  expect(catalog.queries).toMatchObject([
+    {
+      functionName: 'recordWebhook',
+      args: [
+        {name: 'type', tsType: 'string', driverEncoding: 'identity'},
+        {name: 'payload', driverEncoding: 'identity'},
+      ],
+    },
+    {
+      functionName: 'listWebhooks',
+      columns: [{name: 'id', tsType: 'number'}, {name: 'type', tsType: 'string'}, {name: 'payload'}],
+    },
+  ]);
+});
+
+test('generate stringifies json declared-type inputs and parses json result columns with the experimental flag', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create table webhooks (
+        id integer primary key,
+        type text not null,
+        payload json not null
+      );
+    `,
+    files: {
+      'sql/webhooks.sql': dedent`
+        /** @name recordWebhook */
+        insert into webhooks (type, payload) values (:type, :payload);
+
+        /** @name listWebhooks */
+        select id, type, payload from webhooks order by id;
+      `,
+    },
+    config: {generate: {experimentalJsonTypes: true}},
   });
 
   await project.generate();
@@ -273,6 +429,218 @@ test('generate stringifies json declared-type inputs and parses json result colu
       payload,
     },
   ]);
+});
+
+test('generate ignores sqlfu_types view rows unless experimental JSON types are enabled', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create view sqlfu_types as
+      select
+        'slack_payload' as name,
+        'json' as encoding,
+        'typescript' as format,
+        '{
+          action: "message" | "reaction";
+          content: string
+        }' as definition;
+
+      create table slack_webhooks (
+        id integer primary key,
+        payload slack_payload not null
+      );
+    `,
+    files: {
+      'sql/slack-webhooks.sql': dedent`
+        /** @name recordSlackWebhook */
+        insert into slack_webhooks (payload) values (:payload);
+
+        /** @name listSlackWebhooks */
+        select id, payload from slack_webhooks order by id;
+      `,
+    },
+  });
+
+  await project.generate();
+  const generatedModule = await project.readText('sql/.generated/slack-webhooks.sql.ts');
+  const generatedTables = await project.readText('sql/.generated/tables.ts');
+
+  expect(generatedModule).not.toContain('JSON.stringify(params.payload)');
+  expect(generatedModule).not.toContain('action: "message" | "reaction";');
+  expect(generatedTables).not.toContain('SqlfuTypesRow');
+});
+
+test('generate uses sqlfu_types view rows for typed JSON logical columns with the experimental flag', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create view sqlfu_types as
+      select
+        'slack_payload' as name,
+        'json' as encoding,
+        'typescript' as format,
+        '{
+          action: "message" | "reaction";
+          content: string
+        }' as definition;
+
+      create table slack_webhooks (
+        id integer primary key,
+        payload slack_payload not null,
+        created_at integer not null
+      );
+    `,
+    files: {
+      'sql/slack-webhooks.sql': dedent`
+        /** @name recordSlackWebhook */
+        insert into slack_webhooks (payload, created_at) values (:payload, :createdAt);
+
+        /** @name listSlackWebhooks */
+        select id, payload, created_at from slack_webhooks order by id;
+      `,
+    },
+    config: {generate: {experimentalJsonTypes: true}},
+  });
+
+  await project.generate();
+  const generatedModule = await project.readText('sql/.generated/slack-webhooks.sql.ts');
+  const generatedTables = await project.readText('sql/.generated/tables.ts');
+
+  expect(generatedModule).toContain('action: "message" | "reaction";');
+  expect(generatedModule).toContain('content: string');
+  expect(generatedModule).toContain('JSON.stringify(params.payload)');
+  expect(generatedModule).toContain(`payload: (JSON.parse(row.payload) as listSlackWebhooks.Result["payload"])`);
+  expect(generatedModule).not.toContain('TextDecoder');
+  expect(generatedModule).not.toContain('params.payload != null');
+  expect(generatedTables).toContain('payload: {');
+  expect(generatedTables).not.toContain('SqlfuTypesRow');
+
+  const catalog = JSON.parse(await project.readText('.sqlfu/query-catalog.json'));
+  const payloadType = `{
+  action: "message" | "reaction";
+  content: string
+}`;
+  expect(catalog.queries).toMatchObject([
+    {
+      functionName: 'recordSlackWebhook',
+      args: [
+        {
+          name: 'payload',
+          tsType: payloadType,
+          driverEncoding: 'json',
+        },
+        {name: 'createdAt', tsType: 'number', driverEncoding: 'identity'},
+      ],
+    },
+    {
+      functionName: 'listSlackWebhooks',
+      columns: [
+        {name: 'id', tsType: 'number'},
+        {name: 'payload', tsType: payloadType},
+        {name: 'created_at', tsType: 'number'},
+      ],
+    },
+  ]);
+
+  const mod = await project.importTranspiledModule<{
+    recordSlackWebhook: (
+      client: unknown,
+      params: {payload: {action: 'message' | 'reaction'; content: string}; createdAt: number},
+    ) => Promise<unknown>;
+    listSlackWebhooks: (
+      client: unknown,
+    ) => Promise<Array<{id: number; payload: {action: 'message' | 'reaction'; content: string}; created_at: number}>>;
+  }>('sql/.generated/slack-webhooks.sql.ts');
+
+  using database = project.openDatabase();
+  const client = createNodeSqliteClient(database.database);
+  const payload = {
+    action: 'message' as const,
+    content: 'hello from slack',
+  };
+
+  await mod.recordSlackWebhook(client, {payload, createdAt: 123});
+
+  const rawRows = await client.all<{payload: string}>({
+    sql: `select payload from slack_webhooks`,
+    args: [],
+  });
+  expect(rawRows).toMatchObject([{payload: JSON.stringify(payload)}]);
+
+  await expect(mod.listSlackWebhooks(client)).resolves.toEqual([
+    {
+      id: 1,
+      payload,
+      created_at: 123,
+    },
+  ]);
+});
+
+test('generate rejects the old sqlfu_types table metadata shape with the experimental flag', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create table sqlfu_types (
+        slack_payload text default '{ action: "message" | "reaction"; content: string }'
+      );
+
+      create table slack_webhooks (
+        id integer primary key,
+        payload slack_payload not null
+      );
+    `,
+    files: {
+      'sql/list-slack-webhooks.sql': `select id, payload from slack_webhooks;`,
+    },
+    config: {generate: {experimentalJsonTypes: true}},
+  });
+
+  await expect(project.generate()).rejects.toThrow(/sqlfu_types must be a view/);
+});
+
+test('generate rejects unsupported sqlfu_types encoding values with the experimental flag', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create view sqlfu_types as
+      select
+        'slack_payload' as name,
+        'blob' as encoding,
+        'typescript' as format,
+        '{ action: "message" | "reaction"; content: string }' as definition;
+
+      create table slack_webhooks (
+        id integer primary key,
+        payload slack_payload not null
+      );
+    `,
+    files: {
+      'sql/list-slack-webhooks.sql': `select id, payload from slack_webhooks;`,
+    },
+    config: {generate: {experimentalJsonTypes: true}},
+  });
+
+  await expect(project.generate()).rejects.toThrow(/sqlfu_types row 1\.encoding must be "json"/);
+});
+
+test('generate rejects unsupported sqlfu_types definition formats with the experimental flag', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create view sqlfu_types as
+      select
+        'slack_payload' as name,
+        'json' as encoding,
+        'json-schema' as format,
+        '{"type":"object"}' as definition;
+
+      create table slack_webhooks (
+        id integer primary key,
+        payload slack_payload not null
+      );
+    `,
+    files: {
+      'sql/list-slack-webhooks.sql': `select id, payload from slack_webhooks;`,
+    },
+    config: {generate: {experimentalJsonTypes: true}},
+  });
+
+  await expect(project.generate()).rejects.toThrow(/sqlfu_types row 1\.format must be "typescript"/);
 });
 
 test('generate supports multiline @name comments in multi-query files', async () => {
@@ -367,9 +735,7 @@ test('generate with validator: valibot validates inputs at runtime via standard 
   });
   // Valibot's pretty path inlines the Standard Schema result-guard + calls the re-exported
   // `prettifyStandardSchemaError` for a readable message.
-  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(
-    /Invalid type[\s\S]+slug/,
-  );
+  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(/Invalid type[\s\S]+slug/);
 });
 
 test('generate with validator: zod-mini validates at runtime via standard schema', async () => {
@@ -396,9 +762,7 @@ test('generate with validator: zod-mini validates at runtime via standard schema
     slug: 'hello',
     title: 'Hello',
   });
-  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(
-    /Invalid input[\s\S]+slug/,
-  );
+  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(/Invalid input[\s\S]+slug/);
 });
 
 test('generate with validator: arktype validates at runtime via standard schema', async () => {
@@ -499,6 +863,8 @@ async function createRuntimeFixture(input: {
       validator?: 'arktype' | 'valibot' | 'zod' | 'zod-mini' | null;
       prettyErrors?: boolean;
       sync?: boolean;
+      experimentalJsonTypes?: boolean;
+      runtime?: 'sqlfu' | 'effect-v3' | 'effect-v4-unstable';
       importExtension?: '.js' | '.ts';
     };
   };
@@ -526,6 +892,7 @@ async function createRuntimeFixture(input: {
   await applyDefinitionsToDatabase(dbPath, input.definitionsSql);
 
   return {
+    databasePath: dbPath,
     async generate() {
       await inWorkingDirectory(root, () => generateQueryTypes());
     },
@@ -611,6 +978,9 @@ function rewriteBareImports(source: string): string {
     'zod/mini': pathToFileURL(path.join(packageRoot, 'node_modules', 'zod', 'mini', 'index.js')).href,
     valibot: pathToFileURL(path.join(packageRoot, 'node_modules', 'valibot', 'dist', 'index.mjs')).href,
     arktype: pathToFileURL(path.join(packageRoot, 'node_modules', 'arktype', 'out', 'index.js')).href,
+    '@effect/sql': pathToFileURL(path.join(packageRoot, 'node_modules', '@effect', 'sql', 'dist', 'esm', 'index.js'))
+      .href,
+    'effect/Effect': pathToFileURL(path.join(packageRoot, 'node_modules', 'effect', 'dist', 'esm', 'Effect.js')).href,
   };
   return source.replace(/from\s+["']([^"']+)["']/g, (match, specifier) => {
     const replacement = mapping[specifier];

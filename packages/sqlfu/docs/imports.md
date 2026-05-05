@@ -61,14 +61,16 @@ await sqlfu.draft({confirm});
 This path has the same command-shaped methods as `sqlfu/api`, but you provide
 the `SqlfuHost` and config/project loading context yourself.
 
-## `sqlfu/node`
+## `sqlfu/cloudflare`
 
-Use `sqlfu/node` for small Node- or Bun-only helpers that are useful in config files but
-do not belong in the command API.
+Use `sqlfu/cloudflare` for config-time helpers that point sqlfu at a
+Cloudflare D1 database — local sqlite for `wrangler dev` / alchemy v1's
+Miniflare, or HTTP for deployed cloud D1 (alchemy v2, wrangler, Terraform,
+manual provisioning).
 
 ```ts
 import {defineConfig} from 'sqlfu';
-import {findMiniflareD1Path} from 'sqlfu/node';
+import {findMiniflareD1Path} from 'sqlfu/cloudflare';
 
 export default defineConfig({
   db: findMiniflareD1Path('my-dev-app-slug'),
@@ -83,6 +85,22 @@ Miniflare v3 persist root. Today that means Alchemy's
 `.alchemy/miniflare/v3` layout. It then derives the D1 sqlite filename from the
 Alchemy app slug. If the config is evaluated from somewhere else, pass
 `{miniflareV3Root: '/absolute/path/to/.alchemy/miniflare/v3'}`.
+
+For deployed cloud D1, use `createAlchemyD1Client` (one-line combinator that
+reads alchemy v2's local state) or compose your own factory from
+`createD1HttpClient`, `readAlchemyD1State`, and `findCloudflareD1ByName`:
+
+```ts
+import {defineConfig} from 'sqlfu';
+import {createAlchemyD1Client} from 'sqlfu/cloudflare';
+
+export default defineConfig({
+  db: () => createAlchemyD1Client({stack: 'my-app', stage: 'dev', fqn: 'database'}),
+  migrations: {path: './migrations', preset: 'd1'},
+});
+```
+
+See [Cloudflare D1](./cloudflare-d1.md) for the full guide.
 
 ## `sqlfu/analyze`
 
@@ -118,4 +136,4 @@ independently:
 
 If you are not sure where a symbol belongs, prefer the higher-level path first:
 app/runtime code imports from `sqlfu`, command scripts import from `sqlfu/api`,
-and config-time Node helpers import from `sqlfu/node`.
+and config-time helpers for Cloudflare D1 import from `sqlfu/cloudflare`.

@@ -33,6 +33,8 @@ async function withProject<T>(
         validator: null,
         prettyErrors: true,
         sync: false,
+        experimentalJsonTypes: false,
+        runtime: 'sqlfu',
         importExtension: '.js',
         authority: 'desired_schema',
       },
@@ -106,6 +108,7 @@ test('pgDialect.materializeTypegenSchema + loadSchemaForTypegen returns the rela
     await using materialized = await dialect.materializeTypegenSchema(host, {
       projectRoot: config.projectRoot,
       sourceSql: sql,
+      experimentalJsonTypes: false,
     });
     const relations = await dialect.loadSchemaForTypegen(materialized);
 
@@ -132,9 +135,10 @@ test(
     const sql = `create table users (id integer primary key, name text not null, bio text);`;
     await withProject(sql, async (config, host, dialect) => {
       await using materialized = await dialect.materializeTypegenSchema(host, {
-      projectRoot: config.projectRoot,
-      sourceSql: sql,
-    });
+        projectRoot: config.projectRoot,
+        sourceSql: sql,
+        experimentalJsonTypes: false,
+      });
       const analyses = await dialect.analyzeQueries(materialized, [
         {sqlPath: 'find-user.sql', sqlContent: 'select id, name, bio from users where id = $1'},
       ]);
@@ -170,9 +174,10 @@ test(
     `;
     await withProject(sql, async (config, host, dialect) => {
       await using materialized = await dialect.materializeTypegenSchema(host, {
-      projectRoot: config.projectRoot,
-      sourceSql: sql,
-    });
+        projectRoot: config.projectRoot,
+        sourceSql: sql,
+        experimentalJsonTypes: false,
+      });
       const analyses = await dialect.analyzeQueries(materialized, [
         {
           sqlPath: 'users-with-bios.sql',
@@ -201,9 +206,10 @@ test(
     const sql = `create table posts (id integer primary key, title text not null, draft boolean);`;
     await withProject(sql, async (config, host, dialect) => {
       await using materialized = await dialect.materializeTypegenSchema(host, {
-      projectRoot: config.projectRoot,
-      sourceSql: sql,
-    });
+        projectRoot: config.projectRoot,
+        sourceSql: sql,
+        experimentalJsonTypes: false,
+      });
       const analyses = await dialect.analyzeQueries(materialized, [
         {sqlPath: 'create-post.sql', sqlContent: 'insert into posts (title) values ($1) returning id, title, draft'},
       ]);
@@ -234,6 +240,7 @@ test('pgDialect.analyzeQueries reports prepare-time errors as ok:false', {timeou
     await using materialized = await dialect.materializeTypegenSchema(host, {
       projectRoot: config.projectRoot,
       sourceSql: sql,
+      experimentalJsonTypes: false,
     });
     const analyses = await dialect.analyzeQueries(materialized, [
       {sqlPath: 'broken.sql', sqlContent: 'select id from nonexistent_table'},
@@ -263,6 +270,7 @@ test('pgDialect.materializeTypegenSchema is authority-agnostic', {timeout: 30_00
   await using materialized = await dialect.materializeTypegenSchema(createMinimalHost(), {
     projectRoot: '/dev/null/unused-by-pg',
     sourceSql,
+    experimentalJsonTypes: false,
   });
   const relations = await dialect.loadSchemaForTypegen(materialized);
   expect(relations.has('products')).toBe(true);

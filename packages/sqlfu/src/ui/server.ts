@@ -19,10 +19,7 @@ import {contentTypeForUiAssetPath} from './asset-content-type.js';
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(sourceDir, '..', '..');
 
-type ProjectResolver = (request: {
-  host: string;
-  projectHeader?: string;
-}) => Promise<ResolvedUiProject>;
+type ProjectResolver = (request: {host: string; projectHeader?: string}) => Promise<ResolvedUiProject>;
 
 type UiAssetOptions = {
   assets: Record<string, string>;
@@ -295,7 +292,15 @@ async function ensureDatabase(host: SqlfuHost, projectRoot: string) {
     definitions: path.join(projectRoot, 'definitions.sql'),
     migrations: {path: path.join(projectRoot, 'migrations'), prefix: 'iso', preset: 'sqlfu'},
     queries: path.join(projectRoot, 'sql'),
-    generate: {validator: null, prettyErrors: true, sync: false, importExtension: '.js', authority: 'desired_schema'},
+    generate: {
+      validator: null,
+      prettyErrors: true,
+      sync: false,
+      experimentalJsonTypes: false,
+      runtime: 'sqlfu',
+      importExtension: '.js',
+      authority: 'desired_schema',
+    },
     dialect: sqliteDialect(),
   });
   try {
@@ -307,9 +312,7 @@ async function ensureDatabase(host: SqlfuHost, projectRoot: string) {
         ('draft-notes', 'Draft Notes', 'Unpublished notes', 0);
     `);
   } catch (error) {
-    console.warn(
-      `sqlfu/ui could not initialize ${path.basename(projectRoot)} from definitions.sql: ${String(error)}`,
-    );
+    console.warn(`sqlfu/ui could not initialize ${path.basename(projectRoot)} from definitions.sql: ${String(error)}`);
   }
 }
 

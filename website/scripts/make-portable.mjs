@@ -25,6 +25,10 @@ async function walk(dir) {
 }
 
 async function rewriteFile(filePath) {
+  if (path.basename(filePath) === '404.html') {
+    return;
+  }
+
   const html = await fs.readFile(filePath, 'utf8');
   const depth = path.relative(distRoot, path.dirname(filePath)).split(path.sep).filter(Boolean).length;
   const prefix = depth === 0 ? './' : '../'.repeat(depth);

@@ -1,5 +1,10 @@
 import {describe, test, expect} from 'vitest';
-import {buildRelationQuery, DEFAULT_LIMIT, defaultRelationQueryState, isDefaultRelationQueryState} from './relation-query-builder.js';
+import {
+  buildRelationQuery,
+  DEFAULT_LIMIT,
+  defaultRelationQueryState,
+  isDefaultRelationQueryState,
+} from './relation-query-builder.js';
 
 const allColumns = ['id', 'slug', 'title', 'body'];
 
@@ -94,9 +99,7 @@ describe('filter operator shapes', () => {
       ...defaultRelationQueryState({tableName: 'posts', allColumns}),
       filters: [{column: 'body', operator: 'is not null' as const}],
     };
-    expect(buildRelationQuery(state)).toBe(
-      `select *\nfrom "posts"\nwhere "body" is not null\nlimit ${DEFAULT_LIMIT}`,
-    );
+    expect(buildRelationQuery(state)).toBe(`select *\nfrom "posts"\nwhere "body" is not null\nlimit ${DEFAULT_LIMIT}`);
   });
 
   test('in passes the value verbatim inside parentheses', () => {
@@ -120,7 +123,7 @@ describe('filter operator shapes', () => {
     );
   });
 
-  test("single quotes in a string value are escaped by doubling", () => {
+  test('single quotes in a string value are escaped by doubling', () => {
     const state = {
       ...defaultRelationQueryState({tableName: 'posts', allColumns}),
       filters: [{column: 'title', operator: '=' as const, value: "don't stop"}],

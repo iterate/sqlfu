@@ -11,7 +11,7 @@ import {tokenize, type Token} from '../../src/vendor/sqlfu-sqlite-parser/tokeniz
 // the tokenizer changed shape — read the diff before updating.
 
 test('tokenizes a trivial SELECT', () => {
-	expect(simplify(tokenize(`select id, slug from posts;`))).toMatchInlineSnapshot(`
+  expect(simplify(tokenize(`select id, slug from posts;`))).toMatchInlineSnapshot(`
 		[
 		  "KEYWORD SELECT",
 		  "IDENTIFIER id",
@@ -25,7 +25,7 @@ test('tokenizes a trivial SELECT', () => {
 });
 
 test('tokenizes a SELECT with a named parameter', () => {
-	expect(simplify(tokenize(`select id, slug, title from posts where slug = :slug limit 1;`))).toMatchInlineSnapshot(`
+  expect(simplify(tokenize(`select id, slug, title from posts where slug = :slug limit 1;`))).toMatchInlineSnapshot(`
 		[
 		  "KEYWORD SELECT",
 		  "IDENTIFIER id",
@@ -47,7 +47,7 @@ test('tokenizes a SELECT with a named parameter', () => {
 });
 
 test('tokenizes an INSERT with named parameters', () => {
-	expect(simplify(tokenize(`insert into posts (slug, title) values (:slug, :title);`))).toMatchInlineSnapshot(`
+  expect(simplify(tokenize(`insert into posts (slug, title) values (:slug, :title);`))).toMatchInlineSnapshot(`
 		[
 		  "KEYWORD INSERT",
 		  "KEYWORD INTO",
@@ -69,8 +69,8 @@ test('tokenizes an INSERT with named parameters', () => {
 });
 
 test('tokenizes a CREATE TABLE with an inline CHECK enum', () => {
-	const sql = `create table posts (id integer primary key, slug text not null, status text check (status in ('draft', 'published')));`;
-	expect(simplify(tokenize(sql))).toMatchInlineSnapshot(`
+  const sql = `create table posts (id integer primary key, slug text not null, status text check (status in ('draft', 'published')));`;
+  expect(simplify(tokenize(sql))).toMatchInlineSnapshot(`
 		[
 		  "KEYWORD CREATE",
 		  "KEYWORD TABLE",
@@ -105,7 +105,7 @@ test('tokenizes a CREATE TABLE with an inline CHECK enum', () => {
 });
 
 test('handles the full SQLite operator set', () => {
-	expect(simplify(tokenize(`a || b <> c != d <= e >= f == g < h > i << j >> k & l | m`))).toMatchInlineSnapshot(`
+  expect(simplify(tokenize(`a || b <> c != d <= e >= f == g < h > i << j >> k & l | m`))).toMatchInlineSnapshot(`
 		[
 		  "IDENTIFIER a",
 		  "PIPE2 ||",
@@ -137,8 +137,8 @@ test('handles the full SQLite operator set', () => {
 });
 
 test('handles all parameter marker flavors', () => {
-	// ?  ?N  :name  @name  $name — SQLite supports all five.
-	expect(simplify(tokenize(`select ?, ?2, :name, @other, $third`))).toMatchInlineSnapshot(`
+  // ?  ?N  :name  @name  $name — SQLite supports all five.
+  expect(simplify(tokenize(`select ?, ?2, :name, @other, $third`))).toMatchInlineSnapshot(`
 		[
 		  "KEYWORD SELECT",
 		  "BIND_PARAMETER ?",
@@ -155,9 +155,9 @@ test('handles all parameter marker flavors', () => {
 });
 
 test('handles string literals with doubled-quote escape', () => {
-	// The value includes the opening/closing quotes verbatim — the parser is
-	// responsible for stripping/unescaping later, matching ANTLR behavior.
-	expect(simplify(tokenize(`select 'it''s' as kind`))).toMatchInlineSnapshot(`
+  // The value includes the opening/closing quotes verbatim — the parser is
+  // responsible for stripping/unescaping later, matching ANTLR behavior.
+  expect(simplify(tokenize(`select 'it''s' as kind`))).toMatchInlineSnapshot(`
 		[
 		  "KEYWORD SELECT",
 		  "STRING_LITERAL 'it''s'",
@@ -168,7 +168,7 @@ test('handles string literals with doubled-quote escape', () => {
 });
 
 test('handles quoted, backticked, and bracketed identifiers', () => {
-	expect(simplify(tokenize('select "a", `b`, [c] from "my table"'))).toMatchInlineSnapshot(`
+  expect(simplify(tokenize('select "a", `b`, [c] from "my table"'))).toMatchInlineSnapshot(`
 		[
 		  "KEYWORD SELECT",
 		  "IDENTIFIER "a"",
@@ -183,7 +183,7 @@ test('handles quoted, backticked, and bracketed identifiers', () => {
 });
 
 test('handles numeric literal flavors', () => {
-	expect(simplify(tokenize(`select 1, 1.5, .5, 1., 1e10, 1.5e-3, 0xDEADBEEF`))).toMatchInlineSnapshot(`
+  expect(simplify(tokenize(`select 1, 1.5, .5, 1., 1e10, 1.5e-3, 0xDEADBEEF`))).toMatchInlineSnapshot(`
 		[
 		  "KEYWORD SELECT",
 		  "NUMERIC_LITERAL 1",
@@ -204,8 +204,8 @@ test('handles numeric literal flavors', () => {
 });
 
 test('discards line and block comments', () => {
-	const sql = `select /* inline */ id -- trailing\nfrom posts;`;
-	expect(simplify(tokenize(sql))).toMatchInlineSnapshot(`
+  const sql = `select /* inline */ id -- trailing\nfrom posts;`;
+  expect(simplify(tokenize(sql))).toMatchInlineSnapshot(`
 		[
 		  "KEYWORD SELECT",
 		  "IDENTIFIER id",
@@ -217,8 +217,8 @@ test('discards line and block comments', () => {
 });
 
 test('tokenizes a join with USING', () => {
-	const sql = `select p.id from posts p inner join authors a using (author_id) where a.name is not null;`;
-	expect(simplify(tokenize(sql))).toMatchInlineSnapshot(`
+  const sql = `select p.id from posts p inner join authors a using (author_id) where a.name is not null;`;
+  expect(simplify(tokenize(sql))).toMatchInlineSnapshot(`
 		[
 		  "KEYWORD SELECT",
 		  "IDENTIFIER p",
@@ -248,8 +248,8 @@ test('tokenizes a join with USING', () => {
 });
 
 test('tokenizes an UPDATE with a RETURNING clause', () => {
-	const sql = `update posts set title = :title where id = :id returning id, title;`;
-	expect(simplify(tokenize(sql))).toMatchInlineSnapshot(`
+  const sql = `update posts set title = :title where id = :id returning id, title;`;
+  expect(simplify(tokenize(sql))).toMatchInlineSnapshot(`
 		[
 		  "KEYWORD UPDATE",
 		  "IDENTIFIER posts",
@@ -271,24 +271,24 @@ test('tokenizes an UPDATE with a RETURNING clause', () => {
 });
 
 test('preserves source offsets for every token', () => {
-	const sql = `select id from t`;
-	const tokens = tokenize(sql);
-	// Each token's value equals the source slice at [start, stop+1) — except
-	// KEYWORD tokens, whose value is uppercase-normalized so parser dispatches
-	// can use `===`. The offsets must still slice back to the raw source text.
-	for (const t of tokens) {
-		const slice = sql.slice(t.start, t.stop + 1);
-		if (t.kind === 'KEYWORD') {
-			expect(slice.toUpperCase()).toBe(t.value);
-		} else {
-			expect(t.value).toBe(slice);
-		}
-	}
+  const sql = `select id from t`;
+  const tokens = tokenize(sql);
+  // Each token's value equals the source slice at [start, stop+1) — except
+  // KEYWORD tokens, whose value is uppercase-normalized so parser dispatches
+  // can use `===`. The offsets must still slice back to the raw source text.
+  for (const t of tokens) {
+    const slice = sql.slice(t.start, t.stop + 1);
+    if (t.kind === 'KEYWORD') {
+      expect(slice.toUpperCase()).toBe(t.value);
+    } else {
+      expect(t.value).toBe(slice);
+    }
+  }
 });
 
 test('tokenizes a CTE with recursive', () => {
-	const sql = `with recursive parts as (select 1 union all select n + 1 from parts where n < 5) select * from parts;`;
-	expect(simplify(tokenize(sql))).toMatchInlineSnapshot(`
+  const sql = `with recursive parts as (select 1 union all select n + 1 from parts where n < 5) select * from parts;`;
+  expect(simplify(tokenize(sql))).toMatchInlineSnapshot(`
 		[
 		  "KEYWORD WITH",
 		  "KEYWORD RECURSIVE",
@@ -320,15 +320,15 @@ test('tokenizes a CTE with recursive', () => {
 });
 
 test('throws on unterminated string literal', () => {
-	expect(() => tokenize(`select 'oops`)).toThrowErrorMatchingInlineSnapshot(
-		`[SqlTokenizerError: unterminated '-quoted string starting at offset 7]`
-	);
+  expect(() => tokenize(`select 'oops`)).toThrowErrorMatchingInlineSnapshot(
+    `[SqlTokenizerError: unterminated '-quoted string starting at offset 7]`,
+  );
 });
 
 test('throws on bare ! not followed by =', () => {
-	expect(() => tokenize(`select !foo`)).toThrowErrorMatchingInlineSnapshot(
-		`[SqlTokenizerError: unexpected '!' at offset 7 (did you mean '!='?)]`
-	);
+  expect(() => tokenize(`select !foo`)).toThrowErrorMatchingInlineSnapshot(
+    `[SqlTokenizerError: unexpected '!' at offset 7 (did you mean '!='?)]`,
+  );
 });
 
 // --- helpers ---
@@ -336,5 +336,5 @@ test('throws on bare ! not followed by =', () => {
 // Render as "KIND value" so snapshots stay compact and readable. Offsets are
 // covered by the dedicated `preserves source offsets` test above.
 function simplify(tokens: Token[]): string[] {
-	return tokens.map(t => `${t.kind} ${t.value}`);
+  return tokens.map((t) => `${t.kind} ${t.value}`);
 }

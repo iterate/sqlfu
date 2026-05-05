@@ -3,6 +3,8 @@ title: "introducing sqlfu"
 slug: "introducing-sqlfu"
 date: "2026-04-23"
 description: "Introducing `sqlfu` — a library that lets you and your agent *just write SQL* to build your application."
+heroImage: "/assets/blog/friendship-regain-sqlfu.png"
+heroAlt: "SQL is back with sqlfu"
 ---
 
 Introducing `sqlfu` — a library that lets you and your agent *just write SQL* to build your application.

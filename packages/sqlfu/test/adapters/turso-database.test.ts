@@ -21,9 +21,7 @@ test('createTursoDatabaseClient works with a real @tursodatabase/database databa
     }),
   ).toMatchObject([{id: 1, email: 'ada@example.com'}]);
 
-  expect(
-    await fixture.client.sql<{id: number; email: string}>`select id, email from users order by id`,
-  ).toMatchObject([
+  expect(await fixture.client.sql<{id: number; email: string}>`select id, email from users order by id`).toMatchObject([
     {id: 1, email: 'ada@example.com'},
     {id: 2, email: 'grace@example.com'},
   ]);

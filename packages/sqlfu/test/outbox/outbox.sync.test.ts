@@ -60,7 +60,10 @@ test('fan-out and `when` filter behave the same on the sync path', () => {
   app.outbox.setup();
 
   app.signUp('ada@example.com'); // not a `@sqlfu.dev` / `@test.com` address — skip testDomainWelcome
-  const consumers = app.listJobs().map((j) => j.consumer_name).sort();
+  const consumers = app
+    .listJobs()
+    .map((j) => j.consumer_name)
+    .sort();
   expect(consumers).toEqual(['onboardingReminder', 'slackAdminNotify', 'welcomeEmail'].sort());
 });
 
@@ -88,7 +91,11 @@ test('handler exceptions still route through the async retry policy', async () =
   app.signUp('ada@sqlfu.dev');
 
   await app.outbox.tick();
-  expect(app.findJob('welcomeEmail')).toMatchObject({status: 'pending', attempt: 1, last_error: expect.stringContaining('smtp')});
+  expect(app.findJob('welcomeEmail')).toMatchObject({
+    status: 'pending',
+    attempt: 1,
+    last_error: expect.stringContaining('smtp'),
+  });
 
   app.clock.advance(5000);
   await app.outbox.tick();
@@ -108,7 +115,10 @@ type AppEvents = {
 };
 
 function createTestApp() {
-  const dbPath = path.join(os.tmpdir(), `sqlfu-outbox-sync-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.db`);
+  const dbPath = path.join(
+    os.tmpdir(),
+    `sqlfu-outbox-sync-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.db`,
+  );
   const database = new DatabaseSync(dbPath);
   const client = createNodeSqliteClient(database);
   bootstrapAppSchema(client);
@@ -133,14 +143,20 @@ function createTestApp() {
     name: 'testDomainWelcome',
     when: ({payload}) => payload.email.endsWith('@test.com') || payload.email.endsWith('@sqlfu.dev'),
     handler: async ({payload}) => {
-      client.run({sql: 'insert into sent_emails (to_addr, subject) values (?, ?)', args: [payload.email, 'Welcome to the test crew']});
+      client.run({
+        sql: 'insert into sent_emails (to_addr, subject) values (?, ?)',
+        args: [payload.email, 'Welcome to the test crew'],
+      });
     },
   });
 
   const slackAdminNotify = defineConsumer<UserSignedUpPayload, AppEvents>({
     name: 'slackAdminNotify',
     handler: async ({payload}) => {
-      client.run({sql: 'insert into slack_posts (channel, message) values (?, ?)', args: ['#signups', `New user: ${payload.email}`]});
+      client.run({
+        sql: 'insert into slack_posts (channel, message) values (?, ?)',
+        args: ['#signups', `New user: ${payload.email}`],
+      });
     },
   });
 
@@ -156,7 +172,10 @@ function createTestApp() {
   const reminderDueHandler = defineConsumer<ReminderDuePayload, AppEvents>({
     name: 'reminderEmail',
     handler: async ({payload}) => {
-      client.run({sql: 'insert into sent_emails (to_addr, subject) values (?, ?)', args: [payload.email, 'Still there?']});
+      client.run({
+        sql: 'insert into sent_emails (to_addr, subject) values (?, ?)',
+        args: [payload.email, 'Still there?'],
+      });
     },
   });
 

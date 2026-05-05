@@ -1,0 +1,32 @@
+---
+interface Props {
+  title: string;
+  description: string;
+  pathname: string;
+  type: string;
+}
+
+const {title, description, pathname, type} = Astro.props;
+const siteOrigin = 'https://sqlfu.dev';
+const url = new URL(pathname, siteOrigin).toString();
+const imageUrl = `${siteOrigin}/social-card.png`;
+const imageAlt = 'sqlfu: all you need is sql.';
+---
+
+<link rel="canonical" href={url} />
+<meta property="og:site_name" content="sqlfu" />
+<meta property="og:type" content={type} />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:url" content={url} />
+<meta property="og:image" content={imageUrl} />
+<meta property="og:image:secure_url" content={imageUrl} />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content={imageAlt} />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={imageUrl} />
+<meta name="twitter:image:alt" content={imageAlt} />

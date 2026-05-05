@@ -321,7 +321,8 @@ const formatSqlRule: Rule.RuleModule = {
     type: 'suggestion',
     fixable: 'code',
     docs: {
-      description: 'flag SQL that does not match sqlfu formatter output (inline templates and .sql files); autofix available.',
+      description:
+        'flag SQL that does not match sqlfu formatter output (inline templates and .sql files); autofix available.',
     },
     schema: [
       {
@@ -417,7 +418,9 @@ function detectTemplateIndent(fullText: string, template: ESTree.TemplateLiteral
 function stripLeadingIndent(sql: string, indent: string): string {
   if (!indent) return sql;
   const lines = sql.split('\n');
-  return lines.map((line, i) => (i === 0 ? line : line.startsWith(indent) ? line.slice(indent.length) : line)).join('\n');
+  return lines
+    .map((line, i) => (i === 0 ? line : line.startsWith(indent) ? line.slice(indent.length) : line))
+    .join('\n');
 }
 
 function reapplyTemplateIndent(formatted: string, original: string, indent: string): string {
@@ -439,7 +442,10 @@ function escapeForWrappedSql(sql: string): string {
 function unescapeWrappedSql(raw: string): string {
   // Inverse of escapeForWrappedSql. Order matters: undo the `${` and `` ` ``
   // escapes first, then unescape backslashes.
-  return raw.replace(/\\\$\{/g, '${').replace(/\\`/g, '`').replace(/\\\\/g, '\\');
+  return raw
+    .replace(/\\\$\{/g, '${')
+    .replace(/\\`/g, '`')
+    .replace(/\\\\/g, '\\');
 }
 
 const SQL_FILE_TAG = '__sqlfuSqlFile';

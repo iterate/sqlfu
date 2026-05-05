@@ -119,9 +119,7 @@ test('sqlfu preset rejects edits to an applied migration via checksum check', as
   const edited = {...original, content: `${original.content}-- edited after apply`};
   // node:sqlite is a sync driver so applyMigrations throws synchronously here;
   // using `expect(() => ...).toThrow` rather than `.rejects.toThrow`.
-  expect(() => applyMigrations(db.client, {migrations: [edited]})).toThrow(
-    /applied migration checksum mismatch/u,
-  );
+  expect(() => applyMigrations(db.client, {migrations: [edited]})).toThrow(/applied migration checksum mismatch/u);
 });
 
 test('d1 preset silently accepts edits to an applied migration (no checksum column)', async () => {
@@ -196,7 +194,10 @@ function openMemoryDb() {
 
 function migration(name: string): Migration {
   // Each migration name gets a distinct CREATE so replays produce different DDL.
-  return {path: `migrations/${name}.sql`, content: `create table ${name.replaceAll('-', '_')} (id integer primary key);`};
+  return {
+    path: `migrations/${name}.sql`,
+    content: `create table ${name.replaceAll('-', '_')} (id integer primary key);`,
+  };
 }
 
 function migrationsFor(...names: string[]): Migration[] {

@@ -1,6 +1,11 @@
 ---
 import '../styles/landing.css';
+import SocialMeta from '../components/SocialMeta.astro';
 import { renderDemo } from '../landing-demos/render';
+
+const title = 'sqlfu';
+const description =
+  'sqlfu keeps schema, migrations, and queries in SQL files, then generates typed TypeScript wrappers, migration drafts, and named runtime calls.';
 
 const demo = {
   draft: {
@@ -38,11 +43,9 @@ const demo = {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>sqlfu</title>
-    <meta
-      name="description"
-      content="sqlfu keeps schema, migrations, and queries in SQL files, then generates typed TypeScript wrappers, migration drafts, and named runtime calls."
-    />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <SocialMeta title={title} description={description} pathname="/" type="website" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />

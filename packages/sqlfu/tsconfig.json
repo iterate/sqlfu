@@ -4,9 +4,5 @@
     "noEmit": true
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "test/**/*.d.ts"],
-  "exclude": [
-    "src/vendor/code-block-writer/**/*",
-    "src/vendor/typesql/**/*",
-    "test/**/*.old-test-ignoreme.ts"
-  ]
+  "exclude": ["src/vendor/code-block-writer/**/*", "src/vendor/typesql/**/*", "test/**/*.old-test-ignoreme.ts"]
 }
