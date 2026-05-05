@@ -56,7 +56,7 @@ export type QueryCatalogArgument = {
   notNull: boolean;
   optional: boolean;
   isArray: boolean;
-  driverEncoding: 'identity' | 'boolean-number' | 'date' | 'datetime';
+  driverEncoding: 'identity' | 'boolean-number' | 'date' | 'datetime' | 'json';
 };
 
 export type QueryCatalogField = {

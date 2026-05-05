@@ -271,8 +271,7 @@ a {
 }
 
 .panel code,
-.hero-main code,
-.footer code {
+.hero-main code {
   font-family: ui-monospace, 'SFMono-Regular', monospace;
   font-size: 0.92em;
   background: var(--code-bg);
@@ -441,6 +440,11 @@ a {
   min-height: 5.75rem;
 }
 
+.artifact.terminal pre,
+.artifact-tab-panel.terminal pre {
+  line-height: 1rem;
+}
+
 .tok-keyword {
   color: var(--syntax-keyword);
   font-weight: 650;
@@ -474,6 +478,11 @@ a {
 
 .term-prompt {
   color: var(--muted);
+}
+
+.terminal-command-line {
+  display: block;
+  padding-bottom: 0.1rem;
 }
 
 .terminal-output {
@@ -654,6 +663,14 @@ a {
 
 .landing-anim-ready .typed-char {
   opacity: 0;
+}
+
+.landing-anim-ready .terminal-command-line .term-prompt {
+  opacity: 0;
+}
+
+.landing-anim-ready .terminal-command-line.is-prompt-visible .term-prompt {
+  opacity: 1;
 }
 
 .landing-anim-ready .typed-char.is-visible {
@@ -1067,26 +1084,97 @@ a {
   justify-content: center;
 }
 
-.footer {
-  margin-top: 2rem;
-  color: var(--muted);
+.tweet-testimonial {
+  max-width: 36rem;
+  margin: 1.6rem auto 0;
   font-family: ui-sans-serif, system-ui, sans-serif;
-  font-size: 0.95rem;
-  text-align: center;
 }
 
-.works-with {
-  margin: 2rem auto 0;
-  max-width: 58rem;
-  text-align: center;
+.tweet-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.75rem;
+  padding: 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  box-shadow: 0 12px 36px rgba(74, 43, 15, 0.06);
+}
+
+:root[data-theme='dark'] .tweet-card {
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.22);
+}
+
+.tweet-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--line));
+}
+
+.tweet-avatar {
+  display: block;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  object-fit: cover;
+}
+
+.tweet-body {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.tweet-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  min-width: 0;
   color: var(--muted);
+  font-family: ui-monospace, 'SFMono-Regular', monospace;
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.tweet-meta strong {
+  color: var(--text);
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-size: 0.9rem;
-  line-height: 1.6;
+  line-height: 1.2;
 }
 
-.works-with code {
-  font-size: 0.85em;
+.tweet-verified {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 999px;
+  background: #1d9bf0;
+  color: white;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.62rem;
+  line-height: 1;
+}
+
+.tweet-verified::before {
+  content: '\2713';
+}
+
+.tweet-text {
+  color: var(--text);
+  font-size: 1.02rem;
+  line-height: 1.45;
+}
+
+.tweet-source {
+  color: var(--muted);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1.2;
 }
 
 @media (max-width: 900px) {
@@ -1125,4 +1213,16 @@ a {
     flex: 0 0 auto;
   }
 
+  .tweet-testimonial {
+    max-width: none;
+  }
+
+  .tweet-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 0.85rem;
+  }
+
+  .tweet-source {
+    display: none;
+  }
 }
