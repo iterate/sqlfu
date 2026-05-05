@@ -1,3 +1,8 @@
+---
+heroImage: "/assets/blog/friendship-regain-sqlfu.png"
+heroAlt: "SQL is back with sqlfu"
+---
+
 # introducing sqlfu
 
 Introducing `sqlfu` — a library that lets you and your agent *just write SQL* to build your application.

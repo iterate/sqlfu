@@ -76,6 +76,12 @@ export type DialectColumnInfo = {
    * sqlite recognises declared-type=`json`; pg can map `json`/`jsonb`.
    */
   logicalType?: LogicalType;
+  /**
+   * When true, `tsType` is already a plain TypeScript type expression from
+   * schema metadata and should not be string-literal escaped when embedded in
+   * generated output.
+   */
+  plainTsType?: boolean;
 };
 
 /**
@@ -267,11 +273,14 @@ export function sqliteDialect(): Dialect {
  * Exposed so the registration in `typegen/index.ts` can use it without
  * duplicating the cast logic.
  */
-export function assertSqliteMaterialized(materialized: MaterializedTypegenSchema): {databasePath: string} {
+export function assertSqliteMaterialized(materialized: MaterializedTypegenSchema): {
+  databasePath: string;
+  experimentalJsonTypes: boolean;
+} {
   if (materialized.dialect !== 'sqlite') {
     throw new Error(
       `sqliteDialect received a MaterializedTypegenSchema produced by '${materialized.dialect}' — dialect handles must not cross dialect boundaries.`,
     );
   }
-  return materialized as MaterializedTypegenSchema & {databasePath: string};
+  return materialized as MaterializedTypegenSchema & {databasePath: string; experimentalJsonTypes: boolean};
 }

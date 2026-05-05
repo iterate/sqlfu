@@ -50,10 +50,9 @@ export function RelationQueryPanel(input: RelationQueryPanelProps) {
   const {relation} = input;
   const allColumns = relation.columns.map((c) => c.name);
 
-  const [state, setState] = useLocalStorageState<RelationQueryState>(
-    `sqlfu-ui/relation-query/${relation.name}`,
-    {defaultValue: defaultRelationQueryState({tableName: relation.name, allColumns})},
-  );
+  const [state, setState] = useLocalStorageState<RelationQueryState>(`sqlfu-ui/relation-query/${relation.name}`, {
+    defaultValue: defaultRelationQueryState({tableName: relation.name, allColumns}),
+  });
   const [customSql, setCustomSql] = useLocalStorageState<string | null>(
     `sqlfu-ui/relation-query-custom/${relation.name}`,
     {defaultValue: null},
@@ -430,12 +429,7 @@ function RelationToolbar(input: {
       >
         <ChevronLeftIcon />
       </button>
-      <button
-        type="button"
-        className="rqp-icon-button"
-        aria-label="Next page"
-        onClick={input.onNext}
-      >
+      <button type="button" className="rqp-icon-button" aria-label="Next page" onClick={input.onNext}>
         <ChevronRightIcon />
       </button>
       <PerPageMenu value={input.state.limit} onChange={input.onLimitChange} />

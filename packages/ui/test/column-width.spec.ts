@@ -121,7 +121,7 @@ function pad(value: string, width: number) {
   return width > 0 ? value.padEnd(width, ' ') : value;
 }
 
-function formatMarkdownTable(rows: (string[])[], widths: number[]) {
+function formatMarkdownTable(rows: string[][], widths: number[]) {
   const [header = [], ...body] = rows;
   return [
     formatMarkdownRow(header, widths),

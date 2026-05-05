@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prebuild": "node scripts/sync-docs.mjs && node scripts/sync-blog.mjs",
+    "prebuild": "node scripts/build-social-image.mjs && node scripts/sync-docs.mjs && node scripts/sync-llms.mjs && node scripts/sync-blog.mjs",
     "build": "astro build && node scripts/make-portable.mjs && node scripts/sync-ui.mjs",
-    "dev": "node scripts/sync-docs.mjs && node scripts/sync-blog.mjs && astro dev",
+    "dev": "node scripts/build-social-image.mjs && node scripts/sync-docs.mjs && node scripts/sync-llms.mjs && node scripts/sync-blog.mjs && astro dev",
     "preview": "astro preview",
     "astro": "astro"
   },

@@ -1,6 +1,7 @@
 import type {
   SqlfuAuthority,
   SqlfuConfig,
+  SqlfuGenerateRuntime,
   SqlfuMigrationPrefix,
   SqlfuMigrationPreset,
   SqlfuProjectConfig,
@@ -37,6 +38,8 @@ export function resolveProjectConfig(
       validator: fileConfig.generate?.validator ?? null,
       prettyErrors: fileConfig.generate?.prettyErrors !== false,
       sync: fileConfig.generate?.sync === true,
+      experimentalJsonTypes: fileConfig.generate?.experimentalJsonTypes === true,
+      runtime: fileConfig.generate?.runtime || 'sqlfu',
       importExtension: fileConfig.generate?.importExtension ?? inferImportExtension(tsconfigPreferences),
       authority: fileConfig.generate?.authority ?? 'desired_schema',
     },
@@ -49,6 +52,7 @@ export function inferImportExtension(tsconfigPreferences: TsconfigPreferences): 
 }
 
 const validValidators: SqlfuValidator[] = ['arktype', 'valibot', 'zod', 'zod-mini'];
+const validGenerateRuntimes: SqlfuGenerateRuntime[] = ['sqlfu', 'effect-v3', 'effect-v4-unstable'];
 const validAuthorities: SqlfuAuthority[] = ['desired_schema', 'migrations', 'migration_history', 'live_schema'];
 const validPrefixes: SqlfuMigrationPrefix[] = ['iso', 'four-digit'];
 const validPresets: SqlfuMigrationPreset[] = ['sqlfu', 'd1'];
@@ -81,13 +85,19 @@ export function assertConfigShape(configPath: string, config: object): asserts c
     if (typeof migrationsRecord.path !== 'string') {
       throw new Error(`Invalid sqlfu config at ${configPath}: "migrations.path" must be a string.`);
     }
-    if (migrationsRecord.prefix !== undefined && !validPrefixes.includes(migrationsRecord.prefix as SqlfuMigrationPrefix)) {
+    if (
+      migrationsRecord.prefix !== undefined &&
+      !validPrefixes.includes(migrationsRecord.prefix as SqlfuMigrationPrefix)
+    ) {
       throw new Error(
         `Invalid sqlfu config at ${configPath}: "migrations.prefix" must be 'iso' or 'four-digit'. ` +
           `Got ${JSON.stringify(migrationsRecord.prefix)}.`,
       );
     }
-    if (migrationsRecord.preset !== undefined && !validPresets.includes(migrationsRecord.preset as SqlfuMigrationPreset)) {
+    if (
+      migrationsRecord.preset !== undefined &&
+      !validPresets.includes(migrationsRecord.preset as SqlfuMigrationPreset)
+    ) {
       throw new Error(
         `Invalid sqlfu config at ${configPath}: "migrations.preset" must be 'sqlfu' or 'd1'. ` +
           `Got ${JSON.stringify(migrationsRecord.preset)}.`,
@@ -124,6 +134,19 @@ export function assertConfigShape(configPath: string, config: object): asserts c
     const sync = generateRecord.sync;
     if (sync !== undefined && typeof sync !== 'boolean') {
       throw new Error(`Invalid sqlfu config at ${configPath}: "generate.sync" must be a boolean.`);
+    }
+
+    const experimentalJsonTypes = generateRecord.experimentalJsonTypes;
+    if (experimentalJsonTypes !== undefined && typeof experimentalJsonTypes !== 'boolean') {
+      throw new Error(`Invalid sqlfu config at ${configPath}: "generate.experimentalJsonTypes" must be a boolean.`);
+    }
+
+    const runtime = generateRecord.runtime;
+    if (runtime !== undefined && !validGenerateRuntimes.includes(runtime as SqlfuGenerateRuntime)) {
+      throw new Error(
+        `Invalid sqlfu config at ${configPath}: "generate.runtime" must be one of ` +
+          `${validGenerateRuntimes.map((value) => `'${value}'`).join(', ')}, or undefined. Got ${JSON.stringify(runtime)}.`,
+      );
     }
 
     const importExtension = generateRecord.importExtension;

@@ -1,13 +1,7 @@
 import {wrapSyncClientErrors} from '../adapter-errors.js';
 import {bindSyncSql} from '../sql.js';
 import {rawSqlWithSqlSplittingSync, surroundWithBeginCommitRollbackSync} from '../sqlite-text.js';
-import type {
-  PreparedStatementParams,
-  ResultRow,
-  SqlQuery,
-  SyncClient,
-  SyncPreparedStatement,
-} from '../types.js';
+import type {PreparedStatementParams, ResultRow, SqlQuery, SyncClient, SyncPreparedStatement} from '../types.js';
 
 export interface NodeSqliteStatementLike<TRow extends ResultRow = ResultRow> {
   all(...params: unknown[]): ResultRow[];

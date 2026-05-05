@@ -81,11 +81,7 @@ export const DraftAnim: React.FC = () => {
           addLines={frame >= 60 ? [emailLine] : undefined}
           style={{gridRow: '1 / 2', gridColumn: '1 / 2'}}
         />
-        <FileTree
-          entries={activeTree}
-          highlightFlash={treeFlash}
-          style={{gridRow: '1 / 2', gridColumn: '2 / 3'}}
-        />
+        <FileTree entries={activeTree} highlightFlash={treeFlash} style={{gridRow: '1 / 2', gridColumn: '2 / 3'}} />
         <TerminalStrip
           command={draftCommand}
           progress={cmdProgress}

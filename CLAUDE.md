@@ -3,6 +3,25 @@ Note: this library is in pre-pre-pre-alpha. There are zero users. It is EXTREMEL
 
 Prefer lowercase SQL keywords.
 
+When documenting or testing `sqlfu_types` definitions, format multiline
+TypeScript type strings so the type body flows with the SQL string literal:
+
+```sql
+create view sqlfu_types as
+select
+  'json_slack_payload' as name,
+  'json' as encoding,
+  'typescript' as format,
+  '{
+    action: "message" | "reaction";
+    content: string
+  }' as definition;
+```
+
+That means the property lines use the SQL start-line indent plus two spaces, and
+the closing `}` matches the opening line's SQL indent even though the raw
+TypeScript string looks a little unusual outside SQL.
+
 Prefer concise truthy/falsy checks. `foo && bar` over `foo !== undefined ? bar : undefined`; `!foo` over `foo === undefined` when the guarded branch short-circuits. Avoid verbose `=== undefined` / `!== undefined` chains unless the code genuinely needs to distinguish `undefined` from `null` / `0` / `''`.
 
 The project is currently in two parts:

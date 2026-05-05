@@ -51,6 +51,38 @@ select id from posts;
 
 </details>
 
+## rejects unknown runtime values at config load
+
+<details>
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table posts (id integer primary key);
+```
+
+```ts (sqlfu.config.ts)
+export default {
+  db: './app.db',
+  migrations: './migrations',
+  definitions: './definitions.sql',
+  queries: './sql',
+  generate: {runtime: 'not-a-real-runtime' as any},
+};
+```
+
+```sql (sql/list-posts.sql)
+select id from posts;
+```
+
+</details>
+
+<details>
+<summary>error</summary>
+
+"generate\.runtime" must be one of 'sqlfu', 'effect-v3', 'effect-v4-unstable', or undefined
+
+</details>
+
 ## rejects the legacy generate.zod flag with a migration hint
 
 <details>

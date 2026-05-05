@@ -120,6 +120,8 @@ async function createAuthorityFixture(input: {
       validator: null,
       prettyErrors: true,
       sync: false,
+      experimentalJsonTypes: false,
+      runtime: 'sqlfu',
       importExtension: '.js',
       authority: input.authority ?? 'desired_schema',
     },

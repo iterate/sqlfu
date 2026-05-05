@@ -164,7 +164,8 @@ const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_VT: TimePeriod = '30s';
 const DEFAULT_RETRY: RetryFn = (_, error) => ({retry: true, reason: String(error), delay: '10s'});
 
-type ResolvedDefaults = Required<Omit<OutboxDefaults, 'onBookkeepingError'>> & Pick<OutboxDefaults, 'onBookkeepingError'>;
+type ResolvedDefaults = Required<Omit<OutboxDefaults, 'onBookkeepingError'>> &
+  Pick<OutboxDefaults, 'onBookkeepingError'>;
 
 export function createOutbox<TEvents extends EventMap, TClient extends Client = Client>(
   config: OutboxConfig<TEvents, TClient>,
@@ -188,8 +189,7 @@ export function createOutbox<TEvents extends EventMap, TClient extends Client = 
 
   // Runtime dispatcher: drive a generator with the matching driver. Caller
   // narrows the return shape via the conditional `MaybeAsync<...>` types.
-  const drive = <T>(gen: DualGenerator<T>): T | Promise<T> =>
-    client.sync ? driveSync(gen) : driveAsync(gen);
+  const drive = <T>(gen: DualGenerator<T>): T | Promise<T> => (client.sync ? driveSync(gen) : driveAsync(gen));
 
   function* setupGen(): DualGenerator<void> {
     yield client.raw(SCHEMA_DDL);
@@ -319,12 +319,7 @@ export function createOutbox<TEvents extends EventMap, TClient extends Client = 
     });
   }
 
-  function* markRetryGen(
-    job: ClaimedJob,
-    error: unknown,
-    attempt: number,
-    runAfterSec: number,
-  ): DualGenerator<void> {
+  function* markRetryGen(job: ClaimedJob, error: unknown, attempt: number, runAfterSec: number): DualGenerator<void> {
     yield client.run({
       sql: `update sqlfu_outbox_jobs
               set status = 'pending', attempt = ?, last_error = ?, run_after = ?, vt_until = 0, updated_at = ?
@@ -359,7 +354,9 @@ export function createOutbox<TEvents extends EventMap, TClient extends Client = 
     for (const job of claimed) {
       const consumer = findConsumerByName(consumersByEvent, job.consumer_name);
       if (!consumer) {
-        await drive(bookkeepGen(job, () => markFailedGen(job, new Error(`No consumer registered for ${job.consumer_name}`))));
+        await drive(
+          bookkeepGen(job, () => markFailedGen(job, new Error(`No consumer registered for ${job.consumer_name}`))),
+        );
         result.failed += 1;
         continue;
       }

@@ -187,7 +187,9 @@ function* applyOneMigrationGen(
   input: {content: string; name: string; checksum: string; applied_at: string},
 ): DualGenerator<void> {
   yield client.raw(input.content);
-  yield client.run(insertMigrationQuery(shape, {name: input.name, checksum: input.checksum, applied_at: input.applied_at}));
+  yield client.run(
+    insertMigrationQuery(shape, {name: input.name, checksum: input.checksum, applied_at: input.applied_at}),
+  );
 }
 
 function* baselineMigrationHistoryGen(client: Client, params: BaselineParams): DualGenerator<void> {

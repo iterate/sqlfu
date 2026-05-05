@@ -1,9 +1,6 @@
 import {wrapSyncClientErrors} from '../adapter-errors.js';
 import {bindSyncSql} from '../sql.js';
-import {
-  rawSqlWithSqlSplittingSync,
-  rewriteNamedParamsToPositional,
-} from '../sqlite-text.js';
+import {rawSqlWithSqlSplittingSync, rewriteNamedParamsToPositional} from '../sqlite-text.js';
 import type {ResultRow, SqlQuery, SyncClient, SyncPreparedStatement} from '../types.js';
 
 // Intentionally non-generic and bindings-typed-as-`any[]` so this interface
@@ -84,7 +81,7 @@ export function createDurableObjectClient<TStorage extends DurableObjectClientIn
         },
         *iterate(params) {
           const rewritten = rewriteNamedParamsToPositional(sql, params);
-          yield* (sqlStorage.exec(rewritten.sql, ...rewritten.args).toArray() as TRow[]);
+          yield* sqlStorage.exec(rewritten.sql, ...rewritten.args).toArray() as TRow[];
         },
         [Symbol.dispose]() {},
       };

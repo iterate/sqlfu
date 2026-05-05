@@ -32,9 +32,7 @@ test('the CLI accepts a non-default config file path', async () => {
 
   await runCli(['generate', '--config', 'counter.sqlfu.config.ts']);
 
-  await expect(fs.readFile(path.join(root, 'counter-sql/.generated/get.sql.ts'), 'utf8')).resolves.toContain(
-    'counter',
-  );
+  await expect(fs.readFile(path.join(root, 'counter-sql/.generated/get.sql.ts'), 'utf8')).resolves.toContain('counter');
   await expect(fs.stat(path.join(root, 'main-sql/.generated/get.sql.ts'))).rejects.toMatchObject({code: 'ENOENT'});
 
   void cwd;
@@ -122,9 +120,7 @@ test('createSqlfuCli can still receive a config path programmatically', async ()
   const cli = await createSqlfuCli({configPath: 'counter.sqlfu.config.ts'});
   await runCli(['generate'], cli);
 
-  await expect(fs.readFile(path.join(root, 'counter-sql/.generated/get.sql.ts'), 'utf8')).resolves.toContain(
-    'counter',
-  );
+  await expect(fs.readFile(path.join(root, 'counter-sql/.generated/get.sql.ts'), 'utf8')).resolves.toContain('counter');
 
   void cwd;
 });

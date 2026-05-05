@@ -1,13 +1,7 @@
 import React from 'react';
 import {interpolate, useCurrentFrame} from 'remotion';
 import {Caption, CodeSurface, PanelBackdrop, TerminalStrip} from './components';
-import {
-  appTsCompletion,
-  appTsSnippet,
-  generateCommand,
-  userByIdGeneratedTs,
-  userByIdSql,
-} from './fixtures';
+import {appTsCompletion, appTsSnippet, generateCommand, userByIdGeneratedTs, userByIdSql} from './fixtures';
 import {theme} from './theme';
 
 /**
@@ -62,10 +56,12 @@ export const GenerateAnim: React.FC = () => {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
-  const popoverHighlight = Math.floor(interpolate(frame, [246, 264], [0, appTsCompletion.length], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  }));
+  const popoverHighlight = Math.floor(
+    interpolate(frame, [246, 264], [0, appTsCompletion.length], {
+      extrapolateLeft: 'clamp',
+      extrapolateRight: 'clamp',
+    }),
+  );
 
   const captionOpacity = interpolate(frame, [270, 288], [0, 1], {
     extrapolateLeft: 'clamp',
@@ -217,9 +213,7 @@ function AutocompletePopover({opacity, highlightIndex}: {opacity: number; highli
             <span style={{color: theme.codeKeyword, marginRight: 10, fontSize: 11}}>●</span>
             {name}
           </span>
-          <span style={{color: theme.codeType, fontSize: 13}}>
-            {name === 'id' ? 'number' : 'string'}
-          </span>
+          <span style={{color: theme.codeType, fontSize: 13}}>{name === 'id' ? 'number' : 'string'}</span>
         </div>
       ))}
     </div>

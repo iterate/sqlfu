@@ -389,10 +389,7 @@ function AppTsPane({
             opacity: blink ? 1 : 0,
           }}
         />
-        <AutocompletePopover
-          opacity={popoverOpacity}
-          highlightIndex={popoverHighlight % appTsCompletion.length}
-        />
+        <AutocompletePopover opacity={popoverOpacity} highlightIndex={popoverHighlight % appTsCompletion.length} />
       </div>
     </div>
   );
@@ -403,12 +400,10 @@ function AppTsPane({
 function Beat3Draft() {
   const frame = useCurrentFrame();
 
-  const editProgress = interpolate(
-    frame,
-    [12, 78],
-    [definitionsBeforeEmail.length, definitionsAfterEmail.length],
-    {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'},
-  );
+  const editProgress = interpolate(frame, [12, 78], [definitionsBeforeEmail.length, definitionsAfterEmail.length], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
   const editing = frame >= 12 && frame < 78;
   const emailLine = 4; // 1-indexed line number for highlight
 
@@ -586,9 +581,7 @@ function AutocompletePopover({opacity, highlightIndex}: {opacity: number; highli
             <span style={{color: theme.codeKeyword, marginRight: 10, fontSize: 10}}>●</span>
             {name}
           </span>
-          <span style={{color: theme.codeType, fontSize: 12}}>
-            {name === 'id' ? 'number' : 'string'}
-          </span>
+          <span style={{color: theme.codeType, fontSize: 12}}>{name === 'id' ? 'number' : 'string'}</span>
         </div>
       ))}
     </div>

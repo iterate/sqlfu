@@ -92,6 +92,13 @@ const docs = [
       'Generate arktype, valibot, zod, or zod/mini schemas as the source of truth. Validate params and rows at the wrapper boundary.',
   },
   {
+    slug: 'effect-sql',
+    title: 'Effect SQL runtime',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'effect-sql.md'),
+    description:
+      'Experimental native Effect SQL generation: query functions return Effect values and read SqlClient from the environment.',
+  },
+  {
     slug: 'id-helpers',
     title: 'Pure-SQL id generators (ulid, ksuid, nanoid, cuid2)',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'id-helpers.md'),

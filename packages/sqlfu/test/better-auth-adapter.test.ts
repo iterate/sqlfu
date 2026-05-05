@@ -180,10 +180,9 @@ test('createSchema rejects malformed Better Auth fences', async () => {
       },
     });
 
-    await expect(
-      createAdapterForFixture(fixture).createSchema?.({}, 'definitions.sql'),
-      testCase.name,
-    ).rejects.toThrow(testCase.message);
+    await expect(createAdapterForFixture(fixture).createSchema?.({}, 'definitions.sql'), testCase.name).rejects.toThrow(
+      testCase.message,
+    );
   }
 });
 
