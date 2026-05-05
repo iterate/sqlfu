@@ -157,6 +157,48 @@ await listPostsByKeys(client, {
 });
 ```
 
+## Experimental JSON Logical Types
+
+Set `generate.experimentalJsonTypes: true` to opt into experimental JSON
+logical-type handling. Columns declared with the SQLite type name `json` are
+stored as JSON text and generated as `unknown`. For a narrower TypeScript type,
+add a reserved `sqlfu_types` metadata view. Each row maps a logical declared type
+name to an encoding, a definition format, and a type definition:
+
+```sql
+create view sqlfu_types as
+select
+  'slack_payload' as name,
+  'json' as encoding,
+  'typescript' as format,
+  '{
+    action: "message" | "reaction";
+    content: string
+  }' as definition;
+
+create table slack_webhooks(
+  id integer primary key,
+  payload slack_payload not null
+);
+```
+
+```ts
+await recordSlackWebhook(client, {
+  payload: {
+    action: "message",
+    content: "hello",
+  },
+});
+```
+
+The generated wrapper accepts the TypeScript `definition`, serializes inputs
+with `JSON.stringify`, and parses selected result columns before returning them.
+The `definition` value is not a validator schema and sqlfu does not resolve
+imports, aliases, or references from it. The `encoding` column controls how the
+logical type is encoded for SQLite; this first experimental slice only supports
+`json`. The `format` column says what language the definition uses; this first
+experimental slice only supports `typescript`.
+
 ## Limits
 
 - Runtime-expanded params, currently inferred scalar `IN` lists, row-value `IN`
@@ -164,10 +206,10 @@ await listPostsByKeys(client, {
   once in a query. Reusing the same expanded array in two places would require
   duplicating the driver arguments, so sqlfu rejects that shape for now.
 - Set `generate.experimentalJsonTypes: true` to opt into experimental JSON
-  logical-type handling. Today that covers columns declared with the SQLite type
-  name `json`: generated wrappers accept `unknown`, stringify JSON inputs before
-  driver calls, and parse selected JSON result columns on the way out. The same
-  flag is reserved for typed JSON metadata/schema support such as `sqlfu_types`.
+  logical-type handling. This includes columns declared with the SQLite type
+  name `json` and any matching rows in the reserved `sqlfu_types` view.
+- Plain `sqlfu_types.definition` values only describe generated TypeScript
+  surfaces. They do not add runtime validation for JSON payload shape.
 - Parameter shape is inferred from SQL shape, not comment metadata. `@name` names
   queries; `IN (:ids)`, `(slug, title) in (:keys)`, and `values :posts` describe
   runtime placeholder expansion where the SQL shape changes.
