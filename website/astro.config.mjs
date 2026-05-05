@@ -71,6 +71,18 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Guides',
+          items: [
+            {label: 'Durable Objects', slug: 'docs/guides/durable-objects'},
+            {label: 'Cloudflare D1', slug: 'docs/guides/cloudflare-d1'},
+            {label: 'Node SQLite', slug: 'docs/guides/node-sqlite'},
+            {label: 'Bun SQLite', slug: 'docs/guides/bun-sqlite'},
+            {label: 'Turso and libSQL', slug: 'docs/guides/turso-libsql'},
+            {label: 'Expo SQLite', slug: 'docs/guides/expo-sqlite'},
+            {label: 'sqlite-wasm', slug: 'docs/guides/sqlite-wasm'},
+          ],
+        },
+        {
           label: 'Features',
           items: [
             {label: 'CLI', slug: 'docs/cli'},
@@ -96,6 +108,7 @@ export default defineConfig({
           items: [
             {label: 'Import surface', slug: 'docs/imports'},
             {label: 'Errors', slug: 'docs/errors'},
+            {label: 'Cloudflare D1 details', slug: 'docs/cloudflare-d1'},
             {label: 'Schema diff internals', slug: 'docs/schema-diff-model'},
             {
               label: 'Generate examples',
@@ -108,6 +121,7 @@ export default defineConfig({
                 {label: 'Query shapes', slug: 'docs/examples/query-shapes'},
                 {label: 'Result types', slug: 'docs/examples/result-types'},
                 {label: 'Validators', slug: 'docs/examples/validators'},
+                {label: 'Logical types', slug: 'docs/examples/logical-types'},
               ],
             },
           ],

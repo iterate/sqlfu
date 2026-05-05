@@ -23,15 +23,17 @@ export default {
 <summary>input</summary>
 
 ```sql (definitions.sql)
-create view sqlfu_types as
-select
-  'slack_payload' as name,
-  'json' as encoding,
-  'typescript' as format,
-  '{
-    action: "message" | "reaction";
-    content: string
-  }' as definition;
+create view sqlfu_types (name, encoding, format, definition) as
+values
+  (
+    'slack_payload',
+    'json',
+    'typescript',
+    '{
+      action: "message" | "reaction";
+      content: string
+    }'
+  );
 
 create table slack_webhooks (
   id integer primary key,
@@ -144,15 +146,17 @@ export type SlackWebhooksRow = {
 <summary>input</summary>
 
 ```sql (definitions.sql)
-create view sqlfu_types as
-select
-  'slack_payload' as name,
-  'json' as encoding,
-  'typescript' as format,
-  '{
-    action: "message" | "reaction";
-    content: string
-  }' as definition;
+create view sqlfu_types (name, encoding, format, definition) as
+values
+  (
+    'slack_payload',
+    'json',
+    'typescript',
+    '{
+      action: "message" | "reaction";
+      content: string
+    }'
+  );
 
 create table slack_webhooks (
   id integer primary key,
@@ -287,15 +291,17 @@ export type SlackWebhooksRow = {
 <summary>input</summary>
 
 ```sql (definitions.sql)
-create view sqlfu_types as
-select
-  'slack_payload' as name,
-  'json' as encoding,
-  'typescript' as format,
-  '{
-    action: "message" | "reaction";
-    content: string
-  }' as definition;
+create view sqlfu_types (name, encoding, format, definition) as
+values
+  (
+    'slack_payload',
+    'json',
+    'typescript',
+    '{
+      action: "message" | "reaction";
+      content: string
+    }'
+  );
 
 create table slack_webhooks (
   id integer primary key,

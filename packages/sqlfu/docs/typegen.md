@@ -166,15 +166,17 @@ add a reserved `sqlfu_types` metadata view. Each row maps a logical declared typ
 name to an encoding, a definition format, and a type definition:
 
 ```sql
-create view sqlfu_types as
-select
-  'slack_payload' as name,
-  'json' as encoding,
-  'typescript' as format,
-  '{
-    action: "message" | "reaction";
-    content: string
-  }' as definition;
+create view sqlfu_types (name, encoding, format, definition) as
+values
+  (
+    'slack_payload',
+    'json',
+    'typescript',
+    '{
+      action: "message" | "reaction";
+      content: string
+    }'
+  );
 
 create table slack_webhooks(
   id integer primary key,
