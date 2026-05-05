@@ -82,3 +82,5 @@ run synchronously.
   client with tracing, metrics, and error hooks.
 - [Errors](https://sqlfu.dev/docs/errors) lists the normalized `SqlfuError`
   kinds raised by adapters.
+- [Effect interop](https://sqlfu.dev/docs/effect) documents the experimental
+  `sqlfu/effect` wrapper for Effect applications.

@@ -114,6 +114,8 @@ Some features keep their own entrypoints because they are meant to be consumed
 independently:
 
 - `sqlfu/outbox` for the transactional outbox/job queue.
+- `sqlfu/effect` for experimental Effect interop around an existing sqlfu
+  client.
 - `sqlfu/lint-plugin` for the ESLint plugin.
 
 If you are not sure where a symbol belongs, prefer the higher-level path first:

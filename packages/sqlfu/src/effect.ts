@@ -1,3 +1,16 @@
+/**
+ * Experimental Effect interop for existing sqlfu clients.
+ *
+ * `sqlfu/effect` wraps the normal `Client` surface in Effect values. It does
+ * not make sqlfu internally Effect-native, and it does not add generated-query
+ * overloads. The wrapper is useful when the rest of an application already
+ * composes work with Effect and wants sqlfu query failures in the Effect failure
+ * channel as `SqlfuError`.
+ *
+ * @module sqlfu/effect
+ * @experimental
+ */
+
 import * as Context from 'effect/Context';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
@@ -13,11 +26,25 @@ import type {
   SyncPreparedStatement,
 } from './types.js';
 
+/**
+ * Prepared statement wrapper returned by {@link EffectClient.prepare}.
+ *
+ * @experimental
+ */
 export interface EffectPreparedStatement<TRow extends ResultRow = ResultRow> {
   all(params?: PreparedStatementParams): Effect.Effect<TRow[], SqlfuError>;
   run(params?: PreparedStatementParams): Effect.Effect<RunResult, SqlfuError>;
 }
 
+/**
+ * Effect-returning view of a normal sqlfu {@link Client}.
+ *
+ * The adapter preserves the underlying client's sync/async nature:
+ * sync clients can be run with `Effect.runSync`, and async clients should be
+ * run with `Effect.runPromise`.
+ *
+ * @experimental
+ */
 export interface EffectClient<TDriver = unknown> {
   driver: TDriver;
   system: string;
@@ -28,6 +55,16 @@ export interface EffectClient<TDriver = unknown> {
   prepare<TRow extends ResultRow = ResultRow>(sql: string): Effect.Effect<EffectPreparedStatement<TRow>, SqlfuError>;
 }
 
+/**
+ * Wrap a normal sqlfu client so query methods return Effect values.
+ *
+ * Driver failures are normalized through sqlfu's existing `SqlfuError`
+ * classification before they enter the Effect failure channel. This mapping is
+ * idempotent, so clients created by sqlfu's built-in adapters keep the same
+ * error objects they would have thrown through the non-Effect API.
+ *
+ * @experimental
+ */
 export function toEffectClient<TDriver>(client: Client<TDriver>): EffectClient<TDriver> {
   return {
     driver: client.driver,
@@ -44,6 +81,11 @@ export function toEffectClient<TDriver>(client: Client<TDriver>): EffectClient<T
   };
 }
 
+/**
+ * Effect Context tag for providing an {@link EffectClient} through a Layer.
+ *
+ * @experimental
+ */
 export class SqlfuClient extends Context.Tag('sqlfu/SqlfuClient')<SqlfuClient, EffectClient>() {
   static make() {
     return SqlfuClient;

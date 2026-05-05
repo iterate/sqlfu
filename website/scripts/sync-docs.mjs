@@ -78,6 +78,12 @@ const docs = [
     description: 'SqlfuError kinds, normalized adapter errors, and application handler examples.',
   },
   {
+    slug: 'effect',
+    title: 'Effect interop (experimental)',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'effect.md'),
+    description: 'Experimental Effect wrapper for existing sqlfu clients.',
+  },
+  {
     slug: 'typegen',
     title: 'Type generation from SQL',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'typegen.md'),

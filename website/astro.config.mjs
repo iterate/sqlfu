@@ -62,6 +62,7 @@ export default defineConfig({
             {label: 'Adapters', slug: 'docs/adapters'},
             {label: 'Runtime validation', slug: 'docs/runtime-validation'},
             {label: 'Observability', slug: 'docs/observability'},
+            {label: 'Effect interop (experimental)', slug: 'docs/effect'},
             {label: 'Lint plugin', slug: 'docs/lint-plugin'},
             {label: 'Formatter', slug: 'docs/formatter'},
             {label: 'Agent skill', slug: 'docs/agent-skill'},

@@ -8,7 +8,7 @@ new_pr: https://github.com/mmkal/sqlfu/pull/83
 
 # Thin Effect Client Interop
 
-Status summary: implementation complete and PR left in draft for review. PR #82 was closed because it made Effect support look more Drizzle-like than it really was. Draft PR #83 now tracks the smaller replacement: optional `sqlfu/effect` interop for existing sqlfu clients, covering `all`, `run`, `raw`, `prepare`, `SqlfuError` failures-as-values, and Context/Layer wiring; transaction support is deliberately left out of this thin adapter until it has a safer design.
+Status summary: implementation complete and PR left in draft for review. PR #83 is merged with latest `main` and now documents `sqlfu/effect` as experimental in source JSDoc and website docs. The adapter covers `all`, `run`, `raw`, `prepare`, `SqlfuError` failures-as-values, and Context/Layer wiring; transaction support is deliberately left out of this thin adapter until it has a safer design.
 
 ## Context
 
@@ -77,6 +77,9 @@ const DB = SqlfuClient.make().pipe(Effect.provide(SqlfuClient.layer(client)));
 - [x] Export the optional Effect interop through a subpath that does not import Effect from the main `sqlfu` entrypoint. _Added `sqlfu/effect` package exports and a packed-package import test._
 - [x] Document the deliberately limited scope in the PR body. _PR #83 explains that this is interop, not native Effect support, and shows abbreviated `toEffectClient` usage._
 - [x] Decide whether to mark the PR ready or leave it draft after review of the transaction omission. _Left PR #83 as draft per the user request._
+- [x] Merge latest `main`. _Merged `origin/main` in `09b705e` and resolved the package export/peer conflict by keeping both `better-auth` and `effect` subpaths/peers._
+- [x] Mark the module as experimental. _Added `@experimental` JSDoc on `sqlfu/effect` exports and labelled the website docs/sidebar as experimental._
+- [x] Document the module. _Added `packages/sqlfu/docs/effect.md`, linked it from client/import docs, and added it to website doc sync/sidebar._
 
 ## Implementation Notes
 
@@ -85,3 +88,4 @@ const DB = SqlfuClient.make().pipe(Effect.provide(SqlfuClient.layer(client)));
 - 2026-05-01: Implemented `sqlfu/effect` as an optional interop subpath. It intentionally exposes no `transaction` wrapper yet: a naive transaction callback would have to run nested Effects inside the underlying transaction callback, which risks turning typed Effect failures back into Effect runtime exceptions. That belongs in a follow-up design if the thin adapter is accepted.
 - 2026-05-01: Updated PR #83 body with reviewer-facing summary, sample code, scope notes, and verification commands.
 - 2026-05-01: Tightened the Effect failure channel to `SqlfuError` by applying the existing idempotent `mapSqliteDriverError` transform inside `Effect.try` / `Effect.tryPromise` catch handlers.
+- 2026-05-05: Merged latest `origin/main`, added experimental module docs, and verified the website builds `/docs/effect.html`.
