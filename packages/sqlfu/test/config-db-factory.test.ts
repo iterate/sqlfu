@@ -69,7 +69,14 @@ async function createFactoryFixture(input: {migrations?: Record<string, string>;
     migrations: {path: path.join(root, 'migrations'), prefix: 'iso', preset: 'sqlfu'},
     definitions: path.join(root, 'definitions.sql'),
     queries: path.join(root, 'sql'),
-    generate: {validator: null, prettyErrors: true, sync: false, importExtension: '.js', authority: 'desired_schema'},
+    generate: {
+      validator: null,
+      prettyErrors: true,
+      sync: false,
+      runtime: 'client',
+      importExtension: '.js',
+      authority: 'desired_schema',
+    },
   };
 
   const host = await createNodeHost();

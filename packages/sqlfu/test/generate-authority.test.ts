@@ -119,6 +119,7 @@ async function createAuthorityFixture(input: {
       validator: null,
       prettyErrors: true,
       sync: false,
+      runtime: 'client',
       importExtension: '.js',
       authority: input.authority ?? 'desired_schema',
     },

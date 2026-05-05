@@ -157,6 +157,9 @@ async function ensureTypecheckProject(): Promise<Project> {
         'zod/mini': [path.join(packageRoot, 'node_modules', 'zod', 'mini')],
         valibot: [path.join(packageRoot, 'node_modules', 'valibot')],
         arktype: [path.join(packageRoot, 'node_modules', 'arktype')],
+        '@effect/sql': [path.join(packageRoot, 'node_modules', '@effect', 'sql', 'dist', 'dts', 'index.d.ts')],
+        '@effect/sql/*': [path.join(packageRoot, 'node_modules', '@effect', 'sql', 'dist', 'dts', '*.d.ts')],
+        'effect/*': [path.join(packageRoot, 'node_modules', 'effect', 'dist', 'dts', '*.d.ts')],
       },
       types: ['node'],
     },
@@ -248,9 +251,7 @@ export function parseGenerateFixture(contents: string): FixtureCase[] {
     // `data-outputs` lives on the input `<details>` so that scaffolding a new test only needs
     // one block — the output block is then auto-created by `-u`. The legacy position (on the
     // output tag) is still accepted for fixtures that already use it.
-    const outputGlobs = parseOutputGlobs(
-      inputSection?.attrs['data-outputs'] || outputSection?.attrs['data-outputs'],
-    );
+    const outputGlobs = parseOutputGlobs(inputSection?.attrs['data-outputs'] || outputSection?.attrs['data-outputs']);
     const expectedError = extractDetailsBody(body, 'error')?.trim() || undefined;
 
     if (defaultConfig && !inputFiles.some((file) => file.path === 'sqlfu.config.ts')) {
@@ -269,7 +270,10 @@ export function parseGenerateFixture(contents: string): FixtureCase[] {
 
 function parseOutputGlobs(raw: string | undefined): string[] | undefined {
   if (!raw) return undefined;
-  const globs = raw.split(',').map((glob) => glob.trim()).filter(Boolean);
+  const globs = raw
+    .split(',')
+    .map((glob) => glob.trim())
+    .filter(Boolean);
   return globs.length > 0 ? globs : undefined;
 }
 
@@ -306,10 +310,7 @@ function extractDetailsSection(
   summary: string,
 ): {body: string; attrs: Record<string, string>} | undefined {
   const escaped = summary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(
-    `<details([^>]*)>\\s*<summary>${escaped}</summary>([\\s\\S]*?)</details>`,
-    'i',
-  );
+  const pattern = new RegExp(`<details([^>]*)>\\s*<summary>${escaped}</summary>([\\s\\S]*?)</details>`, 'i');
   const match = container.match(pattern);
   if (!match) return undefined;
   return {body: match[2], attrs: parseHtmlAttributes(match[1])};
@@ -397,11 +398,7 @@ function rewriteTestOutputs(
 
   const sectionStart = headings[target].index!;
   const sectionEnd = headings[target + 1]?.index ?? contents.length;
-  const rewrittenSection = rewriteOutputBlock(
-    contents.slice(sectionStart, sectionEnd),
-    outputs,
-    outputGlobs,
-  );
+  const rewrittenSection = rewriteOutputBlock(contents.slice(sectionStart, sectionEnd), outputs, outputGlobs);
 
   return contents.slice(0, sectionStart) + rewrittenSection + contents.slice(sectionEnd);
 }

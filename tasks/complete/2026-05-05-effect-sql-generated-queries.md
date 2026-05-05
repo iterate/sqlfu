@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 size: medium
 branch: effect-sql-generated-queries
 pr: https://github.com/mmkal/sqlfu/pull/90
@@ -10,10 +10,10 @@ supersedes: https://github.com/mmkal/sqlfu/pull/83
 
 ## Status
 
-Fresh worktree/PR setup is complete in draft PR #90. The goal is to replace the
-thin `sqlfu/effect` client-wrapper direction with generated query functions that
-run on `@effect/sql` and require `SqlClient.SqlClient` from the Effect environment.
-Main implementation, tests, docs, and final PR body are still pending.
+Implementation is complete in draft PR #90. The PR adds experimental
+`generate.runtime: 'effect'` support, generated Effect SQL wrappers, runtime and
+fixture coverage, docs, and package peer/dev dependencies for Effect SQL. The main
+remaining work is review/iteration before merge.
 
 ## Goal
 
@@ -41,13 +41,13 @@ Effect SQL client.
 
 ## Proposed Shape
 
-- [ ] Add an Effect SQL generation mode. _Pending; likely config spelling is `generate.validator: 'effect'` if it fits the existing generator model, otherwise a narrower generation-mode option should be documented in this task before implementation._
-- [ ] Generate query functions that require `SqlClient.SqlClient` from the Effect environment. _Pending; target callsite is `yield* listPosts({limit: 10})`, not `yield* listPosts(db, params)`._
-- [ ] Execute through `@effect/sql` instead of sqlfu `Client`. _Pending; generated code should adapt sqlfu's analyzed SQL/args into Effect SQL execution without adding a new sqlfu Effect client._
-- [ ] Preserve generated parameter/result typing. _Pending; query params and row result types should remain the public contract._
-- [ ] Add integration-style red/green tests for generated Effect SQL output. _Pending; tests should exercise generated code against a real Effect SQL sqlite layer, not mocks._
-- [ ] Document the module/config as experimental. _Pending; docs should say this is native `@effect/sql` generation and supersedes the earlier client-wrapper approach._
-- [ ] Update PR body with reviewer-facing usage and verification notes. _Pending._
+- [x] Add an Effect SQL generation mode. _Implemented as `generate.runtime: 'effect'` in `src/types.ts`, `src/config.ts`, and typegen; kept `generate.validator` for validation libraries._
+- [x] Generate query functions that require `SqlClient.SqlClient` from the Effect environment. _Generated wrappers no longer take a sqlfu `Client`; see `renderEffectSqlQueryWrapper` in `src/typegen/index.ts`._
+- [x] Execute through `@effect/sql` instead of sqlfu `Client`. _Generated code imports `@effect/sql`, obtains `SqlClient.SqlClient`, and runs `sqlClient.unsafe(generatedQuery.sql, generatedQuery.args)`._
+- [x] Preserve generated parameter/result typing. _Effect runtime wrappers keep the existing namespace-merged `Params`, `Data`, `Result`, `sql`, and `query` surface._
+- [x] Add integration-style red/green tests for generated Effect SQL output. _Added `fixtures/effect-sql.md` plus a runtime test using `@effect/sql-sqlite-node` against a real sqlite file._
+- [x] Document the module/config as experimental. _Added `docs/effect-sql.md`, linked it from typegen docs, and added it to website docs sync/sidebar._
+- [x] Update PR body with reviewer-facing usage and verification notes. _Updated PR #90 after implementation with usage, scope, and verification details._
 
 ## Assumptions
 
@@ -66,3 +66,7 @@ explicit config shape over forcing the wrong mental model.
 
 - 2026-05-05: Closed PR #83 as superseded so the repo does not carry two competing
   Effect concepts.
+- 2026-05-05: Chose `generate.runtime: 'effect'` instead of `generate.validator:
+  'effect'` so the execution target stays separate from validator-library output.
+- 2026-05-05: Current Effect runtime does not combine with `generate.validator`;
+  generated validation can be added later without changing the runtime option.

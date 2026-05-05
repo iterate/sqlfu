@@ -20,6 +20,17 @@ import {getPost} from './sql/.generated/get-post.sql';
 const post = await getPost(client, {id: 123});
 ```
 
+If the rest of your app uses Effect, set `generate.runtime: 'effect'` to emit
+functions that return Effect values and require `@effect/sql`'s
+`SqlClient.SqlClient` from the Effect environment:
+
+```ts
+const post = yield* getPost({id: 123});
+```
+
+See [Effect SQL runtime](./effect-sql.md) for the experimental native
+`@effect/sql` generation mode.
+
 ## Multiple queries in one file
 
 Put `@name` in a block comment before each query when one `.sql` file contains more

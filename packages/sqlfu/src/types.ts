@@ -107,6 +107,7 @@ export interface SqlRowsPromise<TRow extends ResultRow = ResultRow> extends Prom
 export type SqlValue = QueryArg | SqlFragment;
 
 export type SqlfuValidator = 'arktype' | 'valibot' | 'zod' | 'zod-mini';
+export type SqlfuGenerateRuntime = 'client' | 'effect';
 
 /**
  * Schema source of truth for `sqlfu generate`. Controls where typegen reads
@@ -166,6 +167,16 @@ export interface SqlfuGenerateConfig {
    * non-async contexts (constructors, non-async callbacks).
    */
   sync?: boolean;
+  /**
+   * Runtime API emitted by `sqlfu generate`.
+   *
+   * - `'client'` / omitted = existing sqlfu `Client` wrappers.
+   * - `'effect'` = generated functions return Effect values and require
+   *   `@effect/sql`'s `SqlClient.SqlClient` from the Effect environment.
+   *
+   * The Effect runtime is experimental.
+   */
+  runtime?: SqlfuGenerateRuntime;
   /**
    * Extension used in generated `.generated/index.ts` barrel re-exports (`./tables.js` vs
    * `./tables.ts`). If omitted, sqlfu infers it from the nearest `tsconfig.json`:
@@ -280,6 +291,7 @@ export interface SqlfuProjectConfig {
     validator: SqlfuValidator | null;
     prettyErrors: boolean;
     sync: boolean;
+    runtime: SqlfuGenerateRuntime;
     importExtension: '.js' | '.ts';
     authority: SqlfuAuthority;
   };

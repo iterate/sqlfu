@@ -34,7 +34,14 @@ export async function createMigrationsFixture(
     migrations: {path: path.join(root, 'migrations'), prefix: migrationPrefix, preset: 'sqlfu'},
     definitions: path.join(root, 'definitions.sql'),
     queries: path.join(root, 'sql'),
-    generate: {validator: null, prettyErrors: true, sync: false, importExtension: '.js', authority: 'desired_schema'},
+    generate: {
+      validator: null,
+      prettyErrors: true,
+      sync: false,
+      runtime: 'client',
+      importExtension: '.js',
+      authority: 'desired_schema',
+    },
   };
 
   let nowUsage = 0;

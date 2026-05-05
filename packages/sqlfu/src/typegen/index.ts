@@ -13,7 +13,7 @@ import type {
 } from './query-catalog.js';
 import {loadProjectConfig} from '../node/config.js';
 import {createNodeHost} from '../node/host.js';
-import type {Client, SqlfuProjectConfig, SqlfuValidator} from '../types.js';
+import type {Client, SqlfuGenerateRuntime, SqlfuProjectConfig, SqlfuValidator} from '../types.js';
 import type {SqlfuHost} from '../host.js';
 import {excludeReservedSqliteObjects, extractSchema} from '../sqlite-text.js';
 import {createBunClient, createNodeSqliteClient} from '../index.js';
@@ -75,6 +75,7 @@ export async function generateQueryTypesForConfig(
         validator: config.generate.validator,
         prettyErrors: config.generate.prettyErrors,
         sync: config.generate.sync,
+        runtime: config.generate.runtime,
       });
       await fs.writeFile(wrapperPath, contents);
       writtenFiles.push(projectRelativePath(config, wrapperPath));
@@ -82,7 +83,9 @@ export async function generateQueryTypesForConfig(
   );
 
   writtenFiles.push(await writeTablesFile(config, generatedDir, schema));
-  writtenFiles.push(await writeGeneratedQueriesFile(config, generatedDir, queryDocuments, config.generate.importExtension));
+  writtenFiles.push(
+    await writeGeneratedQueriesFile(config, generatedDir, queryDocuments, config.generate.importExtension),
+  );
   writtenFiles.push(await writeGeneratedBarrel(config, generatedDir, config.generate.importExtension));
   writtenFiles.push(await writeQueryCatalog(config, querySources, queryAnalyses, schema));
   if (config.migrations) {
@@ -103,6 +106,7 @@ function renderQueryDocument(input: {
   validator: SqlfuValidator | null;
   prettyErrors: boolean;
   sync: boolean;
+  runtime: SqlfuGenerateRuntime;
 }): string {
   const renderedQueries = input.queryDocument.queries.map((querySource) => {
     const analysis = input.queryAnalyses.find((query) => query.sqlPath === querySource.sqlPath);
@@ -134,6 +138,7 @@ function renderQueryDocument(input: {
         functionName: querySource.functionName,
         sql: querySource.sqlContent,
         sync: input.sync,
+        runtime: input.runtime,
         localNames,
       });
     }
@@ -151,6 +156,7 @@ function renderQueryDocument(input: {
       validator: input.validator,
       prettyErrors: input.prettyErrors,
       sync: input.sync,
+      runtime: input.runtime,
       localNames,
     });
   });
@@ -194,11 +200,34 @@ function renderDdlWrapper(input: {
   functionName: string;
   sql: string;
   sync: boolean;
+  runtime: SqlfuGenerateRuntime;
   localNames?: LocalNames;
 }): string {
   const functionName = input.functionName;
   const sqlName = input.localNames?.sql || 'sql';
   const queryName = input.localNames?.query || 'query';
+
+  if (input.runtime === 'effect') {
+    return [
+      `import * as Effect from 'effect/Effect';`,
+      `import {SqlClient} from '@effect/sql';`,
+      ``,
+      ...renderSqlConstant(input.sql, sqlName),
+      `const ${queryName} = { ${objectProperty('sql', sqlName)}, args: [], name: ${JSON.stringify(functionName)} };`,
+      ``,
+      `export const ${functionName} = Object.assign(`,
+      `\tfunction ${functionName}() {`,
+      `\t\treturn Effect.gen(function*() {`,
+      `\t\t\tconst sqlClient = yield* SqlClient.SqlClient;`,
+      `\t\t\treturn yield* sqlClient.unsafe(${queryName}.sql, ${queryName}.args).raw;`,
+      `\t\t});`,
+      `\t},`,
+      `\t{ ${objectProperty('sql', sqlName)}, ${objectProperty('query', queryName)} },`,
+      `);`,
+      ``,
+    ].join('\n');
+  }
+
   const clientType = input.sync ? 'SyncClient' : 'Client';
   const maybeAsync = input.sync ? '' : 'async ';
 
@@ -230,11 +259,7 @@ function renderSqlConstant(sql: string, variableName: string = 'sql'): string[] 
   if (!trimmed.includes('\n') && oneLiner.length <= 80) {
     return [oneLiner];
   }
-  return [
-    `const ${variableName} = \``,
-    trimmed,
-    `\`.trim();`,
-  ];
+  return [`const ${variableName} = \``, trimmed, `\`.trim();`];
 }
 
 export async function analyzeAdHocSqlForConfig(
@@ -718,10 +743,7 @@ function rewriteRowListExpansionsForAnalysis(sql: string, expansions: ParameterE
   let output = sql;
   for (const expansion of expansions) {
     if (expansion.kind !== 'object-array' || expansion.sqlShape !== 'row-list') continue;
-    const pattern = new RegExp(
-      `\\(([^()]+)\\)\\s+(?:not\\s+)?in\\s*\\(\\s*:${expansion.name}\\s*\\)`,
-      'gi',
-    );
+    const pattern = new RegExp(`\\(([^()]+)\\)\\s+(?:not\\s+)?in\\s*\\(\\s*:${expansion.name}\\s*\\)`, 'gi');
     output = replaceSqlPatternOutsideCommentsAndStrings(output, pattern, (match, [rawFields = '']) => {
       const fields = parseSimpleSqlFieldList(rawFields, 'inferred row IN parameter');
       if (fields.join('\0') !== expansion.fields.join('\0')) return match;
@@ -745,10 +767,7 @@ type NamedParameterReference = {
   wrappedInParens: boolean;
 };
 
-function replaceNamedParameters(
-  sql: string,
-  replace: (reference: NamedParameterReference) => string,
-): string {
+function replaceNamedParameters(sql: string, replace: (reference: NamedParameterReference) => string): string {
   let output = '';
   let cursor = 0;
   for (const reference of findNamedParameterReferences(sql)) {
@@ -935,7 +954,10 @@ function inferRowInParameterExpansions(sql: string): ParameterExpansion[] {
 }
 
 function parseSimpleSqlFieldList(rawFields: string, syntaxName: string): string[] {
-  const fields = rawFields.split(',').map((field) => field.trim()).filter(Boolean);
+  const fields = rawFields
+    .split(',')
+    .map((field) => field.trim())
+    .filter(Boolean);
   if (fields.length === 0) {
     throw new Error(`${syntaxName} needs at least one field`);
   }
@@ -1113,7 +1135,10 @@ function replaceSqlPatternOutsideCommentsAndStrings(
     const start = match.index!;
     const end = start + match[0]!.length;
     output += sql.slice(cursor, start);
-    output += replace(sql.slice(start, end), match.slice(1).map((group) => group || ''));
+    output += replace(
+      sql.slice(start, end),
+      match.slice(1).map((group) => group || ''),
+    );
     cursor = end;
   }
   return output + sql.slice(cursor);
@@ -1148,10 +1173,7 @@ async function writeGeneratedBarrel(
   generatedDir: string,
   importExtension: '.js' | '.ts',
 ): Promise<string> {
-  const lines = [
-    `export * from "./tables${importExtension}";`,
-    `export * from "./queries${importExtension}";`,
-  ];
+  const lines = [`export * from "./tables${importExtension}";`, `export * from "./queries${importExtension}";`];
   const filePath = path.join(generatedDir, 'index.ts');
   await fs.writeFile(filePath, lines.join('\n') + '\n');
   return projectRelativePath(config, filePath);
@@ -1190,7 +1212,8 @@ async function writeTablesFile(
     `// Row types for every table and view in your project's schema.`,
     ``,
   ];
-  const body = blocks.length === 0 ? [`export {};`] : blocks.flatMap((block, index) => (index === 0 ? [block] : ['', block]));
+  const body =
+    blocks.length === 0 ? [`export {};`] : blocks.flatMap((block, index) => (index === 0 ? [block] : ['', block]));
 
   const filePath = path.join(generatedDir, 'tables.ts');
   await fs.writeFile(filePath, [...header, ...body, ``].join('\n'));
@@ -1368,8 +1391,22 @@ function renderQueryWrapper(input: {
   validator: SqlfuValidator | null;
   prettyErrors: boolean;
   sync: boolean;
+  runtime: SqlfuGenerateRuntime;
   localNames?: LocalNames;
 }): string {
+  if (input.runtime === 'effect') {
+    if (input.validator !== null) {
+      throw new Error("generate.runtime: 'effect' cannot be combined with generate.validator yet.");
+    }
+    return renderEffectSqlQueryWrapper({
+      functionName: input.functionName,
+      sourceSql: input.sourceSql,
+      descriptor: input.descriptor,
+      parameterExpansions: input.parameterExpansions,
+      localNames: input.localNames,
+    });
+  }
+
   if (input.validator !== null) {
     return renderValidatorQueryWrapper({
       functionName: input.functionName,
@@ -1413,25 +1450,24 @@ function renderQueryWrapper(input: {
   if (hasData) factoryArgs.push(`data: ${dataTypeRef}`);
   if (hasParams) factoryArgs.push(`params: ${paramsTypeRef}`);
   const queryReference = buildQueryReference(hasData, hasParams, 'data', 'params', queryName);
-  const queryDeclaration =
-    !hasRuntimeParameterExpansions(input.parameterExpansions)
-      ? renderQueryDeclaration({
-          factoryArgs,
-          queryArgs,
-          queryName: functionName,
-          sqlName,
-          queryVariableName: queryName,
-        })
-      : renderExpandedQueryDeclaration({
-          sourceSql: input.sourceSql,
-          descriptor: input.descriptor,
-          parameterExpansions: input.parameterExpansions,
-          factoryArgs,
-          queryArgs,
-          queryName: functionName,
-          sqlName,
-          queryVariableName: queryName,
-        });
+  const queryDeclaration = !hasRuntimeParameterExpansions(input.parameterExpansions)
+    ? renderQueryDeclaration({
+        factoryArgs,
+        queryArgs,
+        queryName: functionName,
+        sqlName,
+        queryVariableName: queryName,
+      })
+    : renderExpandedQueryDeclaration({
+        sourceSql: input.sourceSql,
+        descriptor: input.descriptor,
+        parameterExpansions: input.parameterExpansions,
+        factoryArgs,
+        queryArgs,
+        queryName: functionName,
+        sqlName,
+        queryVariableName: queryName,
+      });
 
   const signatureReturnAnnotation = emitResultType
     ? input.sync
@@ -1477,9 +1513,93 @@ function renderQueryWrapper(input: {
     `\t{ ${objectProperty('sql', sqlName)}, ${objectProperty('query', queryName)} },`,
     `);`,
     ``,
-    ...(namespaceLines.length === 0
-      ? []
-      : [`export namespace ${functionName} {`, ...namespaceLines, `}`, ``]),
+    ...(namespaceLines.length === 0 ? [] : [`export namespace ${functionName} {`, ...namespaceLines, `}`, ``]),
+  ].join('\n');
+}
+
+function renderEffectSqlQueryWrapper(input: {
+  functionName: string;
+  sourceSql: string;
+  descriptor: GeneratedQueryDescriptor;
+  parameterExpansions: ParameterExpansion[];
+  localNames?: LocalNames;
+}): string {
+  const functionName = input.functionName;
+  const sqlName = input.localNames?.sql || 'sql';
+  const queryName = input.localNames?.query || 'query';
+  const hasData = (input.descriptor.data?.length ?? 0) > 0;
+  const hasParams = input.descriptor.parameters.length > 0;
+  const resultMode = getResultMode(input.descriptor);
+  const emitResultType = resultMode !== 'metadata';
+  const dataTypeRef = `${functionName}.Data`;
+  const paramsTypeRef = `${functionName}.Params`;
+  const resultTypeRef = `${functionName}.Result`;
+  const resultFields = getResultFields(input.descriptor);
+  const jsonParseFunctionName = hasJsonFields(resultFields) ? `${functionName}ParseJsonValue` : undefined;
+
+  const queryArgs = buildQueryArgs(input.descriptor);
+
+  const functionSignatureArgs: string[] = [];
+  if (hasData) functionSignatureArgs.push(`data: ${dataTypeRef}`);
+  if (hasParams) functionSignatureArgs.push(`params: ${paramsTypeRef}`);
+
+  const factoryArgs: string[] = [];
+  if (hasData) factoryArgs.push(`data: ${dataTypeRef}`);
+  if (hasParams) factoryArgs.push(`params: ${paramsTypeRef}`);
+  const queryReference = buildQueryReference(hasData, hasParams, 'data', 'params', queryName);
+  const queryDeclaration = !hasRuntimeParameterExpansions(input.parameterExpansions)
+    ? renderQueryDeclaration({
+        factoryArgs,
+        queryArgs,
+        queryName: functionName,
+        sqlName,
+        queryVariableName: queryName,
+      })
+    : renderExpandedQueryDeclaration({
+        sourceSql: input.sourceSql,
+        descriptor: input.descriptor,
+        parameterExpansions: input.parameterExpansions,
+        factoryArgs,
+        queryArgs,
+        queryName: functionName,
+        sqlName,
+        queryVariableName: queryName,
+      });
+
+  const namespaceLines: string[] = [];
+  if (hasData) {
+    namespaceLines.push(`\texport type Data = ${renderObjectTypeBody(input.descriptor.data!, 'parameter')};`);
+  }
+  if (hasParams) {
+    namespaceLines.push(`\texport type Params = ${renderObjectTypeBody(input.descriptor.parameters, 'parameter')};`);
+  }
+  if (emitResultType) {
+    namespaceLines.push(`\texport type Result = ${renderObjectTypeBody(resultFields, 'result')};`);
+  }
+
+  return [
+    `import * as Effect from 'effect/Effect';`,
+    `import {SqlClient} from '@effect/sql';`,
+    ``,
+    ...renderSqlConstant(input.descriptor.sql, sqlName),
+    ...renderJsonParseHelper(jsonParseFunctionName),
+    queryDeclaration,
+    ``,
+    `export const ${functionName} = Object.assign(`,
+    `\tfunction ${functionName}(${functionSignatureArgs.join(', ')}) {`,
+    ...buildEffectSqlImplementation({
+      resultMode,
+      resultType: resultTypeRef,
+      resultFields,
+      jsonParseFunctionName,
+      queryReference,
+      indent: '\t\t',
+    }),
+    `\t},`,
+    `\t{ ${objectProperty('sql', sqlName)}, ${objectProperty('query', queryName)} },`,
+    `);`,
+    ``,
+    ...(namespaceLines.length === 0 ? [] : [`export namespace ${functionName} {`, ...namespaceLines, `}`, ``]),
   ].join('\n');
 }
 
@@ -1560,7 +1680,9 @@ function renderExpansionGuards(
         ? `Array.isArray(${variableExpression}) && ${variableExpression}.length === 0`
         : `${variableExpression}.length === 0`;
     lines.push(`${indent}if (${emptyArrayCondition}) {`);
-    lines.push(`${indent}\tthrow new Error(${JSON.stringify(`Parameter "${expansion.name}" must be a non-empty array`)});`);
+    lines.push(
+      `${indent}\tthrow new Error(${JSON.stringify(`Parameter "${expansion.name}" must be a non-empty array`)});`,
+    );
     lines.push(`${indent}}`);
   }
   return lines;
@@ -1698,11 +1820,7 @@ const zodEmitter: ValidatorEmitter = {
     (expression) => `${expression}.nullable()`,
     (expression) => `${expression}.optional()`,
   ),
-  objectSchemaDeclaration: ({schemaName, fieldLines}) => [
-    `const ${schemaName} = z.object({`,
-    ...fieldLines,
-    `});`,
-  ],
+  objectSchemaDeclaration: ({schemaName, fieldLines}) => [`const ${schemaName} = z.object({`, ...fieldLines, `});`],
   inferExpression: (schemaName) => `z.infer<typeof ${schemaName}>`,
 };
 
@@ -1716,11 +1834,7 @@ const zodMiniEmitter: ValidatorEmitter = {
     (expression) => `z.nullable(${expression})`,
     (expression) => `z.optional(${expression})`,
   ),
-  objectSchemaDeclaration: ({schemaName, fieldLines}) => [
-    `const ${schemaName} = z.object({`,
-    ...fieldLines,
-    `});`,
-  ],
+  objectSchemaDeclaration: ({schemaName, fieldLines}) => [`const ${schemaName} = z.object({`, ...fieldLines, `});`],
   inferExpression: (schemaName) => `z.infer<typeof ${schemaName}>`,
 };
 
@@ -1732,11 +1846,7 @@ const valibotEmitter: ValidatorEmitter = {
     (expression) => `v.nullable(${expression})`,
     (expression) => `v.optional(${expression})`,
   ),
-  objectSchemaDeclaration: ({schemaName, fieldLines}) => [
-    `const ${schemaName} = v.object({`,
-    ...fieldLines,
-    `});`,
-  ],
+  objectSchemaDeclaration: ({schemaName, fieldLines}) => [`const ${schemaName} = v.object({`, ...fieldLines, `});`],
   inferExpression: (schemaName) => `v.InferOutput<typeof ${schemaName}>`,
 };
 
@@ -1752,16 +1862,10 @@ const arktypeEmitter: ValidatorEmitter = {
   parseFlavour: 'standard',
   renderFieldLine: (field, fieldKind) => {
     const keySuffix = fieldKind === 'parameter' && Boolean(field.optional) ? '?' : '';
-    const keyText = keySuffix
-      ? JSON.stringify(`${field.name}${keySuffix}`)
-      : field.name;
+    const keyText = keySuffix ? JSON.stringify(`${field.name}${keySuffix}`) : field.name;
     return `\t${keyText}: ${arktypeFieldExpression(field, field.notNull)},`;
   },
-  objectSchemaDeclaration: ({schemaName, fieldLines}) => [
-    `const ${schemaName} = type({`,
-    ...fieldLines,
-    `});`,
-  ],
+  objectSchemaDeclaration: ({schemaName, fieldLines}) => [`const ${schemaName} = type({`, ...fieldLines, `});`],
   inferExpression: (schemaName) => `typeof ${schemaName}.infer`,
 };
 
@@ -1867,7 +1971,9 @@ function renderValidatorQueryWrapper(input: {
     schemaDeclarations.push(...renderObjectSchemaDeclaration(emitter, dataSchemaName, descriptor.data!, 'parameter'));
   }
   if (hasParams) {
-    schemaDeclarations.push(...renderObjectSchemaDeclaration(emitter, paramsSchemaName, descriptor.parameters, 'parameter'));
+    schemaDeclarations.push(
+      ...renderObjectSchemaDeclaration(emitter, paramsSchemaName, descriptor.parameters, 'parameter'),
+    );
   }
   if (emitResultSchema) {
     schemaDeclarations.push(...renderObjectSchemaDeclaration(emitter, resultSchemaName, resultFields, 'result'));
@@ -1906,25 +2012,24 @@ function renderValidatorQueryWrapper(input: {
     dataVariable: hasData ? 'data' : null,
     paramsVariable: hasParams ? 'params' : null,
   });
-  const queryDeclaration =
-    !hasRuntimeParameterExpansions(input.parameterExpansions)
-      ? renderQueryDeclaration({
-          factoryArgs,
-          queryArgs: factoryArgsExpression,
-          queryName: functionName,
-          sqlName,
-          queryVariableName: queryName,
-        })
-      : renderExpandedQueryDeclaration({
-          sourceSql: input.sourceSql,
-          descriptor,
-          parameterExpansions: input.parameterExpansions,
-          factoryArgs,
-          queryArgs: factoryArgsExpression,
-          queryName: functionName,
-          sqlName,
-          queryVariableName: queryName,
-        });
+  const queryDeclaration = !hasRuntimeParameterExpansions(input.parameterExpansions)
+    ? renderQueryDeclaration({
+        factoryArgs,
+        queryArgs: factoryArgsExpression,
+        queryName: functionName,
+        sqlName,
+        queryVariableName: queryName,
+      })
+    : renderExpandedQueryDeclaration({
+        sourceSql: input.sourceSql,
+        descriptor,
+        parameterExpansions: input.parameterExpansions,
+        factoryArgs,
+        queryArgs: factoryArgsExpression,
+        queryName: functionName,
+        sqlName,
+        queryVariableName: queryName,
+      });
   const queryReference = buildQueryReference(hasData, hasParams, dataExpression!, paramsExpression!, queryName);
 
   const implementationLines = emitResultSchema
@@ -1984,9 +2089,7 @@ function renderValidatorQueryWrapper(input: {
     `\t{ ${attachedProperties.join(', ')} },`,
     `);`,
     ``,
-    ...(namespaceLines.length === 0
-      ? []
-      : [`export namespace ${functionName} {`, ...namespaceLines, `}`, ``]),
+    ...(namespaceLines.length === 0 ? [] : [`export namespace ${functionName} {`, ...namespaceLines, `}`, ``]),
   ].join('\n');
 }
 
@@ -2239,10 +2342,7 @@ function buildValidatorImplementation(input: {
   if (input.resultMode === 'many') {
     const expr = rowExpr('row');
     if (expr) {
-      return [
-        `\t\tconst rows = ${maybeAwait}client.all(${q});`,
-        `\t\treturn rows.map((row) => ${expr});`,
-      ];
+      return [`\t\tconst rows = ${maybeAwait}client.all(${q});`, `\t\treturn rows.map((row) => ${expr});`];
     }
     return [
       `\t\tconst rows = ${maybeAwait}client.all(${q});`,
@@ -2255,10 +2355,7 @@ function buildValidatorImplementation(input: {
   if (input.resultMode === 'nullableOne') {
     const expr = rowExpr('rows[0]');
     if (expr) {
-      return [
-        `\t\tconst rows = ${maybeAwait}client.all(${q});`,
-        `\t\treturn rows.length > 0 ? ${expr} : null;`,
-      ];
+      return [`\t\tconst rows = ${maybeAwait}client.all(${q});`, `\t\treturn rows.length > 0 ? ${expr} : null;`];
     }
     return [
       `\t\tconst rows = ${maybeAwait}client.all(${q});`,
@@ -2270,15 +2367,9 @@ function buildValidatorImplementation(input: {
   if (input.resultMode === 'one') {
     const expr = rowExpr('rows[0]');
     if (expr) {
-      return [
-        `\t\tconst rows = ${maybeAwait}client.all(${q});`,
-        `\t\treturn ${expr};`,
-      ];
+      return [`\t\tconst rows = ${maybeAwait}client.all(${q});`, `\t\treturn ${expr};`];
     }
-    return [
-      `\t\tconst rows = ${maybeAwait}client.all(${q});`,
-      ...rowBlock('rows[0]', '\t\t'),
-    ];
+    return [`\t\tconst rows = ${maybeAwait}client.all(${q});`, ...rowBlock('rows[0]', '\t\t')];
   }
 
   // metadata mode: call client.run(), guard expected keys, then parse the assembled object.
@@ -2310,12 +2401,7 @@ function buildValidatorImplementation(input: {
   const metadataExpr = rowExpr('rawResult');
   const resultReturnLines = metadataExpr ? [`\t\treturn ${metadataExpr};`] : rowBlock('rawResult', '\t\t');
 
-  return [
-    `\t\tconst result = ${maybeAwait}client.run(${q});`,
-    ...guards,
-    ...rawResultLines,
-    ...resultReturnLines,
-  ];
+  return [`\t\tconst result = ${maybeAwait}client.run(${q});`, ...guards, ...rawResultLines, ...resultReturnLines];
 }
 
 function getReturnType(descriptor: GeneratedQueryDescriptor, resultTypeName: string): string {
@@ -2346,10 +2432,7 @@ function getResultMode(descriptor: GeneratedQueryDescriptor): 'many' | 'nullable
  * Inline `{ foo: string; bar: number | null }` for use as the RHS of a namespace-scoped
  * `export type Foo = …;`. Indentation is two tabs — one for the namespace, one for the fields.
  */
-function renderObjectTypeBody(
-  fields: GeneratedField[],
-  fieldKind: 'parameter' | 'result',
-): string {
+function renderObjectTypeBody(fields: GeneratedField[], fieldKind: 'parameter' | 'result'): string {
   const lines = fields.map((field) => {
     const optional = fieldKind === 'parameter' ? Boolean(field.optional) : !field.notNull;
     return `\t\t${field.name}${optional ? '?' : ''}: ${fieldTypeExpression(field, fieldKind)};`;
@@ -2410,12 +2493,12 @@ function schemaForField(field: GeneratedField): JsonSchema {
   }
 
   const schema = field.objectFields
-    ? {
+    ? ({
         type: field.isArray ? 'array' : 'object',
         ...(field.isArray
           ? {items: objectSchema(field.name, field.objectFields)}
           : objectSchema(field.name, field.objectFields)),
-      } satisfies JsonSchemaObject
+      } satisfies JsonSchemaObject)
     : schemaForTsType(field.tsType);
   if (field.notNull) {
     return schema;
@@ -2482,9 +2565,7 @@ function prepareQueryDescriptor(input: {
   descriptor: GeneratedQueryDescriptor;
   parameterExpansions: ParameterExpansion[];
 } {
-  const expansions = new Map(
-    input.explicitParameterExpansions.map((expansion) => [expansion.name, expansion]),
-  );
+  const expansions = new Map(input.explicitParameterExpansions.map((expansion) => [expansion.name, expansion]));
   const sourceReferences = findNamedParameterReferences(input.sourceSql);
   const descriptorFields = [...(input.descriptor.data || []), ...input.descriptor.parameters];
 
@@ -2514,13 +2595,9 @@ function assertNoUnsupportedInferredReturning(
   expansions: ParameterExpansion[],
 ): void {
   if (!descriptor.returning) return;
-  const expansion = expansions.find(
-    (candidate) => candidate.kind === 'object-array' && candidate.acceptsSingleOrArray,
-  );
+  const expansion = expansions.find((candidate) => candidate.kind === 'object-array' && candidate.acceptsSingleOrArray);
   if (!expansion) return;
-  throw new Error(
-    `Inferred INSERT values parameter ${JSON.stringify(expansion.name)} does not support RETURNING yet`,
-  );
+  throw new Error(`Inferred INSERT values parameter ${JSON.stringify(expansion.name)} does not support RETURNING yet`);
 }
 
 function assertRuntimeExpansionReferences(sql: string, expansions: ParameterExpansion[]): void {
@@ -2935,6 +3012,55 @@ function buildGeneratedImplementation(input: {
     ];
   }
   return [`${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`, `${i}return rows[0];`];
+}
+
+function buildEffectSqlImplementation(input: {
+  resultMode: 'many' | 'nullableOne' | 'one' | 'metadata';
+  resultType: string;
+  resultFields: GeneratedField[];
+  jsonParseFunctionName?: string;
+  queryReference: string;
+  indent: string;
+}): string[] {
+  const i = input.indent;
+  const bodyIndent = `${i}\t`;
+  const rowExpression = (row: string) => jsonDecodedRowExpression(row, input.resultFields, input.jsonParseFunctionName);
+
+  const lines = [
+    `${i}return Effect.gen(function*() {`,
+    `${bodyIndent}const sqlClient = yield* SqlClient.SqlClient;`,
+    `${bodyIndent}const generatedQuery = ${input.queryReference};`,
+  ];
+
+  if (input.resultMode === 'metadata') {
+    lines.push(`${bodyIndent}return yield* sqlClient.unsafe(generatedQuery.sql, generatedQuery.args).raw;`);
+    lines.push(`${i}});`);
+    return lines;
+  }
+
+  lines.push(
+    `${bodyIndent}const rows = yield* sqlClient.unsafe<${input.resultType}>(generatedQuery.sql, generatedQuery.args);`,
+  );
+
+  if (input.resultMode === 'many') {
+    if (input.jsonParseFunctionName) {
+      lines.push(`${bodyIndent}return rows.map((row) => ${rowExpression('row')});`);
+    } else {
+      lines.push(`${bodyIndent}return rows;`);
+    }
+    lines.push(`${i}});`);
+    return lines;
+  }
+
+  if (input.resultMode === 'nullableOne') {
+    lines.push(`${bodyIndent}return rows.length > 0 ? ${rowExpression('rows[0]')} : null;`);
+    lines.push(`${i}});`);
+    return lines;
+  }
+
+  lines.push(`${bodyIndent}return ${rowExpression('rows[0]')};`);
+  lines.push(`${i}});`);
+  return lines;
 }
 
 async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, RelationInfo>> {
