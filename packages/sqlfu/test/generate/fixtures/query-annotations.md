@@ -51,7 +51,7 @@ export * from "./posts.sql.js";
 import type {Client} from 'sqlfu';
 
 const listPostsSql = `select id, slug, title from posts order by id;`;
-const listPostsQuery = { sql: listPostsSql, args: [], name: "listPosts" };
+const listPostsQuery = { name: "listPosts", sql: listPostsSql, args: [] };
 
 export const listPosts = Object.assign(
 	async function listPosts(client: Client): Promise<listPosts.Result[]> {
@@ -69,7 +69,11 @@ export namespace listPosts {
 }
 
 const findPostBySlugSql = `select id, slug, title from posts where slug = ?;`;
-const findPostBySlugQuery = (params: findPostBySlug.Params) => ({ sql: findPostBySlugSql, args: [params.slug], name: "findPostBySlug" });
+const findPostBySlugQuery = (params: findPostBySlug.Params) => ({
+	name: "findPostBySlug",
+	sql: findPostBySlugSql,
+	args: [params.slug],
+});
 
 export const findPostBySlug = Object.assign(
 	async function findPostBySlug(client: Client, params: findPostBySlug.Params): Promise<findPostBySlug.Result[]> {
@@ -139,7 +143,7 @@ const query = (params: listPostsByIds.Params) => {
 		throw new Error("Parameter \"ids\" must be a non-empty array");
 	}
 	const expandedSql = `select id, slug from posts where id in (${params.ids.map(() => '?').join(', ')}) order by id;`;
-	return { sql: expandedSql, args: [...params.ids], name: "listPostsByIds" };
+	return { name: "listPostsByIds", sql: expandedSql, args: [...params.ids] };
 };
 
 export const listPostsByIds = Object.assign(
@@ -211,7 +215,11 @@ const query = (params: listPostsByKeys.Params) => {
 		throw new Error("Parameter \"keys\" must be a non-empty array");
 	}
 	const expandedSql = `select id, slug, title from posts where (slug, title) in (${params.keys.map(() => "(?, ?)").join(', ')}) order by id;`;
-	return { sql: expandedSql, args: [...params.keys.flatMap((item) => [item.slug, item.title])], name: "listPostsByKeys" };
+	return {
+		name: "listPostsByKeys",
+		sql: expandedSql,
+		args: [...params.keys.flatMap((item) => [item.slug, item.title])],
+	};
 };
 
 export const listPostsByKeys = Object.assign(
@@ -280,7 +288,11 @@ import type {Client} from 'sqlfu';
 const sql = `
 insert into posts (slug, title) values (?, ?) returning id, slug, title;
 `.trim();
-const query = (params: insertPost.Params) => ({ sql, args: [params.post.slug, params.post.title], name: "insertPost" });
+const query = (params: insertPost.Params) => ({
+	name: "insertPost",
+	sql,
+	args: [params.post.slug, params.post.title],
+});
 
 export const insertPost = Object.assign(
 	async function insertPost(client: Client, params: insertPost.Params): Promise<insertPost.Result> {
@@ -352,7 +364,11 @@ const query = (params: insertPosts.Params) => {
 		throw new Error("Parameter \"posts\" must be a non-empty array");
 	}
 	const expandedSql = `insert into posts (slug, title) values ${(Array.isArray(params.posts) ? params.posts : [params.posts]).map(() => "(?, ?)").join(', ')};`;
-	return { sql: expandedSql, args: [...(Array.isArray(params.posts) ? params.posts : [params.posts]).flatMap((item) => [item.slug, item.title])], name: "insertPosts" };
+	return {
+		name: "insertPosts",
+		sql: expandedSql,
+		args: [...(Array.isArray(params.posts) ? params.posts : [params.posts]).flatMap((item) => [item.slug, item.title])],
+	};
 };
 
 export const insertPosts = Object.assign(
@@ -462,7 +478,11 @@ const query = (params: insertPosts.Params) => {
 		throw new Error("Parameter \"posts\" must be a non-empty array");
 	}
 	const expandedSql = `insert into posts (slug, title) values ${(Array.isArray(params.posts) ? params.posts : [params.posts]).map(() => "(?, ?)").join(', ')};`;
-	return { sql: expandedSql, args: [...(Array.isArray(params.posts) ? params.posts : [params.posts]).flatMap((item) => [item.slug, item.title])], name: "insertPosts" };
+	return {
+		name: "insertPosts",
+		sql: expandedSql,
+		args: [...(Array.isArray(params.posts) ? params.posts : [params.posts]).flatMap((item) => [item.slug, item.title])],
+	};
 };
 
 export const insertPosts = Object.assign(
@@ -548,7 +568,7 @@ const query = (params: listPostsByIds.Params) => {
 		throw new Error("Parameter \"ids\" must be a non-empty array");
 	}
 	const expandedSql = `select id, slug from posts where id in (${params.ids.map(() => '?').join(', ')}) order by id;`;
-	return { sql: expandedSql, args: [...params.ids], name: "listPostsByIds" };
+	return { name: "listPostsByIds", sql: expandedSql, args: [...params.ids] };
 };
 
 export const listPostsByIds = Object.assign(

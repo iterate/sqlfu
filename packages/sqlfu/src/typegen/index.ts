@@ -190,7 +190,12 @@ function renderDdlWrapper(input: {
     `import type {${clientType}} from 'sqlfu';`,
     ``,
     ...renderSqlConstant(input.sql, sqlName),
-    `const ${queryName} = { ${objectProperty('sql', sqlName)}, args: [], name: ${JSON.stringify(functionName)} };`,
+    renderConstQueryObjectDeclaration({
+      queryVariableName: queryName,
+      queryName: functionName,
+      sqlExpression: sqlName,
+      argsExpression: '[]',
+    }),
     ``,
     `export const ${functionName} = Object.assign(`,
     `\t${maybeAsync}function ${functionName}(client: ${clientType}) {`,
@@ -1458,20 +1463,21 @@ function renderQueryDeclaration(input: {
 }): string {
   const sqlName = input.sqlName || 'sql';
   const queryVariableName = input.queryVariableName || 'query';
-  const payload = `{ ${objectProperty('sql', sqlName)}, args: ${input.queryArgs}, name: ${JSON.stringify(input.queryName)} }`;
   if (input.factoryArgs.length === 0) {
-    return `const ${queryVariableName} = ${payload};`;
+    return renderConstQueryObjectDeclaration({
+      queryVariableName,
+      queryName: input.queryName,
+      sqlExpression: sqlName,
+      argsExpression: input.queryArgs,
+    });
   }
-  if (input.queryArgs.includes('JSON.stringify(')) {
-    return [
-      `const ${queryVariableName} = (${input.factoryArgs.join(', ')}) => ({`,
-      `\tname: ${JSON.stringify(input.queryName)},`,
-      `\t${objectProperty('sql', sqlName)},`,
-      `\targs: ${input.queryArgs},`,
-      `});`,
-    ].join('\n');
-  }
-  return `const ${queryVariableName} = (${input.factoryArgs.join(', ')}) => (${payload});`;
+  return renderQueryFactoryDeclaration({
+    factoryArgs: input.factoryArgs,
+    queryVariableName,
+    queryName: input.queryName,
+    sqlExpression: sqlName,
+    argsExpression: input.queryArgs,
+  });
 }
 
 function renderExpandedQueryDeclaration(input: {
@@ -1495,9 +1501,81 @@ function renderExpandedQueryDeclaration(input: {
     `const ${input.queryVariableName} = (${input.factoryArgs.join(', ')}) => {`,
     ...guardLines,
     `\tconst expandedSql = ${dynamicSqlExpression};`,
-    `\treturn { sql: expandedSql, args: ${input.queryArgs}, name: ${JSON.stringify(input.queryName)} };`,
+    renderReturnQueryObject({
+      indent: '\t',
+      queryName: input.queryName,
+      sqlExpression: 'expandedSql',
+      argsExpression: input.queryArgs,
+    }),
     `};`,
   ].join('\n');
+}
+
+function renderConstQueryObjectDeclaration(input: {
+  queryVariableName: string;
+  queryName: string;
+  sqlExpression: string;
+  argsExpression: string;
+}): string {
+  const inline = `const ${input.queryVariableName} = ${renderInlineQueryObject(input)};`;
+  if (inline.length <= 100) {
+    return inline;
+  }
+  return [
+    `const ${input.queryVariableName} = {`,
+    ...renderQueryObjectProperties(input, '\t').map((line) => `${line},`),
+    `};`,
+  ].join('\n');
+}
+
+function renderQueryFactoryDeclaration(input: {
+  factoryArgs: string[];
+  queryVariableName: string;
+  queryName: string;
+  sqlExpression: string;
+  argsExpression: string;
+}): string {
+  const inline = `const ${input.queryVariableName} = (${input.factoryArgs.join(', ')}) => (${renderInlineQueryObject(input)});`;
+  if (inline.length <= 100) {
+    return inline;
+  }
+  return [
+    `const ${input.queryVariableName} = (${input.factoryArgs.join(', ')}) => ({`,
+    ...renderQueryObjectProperties(input, '\t').map((line) => `${line},`),
+    `});`,
+  ].join('\n');
+}
+
+function renderReturnQueryObject(input: {
+  indent: string;
+  queryName: string;
+  sqlExpression: string;
+  argsExpression: string;
+}): string {
+  const inline = `${input.indent}return ${renderInlineQueryObject(input)};`;
+  if (inline.length <= 100) {
+    return inline;
+  }
+  return [
+    `${input.indent}return {`,
+    ...renderQueryObjectProperties(input, `${input.indent}\t`).map((line) => `${line},`),
+    `${input.indent}};`,
+  ].join('\n');
+}
+
+function renderInlineQueryObject(input: {queryName: string; sqlExpression: string; argsExpression: string}): string {
+  return `{ ${renderQueryObjectProperties(input, '').join(', ')} }`;
+}
+
+function renderQueryObjectProperties(
+  input: {queryName: string; sqlExpression: string; argsExpression: string},
+  indent: string,
+): string[] {
+  return [
+    `${indent}name: ${JSON.stringify(input.queryName)}`,
+    `${indent}${objectProperty('sql', input.sqlExpression)}`,
+    `${indent}args: ${input.argsExpression}`,
+  ];
 }
 
 function hasRuntimeParameterExpansions(expansions: ParameterExpansion[]): boolean {
@@ -2232,7 +2310,7 @@ function buildValidatorImplementation(input: {
   const {emitter, prettyErrors, queryReference, sync} = input;
   const maybeAwait = sync ? '' : 'await ';
   const q = queryReference;
-  const rawRowType = input.decodeJsonResults ? '<Record<string, unknown>>' : '';
+  const rawRowsAnnotation = input.decodeJsonResults ? ': any[]' : '';
   const returnType = input.castResult ? input.resultTypeRef : null;
   const rowExpr = (rowExpression: string) => {
     const expression = rowParseExpressionOrNull(
@@ -2260,12 +2338,12 @@ function buildValidatorImplementation(input: {
     const expr = rowExpr('row');
     if (expr) {
       return [
-        `\t\tconst rows = ${maybeAwait}client.all${rawRowType}(${q});`,
+        `\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all(${q});`,
         `\t\treturn rows.map((row) => ${expr});`,
       ];
     }
     return [
-      `\t\tconst rows = ${maybeAwait}client.all${rawRowType}(${q});`,
+      `\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all(${q});`,
       `\t\treturn rows.map((row) => {`,
       ...rowBlock('row', '\t\t\t'),
       `\t\t});`,
@@ -2276,12 +2354,12 @@ function buildValidatorImplementation(input: {
     const expr = rowExpr('rows[0]');
     if (expr) {
       return [
-        `\t\tconst rows = ${maybeAwait}client.all${rawRowType}(${q});`,
+        `\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all(${q});`,
         `\t\treturn rows.length > 0 ? ${expr} : null;`,
       ];
     }
     return [
-      `\t\tconst rows = ${maybeAwait}client.all${rawRowType}(${q});`,
+      `\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all(${q});`,
       `\t\tif (rows.length === 0) return null;`,
       ...rowBlock('rows[0]', '\t\t'),
     ];
@@ -2291,11 +2369,11 @@ function buildValidatorImplementation(input: {
     const expr = rowExpr('rows[0]');
     if (expr) {
       return [
-        `\t\tconst rows = ${maybeAwait}client.all${rawRowType}(${q});`,
+        `\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all(${q});`,
         `\t\treturn ${expr};`,
       ];
     }
-    return [`\t\tconst rows = ${maybeAwait}client.all${rawRowType}(${q});`, ...rowBlock('rows[0]', '\t\t')];
+    return [`\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all(${q});`, ...rowBlock('rows[0]', '\t\t')];
   }
 
   // metadata mode: call client.run(), guard expected keys, then parse the assembled object.
@@ -2945,7 +3023,7 @@ function buildGeneratedImplementation(input: {
   if (input.resultMode === 'many') {
     if (input.decodeJsonResults) {
       return [
-        `${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`,
+        `${i}const rows: any[] = ${maybeAwait}client.all(${q});`,
         `${i}return rows.map((row) => ${jsonDecodedRowExpression('row', input.resultFields, input.resultType)});`,
       ];
     }
@@ -2957,7 +3035,7 @@ function buildGeneratedImplementation(input: {
   if (input.resultMode === 'nullableOne') {
     if (input.decodeJsonResults) {
       return [
-        `${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`,
+        `${i}const rows: any[] = ${maybeAwait}client.all(${q});`,
         `${i}return rows.length > 0 ? ${jsonDecodedRowExpression('rows[0]', input.resultFields, input.resultType)} : null;`,
       ];
     }
@@ -2969,7 +3047,7 @@ function buildGeneratedImplementation(input: {
 
   if (input.decodeJsonResults) {
     return [
-      `${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`,
+      `${i}const rows: any[] = ${maybeAwait}client.all(${q});`,
       `${i}return ${jsonDecodedRowExpression('rows[0]', input.resultFields, input.resultType)};`,
     ];
   }
@@ -3358,7 +3436,7 @@ function jsonDecodedRowExpression(
   }
   const decodedFields = jsonFields
     .map((field) => {
-      const parsedValue = `JSON.parse(${rowExpression}.${field.name} as unknown as string)`;
+      const parsedValue = `JSON.parse(${rowExpression}.${field.name} as string)`;
       const value =
         field.tsType === 'unknown' ? parsedValue : `(${parsedValue} as ${resultTypeRef}[${JSON.stringify(field.name)}])`;
       return `${field.name}: ${value}`;

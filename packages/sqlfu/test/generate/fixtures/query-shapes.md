@@ -38,7 +38,7 @@ insert into posts (slug) values (:slug);
 import type {Client} from 'sqlfu';
 
 const sql = `insert into posts (slug) values (?);`;
-const query = (params: insertPost.Params) => ({ sql, args: [params.slug], name: "insertPost" });
+const query = (params: insertPost.Params) => ({ name: "insertPost", sql, args: [params.slug] });
 
 export const insertPost = Object.assign(
 	async function insertPost(client: Client, params: insertPost.Params) {
@@ -93,7 +93,11 @@ insert into users (name, email) values (:fullName, :emailAddress) returning *;
 import type {Client} from 'sqlfu';
 
 const sql = `insert into users (name, email) values (?, ?) returning *;`;
-const query = (params: addUser.Params) => ({ sql, args: [params.fullName, params.emailAddress], name: "addUser" });
+const query = (params: addUser.Params) => ({
+	name: "addUser",
+	sql,
+	args: [params.fullName, params.emailAddress],
+});
 
 export const addUser = Object.assign(
 	async function addUser(client: Client, params: addUser.Params): Promise<addUser.Result> {
@@ -156,7 +160,11 @@ update posts set slug = :slug where id = :id;
 import type {Client} from 'sqlfu';
 
 const sql = `update posts set slug = ? where id = ?;`;
-const query = (data: updatePost.Data, params: updatePost.Params) => ({ sql, args: [data.slug, params.id], name: "updatePost" });
+const query = (data: updatePost.Data, params: updatePost.Params) => ({
+	name: "updatePost",
+	sql,
+	args: [data.slug, params.id],
+});
 
 export const updatePost = Object.assign(
 	async function updatePost(client: Client, data: updatePost.Data, params: updatePost.Params) {
@@ -214,7 +222,7 @@ delete from posts where id = :id;
 import type {Client} from 'sqlfu';
 
 const sql = `delete from posts where id = ?;`;
-const query = (params: deletePost.Params) => ({ sql, args: [params.id], name: "deletePost" });
+const query = (params: deletePost.Params) => ({ name: "deletePost", sql, args: [params.id] });
 
 export const deletePost = Object.assign(
 	async function deletePost(client: Client, params: deletePost.Params) {
@@ -269,7 +277,7 @@ select count(*) as total from posts;
 import type {Client} from 'sqlfu';
 
 const sql = `select count(*) as total from posts;`;
-const query = { sql, args: [], name: "countPosts" };
+const query = { name: "countPosts", sql, args: [] };
 
 export const countPosts = Object.assign(
 	async function countPosts(client: Client): Promise<countPosts.Result | null> {
