@@ -152,9 +152,11 @@ await listPostsByKeys(client, {
   lists, and INSERT `values :param` objects, can appear only
   once in a query. Reusing the same expanded array in two places would require
   duplicating the driver arguments, so sqlfu rejects that shape for now.
-- Typed JSON params are not supported yet. A JSON column is still usable as a
-  regular scalar param, but sqlfu does not infer or enforce the TypeScript object
-  shape inside SQLite JSON text/blob values.
+- Columns declared with the SQLite type name `json` get narrow logical-type
+  handling: generated wrappers accept `unknown`, stringify JSON inputs before
+  driver calls, and parse selected JSON result columns on the way out. sqlfu
+  still does not infer or enforce a precise TypeScript object shape inside JSON
+  values.
 - Parameter shape is inferred from SQL shape, not comment metadata. `@name` names
   queries; `IN (:ids)`, `(slug, title) in (:keys)`, and `values :posts` describe
   runtime placeholder expansion where the SQL shape changes.
