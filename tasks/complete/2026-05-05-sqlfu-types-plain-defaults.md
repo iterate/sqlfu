@@ -120,13 +120,15 @@ JSON result columns as `JSON.parse(...) as TheType` before returning them.
   clear place to live without overloading the plain-TypeScript path.
 - Simplified generated JSON code after review: inputs now emit
   `JSON.stringify(params.payload)` directly, result decoding inlines
-  `JSON.parse(row.payload as string) as Result["payload"]`, and the
+  `JSON.parse(row.payload) as Result["payload"]`, and the
   defensive `TextDecoder` helper path was removed from generated wrappers.
 - Standardized generated query object property order as `name`, `sql`, `args`,
   wrapping declarations once they exceed 100 characters. JSON-decoding wrappers
   now fetch raw rows through an explicit `any[]` intermediate before returning
   the concrete wrapper result type, avoiding misleading `client.all<Result>`
   annotations before payload decoding.
+- Reordered `logical-types.md` so the plain happy-path wrapper case appears
+  before the zod validator-specific case.
 - Verification:
   - `pnpm --filter sqlfu test --run test/generate/fixtures.test.ts -u`
   - `pnpm --filter sqlfu test --run test/generate/runtime.test.ts -t "sqlfu_types"`

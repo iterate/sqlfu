@@ -3436,7 +3436,7 @@ function jsonDecodedRowExpression(
   }
   const decodedFields = jsonFields
     .map((field) => {
-      const parsedValue = `JSON.parse(${rowExpression}.${field.name} as string)`;
+      const parsedValue = `JSON.parse(${rowExpression}.${field.name})`;
       const value =
         field.tsType === 'unknown' ? parsedValue : `(${parsedValue} as ${resultTypeRef}[${JSON.stringify(field.name)}])`;
       return `${field.name}: ${value}`;
