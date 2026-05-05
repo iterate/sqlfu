@@ -257,6 +257,119 @@ test('generate stringifies json declared-type inputs and parses json result colu
   ]);
 });
 
+test('generate uses sqlfu_types TypeScript defaults for typed JSON logical columns', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create table sqlfu_types (
+        json_slack_payload text default '{ action: "message" | "reaction"; content: string }'
+      );
+
+      create table slack_webhooks (
+        id integer primary key,
+        payload json_slack_payload not null,
+        created_at integer not null
+      );
+    `,
+    files: {
+      'sql/slack-webhooks.sql': dedent`
+        /** @name recordSlackWebhook */
+        insert into slack_webhooks (payload, created_at) values (:payload, :createdAt);
+
+        /** @name listSlackWebhooks */
+        select id, payload, created_at from slack_webhooks order by id;
+      `,
+    },
+  });
+
+  await project.generate();
+  const generatedModule = await project.readText('sql/.generated/slack-webhooks.sql.ts');
+  const generatedTables = await project.readText('sql/.generated/tables.ts');
+
+  expect(generatedModule).toContain('payload: { action: "message" | "reaction"; content: string };');
+  expect(generatedModule).toContain('JSON.stringify(params.payload)');
+  expect(generatedModule).toContain(
+    'payload: (listSlackWebhooksParseJsonValue(row.payload) as { action: "message" | "reaction"; content: string })',
+  );
+  expect(generatedTables).toContain('payload: { action: "message" | "reaction"; content: string };');
+  expect(generatedTables).not.toContain('SqlfuTypesRow');
+
+  const catalog = JSON.parse(await project.readText('.sqlfu/query-catalog.json'));
+  expect(catalog.queries).toMatchObject([
+    {
+      functionName: 'recordSlackWebhook',
+      args: [
+        {
+          name: 'payload',
+          tsType: '{ action: "message" | "reaction"; content: string }',
+          driverEncoding: 'json',
+        },
+        {name: 'createdAt', tsType: 'number', driverEncoding: 'identity'},
+      ],
+    },
+    {
+      functionName: 'listSlackWebhooks',
+      columns: [
+        {name: 'id', tsType: 'number'},
+        {name: 'payload', tsType: '{ action: "message" | "reaction"; content: string }'},
+        {name: 'created_at', tsType: 'number'},
+      ],
+    },
+  ]);
+
+  const mod = await project.importTranspiledModule<{
+    recordSlackWebhook: (
+      client: unknown,
+      params: {payload: {action: 'message' | 'reaction'; content: string}; createdAt: number},
+    ) => Promise<unknown>;
+    listSlackWebhooks: (
+      client: unknown,
+    ) => Promise<Array<{id: number; payload: {action: 'message' | 'reaction'; content: string}; created_at: number}>>;
+  }>('sql/.generated/slack-webhooks.sql.ts');
+
+  using database = project.openDatabase();
+  const client = createNodeSqliteClient(database.database);
+  const payload = {
+    action: 'message' as const,
+    content: 'hello from slack',
+  };
+
+  await mod.recordSlackWebhook(client, {payload, createdAt: 123});
+
+  const rawRows = await client.all<{payload: string}>({
+    sql: `select payload from slack_webhooks`,
+    args: [],
+  });
+  expect(rawRows).toMatchObject([{payload: JSON.stringify(payload)}]);
+
+  await expect(mod.listSlackWebhooks(client)).resolves.toEqual([
+    {
+      id: 1,
+      payload,
+      created_at: 123,
+    },
+  ]);
+});
+
+test('generate rejects sqlfu_types columns without TypeScript defaults', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create table sqlfu_types (
+        json_slack_payload text
+      );
+
+      create table slack_webhooks (
+        id integer primary key,
+        payload json_slack_payload not null
+      );
+    `,
+    files: {
+      'sql/list-slack-webhooks.sql': `select id, payload from slack_webhooks;`,
+    },
+  });
+
+  await expect(project.generate()).rejects.toThrow(/sqlfu_types\.json_slack_payload.*TypeScript type string default/);
+});
+
 test('generate supports multiline @name comments in multi-query files', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: `create table posts (id integer primary key, slug text not null);`,

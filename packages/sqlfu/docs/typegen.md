@@ -143,17 +143,46 @@ await listPostsByKeys(client, {
 });
 ```
 
+## Typed JSON columns
+
+Columns declared with the SQLite type name `json` are stored as JSON text and
+generated as `unknown`. For a narrower TypeScript type, add a reserved
+`sqlfu_types` metadata table. The metadata column name becomes the logical
+declared type, and its default value is a plain TypeScript type expression:
+
+```sql
+create table sqlfu_types(
+  json_slack_payload text default '{ action: "message" | "reaction"; content: string }'
+);
+
+create table slack_webhooks(
+  id integer primary key,
+  payload json_slack_payload not null
+);
+```
+
+```ts
+await recordSlackWebhook(client, {
+  payload: {
+    action: "message",
+    content: "hello",
+  },
+});
+```
+
+The generated wrapper accepts the default's TypeScript type, serializes inputs
+with `JSON.stringify`, and parses selected result columns before returning them.
+The default value is not a validator schema and sqlfu does not resolve imports,
+aliases, or references from it.
+
 ## Limits
 
 - Runtime-expanded params, currently inferred scalar `IN` lists, row-value `IN`
   lists, and INSERT `values :param` objects, can appear only
   once in a query. Reusing the same expanded array in two places would require
   duplicating the driver arguments, so sqlfu rejects that shape for now.
-- Columns declared with the SQLite type name `json` get narrow logical-type
-  handling: generated wrappers accept `unknown`, stringify JSON inputs before
-  driver calls, and parse selected JSON result columns on the way out. sqlfu
-  still does not infer or enforce a precise TypeScript object shape inside JSON
-  values.
+- Plain `sqlfu_types` TypeScript defaults only describe generated TypeScript
+  surfaces. They do not add runtime validation for JSON payload shape.
 - Parameter shape is inferred from SQL shape, not comment metadata. `@name` names
   queries; `IN (:ids)`, `(slug, title) in (:keys)`, and `values :posts` describe
   runtime placeholder expansion where the SQL shape changes.
