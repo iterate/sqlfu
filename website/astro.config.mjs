@@ -1,8 +1,12 @@
 import {defineConfig} from 'astro/config';
 import starlight from '@astrojs/starlight';
 
+const site = 'https://sqlfu.dev';
+const socialImage = `${site}/social-card.png`;
+const socialImageAlt = 'sqlfu: all you need is sql.';
+
 export default defineConfig({
-  site: 'https://sqlfu.dev',
+  site,
   // build.format: 'file' emits `docs/runtime-validation.html` (not
   // `docs/runtime-validation/index.html`) so artifact.ci's "strip trailing slash"
   // 308 redirect doesn't change how the browser resolves relative asset URLs:
@@ -30,6 +34,16 @@ export default defineConfig({
         {tag: 'link', attrs: {rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32.png'}},
         {tag: 'link', attrs: {rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-16.png'}},
         {tag: 'link', attrs: {rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png'}},
+        {tag: 'meta', attrs: {property: 'og:site_name', content: 'sqlfu'}},
+        {tag: 'meta', attrs: {property: 'og:image', content: socialImage}},
+        {tag: 'meta', attrs: {property: 'og:image:secure_url', content: socialImage}},
+        {tag: 'meta', attrs: {property: 'og:image:type', content: 'image/png'}},
+        {tag: 'meta', attrs: {property: 'og:image:width', content: '1200'}},
+        {tag: 'meta', attrs: {property: 'og:image:height', content: '630'}},
+        {tag: 'meta', attrs: {property: 'og:image:alt', content: socialImageAlt}},
+        {tag: 'meta', attrs: {name: 'twitter:card', content: 'summary_large_image'}},
+        {tag: 'meta', attrs: {name: 'twitter:image', content: socialImage}},
+        {tag: 'meta', attrs: {name: 'twitter:image:alt', content: socialImageAlt}},
       ],
       customCss: ['./src/styles/custom.css'],
       components: {

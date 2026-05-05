@@ -1,8 +1,11 @@
 ---
 import {getCollection} from 'astro:content';
+import SocialMeta from '../../components/SocialMeta.astro';
 import '../../styles/blog.css';
 
 const posts = (await getCollection('blog')).sort((a, b) => b.data.date.localeCompare(a.data.date));
+const title = 'sqlfu blog';
+const description = 'Posts from the sqlfu team.';
 
 const formatDate = (iso: string) =>
   new Date(iso + 'T00:00:00Z').toLocaleDateString('en-US', {
@@ -17,8 +20,9 @@ const formatDate = (iso: string) =>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>sqlfu blog</title>
-    <meta name="description" content="Posts from the sqlfu team." />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <SocialMeta title={title} description={description} pathname="/blog" type="website" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
