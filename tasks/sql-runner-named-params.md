@@ -3,46 +3,61 @@ status: ready
 size: small
 ---
 
-# SQL runner named-parameter binding (and doc the contract)
+# SQL runner named-parameter binding repro
 
 ## Status
 
-Not started. This file is the spec; implementation commits follow on the same branch.
+Ready as a small bug task. This PR now records the current repro only. The
+original demo-mode `:name` failure was mostly absorbed by the shared
+`client.prepare()` / sqlite-wasm adapter path on `main`; the remaining visible
+demo bug is for bare UI form params against SQL placeholders written with
+`@name` or `$name`.
 
 ## What's broken
 
-In demo mode (`?demo=1`), running a SQL-runner query that uses a named
-parameter throws:
+In demo mode (`?demo=1`), SQL runner queries that use `@name` or `$name`
+placeholders generate a form field keyed by the bare identifier, but the
+sqlite-wasm adapter binds that bare key as `:name`. sqlite-wasm then rejects the
+bind because the statement parameter is `@name` or `$name`, not `:name`.
 
 ```
-SQLite3Error: Invalid bind() parameter name: limitt
+SqlfuError: Invalid bind() parameter name: :limitt
 ```
 
-Reproduction: open the SQL runner, enter `select * from posts limit :limitt;`,
-fill in the generated form field labeled `limitt` with `123`, click Run.
+## UI Repro
+
+1. Run `pnpm demo`.
+2. Open the SQL runner in the browser at `?demo=1`.
+3. Enter:
+
+   ```sql
+   select name, type
+   from sqlite_schema
+   where name not like 'sqlite_%'
+   limit @limitt;
+   ```
+
+4. Fill the generated `limitt` params field with `2`.
+5. Click **Run SQL**.
+
+Expected: two rows.
+
+Actual: demo mode reports `Invalid bind() parameter name: :limitt`.
+
+The same repro works with `$limitt`. On current `main`, `:limitt` should work.
 
 ## Why
 
-SQLite's `sqlite3_bind_parameter_name()` stores the parameter name **with its
-prefix character included** (`:limitt`, not `limitt`) — see
-https://www.sqlite.org/c3ref/bind_parameter_name.html. `@sqlite.org/sqlite-wasm`'s
-`Stmt.bind({key: value})` therefore calls `sqlite3_bind_parameter_index(stmt, key)`
-which returns 0 for the bare name `limitt`, and the wrapper throws
-`Invalid bind() parameter name: limitt` (see `dist/index.mjs:10542` in
-`@sqlite.org/sqlite-wasm@3.51.2-build9`).
+The UI detects all three SQLite named-parameter prefixes with
+`detectNamedParameters` and strips the prefix when building the params form, so
+`:limitt`, `@limitt`, and `$limitt` all submit params as `{limitt: ...}`.
 
-Live/node mode doesn't hit this because `node:sqlite` accepts bare keys.
+The sqlite-wasm adapter currently translates any unprefixed params key to the
+colon form before calling sqlite-wasm. That is enough for SQL written as
+`:limitt`, but it is wrong for SQL written as `@limitt` or `$limitt`.
 
-The UI however *always* passes bare keys:
-- `detectNamedParameters` (`packages/ui/src/client.tsx:2444`) strips the prefix
-  when building the RJSF schema, so the form field's name — and thus the body
-  of the `sql.run` mutation — is the bare identifier.
-- This is consistent with how the saved-query test
-  (`packages/ui/test/studio.spec.ts:811 "sql runner executes a named-parameter
-  query and saves it to disk"`) exercises live mode.
-
-So the product already committed to "named params keyed by bare name". The
-demo-mode host just doesn't honor that contract.
+SQLite stores parameter names with their prefix character included; see
+https://www.sqlite.org/c3ref/bind_parameter_name.html.
 
 ## What "supported" means (the contract to document)
 
@@ -65,30 +80,21 @@ sqlfu's public contract, confirmed by this task:
    guidance — "best to avoid mixing named and numbered parameters"). Not our
    job to error; we just don't guarantee behavior.
 5. **The host adapter's job** is to translate (1) + (2) into whatever the
-   underlying driver needs. node:sqlite: bare keys work as-is. sqlite-wasm:
-   prefix each key with `:` before binding.
+   underlying driver needs.
 
 ## Plan
 
-- [ ] Red test covering the bug as a fast unit test (not a playwright spec)
-  that can run in `pnpm test:node` within `packages/ui`.
-- [ ] Fix `normalizeAdHocParams` in `packages/ui/src/demo/browser-host.ts` to
-  prefix bare keys with `:` before handing to sqlite-wasm. Leave array params
-  untouched. Leave already-prefixed keys (`:foo` / `@foo` / `$foo`) untouched
-  so we're forgiving of future callers.
-- [ ] Extend the test to cover `@name` and `$name` so the fix isn't accidentally
-  colon-only.
-- [ ] Wire the new test file into `packages/ui`'s `test:node` script (it
-  currently lists specific files).
-- [ ] Add one short JSDoc comment on `sql.run`'s input schema in
-  `packages/sqlfu/src/ui/router.ts` stating the contract above.
-- [ ] Add a docs page under `packages/sqlfu/docs/` — search-term-friendly
-  title, something like `query-parameters.md` ("sqlfu named parameters", "sqlfu
-  :name"). Cover: supported prefixes, bare-key passing, positional arrays,
-  link to SQLite's lang reference for exhaustive syntax. Keep it short; this
-  is useful-to-some, not tentpole.
-- [ ] No README or landing-page change. Named-param support isn't a
-  differentiator; every SQL tool has it.
+- [x] Update this task with the current UI repro. _Captured the `@limitt` /
+  `$limitt` demo-mode repro that remains on current `main`._
+- [ ] Replace the stale `packages/ui/src/demo/browser-host.test.ts` coverage
+  with a test that exercises the real adapter or host path. The current direct
+  raw `db.exec({bind: {limitt: 2}})` assertion fails by design and no longer
+  tests the app path.
+- [ ] Fix `packages/sqlfu/src/adapters/sqlite-wasm.ts` so bare named params
+  bind correctly for `:name`, `@name`, and `$name`. The implementation needs to
+  preserve already-prefixed keys and array params.
+- [ ] Add or update docs/JSDoc for the params contract if this bug fix becomes
+  the place where we formalize it.
 
 ## Non-goals
 
@@ -100,12 +106,10 @@ sqlfu's public contract, confirmed by this task:
   directly into the SQL runner it'll just work via node:sqlite and probably
   via sqlite-wasm too — out of scope to audit.
 
-## Open questions (decided, logged here for later)
+## Implementation Notes
 
-- *Should the params body accept prefixed keys too, for robustness?* Yes —
-  the normalizer leaves `:foo`/`@foo`/`$foo` alone. Costs nothing, saves a
-  support headache.
-- *Should we add a host-layer test (not just sqlite-wasm)?* The test goes
-  through `normalizeAdHocParams` (exported for this purpose) + a live
-  sqlite-wasm instance, which is as close to end-to-end as a unit test gets
-  without spinning up playwright.
+- 2026-05-05: Re-checked PR #43 against `main`. The PR only carries this task
+  file. `packages/ui/src/demo/browser-host.ts` now calls `client.prepare()`,
+  and the sqlite-wasm adapter prefixes bare keys as `:name`, so `:limitt` is no
+  longer the current repro. `@limitt` and `$limitt` still fail because the
+  adapter guesses the colon prefix.
