@@ -1363,7 +1363,7 @@ function renderQueryWrapper(input: {
   const paramsTypeRef = `${functionName}.Params`;
   const resultTypeRef = `${functionName}.Result`;
   const resultFields = getResultFields(input.descriptor);
-  const jsonParseFunctionName = hasJsonFields(resultFields) ? `${functionName}ParseJsonValue` : undefined;
+  const decodeJsonResults = hasJsonFields(resultFields);
 
   const queryArgs = buildQueryArgs(input.descriptor);
 
@@ -1418,7 +1418,7 @@ function renderQueryWrapper(input: {
         resultMode,
         resultType: resultTypeRef,
         resultFields,
-        jsonParseFunctionName,
+        decodeJsonResults,
         queryReference,
         sync: input.sync,
         indent: '\t\t',
@@ -1429,7 +1429,6 @@ function renderQueryWrapper(input: {
     `import type {${clientType}} from 'sqlfu';`,
     ``,
     ...renderSqlConstant(input.descriptor.sql, sqlName),
-    ...renderJsonParseHelper(jsonParseFunctionName),
     queryDeclaration,
     ``,
     `export const ${functionName} = Object.assign(`,
@@ -1462,6 +1461,15 @@ function renderQueryDeclaration(input: {
   const payload = `{ ${objectProperty('sql', sqlName)}, args: ${input.queryArgs}, name: ${JSON.stringify(input.queryName)} }`;
   if (input.factoryArgs.length === 0) {
     return `const ${queryVariableName} = ${payload};`;
+  }
+  if (input.queryArgs.includes('JSON.stringify(')) {
+    return [
+      `const ${queryVariableName} = (${input.factoryArgs.join(', ')}) => ({`,
+      `\tname: ${JSON.stringify(input.queryName)},`,
+      `\t${objectProperty('sql', sqlName)},`,
+      `\targs: ${input.queryArgs},`,
+      `});`,
+    ].join('\n');
   }
   return `const ${queryVariableName} = (${input.factoryArgs.join(', ')}) => (${payload});`;
 }
@@ -1812,7 +1820,7 @@ function renderValidatorQueryWrapper(input: {
   const clientType = sync ? 'SyncClient' : 'Client';
   const resultMode = getResultMode(descriptor);
   const resultFields = getResultFields(descriptor);
-  const jsonParseFunctionName = hasJsonFields(resultFields) ? `${functionName}ParseJsonValue` : undefined;
+  const decodeJsonResults = hasJsonFields(resultFields);
   const hasData = (descriptor.data?.length ?? 0) > 0;
   const hasParams = descriptor.parameters.length > 0;
   // Same logic as plain-TS: only SELECT-like queries declare a Result schema and get their rows
@@ -1902,7 +1910,7 @@ function renderValidatorQueryWrapper(input: {
         resultFields,
         emitter,
         prettyErrors,
-        jsonParseFunctionName,
+        decodeJsonResults,
         queryReference,
         sync,
       })
@@ -1960,7 +1968,6 @@ function renderValidatorQueryWrapper(input: {
     ``,
     ...schemaDeclarations,
     ...sqlLines,
-    ...renderJsonParseHelper(jsonParseFunctionName),
     queryDeclaration,
     ``,
     `export const ${functionName} = Object.assign(`,
@@ -2218,20 +2225,20 @@ function buildValidatorImplementation(input: {
   resultFields: GeneratedField[];
   emitter: ValidatorEmitter;
   prettyErrors: boolean;
-  jsonParseFunctionName?: string;
+  decodeJsonResults: boolean;
   queryReference: string;
   sync: boolean;
 }): string[] {
   const {emitter, prettyErrors, queryReference, sync} = input;
   const maybeAwait = sync ? '' : 'await ';
   const q = queryReference;
-  const rawRowType = input.jsonParseFunctionName ? '<Record<string, unknown>>' : '';
+  const rawRowType = input.decodeJsonResults ? '<Record<string, unknown>>' : '';
   const returnType = input.castResult ? input.resultTypeRef : null;
   const rowExpr = (rowExpression: string) => {
     const expression = rowParseExpressionOrNull(
       emitter,
       input.resultSchemaName,
-      jsonDecodedRowExpression(rowExpression, input.resultFields, input.jsonParseFunctionName),
+      jsonDecodedRowExpression(rowExpression, input.resultFields, input.resultTypeRef),
       prettyErrors,
     );
     if (!expression) {
@@ -2243,7 +2250,7 @@ function buildValidatorImplementation(input: {
     rowParseStatements(
       emitter,
       input.resultSchemaName,
-      jsonDecodedRowExpression(rowExpression, input.resultFields, input.jsonParseFunctionName),
+      jsonDecodedRowExpression(rowExpression, input.resultFields, input.resultTypeRef),
       prettyErrors,
       indent,
       returnType,
@@ -2842,7 +2849,7 @@ function toDriverValue(
   },
 ): string {
   if (field.logicalType === 'json') {
-    return `${valueExpression} != null ? JSON.stringify(${valueExpression}) : ${valueExpression}`;
+    return `JSON.stringify(${valueExpression})`;
   }
   if (field.tsType === 'Date') {
     if (field.toDriver?.includes(`split('T')[0]`) && !field.toDriver.includes(`replace('T', ' ')`)) {
@@ -2926,7 +2933,7 @@ function buildGeneratedImplementation(input: {
   resultMode: 'many' | 'nullableOne' | 'one';
   resultType: string;
   resultFields: GeneratedField[];
-  jsonParseFunctionName?: string;
+  decodeJsonResults: boolean;
   queryReference: string;
   sync: boolean;
   indent: string;
@@ -2936,10 +2943,10 @@ function buildGeneratedImplementation(input: {
   const q = input.queryReference;
 
   if (input.resultMode === 'many') {
-    if (input.jsonParseFunctionName) {
+    if (input.decodeJsonResults) {
       return [
         `${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`,
-        `${i}return rows.map((row) => ${jsonDecodedRowExpression('row', input.resultFields, input.jsonParseFunctionName)});`,
+        `${i}return rows.map((row) => ${jsonDecodedRowExpression('row', input.resultFields, input.resultType)});`,
       ];
     }
     // `many` returns the client's result directly — the outer function's Promise<T[]> / T[] return
@@ -2948,10 +2955,10 @@ function buildGeneratedImplementation(input: {
   }
 
   if (input.resultMode === 'nullableOne') {
-    if (input.jsonParseFunctionName) {
+    if (input.decodeJsonResults) {
       return [
         `${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`,
-        `${i}return rows.length > 0 ? ${jsonDecodedRowExpression('rows[0]', input.resultFields, input.jsonParseFunctionName)} : null;`,
+        `${i}return rows.length > 0 ? ${jsonDecodedRowExpression('rows[0]', input.resultFields, input.resultType)} : null;`,
       ];
     }
     return [
@@ -2960,10 +2967,10 @@ function buildGeneratedImplementation(input: {
     ];
   }
 
-  if (input.jsonParseFunctionName) {
+  if (input.decodeJsonResults) {
     return [
       `${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`,
-      `${i}return ${jsonDecodedRowExpression('rows[0]', input.resultFields, input.jsonParseFunctionName)};`,
+      `${i}return ${jsonDecodedRowExpression('rows[0]', input.resultFields, input.resultType)};`,
     ];
   }
   return [`${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`, `${i}return rows[0];`];
@@ -3340,43 +3347,24 @@ function hasPlainTsTypes(fields: GeneratedField[]): boolean {
   );
 }
 
-function renderJsonParseHelper(functionName: string | undefined): string[] {
-  if (!functionName) return [];
-  return [
-    `function ${functionName}(value: unknown): unknown {`,
-    `\tif (value == null) return value;`,
-    `\tif (typeof value === 'string') return JSON.parse(value);`,
-    `\tif (value instanceof Uint8Array) return JSON.parse(new TextDecoder().decode(value));`,
-    `\tif (value instanceof ArrayBuffer) return JSON.parse(new TextDecoder().decode(new Uint8Array(value)));`,
-    `\treturn value;`,
-    `}`,
-  ];
-}
-
 function jsonDecodedRowExpression(
   rowExpression: string,
   fields: GeneratedField[],
-  parseFunctionName: string | undefined,
+  resultTypeRef: string,
 ): string {
-  if (!parseFunctionName) {
-    return rowExpression;
-  }
   const jsonFields = fields.filter((field) => field.logicalType === 'json');
   if (jsonFields.length === 0) {
     return rowExpression;
   }
   const decodedFields = jsonFields
     .map((field) => {
-      const parsedValue = `${parseFunctionName}(${rowExpression}.${field.name})`;
-      const value = field.tsType === 'unknown' ? parsedValue : `(${parsedValue} as ${inlineTsType(field.tsType)})`;
+      const parsedValue = `JSON.parse(${rowExpression}.${field.name} as unknown as string)`;
+      const value =
+        field.tsType === 'unknown' ? parsedValue : `(${parsedValue} as ${resultTypeRef}[${JSON.stringify(field.name)}])`;
       return `${field.name}: ${value}`;
     })
     .join(', ');
   return `({...${rowExpression}, ${decodedFields}})`;
-}
-
-function inlineTsType(tsType: string): string {
-  return tsType.split('\n').map((line) => line.trim()).filter(Boolean).join(' ');
 }
 
 function extractSelectClause(sql: string): string | undefined {

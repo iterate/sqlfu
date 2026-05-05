@@ -294,7 +294,11 @@ test('generate uses sqlfu_types view rows for typed JSON logical columns', async
   expect(generatedModule).toContain('action: "message" | "reaction";');
   expect(generatedModule).toContain('content: string');
   expect(generatedModule).toContain('JSON.stringify(params.payload)');
-  expect(generatedModule).toContain('payload: (listSlackWebhooksParseJsonValue(row.payload) as {');
+  expect(generatedModule).toContain(
+    `payload: (JSON.parse(row.payload as unknown as string) as listSlackWebhooks.Result["payload"])`,
+  );
+  expect(generatedModule).not.toContain('TextDecoder');
+  expect(generatedModule).not.toContain('params.payload != null');
   expect(generatedTables).toContain('payload: {');
   expect(generatedTables).not.toContain('SqlfuTypesRow');
 

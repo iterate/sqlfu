@@ -118,6 +118,10 @@ JSON result columns as `JSON.parse(...) as TheType` before returning them.
 - Renamed metadata `storage` to `encoding`, added `format = 'typescript'`, and
   renamed `ts_type` to `definition` so future formats such as JSON Schema have a
   clear place to live without overloading the plain-TypeScript path.
+- Simplified generated JSON code after review: inputs now emit
+  `JSON.stringify(params.payload)` directly, result decoding inlines
+  `JSON.parse(row.payload as unknown as string) as Result["payload"]`, and the
+  defensive `TextDecoder` helper path was removed from generated wrappers.
 - Verification:
   - `pnpm --filter sqlfu test --run test/generate/runtime.test.ts -t "sqlfu_types"`
   - `pnpm --filter sqlfu test --run test/generate/fixtures.test.ts -t "logical-types" -u`

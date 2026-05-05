@@ -76,7 +76,11 @@ const recordSlackWebhookParams = z.object({
 const recordSlackWebhookSql = `
 insert into slack_webhooks (payload) values (?);
 `.trim();
-const recordSlackWebhookQuery = (params: recordSlackWebhook.Params) => ({ sql: recordSlackWebhookSql, args: [params.payload != null ? JSON.stringify(params.payload) : params.payload], name: "recordSlackWebhook" });
+const recordSlackWebhookQuery = (params: recordSlackWebhook.Params) => ({
+	name: "recordSlackWebhook",
+	sql: recordSlackWebhookSql,
+	args: [JSON.stringify(params.payload)],
+});
 
 export const recordSlackWebhook = Object.assign(
 	async function recordSlackWebhook(client: Client, params: recordSlackWebhook.Params) {
@@ -103,20 +107,13 @@ const listSlackWebhooksResult = z.object({
 const listSlackWebhooksSql = `
 select id, payload from slack_webhooks order by id;
 `.trim();
-function listSlackWebhooksParseJsonValue(value: unknown): unknown {
-	if (value == null) return value;
-	if (typeof value === 'string') return JSON.parse(value);
-	if (value instanceof Uint8Array) return JSON.parse(new TextDecoder().decode(value));
-	if (value instanceof ArrayBuffer) return JSON.parse(new TextDecoder().decode(new Uint8Array(value)));
-	return value;
-}
 const listSlackWebhooksQuery = { sql: listSlackWebhooksSql, args: [], name: "listSlackWebhooks" };
 
 export const listSlackWebhooks = Object.assign(
 	async function listSlackWebhooks(client: Client): Promise<listSlackWebhooks.Result[]> {
 		const rows = await client.all<Record<string, unknown>>(listSlackWebhooksQuery);
 		return rows.map((row) => {
-			const parsed = listSlackWebhooksResult.safeParse(({...row, payload: (listSlackWebhooksParseJsonValue(row.payload) as { action: "message" | "reaction"; content: string })}));
+			const parsed = listSlackWebhooksResult.safeParse(({...row, payload: (JSON.parse(row.payload as unknown as string) as listSlackWebhooks.Result["payload"])}));
 			if (!parsed.success) throw new Error(z.prettifyError(parsed.error));
 			return (parsed.data as listSlackWebhooks.Result);
 		});
@@ -197,7 +194,11 @@ import type {Client} from 'sqlfu';
 const recordSlackWebhookSql = `
 insert into slack_webhooks (payload, created_at) values (?, ?);
 `.trim();
-const recordSlackWebhookQuery = (params: recordSlackWebhook.Params) => ({ sql: recordSlackWebhookSql, args: [params.payload != null ? JSON.stringify(params.payload) : params.payload, params.createdAt], name: "recordSlackWebhook" });
+const recordSlackWebhookQuery = (params: recordSlackWebhook.Params) => ({
+	name: "recordSlackWebhook",
+	sql: recordSlackWebhookSql,
+	args: [JSON.stringify(params.payload), params.createdAt],
+});
 
 export const recordSlackWebhook = Object.assign(
 	async function recordSlackWebhook(client: Client, params: recordSlackWebhook.Params) {
@@ -219,19 +220,12 @@ export namespace recordSlackWebhook {
 const listSlackWebhooksSql = `
 select id, payload, created_at from slack_webhooks order by id;
 `.trim();
-function listSlackWebhooksParseJsonValue(value: unknown): unknown {
-	if (value == null) return value;
-	if (typeof value === 'string') return JSON.parse(value);
-	if (value instanceof Uint8Array) return JSON.parse(new TextDecoder().decode(value));
-	if (value instanceof ArrayBuffer) return JSON.parse(new TextDecoder().decode(new Uint8Array(value)));
-	return value;
-}
 const listSlackWebhooksQuery = { sql: listSlackWebhooksSql, args: [], name: "listSlackWebhooks" };
 
 export const listSlackWebhooks = Object.assign(
 	async function listSlackWebhooks(client: Client): Promise<listSlackWebhooks.Result[]> {
 		const rows = await client.all<listSlackWebhooks.Result>(listSlackWebhooksQuery);
-		return rows.map((row) => ({...row, payload: (listSlackWebhooksParseJsonValue(row.payload) as { action: "message" | "reaction"; content: string })}));
+		return rows.map((row) => ({...row, payload: (JSON.parse(row.payload as unknown as string) as listSlackWebhooks.Result["payload"])}));
 	},
 	{ sql: listSlackWebhooksSql, query: listSlackWebhooksQuery },
 );
