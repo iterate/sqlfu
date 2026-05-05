@@ -18,6 +18,8 @@ Six months in, half of your codebase by lines of code are now deeply-nested arca
 
 > SQL is all you need
 
+![Friendship regain with SQL and sqlfu](/assets/blog/friendship-regain-sqlfu.png)
+
 But what if you could get not *close* to SQL but just... into it? That's what `sqlfu` aims to help you do. It lets you use SQL to:
 
 - Define your application's target schema in SQL. Not in a TypeScript DSL, not in a `schema.prisma` file, but as regular-old `create table` statements in a `definitions.sql`

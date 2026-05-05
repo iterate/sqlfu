@@ -133,6 +133,10 @@
   margin: 0;
 }
 
+.blog-post-body p + p {
+  margin-top: 1.9rem;
+}
+
 .blog-post-body a {
   color: var(--accent);
   text-decoration: underline;
