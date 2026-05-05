@@ -197,6 +197,84 @@ test('generated annotated queries expand inferred list and object params at runt
   );
 });
 
+test('generate stringifies json declared-type inputs and parses json result columns', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create table webhooks (
+        id integer primary key,
+        type text not null,
+        payload json not null
+      );
+    `,
+    files: {
+      'sql/webhooks.sql': dedent`
+        /** @name recordWebhook */
+        insert into webhooks (type, payload) values (:type, :payload);
+
+        /** @name listWebhooks */
+        select id, type, payload from webhooks order by id;
+      `,
+    },
+  });
+
+  await project.generate();
+  const generatedModule = await project.readText('sql/.generated/webhooks.sql.ts');
+  const generatedTables = await project.readText('sql/.generated/tables.ts');
+
+  expect(generatedModule).toContain('payload: unknown;');
+  expect(generatedModule).toContain('JSON.stringify(params.payload)');
+  expect(generatedModule).toContain('JSON.parse');
+  expect(generatedTables).toContain('payload: unknown;');
+  const catalog = JSON.parse(await project.readText('.sqlfu/query-catalog.json'));
+  expect(catalog.queries).toMatchObject([
+    {
+      functionName: 'recordWebhook',
+      args: [
+        {name: 'type', tsType: 'string', driverEncoding: 'identity'},
+        {name: 'payload', tsType: 'unknown', driverEncoding: 'json'},
+      ],
+    },
+    {
+      functionName: 'listWebhooks',
+      columns: [
+        {name: 'id', tsType: 'number'},
+        {name: 'type', tsType: 'string'},
+        {name: 'payload', tsType: 'unknown'},
+      ],
+    },
+  ]);
+
+  const mod = await project.importTranspiledModule<{
+    recordWebhook: (client: unknown, params: {type: string; payload: unknown}) => Promise<unknown>;
+    listWebhooks: (client: unknown) => Promise<Array<{id: number; type: string; payload: unknown}>>;
+  }>('sql/.generated/webhooks.sql.ts');
+
+  using database = project.openDatabase();
+  const client = createNodeSqliteClient(database.database);
+  const payload = {
+    action: 'push',
+    repository: {
+      full_name: 'mmkal/sqlfu',
+    },
+  };
+
+  await mod.recordWebhook(client, {type: 'github', payload});
+
+  const rawRows = await client.all<{payload: string}>({
+    sql: `select payload from webhooks`,
+    args: [],
+  });
+  expect(rawRows).toMatchObject([{payload: JSON.stringify(payload)}]);
+
+  await expect(mod.listWebhooks(client)).resolves.toEqual([
+    {
+      id: 1,
+      type: 'github',
+      payload,
+    },
+  ]);
+});
+
 test('generate supports multiline @name comments in multi-query files', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: `create table posts (id integer primary key, slug text not null);`,

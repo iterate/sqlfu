@@ -69,7 +69,20 @@ export type DialectColumnInfo = {
   name: string;
   tsType: string;
   notNull: boolean;
+  /**
+   * Optional higher-level shape hint that overrides `tsType` for
+   * encoding/decoding purposes (e.g. sqlite columns declared as `json` are
+   * stringified before write and parsed after read). Dialect-neutral —
+   * sqlite recognises declared-type=`json`; pg can map `json`/`jsonb`.
+   */
+  logicalType?: LogicalType;
 };
+
+/**
+ * Higher-level column shape hints recognized across dialects. Add new
+ * values here when a new logical encoding becomes a first-class concept.
+ */
+export type LogicalType = 'json';
 
 /**
  * Per-relation type info — table or view, with a column map and the original

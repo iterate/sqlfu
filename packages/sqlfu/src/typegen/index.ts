@@ -6,6 +6,7 @@ import {
   assertSqliteMaterialized,
   registerSqliteTypegenImpls,
   type DialectColumnInfo,
+  type LogicalType,
   type RelationInfo,
 } from '../dialect.js';
 import {quoteIdentifier as sqliteQuoteIdentifier} from '../schemadiff/sqlite/identifiers.js';
@@ -288,13 +289,16 @@ type DisposableClient = {
 // `TsColumn` and `RelationInfo` are imported from `../dialect.js` as
 // `DialectColumnInfo` and `RelationInfo` so both sqlite and pg dialects
 // produce values of the same shape. Local alias keeps the rest of the
-// file's identifier choices stable.
+// file's identifier choices stable. `LogicalType` likewise lives on the
+// dialect surface so sqlite (`declared-type=json`) and any future pg
+// mapping (`json`/`jsonb`) agree on the column-encoding hint.
 type TsColumn = DialectColumnInfo;
 
 type GeneratedField = {
   name: string;
   tsType: string;
   notNull: boolean;
+  logicalType?: LogicalType;
   optional?: boolean;
   objectFields?: GeneratedField[];
   driverObjectFields?: GeneratedField[];
@@ -1420,6 +1424,8 @@ function renderQueryWrapper(input: {
   const dataTypeRef = `${functionName}.Data`;
   const paramsTypeRef = `${functionName}.Params`;
   const resultTypeRef = `${functionName}.Result`;
+  const resultFields = getResultFields(input.descriptor);
+  const jsonParseFunctionName = hasJsonFields(resultFields) ? `${functionName}ParseJsonValue` : undefined;
 
   const queryArgs = buildQueryArgs(input.descriptor);
 
@@ -1466,13 +1472,15 @@ function renderQueryWrapper(input: {
     namespaceLines.push(`\texport type Params = ${renderObjectTypeBody(input.descriptor.parameters, 'parameter')};`);
   }
   if (emitResultType) {
-    namespaceLines.push(`\texport type Result = ${renderObjectTypeBody(getResultFields(input.descriptor), 'result')};`);
+    namespaceLines.push(`\texport type Result = ${renderObjectTypeBody(resultFields, 'result')};`);
   }
 
   const implementationLines = emitResultType
     ? buildGeneratedImplementation({
         resultMode,
         resultType: resultTypeRef,
+        resultFields,
+        jsonParseFunctionName,
         queryReference,
         sync: input.sync,
         indent: '\t\t',
@@ -1483,6 +1491,7 @@ function renderQueryWrapper(input: {
     `import type {${clientType}} from 'sqlfu';`,
     ``,
     ...renderSqlConstant(input.descriptor.sql, sqlName),
+    ...renderJsonParseHelper(jsonParseFunctionName),
     queryDeclaration,
     ``,
     `export const ${functionName} = Object.assign(`,
@@ -1865,6 +1874,7 @@ function renderValidatorQueryWrapper(input: {
   const clientType = sync ? 'SyncClient' : 'Client';
   const resultMode = getResultMode(descriptor);
   const resultFields = getResultFields(descriptor);
+  const jsonParseFunctionName = hasJsonFields(resultFields) ? `${functionName}ParseJsonValue` : undefined;
   const hasData = (descriptor.data?.length ?? 0) > 0;
   const hasParams = descriptor.parameters.length > 0;
   // Same logic as plain-TS: only SELECT-like queries declare a Result schema and get their rows
@@ -1947,6 +1957,7 @@ function renderValidatorQueryWrapper(input: {
         resultFields,
         emitter,
         prettyErrors,
+        jsonParseFunctionName,
         queryReference,
         sync,
       })
@@ -1986,6 +1997,7 @@ function renderValidatorQueryWrapper(input: {
     ``,
     ...schemaDeclarations,
     ...sqlLines,
+    ...renderJsonParseHelper(jsonParseFunctionName),
     queryDeclaration,
     ``,
     `export const ${functionName} = Object.assign(`,
@@ -2227,15 +2239,26 @@ function buildValidatorImplementation(input: {
   resultFields: GeneratedField[];
   emitter: ValidatorEmitter;
   prettyErrors: boolean;
+  jsonParseFunctionName?: string;
   queryReference: string;
   sync: boolean;
 }): string[] {
   const {emitter, prettyErrors, queryReference, sync} = input;
   const maybeAwait = sync ? '' : 'await ';
   const q = queryReference;
-  const rowExpr = (rowExpression: string) => rowParseExpressionOrNull(emitter, rowExpression, prettyErrors);
+  const rowExpr = (rowExpression: string) =>
+    rowParseExpressionOrNull(
+      emitter,
+      jsonDecodedRowExpression(rowExpression, input.resultFields, input.jsonParseFunctionName),
+      prettyErrors,
+    );
   const rowBlock = (rowExpression: string, indent: string) =>
-    rowParseStatements(emitter, rowExpression, prettyErrors, indent);
+    rowParseStatements(
+      emitter,
+      jsonDecodedRowExpression(rowExpression, input.resultFields, input.jsonParseFunctionName),
+      prettyErrors,
+      indent,
+    );
 
   if (input.resultMode === 'many') {
     const expr = rowExpr('row');
@@ -2743,7 +2766,11 @@ function toCatalogArgument(
 function inferDriverEncoding(field: {
   tsType: string;
   toDriver: string;
+  logicalType?: LogicalType;
 }): QueryCatalogArgument['driverEncoding'] {
+  if (field.logicalType === 'json') {
+    return 'json';
+  }
   if (field.tsType === 'boolean') {
     return 'boolean-number';
   }
@@ -2807,6 +2834,9 @@ function toDriverValue(
     toDriver?: string;
   },
 ): string {
+  if (field.logicalType === 'json') {
+    return `${valueExpression} != null ? JSON.stringify(${valueExpression}) : ${valueExpression}`;
+  }
   if (field.tsType === 'Date') {
     if (field.toDriver?.includes(`split('T')[0]`) && !field.toDriver.includes(`replace('T', ' ')`)) {
       return `${valueExpression}?.toISOString().split('T')[0]`;
@@ -2829,7 +2859,8 @@ function refineDescriptor(
   schema: ReadonlyMap<string, RelationInfo>,
 ): GeneratedQueryDescriptor {
   const inferredColumns = inferQueryResultColumns(sql, schema);
-  if (inferredColumns.size === 0) {
+  const inferredInputColumns = inferQueryInputColumns(sql, schema);
+  if (inferredColumns.size === 0 && inferredInputColumns.size === 0) {
     return descriptor;
   }
 
@@ -2840,12 +2871,25 @@ function refineDescriptor(
       if (!inferredColumn) {
         return column;
       }
-      return {
-        ...column,
-        tsType: column.tsType === 'any' ? inferredColumn.tsType : column.tsType,
-        notNull: column.notNull || inferredColumn.notNull,
-      };
+      return refineFieldFromColumn(column, inferredColumn);
     }),
+    parameters: descriptor.parameters.map((field) => {
+      const inferredColumn = inferredInputColumns.get(field.name);
+      return inferredColumn ? refineFieldFromColumn(field, inferredColumn) : field;
+    }),
+    data: descriptor.data?.map((field) => {
+      const inferredColumn = inferredInputColumns.get(field.name);
+      return inferredColumn ? refineFieldFromColumn(field, inferredColumn) : field;
+    }),
+  };
+}
+
+function refineFieldFromColumn<T extends GeneratedField>(field: T, column: TsColumn): T {
+  return {
+    ...field,
+    tsType: column.logicalType === 'json' ? 'unknown' : field.tsType === 'any' ? column.tsType : field.tsType,
+    notNull: field.notNull || column.notNull,
+    logicalType: column.logicalType || field.logicalType,
   };
 }
 
@@ -2873,6 +2917,8 @@ function toCamelCase(value: string): string {
 function buildGeneratedImplementation(input: {
   resultMode: 'many' | 'nullableOne' | 'one';
   resultType: string;
+  resultFields: GeneratedField[];
+  jsonParseFunctionName?: string;
   queryReference: string;
   sync: boolean;
   indent: string;
@@ -2882,18 +2928,36 @@ function buildGeneratedImplementation(input: {
   const q = input.queryReference;
 
   if (input.resultMode === 'many') {
+    if (input.jsonParseFunctionName) {
+      return [
+        `${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`,
+        `${i}return rows.map((row) => ${jsonDecodedRowExpression('row', input.resultFields, input.jsonParseFunctionName)});`,
+      ];
+    }
     // `many` returns the client's result directly — the outer function's Promise<T[]> / T[] return
     // type already matches client.all's return type, so there's no need to await and re-wrap.
     return [`${i}return client.all<${input.resultType}>(${q});`];
   }
 
   if (input.resultMode === 'nullableOne') {
+    if (input.jsonParseFunctionName) {
+      return [
+        `${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`,
+        `${i}return rows.length > 0 ? ${jsonDecodedRowExpression('rows[0]', input.resultFields, input.jsonParseFunctionName)} : null;`,
+      ];
+    }
     return [
       `${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`,
       `${i}return rows.length > 0 ? rows[0] : null;`,
     ];
   }
 
+  if (input.jsonParseFunctionName) {
+    return [
+      `${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`,
+      `${i}return ${jsonDecodedRowExpression('rows[0]', input.resultFields, input.jsonParseFunctionName)};`,
+    ];
+  }
   return [`${i}const rows = ${maybeAwait}client.all<${input.resultType}>(${q});`, `${i}return rows[0];`];
 }
 
@@ -2962,10 +3026,13 @@ async function loadRelationColumns(client: Client, relationName: string): Promis
     }
 
     const name = String(row.name);
+    const declaredType = typeof row.type === 'string' ? row.type : '';
+    const logicalType = logicalTypeForDeclaredSqliteType(declaredType);
     columns.set(name, {
       name,
-      tsType: mapSqliteTypeToTs(typeof row.type === 'string' ? row.type : ''),
+      tsType: logicalType === 'json' ? 'unknown' : mapSqliteTypeToTs(declaredType),
       notNull: Number(row.notnull ?? 0) === 1 || Number(row.pk ?? 0) >= 1,
+      logicalType,
     });
   }
 
@@ -3012,6 +3079,95 @@ function inferQueryResultColumns(
   return columns;
 }
 
+function inferQueryInputColumns(sql: string, schema: ReadonlyMap<string, RelationInfo>): ReadonlyMap<string, TsColumn> {
+  return new Map([...inferInsertInputColumns(sql, schema), ...inferUpdateInputColumns(sql, schema)]);
+}
+
+function inferInsertInputColumns(
+  sql: string,
+  schema: ReadonlyMap<string, RelationInfo>,
+): ReadonlyMap<string, TsColumn> {
+  const searchableSql = maskSqlCommentsAndStrings(sql);
+  const match = searchableSql.match(
+    /\binsert\s+(?:or\s+[A-Za-z_][A-Za-z0-9_]*\s+)?into\s+"?([A-Za-z_][A-Za-z0-9_]*)"?\s*\(([^)]*)\)\s+values\s*\(([^)]*)\)/i,
+  );
+  if (!match) {
+    return new Map();
+  }
+
+  const sourceColumns = schema.get(match[1]!)?.columns;
+  if (!sourceColumns) {
+    return new Map();
+  }
+
+  const columnNames = parseSimpleSqlFieldListForRefinement(match[2]!);
+  if (!columnNames) {
+    return new Map();
+  }
+  const values = splitTopLevelComma(match[3]!);
+  return inferInputColumnsFromAssignments(columnNames, values, sourceColumns);
+}
+
+function inferUpdateInputColumns(
+  sql: string,
+  schema: ReadonlyMap<string, RelationInfo>,
+): ReadonlyMap<string, TsColumn> {
+  const searchableSql = maskSqlCommentsAndStrings(sql);
+  const match = searchableSql.match(
+    /\bupdate\s+(?:or\s+[A-Za-z_][A-Za-z0-9_]*\s+)?"?([A-Za-z_][A-Za-z0-9_]*)"?\s+set\s+([\s\S]*?)(?:\s+where\b|\s+returning\b|$)/i,
+  );
+  if (!match) {
+    return new Map();
+  }
+
+  const sourceColumns = schema.get(match[1]!)?.columns;
+  if (!sourceColumns) {
+    return new Map();
+  }
+
+  const inferred = new Map<string, TsColumn>();
+  for (const assignment of splitTopLevelComma(match[2]!)) {
+    const assignmentMatch = assignment.match(/^\s*"?([A-Za-z_][A-Za-z0-9_]*)"?\s*=\s*(:[A-Za-z_$][A-Za-z0-9_$]*)\s*$/);
+    if (!assignmentMatch) {
+      continue;
+    }
+    const column = sourceColumns.get(assignmentMatch[1]!);
+    const parameterName = assignmentMatch[2]!.slice(1);
+    if (column) {
+      inferred.set(parameterName, column);
+    }
+  }
+  return inferred;
+}
+
+function inferInputColumnsFromAssignments(
+  columnNames: string[],
+  values: string[],
+  sourceColumns: ReadonlyMap<string, TsColumn>,
+): ReadonlyMap<string, TsColumn> {
+  const inferred = new Map<string, TsColumn>();
+  for (let index = 0; index < columnNames.length; index += 1) {
+    const column = sourceColumns.get(columnNames[index]!);
+    const parameterName = extractSingleNamedParameterName(values[index] || '');
+    if (column && parameterName) {
+      inferred.set(parameterName, column);
+    }
+  }
+  return inferred;
+}
+
+function extractSingleNamedParameterName(expression: string): string | undefined {
+  return expression.trim().match(/^:([A-Za-z_$][A-Za-z0-9_$]*)$/)?.[1];
+}
+
+function parseSimpleSqlFieldListForRefinement(rawFields: string): string[] | undefined {
+  try {
+    return parseSimpleSqlFieldList(rawFields, 'type refinement');
+  } catch {
+    return undefined;
+  }
+}
+
 function inferSelectColumns(
   selectClause: string,
   sourceColumns: ReadonlyMap<string, TsColumn>,
@@ -3051,6 +3207,7 @@ function inferExpressionColumn(
         name: alias,
         tsType: directColumn.tsType,
         notNull: directColumn.notNull,
+        logicalType: directColumn.logicalType,
       };
     }
   }
@@ -3089,6 +3246,41 @@ function inferImplicitAlias(expression: string): string | undefined {
 function getReferencedColumnName(expression: string): string | undefined {
   const match = expression.trim().match(/^(?:"?([A-Za-z_][A-Za-z0-9_]*)"?\.)?"?([A-Za-z_][A-Za-z0-9_]*)"?$/);
   return match?.[2];
+}
+
+function hasJsonFields(fields: GeneratedField[]): boolean {
+  return fields.some((field) => field.logicalType === 'json');
+}
+
+function renderJsonParseHelper(functionName: string | undefined): string[] {
+  if (!functionName) return [];
+  return [
+    `function ${functionName}(value: unknown): unknown {`,
+    `\tif (value == null) return value;`,
+    `\tif (typeof value === 'string') return JSON.parse(value);`,
+    `\tif (value instanceof Uint8Array) return JSON.parse(new TextDecoder().decode(value));`,
+    `\tif (value instanceof ArrayBuffer) return JSON.parse(new TextDecoder().decode(new Uint8Array(value)));`,
+    `\treturn value;`,
+    `}`,
+  ];
+}
+
+function jsonDecodedRowExpression(
+  rowExpression: string,
+  fields: GeneratedField[],
+  parseFunctionName: string | undefined,
+): string {
+  if (!parseFunctionName) {
+    return rowExpression;
+  }
+  const jsonFields = fields.filter((field) => field.logicalType === 'json');
+  if (jsonFields.length === 0) {
+    return rowExpression;
+  }
+  const decodedFields = jsonFields
+    .map((field) => `${field.name}: ${parseFunctionName}(${rowExpression}.${field.name})`)
+    .join(', ');
+  return `({...${rowExpression}, ${decodedFields}})`;
 }
 
 function extractSelectClause(sql: string): string | undefined {
@@ -3260,3 +3452,6 @@ registerSqliteTypegenImpls({
     analyzeVendoredTypesqlQueries(assertSqliteMaterialized(materialized).databasePath, queries),
 });
 
+function logicalTypeForDeclaredSqliteType(columnType: string): LogicalType | undefined {
+  return columnType.trim().toUpperCase() === 'JSON' ? 'json' : undefined;
+}
