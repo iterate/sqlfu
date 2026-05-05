@@ -19,7 +19,7 @@
     "./analyze": "./src/analyze.ts",
     "./api": "./src/api/exports.ts",
     "./api/core": "./src/api/core.ts",
-    "./node": "./src/node/exports.ts",
+    "./cloudflare": "./src/cloudflare/exports.ts",
     "./better-auth": "./src/better-auth.ts",
     "./lint-plugin": "./src/lint-plugin.ts",
     "./outbox": "./src/outbox/index.ts",
@@ -44,9 +44,9 @@
         "types": "./dist/api/core.d.ts",
         "default": "./dist/api/core.js"
       },
-      "./node": {
-        "types": "./dist/node/exports.d.ts",
-        "default": "./dist/node/exports.js"
+      "./cloudflare": {
+        "types": "./dist/cloudflare/exports.d.ts",
+        "default": "./dist/cloudflare/exports.js"
       },
       "./better-auth": {
         "types": "./dist/better-auth.d.ts",

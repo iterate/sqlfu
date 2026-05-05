@@ -318,7 +318,7 @@ For an Alchemy-managed local D1 database, sqlfu can talk directly to Alchemy's p
 
 ```ts
 import {defineConfig} from 'sqlfu';
-import {findMiniflareD1Path} from 'sqlfu/node';
+import {findMiniflareD1Path} from 'sqlfu/cloudflare';
 
 export default defineConfig({
   db: findMiniflareD1Path('my-dev-app-slug'),
@@ -329,6 +329,20 @@ export default defineConfig({
 ```
 
 `findMiniflareD1Path()` walks up from `process.cwd()` until it finds a supported Miniflare v3 persist root. Today that means Alchemy's `.alchemy/miniflare/v3` layout. It then derives the same D1 object sqlite filename Miniflare uses for the slug. Pass `{miniflareV3Root}` as the second argument if your config runs outside that project tree.
+
+For deployed cloud D1 — including [Alchemy v2](https://alchemy.run), which connects `alchemy dev` directly to real D1 instead of a local Miniflare sqlite — point sqlfu at the cloud database over HTTP using `sqlfu/cloudflare`:
+
+```ts
+import {defineConfig} from 'sqlfu';
+import {createAlchemyD1Client} from 'sqlfu/cloudflare';
+
+export default defineConfig({
+  db: () => createAlchemyD1Client({stack: 'my-app', stage: 'dev', fqn: 'database'}),
+  migrations: {path: './migrations', preset: 'd1'},
+});
+```
+
+`createAlchemyD1Client` reads alchemy's local state to discover the deployed `databaseId` and `accountId`, falls back to `process.env.CLOUDFLARE_API_TOKEN` for auth, and produces a sqlfu client that talks to Cloudflare's HTTP D1 query API. Lower-level helpers (`createD1HttpClient`, `readAlchemyD1State`, `findCloudflareD1ByName`) are exported for composing your own factory. See [Cloudflare D1](./docs/cloudflare-d1.md) for the full guide.
 
 ### `generate.authority`
 

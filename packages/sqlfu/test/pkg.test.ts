@@ -11,7 +11,7 @@ test('packed package supports normal public imports', async () => {
 
   await fixture.run('root-import.mjs');
   await fixture.run('api-import.mjs');
-  await fixture.run('node-import.mjs');
+  await fixture.run('cloudflare-import.mjs');
 });
 
 async function createPackedPackageFixture() {
@@ -56,11 +56,11 @@ async function createPackedPackageFixture() {
       assert.equal(typeof createSqlfuApi, 'function');
       assert.equal(format('SELECT * FROM users WHERE id=1;'), 'select *\\nfrom users\\nwhere id = 1;');
     `,
-    'node-import.mjs': `
+    'cloudflare-import.mjs': `
       import assert from 'node:assert/strict';
       import fs from 'node:fs';
       import path from 'node:path';
-      import {findMiniflareD1Path} from 'sqlfu/node';
+      import {findMiniflareD1Path} from 'sqlfu/cloudflare';
 
       const miniflareV3Root = path.join(process.cwd(), '.alchemy', 'miniflare', 'v3');
       fs.mkdirSync(miniflareV3Root, {recursive: true});
