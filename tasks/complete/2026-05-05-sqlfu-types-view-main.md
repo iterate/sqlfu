@@ -3,7 +3,7 @@ status: complete
 size: medium
 branch: sqlfu-types-view-main
 base: main
-pr: TBD
+pr: 93
 date: 2026-05-05
 ---
 
@@ -14,8 +14,8 @@ date: 2026-05-05
 Done in a fresh branch based on `main`. The implementation ports the view-based
 plain TypeScript logical-type metadata from the earlier PR, gates it behind
 `generate.experimentalJsonTypes`, keeps `sqlfu_types` out of generated table
-exports, refreshes fixtures, and updates docs/agent guidance. The PR number will
-be filled in after the draft replacement PR is opened.
+exports, refreshes fixtures, and updates docs/agent guidance. Draft PR 93 is
+open against `main`.
 
 ## Summary Ask
 
@@ -49,7 +49,7 @@ and parse JSON outputs with `JSON.parse(...) as Result["column"]`.
 - [x] Normalize generated query object property order. _DDL, plain, validator, and Effect wrappers now render query objects as `name`, `sql`, `args`._
 - [x] Update docs, fixture snapshots, and runtime coverage. _Docs mark the feature experimental; `logical-types.md` has the happy path first and zod coverage at the bottom._
 - [x] Verify the branch. _Ran focused and full generate fixtures, runtime generate tests, typecheck, and `git diff --check`._
-- [ ] Open the draft replacement PR and update this task. _Pending PR creation._
+- [x] Open the draft replacement PR and update this task. _Opened draft PR 93 against `main`._
 
 ## Implementation Notes
 
