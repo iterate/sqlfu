@@ -3,6 +3,8 @@ title: "The path to hell is paved with down migrations"
 slug: "down-considered-harmful"
 date: "2026-04-30"
 description: "sqlfu does not have a `sqlfu down` command, or any concept of \"down\" migrations. This is because they're essentially a stressful lie."
+heroImage: "/assets/blog/down-to-hell.png"
+heroAlt: "A fiery path leading downward into a database migration rollback"
 ---
 
 sqlfu does not have a `sqlfu down` command, or any concept of "down" migrations. This is because they're essentially a stressful lie.

@@ -47,12 +47,19 @@ const formatDate = (iso: string) =>
         ) : (
           posts.map((post) => (
             <article class="blog-card">
-              <a class="blog-card-link" href={`/blog/${post.data.slug}`}>
-                <time class="blog-card-date" datetime={post.data.date}>
-                  {formatDate(post.data.date)}
-                </time>
-                <h2 class="blog-card-title">{post.data.title}</h2>
-                {post.data.description ? <p class="blog-card-description">{post.data.description}</p> : null}
+              <a class={post.data.heroImage ? 'blog-card-link' : 'blog-card-link blog-card-link-text-only'} href={`/blog/${post.data.slug}`}>
+                {post.data.heroImage ? (
+                  <div class="blog-card-media">
+                    <img src={post.data.heroImage} alt={post.data.heroAlt || ''} loading="lazy" />
+                  </div>
+                ) : null}
+                <div class="blog-card-content">
+                  <time class="blog-card-date" datetime={post.data.date}>
+                    {formatDate(post.data.date)}
+                  </time>
+                  <h2 class="blog-card-title">{post.data.title}</h2>
+                  {post.data.description ? <p class="blog-card-description">{post.data.description}</p> : null}
+                </div>
               </a>
             </article>
           ))

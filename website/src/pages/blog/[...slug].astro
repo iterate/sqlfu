@@ -55,6 +55,13 @@ const formatDate = (iso: string) =>
         <time datetime={post.data.date}>{formatDate(post.data.date)}</time>
       </div>
       <h1 class="blog-post-title">{post.data.title}</h1>
+      {
+        post.data.heroImage ? (
+          <figure class="blog-hero-visual">
+            <img src={post.data.heroImage} alt={post.data.heroAlt || ''} />
+          </figure>
+        ) : null
+      }
       <article class="blog-post-body">
         <Content />
       </article>
