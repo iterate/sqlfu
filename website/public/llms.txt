@@ -1,0 +1,74 @@
+# sqlfu
+
+> sqlfu is a SQLite-first toolkit for teams that want schema, migrations, queries, formatting, diffing, generated TypeScript wrappers, and the Admin UI to stay close to authored SQL files.
+
+This file is an agent navigation index for the documentation site at https://sqlfu.dev. It points to the current docs and generated examples so an agent can pick the right page in one hop.
+
+Agent notes:
+
+- Prefer checked-in SQL artifacts over ORM-shaped rewrites: `definitions.sql`, `migrations/`, `sql/*.sql`, and generated wrappers under `sql/.generated/`.
+- For a new project, start with Getting Started, then read CLI, SQL migrations, Type generation from SQL, Runtime client, and Adapters as needed.
+- For an existing project, inspect `sqlfu.config.ts` first, then run `npx sqlfu check` before drafting migrations or regenerating wrappers.
+- Generated files should normally be regenerated with `npx sqlfu generate`, not edited by hand.
+
+## Start here
+
+Read these first when you are new to sqlfu or need to orient yourself before editing a project.
+
+- [Getting Started](https://sqlfu.dev/docs/getting-started): End-to-end walkthrough: schema, migrations, query files, typed wrappers, and a working client.all() call.
+- [Overview](https://sqlfu.dev/docs/sqlfu): Overview, quick start, CLI model, and core concepts.
+- [Agent skill](https://sqlfu.dev/docs/agent-skill): Install the sqlfu agent skill so coding agents edit SQL, migrations, and generated files coherently.
+
+## Core concepts
+
+The main mental model: SQL artifacts are the source, TypeScript wrappers and UI metadata are generated from them.
+
+- [Runtime client](https://sqlfu.dev/docs/client): The lightweight Client interface your app runtime usually depends on, plus how adapters preserve sync and async drivers.
+- [SQL migrations](https://sqlfu.dev/docs/migration-model): Migration history, drift checks, smart drafts, and the intended production path.
+- [Type generation from SQL](https://sqlfu.dev/docs/typegen): Generated query wrappers, multi-query SQL files, and inferred parameter forms for lists and bulk inserts.
+- [Admin UI](https://sqlfu.dev/docs/ui): Hosted, demo, and embedded Admin UI modes for schema, migrations, queries, and live data.
+
+## Features and guides
+
+Task-oriented pages for operating sqlfu in a real application.
+
+- [CLI](https://sqlfu.dev/docs/cli): What npx sqlfu does, what each subcommand is for, and how check, draft, migrate, generate, sync, and format fit together.
+- [Adapters](https://sqlfu.dev/docs/adapters): Client factories for better-sqlite3, node:sqlite, bun:sqlite, libsql, Cloudflare D1, Durable Objects, Expo, sqlite-wasm, and more.
+- [Runtime validation](https://sqlfu.dev/docs/runtime-validation): Generate arktype, valibot, zod, or zod/mini schemas as the source of truth. Validate params and rows at the wrapper boundary.
+- [Observability](https://sqlfu.dev/docs/observability): Named queries reach OpenTelemetry, Sentry, PostHog, Datadog via a single instrument() hook.
+- [Lint Plugin](https://sqlfu.dev/docs/lint-plugin): ESLint rules for enforcing the SQL First model: query-naming and format-sql.
+- [Formatter](https://sqlfu.dev/docs/formatter): Format SQL files from the CLI, ESLint, or TypeScript.
+- [Dynamic queries](https://sqlfu.dev/docs/dynamic-queries): How to handle optional filters and other runtime-composition shapes in a SQL-first project, with IS NULL patterns, JSON lists, and honest advice on when to reach for a query builder instead.
+- [Pure-SQL id generators (ulid, ksuid, nanoid, cuid2)](https://sqlfu.dev/docs/id-helpers): Copy-paste sqlite views for ULID, KSUID, nanoid, and cuid2-shaped ids. Pure SQL, no extensions.
+- [Outbox (experimental)](https://sqlfu.dev/docs/outbox): Transactional-outbox / job-queue built on sqlfu. Fan-out, retry, delayed dispatch, crash recovery, causation chains.
+
+## Reference
+
+Use these when you need exact surfaces, error shapes, or implementation details.
+
+- [Import surface](https://sqlfu.dev/docs/imports): What each sqlfu import path is for: runtime client, command API, Node helpers, analysis, UI, lint plugin, and outbox.
+- [Errors](https://sqlfu.dev/docs/errors): SqlfuError kinds, normalized adapter errors, and application handler examples.
+- [Schema diff internals](https://sqlfu.dev/docs/schema-diff-model): How sqlfu models SQLite schema diffing and migration planning.
+
+## Generate examples
+
+Executable snapshot fixtures for `sqlfu generate`. Each page shows real inputs and exact generated TypeScript output.
+
+- [Generate examples](https://sqlfu.dev/docs/examples): Executable snapshot fixtures for the `sqlfu generate` command. Each example below is a live test.
+- [Basics](https://sqlfu.dev/docs/examples/basics): Basic `sqlfu generate` snapshot fixtures.
+- [Config](https://sqlfu.dev/docs/examples/config): Fixtures for configuration knobs that shape what `sqlfu generate` emits: `sync`, `importExtension`, tsconfig-driven `.ts`-import detection, nested query directories, and the runtime query catalog that drives the form UI.
+- [Errors](https://sqlfu.dev/docs/examples/errors): Error-case fixtures: `sqlfu generate` should refuse to run and throw a specific message.
+- [Query annotations](https://sqlfu.dev/docs/examples/query-annotations): Query annotations let one SQL file declare multiple named queries.
+- [Query shapes](https://sqlfu.dev/docs/examples/query-shapes): One test per query "shape" the generator recognizes: insert, insert-returning, update, delete, aggregate, user-defined function, and CTE.
+- [Result types](https://sqlfu.dev/docs/examples/result-types): Result-type inference fixtures: how `sqlfu generate` derives column types from the analyzed schema, aliases, view columns, `is not null` narrowing, expression aliases, and `limit 1` single-row shape.
+- [Validators](https://sqlfu.dev/docs/examples/validators): Validator-integration fixtures: zod, valibot, zod/mini, arktype.
+
+## Optional
+
+Skip these when context is tight or when the task is only about API usage.
+
+- [sqlfu hosted demo](https://sqlfu.dev/ui?demo=1): Run the Admin UI demo in a browser without installing sqlfu.
+- [sqlfu blog](https://sqlfu.dev/blog): Product essays and release narratives. Useful background, but not required API reference.
+- [GitHub repository](https://github.com/mmkal/sqlfu): Source code, tasks, issues, and the agent skill under `skills/using-sqlfu`.
+- [Effect SQL runtime](https://sqlfu.dev/docs/effect-sql): Experimental native Effect SQL generation: query functions return Effect values and read SqlClient from the environment.
+- [Effect sql](https://sqlfu.dev/docs/examples/effect-sql): Effect SQL fixtures: `generate.runtime: 'effect-v3' | 'effect-v4-unstable'` emits functions that return Effect values and read `SqlClient.SqlClient` from the Effect environment instead of taking a sqlfu `Client`.

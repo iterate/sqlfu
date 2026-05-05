@@ -51,10 +51,7 @@ export type VendoredQueryAnalysis =
     };
 
 type VendoredTypesqlModule = {
-  analyzeSqliteQueries(
-    databaseUri: string,
-    queries: VendoredQueryInput[],
-  ): Promise<VendoredQueryAnalysis[]>;
+  analyzeSqliteQueries(databaseUri: string, queries: VendoredQueryInput[]): Promise<VendoredQueryAnalysis[]>;
 };
 
 async function loadVendoredTypesql(): Promise<VendoredTypesqlModule> {

@@ -31,33 +31,24 @@ export interface PrepareSuiteAsyncFixture {
   [Symbol.asyncDispose](): Promise<void>;
 }
 
-export function applySyncPrepareSuite(input: {
-  label: string;
-  openClient: () => PrepareSuiteSyncFixture;
-}): void {
+export function applySyncPrepareSuite(input: {label: string; openClient: () => PrepareSuiteSyncFixture}): void {
   const {label, openClient} = input;
 
   test(`${label}: prepare binds positional args via array params`, () => {
     using fixture = openSeededSyncFixture(openClient);
-    using stmt = fixture.client.prepare<SeedPostRow>(
-      'select id, slug from seed_posts where id = ? order by id',
-    );
+    using stmt = fixture.client.prepare<SeedPostRow>('select id, slug from seed_posts where id = ? order by id');
     expect(stmt.all([1])).toMatchObject([{id: 1, slug: 'first'}]);
   });
 
   test(`${label}: prepare binds named params via Record`, () => {
     using fixture = openSeededSyncFixture(openClient);
-    using stmt = fixture.client.prepare<SeedPostRow>(
-      'select id, slug from seed_posts where slug = :slug',
-    );
+    using stmt = fixture.client.prepare<SeedPostRow>('select id, slug from seed_posts where slug = :slug');
     expect(stmt.all({slug: 'second'})).toMatchObject([{id: 2, slug: 'second'}]);
   });
 
   test(`${label}: prepare reuses the handle across calls with different params`, () => {
     using fixture = openSeededSyncFixture(openClient);
-    using stmt = fixture.client.prepare<SeedPostRow>(
-      'select id, slug from seed_posts where id = ?',
-    );
+    using stmt = fixture.client.prepare<SeedPostRow>('select id, slug from seed_posts where id = ?');
     expect(stmt.all([1])).toMatchObject([{id: 1, slug: 'first'}]);
     expect(stmt.all([2])).toMatchObject([{id: 2, slug: 'second'}]);
   });
@@ -67,9 +58,7 @@ export function applySyncPrepareSuite(input: {
     using selectStmt = fixture.client.prepare<SeedPostRow>('select id, slug from seed_posts order by id');
     expect(selectStmt.all()).toHaveLength(2);
 
-    using insertStmt = fixture.client.prepare(
-      `insert into seed_posts (slug, body) values (:slug, :body)`,
-    );
+    using insertStmt = fixture.client.prepare(`insert into seed_posts (slug, body) values (:slug, :body)`);
     const first = insertStmt.run({slug: 'third', body: 'c'});
     const second = insertStmt.run({slug: 'fourth', body: 'd'});
     expect(first.rowsAffected).toBe(1);
@@ -102,39 +91,29 @@ export function applyAsyncPrepareSuite(input: {
 
   test(`${label}: prepare binds positional args via array params`, async () => {
     await using fixture = await openSeededAsyncFixture(openClient);
-    await using stmt = fixture.client.prepare<SeedPostRow>(
-      'select id, slug from seed_posts where id = ? order by id',
-    );
+    await using stmt = fixture.client.prepare<SeedPostRow>('select id, slug from seed_posts where id = ? order by id');
     expect(await stmt.all([1])).toMatchObject([{id: 1, slug: 'first'}]);
   });
 
   test(`${label}: prepare binds named params via Record`, async () => {
     await using fixture = await openSeededAsyncFixture(openClient);
-    await using stmt = fixture.client.prepare<SeedPostRow>(
-      'select id, slug from seed_posts where slug = :slug',
-    );
+    await using stmt = fixture.client.prepare<SeedPostRow>('select id, slug from seed_posts where slug = :slug');
     expect(await stmt.all({slug: 'second'})).toMatchObject([{id: 2, slug: 'second'}]);
   });
 
   test(`${label}: prepare reuses the handle across calls with different params`, async () => {
     await using fixture = await openSeededAsyncFixture(openClient);
-    await using stmt = fixture.client.prepare<SeedPostRow>(
-      'select id, slug from seed_posts where id = ?',
-    );
+    await using stmt = fixture.client.prepare<SeedPostRow>('select id, slug from seed_posts where id = ?');
     expect(await stmt.all([1])).toMatchObject([{id: 1, slug: 'first'}]);
     expect(await stmt.all([2])).toMatchObject([{id: 2, slug: 'second'}]);
   });
 
   test(`${label}: prepare supports .all then .run on the same handle for one statement`, async () => {
     await using fixture = await openSeededAsyncFixture(openClient);
-    await using selectStmt = fixture.client.prepare<SeedPostRow>(
-      'select id, slug from seed_posts order by id',
-    );
+    await using selectStmt = fixture.client.prepare<SeedPostRow>('select id, slug from seed_posts order by id');
     expect(await selectStmt.all()).toHaveLength(2);
 
-    await using insertStmt = fixture.client.prepare(
-      `insert into seed_posts (slug, body) values (:slug, :body)`,
-    );
+    await using insertStmt = fixture.client.prepare(`insert into seed_posts (slug, body) values (:slug, :body)`);
     const first = await insertStmt.run({slug: 'third', body: 'c'});
     const second = await insertStmt.run({slug: 'fourth', body: 'd'});
     expect(first.rowsAffected).toBe(1);
@@ -144,9 +123,7 @@ export function applyAsyncPrepareSuite(input: {
 
   test(`${label}: prepare iterates rows`, async () => {
     await using fixture = await openSeededAsyncFixture(openClient);
-    await using stmt = fixture.client.prepare<SeedPostRow>(
-      'select id, slug from seed_posts order by id',
-    );
+    await using stmt = fixture.client.prepare<SeedPostRow>('select id, slug from seed_posts order by id');
     const rows: SeedPostRow[] = [];
     for await (const row of stmt.iterate()) {
       rows.push(row);

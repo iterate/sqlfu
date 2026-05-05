@@ -14,10 +14,7 @@ export interface ExpoSqliteRunResult {
 
 export interface ExpoSqliteDatabaseLike {
   getAllAsync<TRow extends ResultRow = ResultRow>(source: string, params?: unknown[]): Promise<TRow[]>;
-  getEachAsync<TRow extends ResultRow = ResultRow>(
-    source: string,
-    params?: unknown[],
-  ): AsyncIterableIterator<TRow>;
+  getEachAsync<TRow extends ResultRow = ResultRow>(source: string, params?: unknown[]): AsyncIterableIterator<TRow>;
   runAsync(source: string, params?: unknown[]): Promise<ExpoSqliteRunResult>;
 }
 

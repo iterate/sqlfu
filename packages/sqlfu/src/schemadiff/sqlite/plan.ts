@@ -403,7 +403,9 @@ function diagnoseRebuildExplanation(baseline: SqliteInspectedTable, desired: Sql
 
   const baselineByName = new Map(baseline.columns.map((column) => [column.name, column]));
   const desiredByName = new Map(desired.columns.map((column) => [column.name, column]));
-  const droppedNames = baseline.columns.filter((column) => !desiredByName.has(column.name)).map((column) => column.name);
+  const droppedNames = baseline.columns
+    .filter((column) => !desiredByName.has(column.name))
+    .map((column) => column.name);
   const addedColumns = desired.columns.filter((column) => !baselineByName.has(column.name));
 
   for (const desiredColumn of desired.columns) {
@@ -784,10 +786,7 @@ function transitiveViewDependents(
   return [...result];
 }
 
-function orderViewsForCreate(
-  views: SqliteInspectedView[],
-  schema: SqliteInspectedDatabase,
-): SqliteInspectedView[] {
+function orderViewsForCreate(views: SqliteInspectedView[], schema: SqliteInspectedDatabase): SqliteInspectedView[] {
   const viewNames = new Set(views.map((view) => view.name));
   const graph = new Map<string, string[]>();
   const dependencyFacts = analyzeViewDependencies(schema);
@@ -811,10 +810,7 @@ function orderViewsForCreate(
     .filter(Boolean);
 }
 
-function orderViewsForDrop(
-  views: SqliteInspectedView[],
-  schema: SqliteInspectedDatabase,
-): SqliteInspectedView[] {
+function orderViewsForDrop(views: SqliteInspectedView[], schema: SqliteInspectedDatabase): SqliteInspectedView[] {
   return [...orderViewsForCreate(views, schema)].reverse();
 }
 

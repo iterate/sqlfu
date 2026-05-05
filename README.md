@@ -241,6 +241,16 @@ npx skills add mmkal/sqlfu/skills/using-sqlfu
 
 The skill is self-contained: it does not depend on the `sqlfu` package itself, and the `SKILL.md` format is agent-agnostic.
 
+If your coding agent can fetch URLs, point it at the agent docs index before it starts:
+
+```text
+You are a sqlfu assistant. Read https://sqlfu.dev/llms.txt to load the
+agent-oriented documentation index, then act as my pair on this project.
+Keep SQL as the authored source, inspect sqlfu.config.ts before changing
+behavior, and regenerate TypeScript wrappers instead of hand-editing generated
+files.
+```
+
 ## Quick Start
 
 ```sh
@@ -272,6 +282,7 @@ Optional fields:
 - `db` -- the database sqlfu talks to for `migrate`, `check`, `sync`, `goto`, `baseline`, and the UI. Either a filesystem path (opens a local sqlite file) or a factory returning a `DisposableAsyncClient`. See [Pluggable `db`](#pluggable-db). Can be omitted when you only use `sqlfu generate` and the default `generate.authority`.
 - `migrations` -- directory containing migration files. Omit if you don't use migrations (library-author projects).
 - `generate.authority` -- where `sqlfu generate` reads the schema from. See [`generate.authority`](#generateauthority). Default `'desired_schema'`.
+- `generate.experimentalJsonTypes` -- opt into experimental JSON logical-type handling. Today this covers SQLite columns declared exactly as `json`; the same flag is reserved for typed JSON metadata/schema support.
 
 `sqlfu` manages its own temporary files under `.sqlfu/`, including scratch databases used for schema diffing. These are generally safe to delete at any time.
 
@@ -318,7 +329,7 @@ For an Alchemy-managed local D1 database, sqlfu can talk directly to Alchemy's p
 
 ```ts
 import {defineConfig} from 'sqlfu';
-import {findMiniflareD1Path} from 'sqlfu/node';
+import {findMiniflareD1Path} from 'sqlfu/cloudflare';
 
 export default defineConfig({
   db: findMiniflareD1Path('my-dev-app-slug'),
@@ -329,6 +340,20 @@ export default defineConfig({
 ```
 
 `findMiniflareD1Path()` walks up from `process.cwd()` until it finds a supported Miniflare v3 persist root. Today that means Alchemy's `.alchemy/miniflare/v3` layout. It then derives the same D1 object sqlite filename Miniflare uses for the slug. Pass `{miniflareV3Root}` as the second argument if your config runs outside that project tree.
+
+For deployed cloud D1 — including [Alchemy v2](https://alchemy.run), which connects `alchemy dev` directly to real D1 instead of a local Miniflare sqlite — point sqlfu at the cloud database over HTTP using `sqlfu/cloudflare`:
+
+```ts
+import {defineConfig} from 'sqlfu';
+import {createAlchemyD1Client} from 'sqlfu/cloudflare';
+
+export default defineConfig({
+  db: () => createAlchemyD1Client({stack: 'my-app', stage: 'dev', fqn: 'database'}),
+  migrations: {path: './migrations', preset: 'd1'},
+});
+```
+
+`createAlchemyD1Client` reads alchemy's local state to discover the deployed `databaseId` and `accountId`, falls back to `process.env.CLOUDFLARE_API_TOKEN` for auth, and produces a sqlfu client that talks to Cloudflare's HTTP D1 query API. Lower-level helpers (`createD1HttpClient`, `readAlchemyD1State`, `findCloudflareD1ByName`) are exported for composing your own factory. See [Cloudflare D1](packages/sqlfu/docs/cloudflare-d1.md) for the full guide.
 
 ### `generate.authority`
 

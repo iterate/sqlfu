@@ -20,6 +20,17 @@ import {getPost} from './sql/.generated/get-post.sql';
 const post = await getPost(client, {id: 123});
 ```
 
+If the rest of your app uses Effect, set `generate.runtime: 'effect-v3'` to emit
+functions that return Effect values and require Effect SQL's
+`SqlClient.SqlClient` from the Effect environment:
+
+```ts
+const post = yield* getPost({id: 123});
+```
+
+See [Effect SQL runtime](./effect-sql.md) for the experimental native
+Effect SQL generation modes, including Effect v4 beta's `effect-v4-unstable` target.
+
 ## Multiple queries in one file
 
 Put `@name` in a block comment before each query when one `.sql` file contains more
@@ -146,17 +157,59 @@ await listPostsByKeys(client, {
 });
 ```
 
+## Experimental JSON Logical Types
+
+Set `generate.experimentalJsonTypes: true` to opt into experimental JSON
+logical-type handling. Columns declared with the SQLite type name `json` are
+stored as JSON text and generated as `unknown`. For a narrower TypeScript type,
+add a reserved `sqlfu_types` metadata view. Each row maps a logical declared type
+name to an encoding, a definition format, and a type definition:
+
+```sql
+create view sqlfu_types as
+select
+  'slack_payload' as name,
+  'json' as encoding,
+  'typescript' as format,
+  '{
+    action: "message" | "reaction";
+    content: string
+  }' as definition;
+
+create table slack_webhooks(
+  id integer primary key,
+  payload slack_payload not null
+);
+```
+
+```ts
+await recordSlackWebhook(client, {
+  payload: {
+    action: "message",
+    content: "hello",
+  },
+});
+```
+
+The generated wrapper accepts the TypeScript `definition`, serializes inputs
+with `JSON.stringify`, and parses selected result columns before returning them.
+The `definition` value is not a validator schema and sqlfu does not resolve
+imports, aliases, or references from it. The `encoding` column controls how the
+logical type is encoded for SQLite; this first experimental slice only supports
+`json`. The `format` column says what language the definition uses; this first
+experimental slice only supports `typescript`.
+
 ## Limits
 
 - Runtime-expanded params, currently inferred scalar `IN` lists, row-value `IN`
   lists, and INSERT `values :param` objects, can appear only
   once in a query. Reusing the same expanded array in two places would require
   duplicating the driver arguments, so sqlfu rejects that shape for now.
-- Columns declared with the SQLite type name `json` get narrow logical-type
-  handling: generated wrappers accept `unknown`, stringify JSON inputs before
-  driver calls, and parse selected JSON result columns on the way out. sqlfu
-  still does not infer or enforce a precise TypeScript object shape inside JSON
-  values.
+- Set `generate.experimentalJsonTypes: true` to opt into experimental JSON
+  logical-type handling. This includes columns declared with the SQLite type
+  name `json` and any matching rows in the reserved `sqlfu_types` view.
+- Plain `sqlfu_types.definition` values only describe generated TypeScript
+  surfaces. They do not add runtime validation for JSON payload shape.
 - Parameter shape is inferred from SQL shape, not comment metadata. `@name` names
   queries; `IN (:ids)`, `(slug, title) in (:keys)`, and `values :posts` describe
   runtime placeholder expansion where the SQL shape changes.

@@ -133,6 +133,8 @@ function applyUiProjectDefaults(project: SqlfuUiProject): ResolvedUiProject {
         validator: generate.validator || null,
         prettyErrors: generate.prettyErrors !== false,
         sync: generate.sync === true,
+        experimentalJsonTypes: generate.experimentalJsonTypes === true,
+        runtime: generate.runtime || 'sqlfu',
         importExtension: generate.importExtension || '.js',
         authority: generate.authority || 'live_schema',
       },

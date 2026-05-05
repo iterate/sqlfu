@@ -139,9 +139,7 @@ function createBrowserRpcStub<TInstance extends object>(
 
           return payload.value;
         } catch (error) {
-          throw new Error(
-            formatFixtureFailure(String(error), serverLogs(), browserLogs()),
-          );
+          throw new Error(formatFixtureFailure(String(error), serverLogs(), browserLogs()));
         }
       };
     },
@@ -171,9 +169,7 @@ async function waitForFixtureBoot(
       throw new Error(bootError || 'Fixture boot failed');
     }
   } catch (error) {
-    throw new Error(
-      formatFixtureFailure(String(error), serverLogs(), browserLogs()),
-    );
+    throw new Error(formatFixtureFailure(String(error), serverLogs(), browserLogs()));
   }
 }
 

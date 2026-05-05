@@ -1,3 +1,8 @@
+---
+heroImage: "/assets/blog/down-to-hell.png"
+heroAlt: "A fiery path leading downward into a database migration rollback"
+---
+
 # The path to hell is paved with down migrations
 
 sqlfu does not have a `sqlfu down` command, or any concept of "down" migrations. This is because they're essentially a stressful lie.

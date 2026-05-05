@@ -44,4 +44,6 @@ const prefixed = indexHtml.replaceAll(/((?:href|src)=")\.\//g, '$1./ui/');
 await fs.writeFile(targetHtml, prefixed);
 await fs.rm(indexPath);
 
-console.log(`synced ${path.relative(repoRoot, uiDist)} → ${path.relative(repoRoot, targetHtml)} + ${path.relative(repoRoot, targetDir)}/ (assets)`);
+console.log(
+  `synced ${path.relative(repoRoot, uiDist)} → ${path.relative(repoRoot, targetHtml)} + ${path.relative(repoRoot, targetDir)}/ (assets)`,
+);

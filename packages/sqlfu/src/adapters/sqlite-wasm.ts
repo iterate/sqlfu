@@ -1,14 +1,7 @@
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
 import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
-import type {
-  AsyncClient,
-  PreparedStatement,
-  PreparedStatementParams,
-  QueryArg,
-  ResultRow,
-  SqlQuery,
-} from '../types.js';
+import type {AsyncClient, PreparedStatement, PreparedStatementParams, QueryArg, ResultRow, SqlQuery} from '../types.js';
 
 export type SqliteWasmBindValue = string | number | bigint | Uint8Array | null;
 
@@ -139,8 +132,9 @@ function toBind(
   if (Array.isArray(params)) return toPositionalBind(params as QueryArg[]);
   const out: Record<string, SqliteWasmBindValue> = {};
   for (const [key, value] of Object.entries(params)) {
-    out[key.startsWith(':') || key.startsWith('$') || key.startsWith('@') ? key : `:${key}`] =
-      coerceBindValue(value as QueryArg);
+    out[key.startsWith(':') || key.startsWith('$') || key.startsWith('@') ? key : `:${key}`] = coerceBindValue(
+      value as QueryArg,
+    );
   }
   return out;
 }

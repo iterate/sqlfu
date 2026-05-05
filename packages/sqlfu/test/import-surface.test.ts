@@ -47,10 +47,17 @@ test('built api core entry exposes the host-explicit facade', async () => {
   expect(Object.keys(api).sort()).toEqual(['autoAcceptConfirm', 'createSqlfuApi']);
 });
 
-test('built node entry exposes only node helpers', async () => {
-  const nodeEntry = path.join(packageRoot, 'dist/node/exports.js');
-  const node = await import(pathToFileURL(nodeEntry).href);
-  expect(Object.keys(node).sort()).toEqual(['findMiniflareD1Path']);
+test('built cloudflare entry exposes the D1 helpers', async () => {
+  const cloudflareEntry = path.join(packageRoot, 'dist/cloudflare/exports.js');
+  const cloudflare = await import(pathToFileURL(cloudflareEntry).href);
+  expect(Object.keys(cloudflare).sort()).toEqual([
+    'DEFAULT_CLOUDFLARE_API_BASE',
+    'createAlchemyD1Client',
+    'createD1HttpClient',
+    'findCloudflareD1ByName',
+    'findMiniflareD1Path',
+    'readAlchemyD1State',
+  ]);
 });
 
 test('confirm type accepts inline auto-accept callbacks', () => {

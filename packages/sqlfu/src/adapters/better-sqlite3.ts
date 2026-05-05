@@ -1,13 +1,7 @@
 import {wrapSyncClientErrors} from '../adapter-errors.js';
 import {bindSyncSql} from '../sql.js';
 import {rawSqlWithSqlSplittingSync, surroundWithBeginCommitRollbackSync} from '../sqlite-text.js';
-import type {
-  PreparedStatementParams,
-  ResultRow,
-  SqlQuery,
-  SyncClient,
-  SyncPreparedStatement,
-} from '../types.js';
+import type {PreparedStatementParams, ResultRow, SqlQuery, SyncClient, SyncPreparedStatement} from '../types.js';
 
 export interface BetterSqlite3StatementLike<TRow extends ResultRow = ResultRow> {
   reader: boolean;

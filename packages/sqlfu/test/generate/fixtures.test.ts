@@ -3,12 +3,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {describe, expect, inject, test} from 'vitest';
 
-import {
-  listFixtureFiles,
-  parseGenerateFixture,
-  runFixtureCase,
-  updateFixtureOutputs,
-} from './fixture-helpers.js';
+import {listFixtureFiles, parseGenerateFixture, runFixtureCase, updateFixtureOutputs} from './fixture-helpers.js';
 
 // Declared in vitest.config.ts → test.provide. `inject('updateSnapshots')` returns true when
 // vitest was invoked with `-u` / `--update`, letting this suite behave like a real snapshot
@@ -43,7 +38,9 @@ for (const fixturePath of listFixtureFiles(fixturesDir)) {
         // Every fixture's generated code has to typecheck against sqlfu's real source — a
         // missing import, wrong signature, or enum-narrowing goof shows up here even when
         // the text snapshot would still match.
-        expect(result.diagnostics, `TypeScript errors in generated files:\n${result.diagnostics.join('\n')}`).toEqual([]);
+        expect(result.diagnostics, `TypeScript errors in generated files:\n${result.diagnostics.join('\n')}`).toEqual(
+          [],
+        );
 
         if (inject('updateSnapshots')) {
           // Rewrite exact-match outputs (.ts / text files) back into the fixture. JSON fences
@@ -68,9 +65,7 @@ for (const fixturePath of listFixtureFiles(fixturesDir)) {
         for (const file of fixtureCase.outputFiles) {
           const actual = result.outputs[file.path];
           if (file.path.endsWith('.json')) {
-            expect(JSON.parse(actual), mismatchMessage).toMatchObject(
-              JSON.parse(file.content),
-            );
+            expect(JSON.parse(actual), mismatchMessage).toMatchObject(JSON.parse(file.content));
           } else {
             expect(actual, mismatchMessage).toBe(file.content);
           }

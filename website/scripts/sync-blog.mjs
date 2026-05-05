@@ -16,6 +16,7 @@ const sources = entries.filter((name) => name.endsWith('.md') && !name.includes(
 for (const filename of sources) {
   const sourcePath = path.join(blogSourceDir, filename);
   const raw = await fs.readFile(sourcePath, 'utf8');
+  const {metadata, markdown} = splitSourceFrontmatter(raw);
 
   const dateMatch = filename.match(/^(\d{4}-\d{2}-\d{2})-(.+)\.md$/);
   if (!dateMatch) {
@@ -25,12 +26,12 @@ for (const filename of sources) {
 
   // Pull the first H1 as the title and drop it from the body so the page
   // template can render its own heading without duplication.
-  const firstH1Match = raw.match(/^#\s+(.+?)\s*$/m);
+  const firstH1Match = markdown.match(/^#\s+(.+?)\s*$/m);
   if (!firstH1Match) {
     throw new Error(`Blog post ${filename} must have an H1 title`);
   }
   const title = firstH1Match[1];
-  const body = raw.replace(firstH1Match[0], '').replace(/^\n+/, '');
+  const body = markdown.replace(firstH1Match[0], '').replace(/^\n+/, '');
 
   // First non-empty paragraph after the H1 makes a reasonable description.
   const description = body
@@ -45,6 +46,8 @@ for (const filename of sources) {
       `slug: ${JSON.stringify(slug)}`,
       `date: ${JSON.stringify(date)}`,
       description && `description: ${JSON.stringify(description.slice(0, 240))}`,
+      metadata.heroImage && `heroImage: ${JSON.stringify(metadata.heroImage)}`,
+      metadata.heroAlt && `heroAlt: ${JSON.stringify(metadata.heroAlt)}`,
       '---',
     ]
       .filter((line) => line !== false && line !== null && line !== undefined)
@@ -55,3 +58,39 @@ for (const filename of sources) {
 }
 
 console.log(`synced ${sources.length} blog post(s) → ${path.relative(websiteRoot, blogDestDir)}`);
+
+function splitSourceFrontmatter(raw) {
+  if (!raw.startsWith('---\n')) {
+    return {metadata: {}, markdown: raw};
+  }
+
+  const endMarker = '\n---\n';
+  const endIndex = raw.indexOf(endMarker, 4);
+  if (endIndex === -1) {
+    throw new Error('Blog source frontmatter must end with --- on its own line');
+  }
+
+  const block = raw.slice(4, endIndex);
+  const metadata = {};
+  for (const line of block.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const match = trimmed.match(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.+)$/);
+    if (!match) {
+      throw new Error(`Unsupported blog source frontmatter line: ${line}`);
+    }
+    metadata[match[1]] = parseFrontmatterValue(match[2]);
+  }
+
+  return {metadata, markdown: raw.slice(endIndex + endMarker.length)};
+}
+
+function parseFrontmatterValue(value) {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('"')) {
+    return JSON.parse(trimmed);
+  }
+  return trimmed;
+}
