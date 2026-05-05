@@ -7,6 +7,10 @@ description: "Introducing `sqlfu` — a library that lets you and your agent *ju
 
 Introducing `sqlfu` — a library that lets you and your agent *just write SQL* to build your application.
 
+<figure class="blog-hero-visual">
+  <img src="/assets/blog/friendship-regain-sqlfu.png" alt="SQL is back with sqlfu" />
+</figure>
+
 > We need to talk about data
 
 It's 2026. After 3 agonising hours after asking Claude to submit your YC application, you've finally heard back. You're in. A relief, now you won't be the only one of your friends that didn't make it. But now, you actually need to tell claude to build your startup. You only know three things. 1: the world needs your agent-harness-todolist-llm-wiki app. 2: it's going to be written in TypeScript. 3: it's going to need a database.
@@ -22,8 +26,6 @@ Two months in, schema changes are painful. A teammate tells their agent "add a `
 Six months in, half of your codebase by lines of code are now deeply-nested arcane Prisma calls. You and your cofounder start to wonder whether you should have chosen Drizzle or Kysely after all. After all, they're *closer* to the SQL.
 
 > SQL is all you need
-
-![Friendship regain with SQL and sqlfu](/assets/blog/friendship-regain-sqlfu.png)
 
 But what if you could get not *close* to SQL but just... into it? That's what `sqlfu` aims to help you do. It lets you use SQL to:
 
