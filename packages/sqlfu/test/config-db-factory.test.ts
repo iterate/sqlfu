@@ -73,6 +73,7 @@ async function createFactoryFixture(input: {migrations?: Record<string, string>;
       validator: null,
       prettyErrors: true,
       sync: false,
+      experimentalJsonTypes: false,
       runtime: 'sqlfu',
       importExtension: '.js',
       authority: 'desired_schema',

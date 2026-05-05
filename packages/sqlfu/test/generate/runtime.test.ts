@@ -241,7 +241,7 @@ test('generated annotated queries expand inferred list and object params at runt
   );
 });
 
-test('generate stringifies json declared-type inputs and parses json result columns', async () => {
+test('generate leaves sqlite json declared-type columns alone by default', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
       create table webhooks (
@@ -259,6 +259,50 @@ test('generate stringifies json declared-type inputs and parses json result colu
         select id, type, payload from webhooks order by id;
       `,
     },
+  });
+
+  await project.generate();
+  const generatedModule = await project.readText('sql/.generated/webhooks.sql.ts');
+  const generatedTables = await project.readText('sql/.generated/tables.ts');
+
+  expect(generatedModule).not.toContain('JSON.stringify(params.payload)');
+  expect(generatedModule).not.toContain('JSON.parse');
+  expect(generatedTables).toContain('payload: number;');
+  const catalog = JSON.parse(await project.readText('.sqlfu/query-catalog.json'));
+  expect(catalog.queries).toMatchObject([
+    {
+      functionName: 'recordWebhook',
+      args: [
+        {name: 'type', tsType: 'string', driverEncoding: 'identity'},
+        {name: 'payload', driverEncoding: 'identity'},
+      ],
+    },
+    {
+      functionName: 'listWebhooks',
+      columns: [{name: 'id', tsType: 'number'}, {name: 'type', tsType: 'string'}, {name: 'payload'}],
+    },
+  ]);
+});
+
+test('generate stringifies json declared-type inputs and parses json result columns with the experimental flag', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create table webhooks (
+        id integer primary key,
+        type text not null,
+        payload json not null
+      );
+    `,
+    files: {
+      'sql/webhooks.sql': dedent`
+        /** @name recordWebhook */
+        insert into webhooks (type, payload) values (:type, :payload);
+
+        /** @name listWebhooks */
+        select id, type, payload from webhooks order by id;
+      `,
+    },
+    config: {generate: {experimentalJsonTypes: true}},
   });
 
   await project.generate();
@@ -539,6 +583,7 @@ async function createRuntimeFixture(input: {
       validator?: 'arktype' | 'valibot' | 'zod' | 'zod-mini' | null;
       prettyErrors?: boolean;
       sync?: boolean;
+      experimentalJsonTypes?: boolean;
       runtime?: 'sqlfu' | 'effect-v3' | 'effect-v4-unstable';
       importExtension?: '.js' | '.ts';
     };

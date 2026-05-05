@@ -46,7 +46,9 @@ export async function generateQueryTypesForConfig(
   host: SqlfuHost,
 ): Promise<GenerateQueryTypesResult> {
   const databasePath = await materializeTypegenDatabase(config, host);
-  const schema = await loadSchema(databasePath);
+  const schema = await loadSchema(databasePath, {
+    experimentalJsonTypes: config.generate.experimentalJsonTypes,
+  });
   const queryDocuments = await loadQueryDocuments(config.queries);
   const querySources = queryDocuments.flatMap((queryDocument) => queryDocument.queries);
   assertUniqueQueryFunctionNames(querySources);
@@ -276,7 +278,9 @@ export async function analyzeAdHocSqlForConfig(
   sql: string,
 ): Promise<AdHocQueryAnalysis> {
   const databasePath = await materializeTypegenDatabase(config, host);
-  const schema = await loadSchema(databasePath);
+  const schema = await loadSchema(databasePath, {
+    experimentalJsonTypes: config.generate.experimentalJsonTypes,
+  });
   const [analysis] = await analyzeVendoredTypesqlQueries(databasePath, [
     {
       sqlPath: path.join(config.queries, '__sql_runner__.sql'),
@@ -3073,7 +3077,14 @@ function buildEffectSqlImplementation(input: {
   return lines;
 }
 
-async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, RelationInfo>> {
+type LoadSchemaOptions = {
+  experimentalJsonTypes: boolean;
+};
+
+async function loadSchema(
+  databasePath: string,
+  options: LoadSchemaOptions,
+): Promise<ReadonlyMap<string, RelationInfo>> {
   await using database = await openMainDevDatabase(databasePath);
   const client = database.client;
 
@@ -3094,7 +3105,7 @@ async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, Rel
     for (const row of schemaResult) {
       const name = String(row.name);
       const kind = row.type === 'view' ? 'view' : 'table';
-      const columns = await loadRelationColumns(client, name);
+      const columns = await loadRelationColumns(client, name, options);
       relations.set(name, {
         kind,
         name,
@@ -3124,7 +3135,11 @@ async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, Rel
   }
 }
 
-async function loadRelationColumns(client: Client, relationName: string): Promise<ReadonlyMap<string, TsColumn>> {
+async function loadRelationColumns(
+  client: Client,
+  relationName: string,
+  options: LoadSchemaOptions,
+): Promise<ReadonlyMap<string, TsColumn>> {
   const pragmaResult = await client.all<Record<string, unknown>>({
     sql: `PRAGMA table_xinfo("${escapeSqliteIdentifier(relationName)}")`,
     args: [],
@@ -3139,7 +3154,7 @@ async function loadRelationColumns(client: Client, relationName: string): Promis
 
     const name = String(row.name);
     const declaredType = typeof row.type === 'string' ? row.type : '';
-    const logicalType = logicalTypeForDeclaredSqliteType(declaredType);
+    const logicalType = logicalTypeForDeclaredSqliteType(declaredType, options);
     columns.set(name, {
       name,
       tsType: logicalType === 'json' ? 'unknown' : mapSqliteTypeToTs(declaredType),
@@ -3542,7 +3557,10 @@ function mapSqliteTypeToTs(columnType: string): string {
   return 'number';
 }
 
-function logicalTypeForDeclaredSqliteType(columnType: string): LogicalType | undefined {
+function logicalTypeForDeclaredSqliteType(columnType: string, options: LoadSchemaOptions): LogicalType | undefined {
+  if (!options.experimentalJsonTypes) {
+    return undefined;
+  }
   return columnType.trim().toUpperCase() === 'JSON' ? 'json' : undefined;
 }
 

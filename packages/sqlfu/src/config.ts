@@ -37,6 +37,7 @@ export function resolveProjectConfig(
       validator: fileConfig.generate?.validator ?? null,
       prettyErrors: fileConfig.generate?.prettyErrors !== false,
       sync: fileConfig.generate?.sync === true,
+      experimentalJsonTypes: fileConfig.generate?.experimentalJsonTypes === true,
       runtime: fileConfig.generate?.runtime || 'sqlfu',
       importExtension: fileConfig.generate?.importExtension ?? inferImportExtension(tsconfigPreferences),
       authority: fileConfig.generate?.authority ?? 'desired_schema',
@@ -131,6 +132,11 @@ export function assertConfigShape(configPath: string, config: object): asserts c
     const sync = generateRecord.sync;
     if (sync !== undefined && typeof sync !== 'boolean') {
       throw new Error(`Invalid sqlfu config at ${configPath}: "generate.sync" must be a boolean.`);
+    }
+
+    const experimentalJsonTypes = generateRecord.experimentalJsonTypes;
+    if (experimentalJsonTypes !== undefined && typeof experimentalJsonTypes !== 'boolean') {
+      throw new Error(`Invalid sqlfu config at ${configPath}: "generate.experimentalJsonTypes" must be a boolean.`);
     }
 
     const runtime = generateRecord.runtime;

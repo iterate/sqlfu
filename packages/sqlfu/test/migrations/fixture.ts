@@ -38,6 +38,7 @@ export async function createMigrationsFixture(
       validator: null,
       prettyErrors: true,
       sync: false,
+      experimentalJsonTypes: false,
       runtime: 'sqlfu',
       importExtension: '.js',
       authority: 'desired_schema',

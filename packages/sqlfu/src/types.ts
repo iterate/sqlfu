@@ -168,6 +168,16 @@ export interface SqlfuGenerateConfig {
    */
   sync?: boolean;
   /**
+   * Experimental JSON type handling. When true, JSON logical columns opt into
+   * generated wrapper handling such as `JSON.stringify` for inputs and
+   * `JSON.parse` for selected result columns.
+   *
+   * Today this covers SQLite columns declared exactly as `json` and exposes them
+   * as `unknown`. The same flag is reserved for typed JSON metadata/schema work
+   * such as reserved `sqlfu_types` declarations.
+   */
+  experimentalJsonTypes?: boolean;
+  /**
    * Runtime API emitted by `sqlfu generate`.
    *
    * - `'sqlfu'` / omitted = existing sqlfu `Client` wrappers.
@@ -294,6 +304,7 @@ export interface SqlfuProjectConfig {
     validator: SqlfuValidator | null;
     prettyErrors: boolean;
     sync: boolean;
+    experimentalJsonTypes: boolean;
     runtime: SqlfuGenerateRuntime;
     importExtension: '.js' | '.ts';
     authority: SqlfuAuthority;

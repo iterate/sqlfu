@@ -163,11 +163,11 @@ await listPostsByKeys(client, {
   lists, and INSERT `values :param` objects, can appear only
   once in a query. Reusing the same expanded array in two places would require
   duplicating the driver arguments, so sqlfu rejects that shape for now.
-- Columns declared with the SQLite type name `json` get narrow logical-type
-  handling: generated wrappers accept `unknown`, stringify JSON inputs before
-  driver calls, and parse selected JSON result columns on the way out. sqlfu
-  still does not infer or enforce a precise TypeScript object shape inside JSON
-  values.
+- Set `generate.experimentalJsonTypes: true` to opt into experimental JSON
+  logical-type handling. Today that covers columns declared with the SQLite type
+  name `json`: generated wrappers accept `unknown`, stringify JSON inputs before
+  driver calls, and parse selected JSON result columns on the way out. The same
+  flag is reserved for typed JSON metadata/schema support such as `sqlfu_types`.
 - Parameter shape is inferred from SQL shape, not comment metadata. `@name` names
   queries; `IN (:ids)`, `(slug, title) in (:keys)`, and `values :posts` describe
   runtime placeholder expansion where the SQL shape changes.
