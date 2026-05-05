@@ -40,7 +40,7 @@ import * as Effect from 'effect/Effect';
 import {SqlClient} from '@effect/sql';
 
 const sql = `select id, slug, title from posts order by id limit ?;`;
-const query = (params: listPosts.Params) => ({ sql, args: [params.limit], name: "listPosts" });
+const query = (params: listPosts.Params) => ({ name: "listPosts", sql, args: [params.limit] });
 
 export const listPosts = Object.assign(
 	function listPosts(params: listPosts.Params) {
@@ -123,7 +123,7 @@ import * as Effect from 'effect/Effect';
 import {SqlClient} from 'effect/unstable/sql';
 
 const sql = `select id, slug, title from posts order by id limit ?;`;
-const query = (params: listPosts.Params) => ({ sql, args: [params.limit], name: "listPosts" });
+const query = (params: listPosts.Params) => ({ name: "listPosts", sql, args: [params.limit] });
 
 export const listPosts = Object.assign(
 	function listPosts(params: listPosts.Params) {
