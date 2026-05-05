@@ -59,9 +59,7 @@ export async function readMigrationFiles(host: SqlfuHost, config: SqlfuProjectCo
 
   let fileNames: string[];
   try {
-    fileNames = (await host.fs.readdir(migrationsDir))
-      .filter((fileName) => fileName.endsWith('.sql'))
-      .sort();
+    fileNames = (await host.fs.readdir(migrationsDir)).filter((fileName) => fileName.endsWith('.sql')).sort();
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;

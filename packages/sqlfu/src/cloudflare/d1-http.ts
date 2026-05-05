@@ -48,7 +48,10 @@ export function createD1HttpClient(options: CreateD1HttpClientOptions): AsyncCli
     }
 
     if (!response.ok || envelope?.success === false) {
-      const cfErrors = envelope?.errors?.map((e) => e.message).filter(Boolean).join('; ');
+      const cfErrors = envelope?.errors
+        ?.map((e) => e.message)
+        .filter(Boolean)
+        .join('; ');
       throw new Error(
         `Cloudflare D1 query failed (${response.status} ${response.statusText}): ${cfErrors || responseText || 'no body'}`,
       );
@@ -72,7 +75,10 @@ export function createD1HttpClient(options: CreateD1HttpClientOptions): AsyncCli
 function makeStatement(
   sql: string,
   params: unknown[],
-  callQuery: (sql: string, params: unknown[]) => Promise<{
+  callQuery: (
+    sql: string,
+    params: unknown[],
+  ) => Promise<{
     results: unknown[];
     meta?: {changes?: number; last_row_id?: number};
     success: boolean;

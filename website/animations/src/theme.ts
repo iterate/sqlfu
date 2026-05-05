@@ -39,8 +39,7 @@ export const theme = {
 
   shadow: '0 24px 70px rgba(74, 43, 15, 0.28)',
   radius: 20,
-  monoFont:
-    "ui-monospace, 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', monospace",
+  monoFont: "ui-monospace, 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', monospace",
   sansFont: "ui-sans-serif, system-ui, 'Helvetica Neue', sans-serif",
 };
 

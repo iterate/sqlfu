@@ -82,9 +82,7 @@ export function buildRelationQuery(state: RelationQueryState): string {
     lines.push(`where ${state.filters.map(buildFilterClause).join(' and ')}`);
   }
   if (state.sorts.length > 0) {
-    lines.push(
-      `order by ${state.sorts.map((s) => `${quoteIdent(s.column)} ${s.direction}`).join(', ')}`,
-    );
+    lines.push(`order by ${state.sorts.map((s) => `${quoteIdent(s.column)} ${s.direction}`).join(', ')}`);
   }
   lines.push(state.offset > 0 ? `limit ${state.limit} offset ${state.offset}` : `limit ${state.limit}`);
   return lines.join('\n');

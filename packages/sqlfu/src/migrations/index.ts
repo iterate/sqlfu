@@ -65,7 +65,9 @@ export function readMigrationHistory(
   params: HistoryParams = {},
 ): MigrationHistoryRow[] | Promise<MigrationHistoryRow[]> {
   const preset = params.preset ?? 'sqlfu';
-  return client.sync ? driveSync(readMigrationHistoryGen(client, preset)) : driveAsync(readMigrationHistoryGen(client, preset));
+  return client.sync
+    ? driveSync(readMigrationHistoryGen(client, preset))
+    : driveAsync(readMigrationHistoryGen(client, preset));
 }
 
 function* readMigrationHistoryGen(client: Client, preset: SqlfuMigrationPreset): DualGenerator<MigrationHistoryRow[]> {
@@ -89,9 +91,7 @@ export function applyMigrations(client: SyncClient, params: ApplyMigrationsParam
 export function applyMigrations(client: AsyncClient, params: ApplyMigrationsParams): Promise<void>;
 export function applyMigrations(client: Client, params: ApplyMigrationsParams): void | Promise<void>;
 export function applyMigrations(client: Client, params: ApplyMigrationsParams): void | Promise<void> {
-  return client.sync
-    ? driveSync(applyMigrationsGen(client, params))
-    : driveAsync(applyMigrationsGen(client, params));
+  return client.sync ? driveSync(applyMigrationsGen(client, params)) : driveAsync(applyMigrationsGen(client, params));
 }
 
 export function baselineMigrationHistory(client: SyncClient, params: BaselineParams): void;
@@ -167,7 +167,9 @@ function* applyOneMigrationGen(
   input: {content: string; name: string; checksum: string; applied_at: string},
 ): DualGenerator<void> {
   yield client.raw(input.content);
-  yield client.run(insertMigrationQuery(shape, {name: input.name, checksum: input.checksum, applied_at: input.applied_at}));
+  yield client.run(
+    insertMigrationQuery(shape, {name: input.name, checksum: input.checksum, applied_at: input.applied_at}),
+  );
 }
 
 function* baselineMigrationHistoryGen(client: Client, params: BaselineParams): DualGenerator<void> {

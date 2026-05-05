@@ -29,8 +29,6 @@ test('does NOT swallow real syntax errors the user should see', () => {
   // If the parser fails mid-statement (e.g. user typed `select where`),
   // the message is specific to the failure — the UI should show a red
   // diagnostic rather than silently returning empty.
-  expect(
-    isInternalUnsupportedSqlAnalysisError(new Error("expected expression after 'where'")),
-  ).toBe(false);
+  expect(isInternalUnsupportedSqlAnalysisError(new Error("expected expression after 'where'"))).toBe(false);
   expect(isInternalUnsupportedSqlAnalysisError(new Error('no such column: foo'))).toBe(false);
 });

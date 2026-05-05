@@ -1,9 +1,9 @@
 {
   "name": "sqlfu-website-animations",
-  "private": true,
   "version": "0.0.0",
-  "type": "module",
+  "private": true,
   "description": "Remotion compositions for the sqlfu.dev landing page value-panel cards.",
+  "type": "module",
   "scripts": {
     "studio": "remotion studio src/index.ts",
     "render": "tsx scripts/render-all.ts"

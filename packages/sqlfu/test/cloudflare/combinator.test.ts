@@ -65,7 +65,12 @@ test('createAlchemyD1Client falls back to CLOUDFLARE_API_TOKEN env var', async (
   process.env.CLOUDFLARE_API_TOKEN = 'tok-from-env';
   try {
     const {client} = createAlchemyD1Client({
-      stack: 'app', stage: 'stg', fqn: 'db', cwd: fixture.cwd, apiBase: cf.url, fetch: cf.fetch,
+      stack: 'app',
+      stage: 'stg',
+      fqn: 'db',
+      cwd: fixture.cwd,
+      apiBase: cf.url,
+      fetch: cf.fetch,
     });
     await client.all({sql: 'select 1', args: [], name: 'q'});
   } finally {
@@ -134,7 +139,11 @@ async function fakeCloudflareApi(handlers: {
 }
 
 async function alchemyStateFixture(files: Record<string, string>) {
-  const root = path.join(repoRoot, 'tmp', `alchemy-combinator-fixture-ignoreme-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const root = path.join(
+    repoRoot,
+    'tmp',
+    `alchemy-combinator-fixture-ignoreme-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  );
   const alchemyDir = path.join(root, '.alchemy');
   await fs.mkdir(alchemyDir, {recursive: true});
   for (const [relativePath, content] of Object.entries(files)) {

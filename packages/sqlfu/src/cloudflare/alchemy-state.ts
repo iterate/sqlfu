@@ -32,9 +32,7 @@ const D1_RESOURCE_TYPE = 'Cloudflare.D1Database';
 export function readAlchemyD1State(options: ReadAlchemyD1StateOptions): AlchemyD1State {
   const node = nodeBuiltins();
   const searchStart = node.path.resolve(options.cwd || process.cwd());
-  const alchemyDir = options.alchemyDir
-    ? node.path.resolve(options.alchemyDir)
-    : findAlchemyDir(searchStart, node);
+  const alchemyDir = options.alchemyDir ? node.path.resolve(options.alchemyDir) : findAlchemyDir(searchStart, node);
 
   if (!alchemyDir) {
     throw new Error(

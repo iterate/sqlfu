@@ -26,10 +26,7 @@ declare abstract class SqlStorageCursor<T extends Record<string, SqlStorageValue
 }
 
 interface CfSqlStorage {
-  exec<T extends Record<string, SqlStorageValue>>(
-    query: string,
-    ...bindings: any[]
-  ): SqlStorageCursor<T>;
+  exec<T extends Record<string, SqlStorageValue>>(query: string, ...bindings: any[]): SqlStorageCursor<T>;
 }
 
 interface CfDurableObjectStorage {
