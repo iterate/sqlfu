@@ -2,6 +2,7 @@
 status: in-progress
 size: medium
 branch: effect-sql-generated-queries
+pr: https://github.com/mmkal/sqlfu/pull/90
 supersedes: https://github.com/mmkal/sqlfu/pull/83
 ---
 
@@ -9,10 +10,10 @@ supersedes: https://github.com/mmkal/sqlfu/pull/83
 
 ## Status
 
-Fresh worktree/PR setup is underway. The goal is to replace the thin `sqlfu/effect`
-client-wrapper direction with generated query functions that run on `@effect/sql`
-and require `SqlClient.SqlClient` from the Effect environment. Main implementation,
-tests, docs, and PR body are still pending.
+Fresh worktree/PR setup is complete in draft PR #90. The goal is to replace the
+thin `sqlfu/effect` client-wrapper direction with generated query functions that
+run on `@effect/sql` and require `SqlClient.SqlClient` from the Effect environment.
+Main implementation, tests, docs, and final PR body are still pending.
 
 ## Goal
 
