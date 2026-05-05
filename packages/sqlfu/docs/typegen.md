@@ -147,22 +147,23 @@ await listPostsByKeys(client, {
 
 Columns declared with the SQLite type name `json` are stored as JSON text and
 generated as `unknown`. For a narrower TypeScript type, add a reserved
-`sqlfu_types` metadata view. Each row maps a logical declared type name to a
-storage strategy and a plain TypeScript type expression:
+`sqlfu_types` metadata view. Each row maps a logical declared type name to an
+encoding, a definition format, and a type definition:
 
 ```sql
 create view sqlfu_types as
 select
-  'json_slack_payload' as name,
-  'json' as storage,
+  'slack_payload' as name,
+  'json' as encoding,
+  'typescript' as format,
   '{
     action: "message" | "reaction";
     content: string
-  }' as ts_type;
+  }' as definition;
 
 create table slack_webhooks(
   id integer primary key,
-  payload json_slack_payload not null
+  payload slack_payload not null
 );
 ```
 
@@ -175,11 +176,13 @@ await recordSlackWebhook(client, {
 });
 ```
 
-The generated wrapper accepts the `ts_type` TypeScript type, serializes inputs
+The generated wrapper accepts the TypeScript `definition`, serializes inputs
 with `JSON.stringify`, and parses selected result columns before returning them.
-The `ts_type` value is not a validator schema and sqlfu does not resolve
-imports, aliases, or references from it. The `storage` column controls how the
-logical type is encoded for SQLite; this first slice only supports `json`.
+The `definition` value is not a validator schema and sqlfu does not resolve
+imports, aliases, or references from it. The `encoding` column controls how the
+logical type is encoded for SQLite; this first slice only supports `json`. The
+`format` column says what language the definition uses; this first slice only
+supports `typescript`.
 
 ## Limits
 
@@ -187,7 +190,7 @@ logical type is encoded for SQLite; this first slice only supports `json`.
   lists, and INSERT `values :param` objects, can appear only
   once in a query. Reusing the same expanded array in two places would require
   duplicating the driver arguments, so sqlfu rejects that shape for now.
-- Plain `sqlfu_types.ts_type` values only describe generated TypeScript
+- Plain `sqlfu_types.definition` values only describe generated TypeScript
   surfaces. They do not add runtime validation for JSON payload shape.
 - Parameter shape is inferred from SQL shape, not comment metadata. `@name` names
   queries; `IN (:ids)`, `(slug, title) in (:keys)`, and `values :posts` describe

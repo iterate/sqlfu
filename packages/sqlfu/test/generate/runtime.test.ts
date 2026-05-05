@@ -262,16 +262,17 @@ test('generate uses sqlfu_types view rows for typed JSON logical columns', async
     definitionsSql: dedent`
       create view sqlfu_types as
       select
-        'json_slack_payload' as name,
-        'json' as storage,
+        'slack_payload' as name,
+        'json' as encoding,
+        'typescript' as format,
         '{
           action: "message" | "reaction";
           content: string
-        }' as ts_type;
+        }' as definition;
 
       create table slack_webhooks (
         id integer primary key,
-        payload json_slack_payload not null,
+        payload slack_payload not null,
         created_at integer not null
       );
     `,
@@ -362,12 +363,12 @@ test('generate rejects the old sqlfu_types table metadata shape', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
       create table sqlfu_types (
-        json_slack_payload text default '{ action: "message" | "reaction"; content: string }'
+        slack_payload text default '{ action: "message" | "reaction"; content: string }'
       );
 
       create table slack_webhooks (
         id integer primary key,
-        payload json_slack_payload not null
+        payload slack_payload not null
       );
     `,
     files: {
@@ -378,18 +379,19 @@ test('generate rejects the old sqlfu_types table metadata shape', async () => {
   await expect(project.generate()).rejects.toThrow(/sqlfu_types must be a view/);
 });
 
-test('generate rejects unsupported sqlfu_types storage values', async () => {
+test('generate rejects unsupported sqlfu_types encoding values', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
       create view sqlfu_types as
       select
-        'json_slack_payload' as name,
-        'blob' as storage,
-        '{ action: "message" | "reaction"; content: string }' as ts_type;
+        'slack_payload' as name,
+        'blob' as encoding,
+        'typescript' as format,
+        '{ action: "message" | "reaction"; content: string }' as definition;
 
       create table slack_webhooks (
         id integer primary key,
-        payload json_slack_payload not null
+        payload slack_payload not null
       );
     `,
     files: {
@@ -397,7 +399,30 @@ test('generate rejects unsupported sqlfu_types storage values', async () => {
     },
   });
 
-  await expect(project.generate()).rejects.toThrow(/sqlfu_types row 1\.storage must be "json"/);
+  await expect(project.generate()).rejects.toThrow(/sqlfu_types row 1\.encoding must be "json"/);
+});
+
+test('generate rejects unsupported sqlfu_types definition formats', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create view sqlfu_types as
+      select
+        'slack_payload' as name,
+        'json' as encoding,
+        'json-schema' as format,
+        '{"type":"object"}' as definition;
+
+      create table slack_webhooks (
+        id integer primary key,
+        payload slack_payload not null
+      );
+    `,
+    files: {
+      'sql/list-slack-webhooks.sql': `select id, payload from slack_webhooks;`,
+    },
+  });
+
+  await expect(project.generate()).rejects.toThrow(/sqlfu_types row 1\.format must be "typescript"/);
 });
 
 test('generate supports multiline @name comments in multi-query files', async () => {

@@ -3043,11 +3043,11 @@ async function loadSqlfuTypes(client: Client): Promise<ReadonlyMap<string, Logic
 
   const metadataObject = metadataObjects[0]!;
   if (metadataObject.type !== 'view') {
-    throw new Error('sqlfu_types must be a view that selects name, storage, and ts_type columns.');
+    throw new Error('sqlfu_types must be a view that selects name, encoding, format, and definition columns.');
   }
 
   const typeRows = await client.all<Record<string, unknown>>({
-    sql: `select name, storage, ts_type from sqlfu_types`,
+    sql: `select name, encoding, format, definition from sqlfu_types`,
     args: [],
   });
 
@@ -3055,15 +3055,19 @@ async function loadSqlfuTypes(client: Client): Promise<ReadonlyMap<string, Logic
     const row = typeRows[index]!;
     const location = `sqlfu_types row ${index + 1}`;
     const name = requireString(row.name, `${location}.name`);
-    const storage = requireString(row.storage, `${location}.storage`);
-    const tsType = normalizePlainTsType(requireString(row.ts_type, `${location}.ts_type`), `${location}.ts_type`);
+    const encoding = requireString(row.encoding, `${location}.encoding`);
+    const format = requireString(row.format, `${location}.format`);
+    const tsType = normalizePlainTsType(
+      requireString(row.definition, `${location}.definition`),
+      `${location}.definition`,
+    );
 
-    if (storage !== 'json') {
-      throw new Error(`${location}.storage must be "json"; got ${JSON.stringify(storage)}.`);
+    if (encoding !== 'json') {
+      throw new Error(`${location}.encoding must be "json"; got ${JSON.stringify(encoding)}.`);
     }
 
-    if (!name.toLowerCase().startsWith('json_')) {
-      throw new Error(`${location} is not supported yet. sqlfu_types logical type names must start with "json_".`);
+    if (format !== 'typescript') {
+      throw new Error(`${location}.format must be "typescript"; got ${JSON.stringify(format)}.`);
     }
 
     const key = normalizeDeclaredType(name);

@@ -3,21 +3,22 @@ Note: this library is in pre-pre-pre-alpha. There are zero users. It is EXTREMEL
 
 Prefer lowercase SQL keywords.
 
-When writing `sqlfu_types` view examples, format the `ts_type` string so it
+When writing `sqlfu_types` view examples, format the `definition` string so it
 flows with the SQL instead of escaping everything onto one line. Put the opening
-`'{` on the `ts_type` line, indent type members two spaces deeper than that
+`'{` on the `definition` line, indent type members two spaces deeper than that
 line's SQL indentation, and put the closing `}'` back at the opening line's SQL
 indentation even though the raw SQL string includes those closing-line spaces:
 
 ```sql
 create view sqlfu_types as
 select
-  'json_slack_payload' as name,
-  'json' as storage,
+  'slack_payload' as name,
+  'json' as encoding,
+  'typescript' as format,
   '{
     action: "message" | "reaction";
     content: string
-  }' as ts_type;
+  }' as definition;
 ```
 
 Prefer concise truthy/falsy checks. `foo && bar` over `foo !== undefined ? bar : undefined`; `!foo` over `foo === undefined` when the guarded branch short-circuits. Avoid verbose `=== undefined` / `!== undefined` chains unless the code genuinely needs to distinguish `undefined` from `null` / `0` / `''`.

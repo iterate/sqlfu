@@ -14,7 +14,7 @@ export default {
 
 </details>
 
-## keeps sqlfu_types ts_type values in validator wrapper types without generating schemas
+## keeps sqlfu_types definitions in validator wrapper types without generating schemas
 
 <details data-outputs="sql/.generated/**/*.ts">
 <summary>input</summary>
@@ -22,16 +22,17 @@ export default {
 ```sql (definitions.sql)
 create view sqlfu_types as
 select
-  'json_slack_payload' as name,
-  'json' as storage,
+  'slack_payload' as name,
+  'json' as encoding,
+  'typescript' as format,
   '{
     action: "message" | "reaction";
     content: string
-  }' as ts_type;
+  }' as definition;
 
 create table slack_webhooks (
   id integer primary key,
-  payload json_slack_payload not null
+  payload slack_payload not null
 );
 ```
 
@@ -157,16 +158,17 @@ export type SlackWebhooksRow = {
 ```sql (definitions.sql)
 create view sqlfu_types as
 select
-  'json_slack_payload' as name,
-  'json' as storage,
+  'slack_payload' as name,
+  'json' as encoding,
+  'typescript' as format,
   '{
     action: "message" | "reaction";
     content: string
-  }' as ts_type;
+  }' as definition;
 
 create table slack_webhooks (
   id integer primary key,
-  payload json_slack_payload not null,
+  payload slack_payload not null,
   created_at integer not null
 );
 ```
