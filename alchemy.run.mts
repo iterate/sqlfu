@@ -28,7 +28,12 @@ await Website('www', {
   name: 'sqlfu-www',
   cwd: './website',
   build: 'pnpm build',
-  assets: './dist',
+  assets: {
+    directory: './dist',
+    // Unknown routes should render the built 404 page. The Website default is
+    // SPA-oriented, which can turn typos into the homepage on asset-only sites.
+    not_found_handling: '404-page',
+  },
   domains: [
     {domainName: 'sqlfu.dev', adopt: true},
     {domainName: 'www.sqlfu.dev', adopt: true},

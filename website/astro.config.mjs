@@ -28,6 +28,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'sqlfu',
+      disable404Route: true,
       favicon: '/favicon.ico',
       logo: {src: './src/assets/logo.png', alt: 'sqlfu'},
       head: [
