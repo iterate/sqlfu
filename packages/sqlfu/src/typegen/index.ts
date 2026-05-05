@@ -3109,6 +3109,11 @@ async function loadSchema(databasePath: string): Promise<ReadonlyMap<string, Rel
   }
 }
 
+/**
+ * @experimental `sqlfu_types` is an early metadata hook for schema-level
+ * logical types. Its view shape and generated encode/decode output may change
+ * before sqlfu's first stable release.
+ */
 async function loadSqlfuTypes(client: Client): Promise<ReadonlyMap<string, LogicalTypeInfo>> {
   const metadataObjects = await client.all<{name: string; type: string}>({
     sql: `

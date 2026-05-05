@@ -129,6 +129,9 @@ JSON result columns as `JSON.parse(...) as TheType` before returning them.
   annotations before payload decoding.
 - Reordered `logical-types.md` so the plain happy-path wrapper case appears
   before the zod validator-specific case.
+- Marked the `sqlfu_types` feature experimental in the typegen docs and source
+  JSDoc only. Generated wrappers/types intentionally do not carry experimental
+  JSDoc noise.
 - Verification:
   - `pnpm --filter sqlfu test --run test/generate/fixtures.test.ts -u`
   - `pnpm --filter sqlfu test --run test/generate/runtime.test.ts -t "sqlfu_types"`

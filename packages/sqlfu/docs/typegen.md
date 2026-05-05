@@ -145,6 +145,10 @@ await listPostsByKeys(client, {
 
 ## Typed JSON columns
 
+This feature is experimental. The `sqlfu_types` metadata view shape and the
+generated JSON encode/decode code may change before sqlfu's first stable
+release.
+
 Columns declared with the SQLite type name `json` are stored as JSON text and
 generated as `unknown`. For a narrower TypeScript type, add a reserved
 `sqlfu_types` metadata view. Each row maps a logical declared type name to an
