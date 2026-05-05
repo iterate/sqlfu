@@ -58,6 +58,7 @@ export async function generateQueryTypesForConfig(
   await using materialized = await dialect.materializeTypegenSchema(host, {
     projectRoot: config.projectRoot,
     sourceSql,
+    experimentalJsonTypes: config.generate.experimentalJsonTypes,
   });
   const schema = await dialect.loadSchemaForTypegen(materialized);
   const queryDocuments = await loadQueryDocuments(config.queries);
@@ -303,6 +304,7 @@ export async function analyzeAdHocSqlForConfig(
   await using materialized = await dialect.materializeTypegenSchema(host, {
     projectRoot: config.projectRoot,
     sourceSql,
+    experimentalJsonTypes: config.generate.experimentalJsonTypes,
   });
   const schema = await dialect.loadSchemaForTypegen(materialized);
   const [analysis] = await dialect.analyzeQueries(materialized, [
@@ -420,7 +422,11 @@ type ParameterExpansion =
       acceptsSingleOrArray: boolean;
     };
 
-export async function materializeTypegenDatabase(input: {projectRoot: string; sourceSql: string}) {
+export async function materializeTypegenDatabase(input: {
+  projectRoot: string;
+  sourceSql: string;
+  experimentalJsonTypes: boolean;
+}) {
   const tempDbPath = path.join(input.projectRoot, '.sqlfu', 'typegen.db');
 
   await fs.mkdir(path.dirname(tempDbPath), {recursive: true});
@@ -3832,7 +3838,7 @@ registerSqliteTypegenImpls({
     return {
       dialect: 'sqlite',
       databasePath,
-      experimentalJsonTypes: config.generate.experimentalJsonTypes,
+      experimentalJsonTypes: input.experimentalJsonTypes,
       [Symbol.asyncDispose]: async () => {
         // Sqlite leaves the typegen db on disk between runs — the next
         // materialize wipes it. No active disposal needed.

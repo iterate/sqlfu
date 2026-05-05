@@ -188,7 +188,7 @@ export type Dialect = {
    */
   materializeTypegenSchema(
     host: SqlfuHost,
-    input: {projectRoot: string; sourceSql: string},
+    input: {projectRoot: string; sourceSql: string; experimentalJsonTypes: boolean},
   ): Promise<MaterializedTypegenSchema>;
 
   /** Extract relation (table/view) shapes from the materialized schema. */

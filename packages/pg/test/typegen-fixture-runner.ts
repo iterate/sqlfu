@@ -73,6 +73,7 @@ export async function materializeFor(definitions: string) {
   const materialized = await dialect.materializeTypegenSchema(stubHost(), {
     projectRoot,
     sourceSql: definitions,
+    experimentalJsonTypes: false,
   });
   const dispose = materialized[Symbol.asyncDispose];
   return {
