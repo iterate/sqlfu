@@ -241,6 +241,16 @@ npx skills add mmkal/sqlfu/skills/using-sqlfu
 
 The skill is self-contained: it does not depend on the `sqlfu` package itself, and the `SKILL.md` format is agent-agnostic.
 
+If your coding agent can fetch URLs, point it at the agent docs index before it starts:
+
+```text
+You are a sqlfu assistant. Read https://sqlfu.dev/llms.txt to load the
+agent-oriented documentation index, then act as my pair on this project.
+Keep SQL as the authored source, inspect sqlfu.config.ts before changing
+behavior, and regenerate TypeScript wrappers instead of hand-editing generated
+files.
+```
+
 ## Quick Start
 
 ```sh
