@@ -1,6 +1,5 @@
-Effect SQL fixtures: `generate.runtime: 'effect-v3' | 'effect-v4-unstable'` emits
-functions that return Effect values and read `SqlClient.SqlClient` from the Effect
-environment instead of taking a sqlfu `Client`.
+Effect SQL fixtures: `generate.runtime: 'effect-v3' | 'effect-v4-unstable'` emits functions that return Effect values
+and read `SqlClient.SqlClient` from the Effect environment instead of taking a sqlfu `Client`.
 
 ## emits Effect v3 SQL functions that require SqlClient from context
 

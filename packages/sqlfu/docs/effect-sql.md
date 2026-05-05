@@ -1,12 +1,12 @@
 # Effect SQL runtime
 
-Effect SQL runtimes are experimental. They make generated query functions return
-Effect values and read `SqlClient.SqlClient` from the Effect environment.
+`generate.runtime: 'effect-v3' | 'effect-v4-unstable'` is experimental. It makes generated query functions
+return Effect values and read `SqlClient.SqlClient` from the Effect environment.
 
-This is native Effect SQL interop, not a sqlfu client wrapper. sqlfu still owns
-SQL-file analysis, parameter typing, result typing, and generated wrapper shape.
-Effect SQL owns the database runtime, layers, transactions, resource management,
-and SQL failure channel.
+This is native Effect SQL interop, not a sqlfu client wrapper. sqlfu still
+owns SQL-file analysis, parameter typing, result typing, and generated wrapper
+shape. Effect SQL owns the database runtime, layers, transactions, resource
+management, and SQL failure channel.
 
 ```ts
 export default {
@@ -76,10 +76,10 @@ const posts = await listPosts(client, {limit: 10});
 const posts = yield* listPosts({limit: 10});
 ```
 
-The generated function imports `effect/Effect` and an Effect SQL client module,
-obtains `SqlClient.SqlClient` inside the returned Effect, and executes the
-analyzed SQL with `sqlClient.unsafe(sql, args)`. The SQL string and driver args
-still come from sqlfu's generated `query` helper.
+The generated function imports `effect/Effect` and an Effect SQL client module, obtains
+`SqlClient.SqlClient` inside the returned Effect, and executes the analyzed SQL
+with `sqlClient.unsafe(sql, args)`. The SQL string and driver args still come
+from sqlfu's generated `query` helper.
 
 The Effect SQL import depends on the runtime target:
 

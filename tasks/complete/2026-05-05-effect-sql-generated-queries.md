@@ -11,10 +11,9 @@ supersedes: https://github.com/mmkal/sqlfu/pull/83
 ## Status
 
 Implementation is complete in draft PR #90. The PR adds experimental
-`generate.runtime: 'effect-v3' | 'effect-v4-unstable'` support, generated Effect
-SQL wrappers, runtime and fixture coverage, docs, and package peer/dev
-dependencies for Effect SQL. The main remaining work is review/iteration before
-merge.
+`generate.runtime: 'effect-v3' | 'effect-v4-unstable'` support, generated Effect SQL wrappers, runtime and
+fixture coverage, docs, and package peer/dev dependencies for Effect SQL. The main
+remaining work is review/iteration before merge.
 
 ## Goal
 
@@ -67,8 +66,8 @@ explicit config shape over forcing the wrong mental model.
 
 - 2026-05-05: Closed PR #83 as superseded so the repo does not carry two competing
   Effect concepts.
-- 2026-05-05: Chose `generate.runtime` instead of `generate.validator: 'effect'`
-  so the execution target stays separate from validator-library output.
+- 2026-05-05: Chose `generate.runtime` instead of `generate.validator:
+  'effect'` so the execution target stays separate from validator-library output.
 - 2026-05-05: Current Effect runtime does not combine with `generate.validator`;
   generated validation can be added later without changing the runtime option.
 - 2026-05-05: Split the runtime names before merge to avoid hiding Effect version
