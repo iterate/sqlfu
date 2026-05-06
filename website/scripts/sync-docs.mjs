@@ -81,6 +81,20 @@ const docs = [
       'Use sqlfu with @sqlite.org/sqlite-wasm in the browser, including OPFS, generated migrations, and generated query wrappers.',
   },
   {
+    slug: 'integrations',
+    title: 'Integrations',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'integrations.md'),
+    description:
+      'How sqlfu fits with Better Auth, Cloudflare, Effect SQL, observability SDKs, and adjacent runtime tools.',
+  },
+  {
+    slug: 'integrations/better-auth',
+    title: 'Better Auth',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'integrations', 'better-auth.md'),
+    description:
+      'Use Better Auth auth generate with sqlfu definitions.sql, then let sqlfu draft and apply the migration.',
+  },
+  {
     slug: 'adapters',
     title: 'Adapters',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'adapters.md'),
