@@ -23,6 +23,7 @@ import {
 
 import {queryNickname} from 'sqlfu';
 import type {QueryCatalogEntry} from 'sqlfu';
+import {formatSqlFileContents} from 'sqlfu/analyze';
 import type {
   QueryExecutionResponse,
   SchemaAuthorityMigration,
@@ -734,10 +735,19 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
     },
   });
   const desiredSchemaSql = desiredSchemaDraft;
+  const desiredSchemaFormat = formatDesiredSchemaDraft(desiredSchemaSql);
+  const desiredSchemaAlreadyFormatted =
+    desiredSchemaFormat.ok && normalizeSqlDraft(desiredSchemaFormat.sql) === normalizeSqlDraft(desiredSchemaSql);
+  const canFormatDesiredSchema = desiredSchemaFormat.ok && !desiredSchemaAlreadyFormatted;
   const desiredSchemaDirty =
     normalizeSqlDraft(desiredSchemaSql) !== normalizeSqlDraft(input.authorities.desiredSchemaSql);
   const handleSchemaCommand = async (command: [string, ...string[]]) => {
     await runCommandMutation.mutateAsync({command: formatSchemaCommand(command)});
+  };
+  const handleFormatDesiredSchema = () => {
+    if (desiredSchemaFormat.ok) {
+      setDesiredSchemaDraft(desiredSchemaFormat.sql);
+    }
   };
 
   return (
@@ -809,9 +819,14 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
                           className="button inline-command-button"
                           type="button"
                           aria-label={formatSchemaCommand(command)}
-                          title={formatSchemaCommand(command)}
+                          title={
+                            desiredSchemaDirty
+                              ? 'Save or discard Desired Schema edits before running this command'
+                              : formatSchemaCommand(command)
+                          }
+                          disabled={desiredSchemaDirty || runCommandMutation.isPending}
                           onClick={() => {
-                            handleSchemaCommand(command);
+                            void handleSchemaCommand(command);
                           }}
                         >
                           {formatSchemaCommand(command)}
@@ -845,28 +860,40 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
           <div className="authority-card-body">
             <div className="card-title-row authority-card-toolbar">
               <div />
-              {desiredSchemaDirty ? (
-                <div className="inline-editor">
-                  <button
-                    className="icon-button"
-                    type="button"
-                    aria-label="Discard Desired Schema edits"
-                    title="Discard edits"
-                    onClick={() => setDesiredSchemaDraft(input.authorities.desiredSchemaSql)}
-                  >
-                    ↩
-                  </button>
-                  <button
-                    className="icon-button"
-                    type="button"
-                    aria-label="Save Desired Schema"
-                    title="Save"
-                    onClick={() => saveDesiredSchemaMutation.mutate({sql: desiredSchemaSql})}
-                  >
-                    💾
-                  </button>
-                </div>
-              ) : null}
+              <div className="inline-editor">
+                <button
+                  className="icon-button"
+                  type="button"
+                  aria-label="Format Desired Schema"
+                  title={
+                    canFormatDesiredSchema ? 'Format' : desiredSchemaFormat.ok ? 'Already formatted' : 'Cannot format'
+                  }
+                  disabled={!canFormatDesiredSchema}
+                  onClick={handleFormatDesiredSchema}
+                >
+                  💅
+                </button>
+                <button
+                  className="icon-button"
+                  type="button"
+                  aria-label="Discard Desired Schema edits"
+                  title="Discard edits"
+                  disabled={!desiredSchemaDirty || saveDesiredSchemaMutation.isPending}
+                  onClick={() => setDesiredSchemaDraft(input.authorities.desiredSchemaSql)}
+                >
+                  ↩
+                </button>
+                <button
+                  className="icon-button"
+                  type="button"
+                  aria-label="Save Desired Schema"
+                  title="Save"
+                  disabled={!desiredSchemaDirty || saveDesiredSchemaMutation.isPending}
+                  onClick={() => saveDesiredSchemaMutation.mutate({sql: desiredSchemaSql})}
+                >
+                  💾
+                </button>
+              </div>
             </div>
             <SqlCodeMirror
               value={desiredSchemaSql}
@@ -2622,6 +2649,16 @@ function suggestSqlRunnerName(sql: string) {
 
 function normalizeSqlDraft(value: string) {
   return value.trimEnd();
+}
+
+type DesiredSchemaFormatResult = {ok: true; sql: string} | {ok: false};
+
+function formatDesiredSchemaDraft(sql: string): DesiredSchemaFormatResult {
+  try {
+    return {ok: true, sql: formatSqlFileContents(sql)};
+  } catch {
+    return {ok: false};
+  }
 }
 
 function renderVersionMismatchLede(startupError: Extract<StartupFailure, {kind: 'version-mismatch'}>) {

@@ -226,11 +226,41 @@ test('desired schema can be edited and saved, and sync is disabled while it is d
 
   await page.goto('/#schema');
 
+  const draftButton = page.getByRole('button', {name: 'sqlfu draft'});
+  const formatButton = page.getByRole('button', {name: 'Format Desired Schema'});
+  const resetButton = page.getByRole('button', {name: 'Discard Desired Schema edits'});
+  const saveButton = page.getByRole('button', {name: 'Save Desired Schema'});
+
+  await expect(draftButton).toBeEnabled();
+  await expect(formatButton).toBeVisible();
+  await expect(formatButton).toBeDisabled();
+  await expect(resetButton).toBeVisible();
+  await expect(resetButton).toBeDisabled();
+  await expect(saveButton).toBeVisible();
+  await expect(saveButton).toBeDisabled();
+
+  await replaceCodeMirrorText(
+    page,
+    'Desired Schema editor',
+    `create table posts(id integer primary key, slug text not null unique, title text not null, body text not null, published integer not null); create view post_cards as select id, slug, title, published from posts;`,
+  );
+
+  await expect(draftButton).toBeDisabled();
+  await expect(formatButton).toBeEnabled();
+  await expect(resetButton).toBeEnabled();
+  await expect(saveButton).toBeEnabled();
+
+  await formatButton.click();
+  await expect.poll(() => readCodeMirrorText(page, 'Desired Schema editor')).toContain('create table posts (');
+  await expect(formatButton).toBeDisabled();
+  await expect(resetButton).toBeDisabled();
+  await expect(saveButton).toBeDisabled();
+  await expect(draftButton).toBeEnabled();
+
   await confirmAndRunSchemaCommand(page, page.getByRole('button', {name: 'sqlfu draft'}));
   await confirmAndRunSchemaCommand(page, page.getByRole('button', {name: /sqlfu baseline /}).first());
   await expect(page.getByText('No Repo Drift')).toBeVisible();
-
-  await expect(page.getByRole('button', {name: 'Save Desired Schema'})).toHaveCount(0);
+  await expect(saveButton).toBeDisabled();
 
   await replaceCodeMirrorText(
     page,
@@ -255,12 +285,12 @@ test('desired schema can be edited and saved, and sync is disabled while it is d
   `,
   );
 
-  await expect(page.getByRole('button', {name: 'Save Desired Schema'})).toBeVisible();
+  await expect(saveButton).toBeEnabled();
   await expect
     .poll(() => readCodeMirrorText(page, 'Desired Schema editor'))
     .toContain('create view published_posts as');
 
-  await page.getByRole('button', {name: 'Save Desired Schema'}).click();
+  await saveButton.click();
   await expect.poll(() => fs.readFile(definitionsPath, 'utf8')).toContain('create view published_posts as');
   await expect(page.getByRole('heading', {name: 'Repo Drift'})).toBeVisible();
 });

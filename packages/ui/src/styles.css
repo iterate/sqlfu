@@ -284,7 +284,7 @@ table {
   gap: 1.25rem;
   padding: 2rem;
   border: 1px solid var(--line);
-  border-radius: 1.5rem;
+  border-radius: 0.85rem;
   background: var(--panel);
   box-shadow: var(--shadow);
 }
@@ -316,7 +316,7 @@ table {
   gap: 0.65rem;
   padding: 1rem 1.1rem;
   border: 1px solid var(--line);
-  border-radius: 1rem;
+  border-radius: 0.6rem;
   background: var(--panel-tint-soft);
 }
 
@@ -344,7 +344,7 @@ table {
   gap: 0.3rem;
   padding: 0.8rem 0.9rem;
   border: 1px solid var(--line);
-  border-radius: 0.85rem;
+  border-radius: 0.45rem;
   background: var(--panel-tint-veryfaint);
 }
 
@@ -364,7 +364,7 @@ table {
 
 .startup-error-details {
   border: 1px solid var(--line);
-  border-radius: 1rem;
+  border-radius: 0.55rem;
   background: var(--panel-tint-veryfaint);
   padding: 1rem 1.1rem;
 }
@@ -416,7 +416,7 @@ table {
   width: min(54rem, calc(100vw - 2rem));
   transform: translate(-50%, -50%);
   border: 1px solid var(--line);
-  border-radius: 1.4rem;
+  border-radius: 0.75rem;
   background: var(--panel-strong);
   box-shadow: var(--shadow);
   padding: 1.25rem;
@@ -450,7 +450,7 @@ table {
 
 .app-toast {
   border: 1px solid var(--line);
-  border-radius: 1rem;
+  border-radius: 0.55rem;
   background: var(--panel-strong);
   color: var(--text);
   box-shadow: var(--shadow);
@@ -644,7 +644,7 @@ h3 {
 .card {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 1.4rem;
+  border-radius: 0.75rem;
   box-shadow: var(--shadow);
   padding: 1rem 1.1rem;
 }
@@ -742,7 +742,7 @@ h3 {
   align-items: center;
   justify-content: center;
   padding: 0.45rem 0.8rem;
-  border-radius: 999px;
+  border-radius: 0.45rem;
   border: 1px solid var(--line);
   background: var(--panel-tint-mid);
   color: var(--muted);
@@ -1140,7 +1140,7 @@ h3 {
 
 .selected-cell-panel {
   border: 1px solid var(--line);
-  border-radius: 1rem;
+  border-radius: 0.65rem;
   padding: 0.9rem 1rem;
   background: var(--panel);
 }
@@ -1156,7 +1156,7 @@ h3 {
   align-items: center;
   justify-content: center;
   padding: 0.45rem 0.8rem;
-  border-radius: 999px;
+  border-radius: 0.45rem;
   border: 1px solid var(--line);
   background: var(--panel-tint-mid);
   color: var(--muted);
@@ -1172,7 +1172,7 @@ h3 {
 .selected-cell-panel .cm-editor,
 .selected-cell-panel .cm-mergeView {
   border: 1px solid var(--line);
-  border-radius: 0.75rem;
+  border-radius: 0.4rem;
   overflow: hidden;
 }
 
@@ -1264,7 +1264,7 @@ h3 {
   align-items: center;
   justify-content: center;
   padding: 0.7rem 1rem;
-  border-radius: 999px;
+  border-radius: 0.45rem;
   border: 1px solid var(--line);
   background: var(--panel-tint-strong);
   color: var(--text);
@@ -1287,9 +1287,9 @@ h3 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 999px;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.45rem;
   border: 1px solid var(--line);
   background: var(--panel-tint-strong);
   color: var(--text);
@@ -1309,16 +1309,19 @@ h3 {
   border-color: transparent;
 }
 
-.button.disabled {
+.button.disabled,
+.button:disabled,
+.icon-button:disabled {
   opacity: 0.45;
-  pointer-events: none;
+  cursor: default;
+  box-shadow: none;
 }
 
 .sql-editor,
 .code-block {
   max-width: 100%;
   width: 100%;
-  border-radius: 1rem;
+  border-radius: 0.5rem;
   border: 1px solid var(--line);
   background: transparent;
   color: var(--text);
@@ -1388,13 +1391,13 @@ h3 {
 }
 
 .stack.schema-cards > .schema-card:first-child {
-  border-top-left-radius: 1.4rem;
-  border-top-right-radius: 1.4rem;
+  border-top-left-radius: 0.75rem;
+  border-top-right-radius: 0.75rem;
 }
 
 .stack.schema-cards > .schema-card:last-child {
-  border-bottom-left-radius: 1.4rem;
-  border-bottom-right-radius: 1.4rem;
+  border-bottom-left-radius: 0.75rem;
+  border-bottom-right-radius: 0.75rem;
 }
 
 .schema-card.warn {
