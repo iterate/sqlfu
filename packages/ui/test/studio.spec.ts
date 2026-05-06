@@ -425,20 +425,22 @@ test('relation columns can be resized from header handles', async ({page}) => {
   const slugHeader = page.locator('.reactgrid [data-cell-rowidx="0"][data-cell-colidx="2"]').first();
   await expect(slugHeader).toContainText('slug');
 
-  const initialWidth = await slugHeader.evaluate((element) => element.getBoundingClientRect().width);
-  const handle = slugHeader.locator('.rg-touch-column-resize-handle');
-  const box = await handle.boundingBox();
-  expect(box).not.toBeNull();
-  if (!box) return;
+  const initialBox = await slugHeader.boundingBox();
+  if (!initialBox) {
+    throw new Error('Expected slug header cell to be visible');
+  }
 
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.move(initialBox.x + initialBox.width - 3, initialBox.y + initialBox.height / 2);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2, {steps: 8});
+  await page.mouse.move(initialBox.x + initialBox.width + 80, initialBox.y + initialBox.height / 2, {steps: 8});
   await page.mouse.up();
 
   await expect
-    .poll(() => slugHeader.evaluate((element) => element.getBoundingClientRect().width))
-    .toBeGreaterThan(initialWidth + 40);
+    .poll(async () => {
+      const currentBox = await slugHeader.boundingBox();
+      return currentBox?.width || 0;
+    })
+    .toBeGreaterThan(initialBox.width + 40);
 });
 
 test('clicking a relation cell surfaces the cell detail popover via the toolbar Cell button', async ({page}) => {
