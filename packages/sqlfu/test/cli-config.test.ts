@@ -70,6 +70,43 @@ test('generate prints the files it updated', async () => {
   void cwd;
 });
 
+test('database commands use a project-local sqlite database when config omits db', async () => {
+  const root = await createTempFixtureRoot('cli-default-db');
+  await writeFixtureFiles(root, {
+    'sqlfu.config.ts': dedent`
+      export default {
+        definitions: './definitions.sql',
+        migrations: './migrations',
+        queries: './sql',
+      };
+    `,
+    'definitions.sql': dedent`
+      create table posts (
+        id integer primary key,
+        title text not null
+      );
+    `,
+    'migrations/2026-05-06T00.00.00.000Z_create_posts.sql': dedent`
+      create table posts (
+        id integer primary key,
+        title text not null
+      );
+    `,
+    'sql/list-posts.sql': 'select id, title from posts order by id;',
+  });
+
+  using cwd = chdir(root);
+
+  await runCli(['migrate', '--yes']);
+  const defaultDb = await fs.stat(path.join(root, '.sqlfu/app.db'));
+  expect(defaultDb.isFile()).toBe(true);
+
+  await runCli(['check']);
+  await runCli(['sync']);
+
+  void cwd;
+});
+
 test('format rewrites .sql files from a positional glob', async () => {
   const root = await createTempFixtureRoot('cli-format');
   await writeFixtureFiles(root, {

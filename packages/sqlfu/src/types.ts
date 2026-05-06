@@ -281,9 +281,9 @@ export interface SqlfuConfig {
    * `DisposableAsyncClient` — use the callback form to point sqlfu at an
    * adapter-mediated DB (D1, Turso, libsql, miniflare bindings, …) so
    * `migrate`, `check`, `sync`, `goto`, `baseline`, and the UI all operate on
-   * the same database your app reads from. Optional: if you only ever run
-   * `sqlfu generate` with `authority: 'desired_schema'` (or `'migrations'`),
-   * you can omit `db` entirely.
+   * the same database your app reads from. If omitted, Node-hosted database
+   * commands use `.sqlfu/app.db`. `sqlfu generate` with `authority` set to
+   * `'desired_schema'` or `'migrations'` still does not need a live DB.
    */
   db?: string | SqlfuDbFactory;
   /**

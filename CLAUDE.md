@@ -3,24 +3,42 @@ Note: this library is in pre-pre-pre-alpha. There are zero users. It is EXTREMEL
 
 Prefer lowercase SQL keywords.
 
+## Docs examples
+
+For small docs, examples, and guides, put query examples in a catch-all
+`queries.sql` file in the appropriate folder rather than naming the file after a
+single query like `list-posts.sql`. Use `@name` comments for the individual
+generated wrapper names.
+
+When importing generated TypeScript from docs examples, use the fully-qualified
+generated extension:
+
+```ts
+import {listPosts} from './sql/.generated/queries.sql.ts';
+```
+
+Do not shorten that to `./sql/.generated/queries.sql`.
+
 When documenting or testing `sqlfu_types` definitions, format multiline
 TypeScript type strings so the type body flows with the SQL string literal:
 
 ```sql
-create view sqlfu_types as
-select
-  'json_slack_payload' as name,
-  'json' as encoding,
-  'typescript' as format,
-  '{
-    action: "message" | "reaction";
-    content: string
-  }' as definition;
+create view sqlfu_types (name, encoding, format, definition) as
+values
+  (
+    'json_slack_payload',
+    'json',
+    'typescript',
+    '{
+      action: "message" | "reaction";
+      content: string
+    }'
+  );
 ```
 
-That means the property lines use the SQL start-line indent plus two spaces, and
-the closing `}` matches the opening line's SQL indent even though the raw
-TypeScript string looks a little unusual outside SQL.
+That means the property lines use the SQL string start-line indent plus two
+spaces, and the closing `}` matches the opening line's SQL indent even though
+the raw TypeScript string looks a little unusual outside SQL.
 
 Prefer concise truthy/falsy checks. `foo && bar` over `foo !== undefined ? bar : undefined`; `!foo` over `foo === undefined` when the guarded branch short-circuits. Avoid verbose `=== undefined` / `!== undefined` chains unless the code genuinely needs to distinguish `undefined` from `null` / `0` / `''`.
 

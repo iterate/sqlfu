@@ -166,15 +166,17 @@ add a reserved `sqlfu_types` metadata view. Each row maps a logical declared typ
 name to an encoding, a definition format, and a type definition:
 
 ```sql
-create view sqlfu_types as
-select
-  'slack_payload' as name,
-  'json' as encoding,
-  'typescript' as format,
-  '{
-    action: "message" | "reaction";
-    content: string
-  }' as definition;
+create view sqlfu_types (name, encoding, format, definition) as
+values
+  (
+    'slack_payload',
+    'json',
+    'typescript',
+    '{
+      action: "message" | "reaction";
+      content: string
+    }'
+  );
 
 create table slack_webhooks(
   id integer primary key,
@@ -191,8 +193,8 @@ await recordSlackWebhook(client, {
 });
 ```
 
-The generated wrapper accepts the TypeScript `definition`, serializes inputs
-with `JSON.stringify`, and parses selected result columns before returning them.
+The generated wrapper accepts the TypeScript `definition`, serializes inputs as
+pretty-printed JSON text, and parses selected result columns before returning them.
 The `definition` value is not a validator schema and sqlfu does not resolve
 imports, aliases, or references from it. The `encoding` column controls how the
 logical type is encoded for SQLite; this first experimental slice only supports

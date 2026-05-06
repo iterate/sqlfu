@@ -23,6 +23,7 @@ import {
 
 import {queryNickname} from 'sqlfu';
 import type {QueryCatalogEntry} from 'sqlfu';
+import {formatSqlFileContents} from 'sqlfu/analyze';
 import type {
   QueryExecutionResponse,
   SchemaAuthorityMigration,
@@ -35,8 +36,9 @@ import type {
 } from './shared.js';
 import {columnWidthAlgorithm} from './column-width.js';
 import type {UiRouter} from 'sqlfu/ui/browser';
-import {SqlCodeMirror, TextCodeMirror, TextDiffCodeMirror} from './sql-codemirror.js';
+import {SqlCodeMirror, TextCodeMirror, TextDiffCodeMirror, type CodeMirrorAction} from './sql-codemirror.js';
 import {RelationQueryPanel} from './relation-query-panel.js';
+import {DEFAULT_LIMIT} from './relation-query-builder.js';
 import * as Popover from '@radix-ui/react-popover';
 import {
   Dialog,
@@ -733,10 +735,19 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
     },
   });
   const desiredSchemaSql = desiredSchemaDraft;
+  const desiredSchemaFormat = formatDesiredSchemaDraft(desiredSchemaSql);
+  const desiredSchemaAlreadyFormatted =
+    desiredSchemaFormat.ok && normalizeSqlDraft(desiredSchemaFormat.sql) === normalizeSqlDraft(desiredSchemaSql);
+  const canFormatDesiredSchema = desiredSchemaFormat.ok && !desiredSchemaAlreadyFormatted;
   const desiredSchemaDirty =
     normalizeSqlDraft(desiredSchemaSql) !== normalizeSqlDraft(input.authorities.desiredSchemaSql);
   const handleSchemaCommand = async (command: [string, ...string[]]) => {
     await runCommandMutation.mutateAsync({command: formatSchemaCommand(command)});
+  };
+  const handleFormatDesiredSchema = () => {
+    if (desiredSchemaFormat.ok) {
+      setDesiredSchemaDraft(desiredSchemaFormat.sql);
+    }
   };
 
   return (
@@ -808,9 +819,14 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
                           className="button inline-command-button"
                           type="button"
                           aria-label={formatSchemaCommand(command)}
-                          title={formatSchemaCommand(command)}
+                          title={
+                            desiredSchemaDirty
+                              ? 'Save or discard Desired Schema edits before running this command'
+                              : formatSchemaCommand(command)
+                          }
+                          disabled={desiredSchemaDirty || runCommandMutation.isPending}
                           onClick={() => {
-                            handleSchemaCommand(command);
+                            void handleSchemaCommand(command);
                           }}
                         >
                           {formatSchemaCommand(command)}
@@ -842,36 +858,38 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
             </span>
           </summary>
           <div className="authority-card-body">
-            <div className="card-title-row authority-card-toolbar">
-              <div />
-              {desiredSchemaDirty ? (
-                <div className="inline-editor">
-                  <button
-                    className="icon-button"
-                    type="button"
-                    aria-label="Discard Desired Schema edits"
-                    title="Discard edits"
-                    onClick={() => setDesiredSchemaDraft(input.authorities.desiredSchemaSql)}
-                  >
-                    ↩
-                  </button>
-                  <button
-                    className="icon-button"
-                    type="button"
-                    aria-label="Save Desired Schema"
-                    title="Save"
-                    onClick={() => saveDesiredSchemaMutation.mutate({sql: desiredSchemaSql})}
-                  >
-                    💾
-                  </button>
-                </div>
-              ) : null}
-            </div>
             <SqlCodeMirror
               value={desiredSchemaSql}
               ariaLabel="Desired Schema editor"
               relations={[]}
               onChange={setDesiredSchemaDraft}
+              actions={[
+                {
+                  icon: '💅',
+                  name: 'Format Desired Schema',
+                  title: canFormatDesiredSchema
+                    ? 'Format'
+                    : desiredSchemaFormat.ok
+                      ? 'Already formatted'
+                      : 'Cannot format',
+                  disabled: !canFormatDesiredSchema,
+                  onAction: handleFormatDesiredSchema,
+                },
+                {
+                  icon: '↩',
+                  name: 'Discard Desired Schema edits',
+                  title: 'Discard edits',
+                  disabled: !desiredSchemaDirty || saveDesiredSchemaMutation.isPending,
+                  onAction: () => setDesiredSchemaDraft(input.authorities.desiredSchemaSql),
+                },
+                {
+                  icon: '💾',
+                  name: 'Save Desired Schema',
+                  title: 'Save',
+                  disabled: !desiredSchemaDirty || saveDesiredSchemaMutation.isPending,
+                  onAction: () => saveDesiredSchemaMutation.mutate({sql: desiredSchemaSql}),
+                },
+              ]}
             />
           </div>
         </details>
@@ -1073,12 +1091,13 @@ function TablePanel(input: {relation: StudioRelation}) {
     input: {
       relationName: input.relation.name,
       page: 0,
+      pageSize: DEFAULT_LIMIT,
     },
   });
   const fallbackRows: TableRowsResponse = {
     relation: input.relation.name,
     page: 0,
-    pageSize: 25,
+    pageSize: DEFAULT_LIMIT,
     editable: false,
     rowKeys: [],
     rows: [],
@@ -1134,6 +1153,7 @@ function TablePanel(input: {relation: StudioRelation}) {
     saveRowsMutation.mutate({
       relationName: input.relation.name,
       page: 0,
+      pageSize: rowsData.pageSize,
       originalRows: displayedOriginalRows.map((row) => ({...row})),
       rows: displayedRows.map((row) => ({...row})),
       rowKeys: displayedRowKeys,
@@ -1171,6 +1191,7 @@ function TablePanel(input: {relation: StudioRelation}) {
     deleteRowMutation.mutate({
       relationName: input.relation.name,
       page: 0,
+      pageSize: rowsData.pageSize,
       rowKey,
       originalRow,
     });
@@ -1289,12 +1310,27 @@ function SqlRunnerPanel(input: {relations: StudioRelation[]}) {
       sqlEditorDiagnostics={analysisQuery.data?.diagnostics}
       sqlEditorOnExecute={() => runMutation.mutate({sql: draft.sql, params: sanitizedParams})}
       sqlEditorOnSave={() => handleSave()}
+      sqlEditorActions={[
+        {
+          icon: '▶',
+          name: 'Run SQL',
+          disabled: runMutation.isPending || saveMutation.isPending,
+          onAction: () => runMutation.mutate({sql: draft.sql, params: sanitizedParams}),
+        },
+        {
+          icon: '💾',
+          name: 'Save query',
+          disabled: runMutation.isPending || saveMutation.isPending,
+          onAction: handleSave,
+        },
+      ]}
       paramsSchema={omitSchemaTitle(detectedParamsSchema)}
       paramsData={sanitizedParams}
       onSqlChange={(sql) => setDraft({...draft, sql})}
       onParamsChange={(params) => setDraft({...draft, params: sanitizeFormData(params, detectedParamsSchema)})}
       onRun={() => runMutation.mutate({sql: draft.sql, params: sanitizedParams})}
       onSave={handleSave}
+      showParamActions={false}
       running={runMutation.isPending || saveMutation.isPending}
       executionError={runMutation.error ?? saveMutation.error}
       executionResult={runMutation.data}
@@ -1410,42 +1446,34 @@ function QueryPanel(input: {entry: QueryCatalogEntry; relations: StudioRelation[
       paramsData={undefined}
       sqlEditorRelations={input.relations}
       sqlEditorDiagnostics={sqlEditMode ? analysisQuery.data?.diagnostics : undefined}
-      sqlReadonlyActions={
-        !sqlEditMode ? (
-          <button
-            className="icon-button"
-            type="button"
-            aria-label="Edit query SQL"
-            onClick={() => setSqlEditMode(true)}
-          >
-            ✎
-          </button>
-        ) : undefined
-      }
       sqlEditorLabel="Query SQL editor"
       sqlEditorActions={
-        sqlEditMode ? (
-          <div className="actions">
-            <button
-              className="button primary"
-              type="button"
-              aria-label="Confirm query SQL edit"
-              onClick={handleSqlSave}
-            >
-              Save
-            </button>
-            <button
-              className="button"
-              type="button"
-              onClick={() => {
-                setSqlDraft(entry.sqlFileContent);
-                setSqlEditMode(false);
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        ) : undefined
+        sqlEditMode
+          ? [
+              {
+                icon: '💾',
+                name: 'Confirm query SQL edit',
+                title: 'Save query SQL edit',
+                disabled: updateMutation.isPending,
+                onAction: handleSqlSave,
+              },
+              {
+                icon: '↩',
+                name: 'Cancel query SQL edit',
+                disabled: updateMutation.isPending,
+                onAction: () => {
+                  setSqlDraft(entry.sqlFileContent);
+                  setSqlEditMode(false);
+                },
+              },
+            ]
+          : [
+              {
+                icon: '✎',
+                name: 'Edit query SQL',
+                onAction: () => setSqlEditMode(true),
+              },
+            ]
       }
       editable={sqlEditMode}
       onSqlChange={setSqlDraft}
@@ -1501,16 +1529,16 @@ function QueryWorkbench(input: {
   sqlEditorDiagnostics?: SqlEditorDiagnostic[];
   sqlEditorOnExecute?: (value: string) => void;
   sqlEditorOnSave?: (value: string) => void;
+  sqlEditorActions?: CodeMirrorAction[];
   paramsSchema?: RJSFSchema;
   paramsData?: Record<string, unknown>;
   readonlyMeta?: ReactNode;
-  sqlReadonlyActions?: ReactNode;
   sqlEditorLabel?: string;
-  sqlEditorActions?: ReactNode;
   onSqlChange?: (value: string) => void;
   onParamsChange?: (value: Record<string, unknown>) => void;
   onRun: (formData?: unknown) => void;
   onSave?: () => void;
+  showParamActions?: boolean;
   running: boolean;
   executionError: unknown;
   executionResult?: QueryExecutionResponse | SqlRunnerResponse;
@@ -1521,6 +1549,9 @@ function QueryWorkbench(input: {
   sqlCardTitle?: string;
   paramsCardTitle?: string;
 }) {
+  const showParamActions = input.showParamActions !== false;
+  const showParamsCard = Boolean(input.paramsSchema) || showParamActions;
+
   return (
     <section className="panel">
       <header className="panel-header">
@@ -1531,28 +1562,25 @@ function QueryWorkbench(input: {
         </div>
       </header>
 
-      <div className="split-grid">
+      <div className={showParamsCard ? 'split-grid' : 'split-grid single'}>
         <section className="card">
-          {input.sqlCardTitle || input.sqlReadonlyActions ? (
+          {input.sqlCardTitle ? (
             <div className="card-title-row">
-              {input.sqlCardTitle ? <div className="card-title">{input.sqlCardTitle}</div> : <div />}
-              {input.sqlReadonlyActions}
+              <div className="card-title">{input.sqlCardTitle}</div>
             </div>
           ) : null}
           {input.editable ? (
-            <div className="stack">
-              <div className="form-label">
-                <SqlCodeMirror
-                  value={input.sql}
-                  ariaLabel={input.sqlEditorLabel ?? 'SQL editor'}
-                  relations={input.sqlEditorRelations ?? []}
-                  diagnostics={input.sqlEditorDiagnostics}
-                  onExecute={input.sqlEditorOnExecute}
-                  onSave={input.sqlEditorOnSave}
-                  onChange={(value) => input.onSqlChange?.(value)}
-                />
-              </div>
-              {input.sqlEditorActions}
+            <div className="form-label">
+              <SqlCodeMirror
+                value={input.sql}
+                ariaLabel={input.sqlEditorLabel ?? 'SQL editor'}
+                relations={input.sqlEditorRelations ?? []}
+                diagnostics={input.sqlEditorDiagnostics}
+                onExecute={input.sqlEditorOnExecute}
+                onSave={input.sqlEditorOnSave}
+                onChange={(value) => input.onSqlChange?.(value)}
+                actions={input.sqlEditorActions}
+              />
             </div>
           ) : (
             <SqlCodeMirror
@@ -1561,24 +1589,42 @@ function QueryWorkbench(input: {
               relations={input.sqlEditorRelations ?? []}
               readOnly
               onChange={() => {}}
+              actions={input.sqlEditorActions}
             />
           )}
         </section>
 
-        <section className="card">
-          <div className="card-title">{input.paramsCardTitle ?? 'Params'}</div>
-          <div className="form-stack">
-            {input.paramsSchema ? (
-              <Form
-                key={input.workbenchKey}
-                schema={input.paramsSchema}
-                formData={input.paramsData}
-                validator={validator}
-                onChange={({formData}) => input.onParamsChange?.(isRecord(formData) ? formData : {})}
-                onSubmit={({formData}) => input.onRun(formData)}
-              >
+        {showParamsCard ? (
+          <section className="card">
+            <div className="card-title">{input.paramsCardTitle ?? 'Params'}</div>
+            <div className="form-stack">
+              {input.paramsSchema ? (
+                <Form
+                  key={input.workbenchKey}
+                  schema={input.paramsSchema}
+                  formData={input.paramsData}
+                  validator={validator}
+                  onChange={({formData}) => input.onParamsChange?.(isRecord(formData) ? formData : {})}
+                  onSubmit={({formData}) => input.onRun(formData)}
+                >
+                  {showParamActions ? (
+                    <div className="actions">
+                      <button className="button primary" type="submit">
+                        {input.runLabel}
+                      </button>
+                      {input.onSave ? (
+                        <button className="button" type="button" onClick={() => input.onSave?.()}>
+                          {input.saveLabel}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div />
+                  )}
+                </Form>
+              ) : (
                 <div className="actions">
-                  <button className="button primary" type="submit">
+                  <button className="button primary" type="button" onClick={() => input.onRun(undefined)}>
                     {input.runLabel}
                   </button>
                   {input.onSave ? (
@@ -1587,21 +1633,10 @@ function QueryWorkbench(input: {
                     </button>
                   ) : null}
                 </div>
-              </Form>
-            ) : (
-              <div className="actions">
-                <button className="button primary" type="button" onClick={() => input.onRun(undefined)}>
-                  {input.runLabel}
-                </button>
-                {input.onSave ? (
-                  <button className="button" type="button" onClick={() => input.onSave?.()}>
-                    {input.saveLabel}
-                  </button>
-                ) : null}
-              </div>
-            )}
-          </div>
-        </section>
+              )}
+            </div>
+          </section>
+        ) : null}
       </div>
 
       <section className="card">
@@ -2618,6 +2653,16 @@ function suggestSqlRunnerName(sql: string) {
 
 function normalizeSqlDraft(value: string) {
   return value.trimEnd();
+}
+
+type DesiredSchemaFormatResult = {ok: true; sql: string} | {ok: false};
+
+function formatDesiredSchemaDraft(sql: string): DesiredSchemaFormatResult {
+  try {
+    return {ok: true, sql: formatSqlFileContents(sql)};
+  } catch {
+    return {ok: false};
+  }
 }
 
 function renderVersionMismatchLede(startupError: Extract<StartupFailure, {kind: 'version-mismatch'}>) {
