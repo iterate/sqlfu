@@ -151,9 +151,7 @@ test('createSchema appends a managed section to nonempty definitions when the co
 
   const schema = await createAdapterForFixture(fixture).createSchema?.({}, 'definitions.sql');
 
-  expect(schema?.code).toMatch(
-    /^create table someotherthing\(id int, name text\);\n\n-- #region sqlfu:better-auth/,
-  );
+  expect(schema?.code).toMatch(/^create table someotherthing\(id int, name text\);\n\n-- #region sqlfu:better-auth/);
   expect(schema?.code).toContain(dedent`
     create table "user" (
       "id" text not null primary key,

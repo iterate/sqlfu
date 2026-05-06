@@ -103,7 +103,7 @@ Every factory takes the underlying driver's database/connection object as its si
 
 This wrapper is currently intended and tested for the schema-generation path. If you call `sqlfuBetterAuthAdapter()` with no arguments, it resolves `sqlfu.config.*` from the current working directory and installs schema-only runtime methods that throw if used outside `auth generate`. If you pass an underlying Better Auth adapter, runtime create/read/update/delete methods are delegated to that adapter, but runtime auth behavior should still be validated through that underlying adapter in your app. If your production auth config already works with Better Auth's direct D1 support (`database: env.DB`) or another runtime path, it can stay that way; use a small CLI-only auth config with `sqlfu/better-auth` for `auth generate`.
 
-For schema generation, sqlfu asks Better Auth to compile migrations against an empty in-memory SQLite database. That makes the output a full Better Auth SQLite schema rather than a diff against your real database. The schema path follows Better Auth's Kysely SQLite output; wrapped adapter naming options such as `usePlural` are not currently part of the supported contract.
+For schema generation, sqlfu asks Better Auth to compile migrations against an empty in-memory SQLite database. That makes the output a full Better Auth SQLite schema rather than a diff against your real database. The schema path follows Better Auth's Kysely SQLite output; wrapped adapter naming options such as `usePlural` are not currently part of the supported contract. The generated Better Auth section is formatted with sqlfu's formatter before it is written.
 
 ```ts
 import {betterAuth} from 'better-auth';
@@ -122,7 +122,7 @@ npx sqlfu draft
 npx sqlfu migrate
 ```
 
-If you pass `--output`, the path must resolve to `sqlfuConfig.definitions`. If you omit `--output`, sqlfu uses the definitions file from `sqlfu.config.*`. The definitions file may be empty, or it must contain exactly one managed section:
+If you pass `--output`, the path must resolve to `sqlfuConfig.definitions`. If you omit `--output`, sqlfu uses the definitions file from `sqlfu.config.*`. The definitions file may be empty, may already contain exactly one managed section, or may contain ordinary application SQL with no managed section yet. On the first run for a nonempty unfenced file, sqlfu appends the managed section only after the combined application schema plus Better Auth schema applies cleanly to a scratch SQLite database.
 
 ```sql
 create table "posts" ("id" integer primary key not null);
@@ -133,8 +133,16 @@ create table "comments" (
 );
 
 -- #region sqlfu:better-auth
-create table "user" ("id" text primary key not null, "email" text not null unique);
-create table "session" ("id" text primary key not null, "userId" text not null);
+create table "user" (
+  "id" text primary key not null,
+  "email" text not null unique
+);
+
+create table "session" (
+  "id" text primary key not null,
+  "userId" text not null
+);
+
 create index "session_userId_idx" on "session" ("userId");
 -- #endregion sqlfu:better-auth
 
