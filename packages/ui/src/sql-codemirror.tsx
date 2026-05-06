@@ -19,6 +19,14 @@ const FULLSCREEN_HEIGHT = '78vh';
 const Original = CodeMirrorMerge.Original;
 const Modified = CodeMirrorMerge.Modified;
 
+export type CodeMirrorAction = {
+  icon: ReactNode;
+  name: string;
+  onAction: () => void | Promise<void>;
+  disabled?: boolean;
+  title?: string;
+};
+
 type SqlCodeMirrorProps = {
   value: string;
   onChange: (value: string) => void;
@@ -29,6 +37,7 @@ type SqlCodeMirrorProps = {
   onSave?: (sql: string) => void;
   readOnly?: boolean;
   height?: string;
+  actions?: CodeMirrorAction[];
 };
 
 function SqlCodeMirrorBase(input: SqlCodeMirrorProps) {
@@ -103,6 +112,7 @@ export function SqlCodeMirror(input: SqlCodeMirrorProps) {
       title={input.ariaLabel}
       inline={<SqlCodeMirrorBase {...input} />}
       fullscreen={<SqlCodeMirrorBase {...input} height={FULLSCREEN_HEIGHT} />}
+      actions={input.actions}
     />
   );
 }
@@ -114,6 +124,7 @@ type TextCodeMirrorProps = {
   height?: string;
   language?: 'plain' | 'yaml' | 'markdown' | 'typescript';
   onChange?: (value: string) => void;
+  actions?: CodeMirrorAction[];
 };
 
 function TextCodeMirrorBase(input: TextCodeMirrorProps) {
@@ -139,11 +150,12 @@ export function TextCodeMirror(input: TextCodeMirrorProps) {
       title={input.ariaLabel}
       inline={<TextCodeMirrorBase {...input} />}
       fullscreen={<TextCodeMirrorBase {...input} height={FULLSCREEN_HEIGHT} />}
+      actions={input.actions}
     />
   );
 }
 
-type TextDiffCodeMirrorProps = {original: string; draft: string; ariaLabel: string};
+type TextDiffCodeMirrorProps = {original: string; draft: string; ariaLabel: string; actions?: CodeMirrorAction[]};
 
 function TextDiffCodeMirrorBase(input: TextDiffCodeMirrorProps & {height?: string}) {
   const theme = useResolvedTheme();
@@ -175,19 +187,59 @@ export function TextDiffCodeMirror(input: TextDiffCodeMirrorProps) {
       title={input.ariaLabel}
       inline={<TextDiffCodeMirrorBase {...input} />}
       fullscreen={<TextDiffCodeMirrorBase {...input} height={FULLSCREEN_HEIGHT} />}
+      actions={input.actions}
     />
   );
 }
 
-function FullscreenAffordance(props: {title: string; inline: ReactNode; fullscreen: ReactNode}) {
+function FullscreenAffordance(props: {
+  title: string;
+  inline: ReactNode;
+  fullscreen: ReactNode;
+  actions?: CodeMirrorAction[];
+}) {
   return (
     <div className="cm-host">
       {props.inline}
       <Dialog>
+        <EditorActions title={props.title} actions={props.actions} includeFullscreen />
+        <DialogContent className="cm-fullscreen-dialog">
+          <DialogTitle className="cm-fullscreen-dialog-title">{props.title}</DialogTitle>
+          <div className="cm-host">
+            {props.fullscreen}
+            <EditorActions title={props.title} actions={props.actions} />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function EditorActions(props: {title: string; actions?: CodeMirrorAction[]; includeFullscreen?: boolean}) {
+  if (!props.includeFullscreen && (!props.actions || props.actions.length === 0)) {
+    return null;
+  }
+
+  return (
+    <div className="cm-actions">
+      {props.actions?.map((action) => (
+        <button
+          key={action.name}
+          type="button"
+          className="cm-action-button"
+          aria-label={action.name}
+          title={action.title || action.name}
+          disabled={action.disabled}
+          onClick={action.onAction}
+        >
+          {action.icon}
+        </button>
+      ))}
+      {props.includeFullscreen ? (
         <DialogTrigger asChild>
           <button
             type="button"
-            className="cm-fullscreen-button"
+            className="cm-action-button"
             aria-label="Open editor fullscreen"
             aria-description={props.title}
             title={`Open ${props.title} fullscreen`}
@@ -195,11 +247,7 @@ function FullscreenAffordance(props: {title: string; inline: ReactNode; fullscre
             <FullscreenIcon />
           </button>
         </DialogTrigger>
-        <DialogContent className="cm-fullscreen-dialog">
-          <DialogTitle className="cm-fullscreen-dialog-title">{props.title}</DialogTitle>
-          {props.fullscreen}
-        </DialogContent>
-      </Dialog>
+      ) : null}
     </div>
   );
 }

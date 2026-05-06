@@ -12,6 +12,7 @@ export type {VendoredQueryAnalysis, VendoredQueryInput} from './typegen/analyze-
 export {inspectSqliteSchema} from './schemadiff/sqlite/inspect.js';
 export {planSchemaDiff} from './schemadiff/sqlite/plan.js';
 export type {SqliteInspectedDatabase} from './schemadiff/sqlite/types.js';
+export {formatSqlFileContents} from './formatter.js';
 
 // Editor-diagnostic helpers — analysis-adjacent; they turn analysis
 // errors into the shape in-browser SQL editors consume.
