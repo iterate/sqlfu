@@ -4,7 +4,8 @@ Use these when you already know the runtime you want and need a complete
 project shape: config, schema files, query files, generated wrappers, adapter
 usage, and runtime migration notes.
 
-For compact adapter snippets only, use [Adapters](./adapters.md).
+For compact adapter snippets only, use [Adapters](./adapters.md). For external
+tools and service-specific helper modules, use [Integrations](./integrations.md).
 
 | Runtime | Guide |
 | --- | --- |
@@ -23,4 +24,3 @@ Every guide follows the same SQL-first loop:
 3. run `sqlfu draft`;
 4. run `sqlfu generate`;
 5. pass the generated wrapper a sqlfu client from the runtime adapter.
-

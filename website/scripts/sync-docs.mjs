@@ -81,6 +81,33 @@ const docs = [
       'Use sqlfu with @sqlite.org/sqlite-wasm in the browser, including OPFS, generated migrations, and generated query wrappers.',
   },
   {
+    slug: 'integrations',
+    title: 'Integrations',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'integrations.md'),
+    description:
+      'How sqlfu fits with Better Auth, Cloudflare and Alchemy helpers, Effect SQL, OpenTelemetry, and adjacent runtime tools.',
+  },
+  {
+    slug: 'integrations/better-auth',
+    title: 'Better Auth',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'integrations', 'better-auth.md'),
+    description:
+      'Use Better Auth auth generate with sqlfu definitions.sql, then let sqlfu draft and apply the migration.',
+  },
+  {
+    slug: 'integrations/cloudflare-alchemy',
+    title: 'Cloudflare / Alchemy',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'integrations', 'cloudflare-alchemy.md'),
+    description:
+      'Use sqlfu/cloudflare to find Miniflare D1 files, read Alchemy D1 state, or talk to deployed Cloudflare D1 over HTTP.',
+  },
+  {
+    slug: 'integrations/opentelemetry',
+    title: 'OpenTelemetry',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'integrations', 'opentelemetry.md'),
+    description: 'Send generated sqlfu query names to OpenTelemetry spans with instrument.otel().',
+  },
+  {
     slug: 'adapters',
     title: 'Adapters',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'adapters.md'),

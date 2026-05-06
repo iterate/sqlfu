@@ -81,12 +81,21 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Integrations',
+          items: [
+            {label: 'Overview', slug: 'docs/integrations'},
+            {label: 'Better Auth', slug: 'docs/integrations/better-auth'},
+            {label: 'Cloudflare / Alchemy', slug: 'docs/integrations/cloudflare-alchemy'},
+            {label: 'OpenTelemetry', slug: 'docs/integrations/opentelemetry'},
+            {label: 'Effect SQL runtime (experimental)', slug: 'docs/effect-sql'},
+          ],
+        },
+        {
           label: 'Features',
           items: [
             {label: 'CLI', slug: 'docs/cli'},
             {label: 'Adapters', slug: 'docs/adapters'},
             {label: 'Runtime validation', slug: 'docs/runtime-validation'},
-            {label: 'Effect SQL runtime (experimental)', slug: 'docs/effect-sql'},
             {label: 'Observability', slug: 'docs/observability'},
             {label: 'Lint plugin', slug: 'docs/lint-plugin'},
             {label: 'Formatter', slug: 'docs/formatter'},

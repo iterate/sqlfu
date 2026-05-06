@@ -82,3 +82,7 @@ Skip these when context is tight or when the task is only about API usage.
 - [GitHub repository](https://github.com/mmkal/sqlfu): Source code, tasks, issues, and the agent skill under `skills/using-sqlfu`.
 - [Effect SQL runtime](https://sqlfu.dev/docs/effect-sql): Experimental native Effect SQL generation: query functions return Effect values and read SqlClient from the environment.
 - [Effect sql](https://sqlfu.dev/docs/examples/effect-sql): Effect SQL fixtures: `generate.runtime: 'effect-v3' | 'effect-v4-unstable'` emits functions that return Effect values and read `SqlClient.SqlClient` from the Effect environment instead of taking a sqlfu `Client`.
+- [Integrations](https://sqlfu.dev/docs/integrations): How sqlfu fits with Better Auth, Cloudflare and Alchemy helpers, Effect SQL, OpenTelemetry, and adjacent runtime tools.
+- [Better Auth](https://sqlfu.dev/docs/integrations/better-auth): Use Better Auth auth generate with sqlfu definitions.sql, then let sqlfu draft and apply the migration.
+- [Cloudflare / Alchemy](https://sqlfu.dev/docs/integrations/cloudflare-alchemy): Use sqlfu/cloudflare to find Miniflare D1 files, read Alchemy D1 state, or talk to deployed Cloudflare D1 over HTTP.
+- [OpenTelemetry](https://sqlfu.dev/docs/integrations/opentelemetry): Send generated sqlfu query names to OpenTelemetry spans with instrument.otel().
