@@ -641,6 +641,10 @@ h3 {
   gap: 1rem;
 }
 
+.split-grid.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .card {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -802,13 +806,19 @@ h3 {
   position: relative;
 }
 
-.cm-fullscreen-button {
+.cm-actions {
   position: absolute;
   top: 4px;
   right: 6px;
   z-index: 2;
-  width: 1.4rem;
-  height: 1.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.cm-action-button {
+  width: 1.45rem;
+  height: 1.45rem;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -817,13 +827,20 @@ h3 {
   border-radius: 0.3rem;
   background: var(--panel-tint-soft);
   color: var(--muted);
-  opacity: 0.6;
+  opacity: 0.72;
   cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
 }
 
-.cm-host:hover .cm-fullscreen-button,
-.cm-fullscreen-button:hover,
-.cm-fullscreen-button:focus-visible {
+.cm-action-button:disabled {
+  cursor: default;
+  opacity: 0.32;
+}
+
+.cm-host:hover .cm-action-button:not(:disabled),
+.cm-action-button:hover:not(:disabled),
+.cm-action-button:focus-visible:not(:disabled) {
   opacity: 1;
   color: var(--text);
   background: var(--panel-tint-mid);
@@ -1501,10 +1518,6 @@ h3 {
 
 .authority-card-body {
   margin-top: 0.85rem;
-}
-
-.authority-card-toolbar {
-  margin-bottom: 0.85rem;
 }
 
 .accordion-chevron {
