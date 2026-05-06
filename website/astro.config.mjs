@@ -71,6 +71,8 @@ export default defineConfig({
           label: 'Guides',
           items: [
             {label: 'Overview', slug: 'docs/guides'},
+            {label: 'Durable Objects', slug: 'docs/guides/durable-objects'},
+            {label: 'Cloudflare D1', slug: 'docs/guides/cloudflare-d1'},
             {label: 'Node SQLite', slug: 'docs/guides/node-sqlite'},
             {label: 'Bun SQLite', slug: 'docs/guides/bun-sqlite'},
             {label: 'Turso and libSQL', slug: 'docs/guides/turso-libsql'},
@@ -83,10 +85,9 @@ export default defineConfig({
           items: [
             {label: 'Overview', slug: 'docs/integrations'},
             {label: 'Better Auth', slug: 'docs/integrations/better-auth'},
-            {label: 'Cloudflare D1', slug: 'docs/guides/cloudflare-d1'},
-            {label: 'Cloudflare Durable Objects', slug: 'docs/guides/durable-objects'},
+            {label: 'Cloudflare / Alchemy', slug: 'docs/integrations/cloudflare-alchemy'},
+            {label: 'OpenTelemetry', slug: 'docs/integrations/opentelemetry'},
             {label: 'Effect SQL runtime (experimental)', slug: 'docs/effect-sql'},
-            {label: 'Observability', slug: 'docs/observability'},
           ],
         },
         {
@@ -95,6 +96,7 @@ export default defineConfig({
             {label: 'CLI', slug: 'docs/cli'},
             {label: 'Adapters', slug: 'docs/adapters'},
             {label: 'Runtime validation', slug: 'docs/runtime-validation'},
+            {label: 'Observability', slug: 'docs/observability'},
             {label: 'Lint plugin', slug: 'docs/lint-plugin'},
             {label: 'Formatter', slug: 'docs/formatter'},
             {label: 'Agent skill', slug: 'docs/agent-skill'},

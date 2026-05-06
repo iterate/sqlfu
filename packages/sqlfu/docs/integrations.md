@@ -12,20 +12,25 @@ runtime, framework, service, or SDK?" For database-driver setup only, use
 - [Better Auth](./integrations/better-auth.md): let Better Auth generate its
   auth tables into `definitions.sql`, while sqlfu still owns migration drafts
   and migration execution.
-- [Cloudflare D1](./guides/cloudflare-d1.md): use D1 from Workers and, when
-  needed, let sqlfu commands operate on the deployed D1 database through
-  `sqlfu/cloudflare`.
-- [Cloudflare Durable Objects](./guides/durable-objects.md): run sqlfu against
-  per-object SQLite storage and apply bundled migrations on startup.
+- [Cloudflare / Alchemy](./integrations/cloudflare-alchemy.md): use the
+  `sqlfu/cloudflare` module to find local Miniflare D1 files, read Alchemy D1
+  state, or talk to deployed Cloudflare D1 over HTTP.
 - [Effect SQL runtime](./effect-sql.md): generate query wrappers that return
   Effect values and read `SqlClient.SqlClient` from the Effect environment.
-- [Observability](./observability.md): send generated query names to
-  OpenTelemetry, Sentry, PostHog, and Datadog through one instrumentation hook.
+- [OpenTelemetry](./integrations/opentelemetry.md): the short path for sending
+  generated query names to OTel spans.
 
 ## Adjacent integration surfaces
 
 Some integrations are documented where their main decision lives:
 
+- [Cloudflare D1](./guides/cloudflare-d1.md) and
+  [Cloudflare Durable Objects](./guides/durable-objects.md) stay in Guides
+  because they are full runtime setup guides: project shape, config, migrations,
+  and Worker code.
+- [Observability](./observability.md) stays in Features because it documents the
+  whole `instrument()` hook model, including OpenTelemetry, Sentry, PostHog, and
+  Datadog.
 - Runtime validation libraries live in [Runtime validation](./runtime-validation.md):
   arktype, valibot, zod, and zod-mini change the generated wrapper boundary.
 - Turso, libSQL, Expo SQLite, Bun SQLite, and sqlite-wasm live in

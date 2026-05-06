@@ -5,7 +5,7 @@ project shape: config, schema files, query files, generated wrappers, adapter
 usage, and runtime migration notes.
 
 For compact adapter snippets only, use [Adapters](./adapters.md). For external
-tools layered around sqlfu, use [Integrations](./integrations.md).
+tools and service-specific helper modules, use [Integrations](./integrations.md).
 
 | Runtime | Guide |
 | --- | --- |
