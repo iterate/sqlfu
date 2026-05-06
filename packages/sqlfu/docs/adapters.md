@@ -7,6 +7,18 @@ on top.
 
 This page lists every adapter that ships in `sqlfu` today, with a copy-paste snippet for each.
 
+For an end-to-end setup, use the matching guide:
+
+| Runtime | Guide |
+| --- | --- |
+| Durable Objects | [Durable Objects](./guides/durable-objects.md) |
+| Cloudflare D1 | [Cloudflare D1](./guides/cloudflare-d1.md) |
+| Node SQLite / better-sqlite3 / native libsql | [Node SQLite](./guides/node-sqlite.md) |
+| Bun SQLite | [Bun SQLite](./guides/bun-sqlite.md) |
+| Turso and libSQL | [Turso and libSQL](./guides/turso-libsql.md) |
+| Expo SQLite | [Expo SQLite](./guides/expo-sqlite.md) |
+| sqlite-wasm | [sqlite-wasm](./guides/sqlite-wasm.md) |
+
 If you already know which driver you want to use, jump to the section below. If
 you're picking from scratch, see [Choosing an adapter](#choosing-an-adapter) at
 the bottom. For the shared client contract, see [Runtime client](https://sqlfu.dev/docs/client).
@@ -87,11 +99,10 @@ Every factory takes the underlying driver's database/connection object as its si
 
 ## Better Auth schema generation
 
-`sqlfu/better-auth` is a Better Auth adapter wrapper, not a sqlfu database driver adapter. It exists so Better Auth's `auth generate` command can replace the Better Auth-owned section in sqlfu's configured `definitions.sql`. sqlfu still owns database diffs and migrations: after generation changes the desired schema, run `sqlfu draft` and `sqlfu migrate`.
-
-This wrapper is currently intended and tested for the schema-generation path. If you call `sqlfuBetterAuthAdapter()` with no arguments, it resolves `sqlfu.config.*` from the current working directory and installs schema-only runtime methods that throw if used outside `auth generate`. If you pass an underlying Better Auth adapter, runtime create/read/update/delete methods are delegated to that adapter, but runtime auth behavior should still be validated through that underlying adapter in your app. If your production auth config already works with Better Auth's direct D1 support (`database: env.DB`) or another runtime path, it can stay that way; use a small CLI-only auth config with `sqlfu/better-auth` for `auth generate`.
-
-For schema generation, sqlfu asks Better Auth to compile migrations against an empty in-memory SQLite database. That makes the output a full Better Auth SQLite schema rather than a diff against your real database. The schema path follows Better Auth's Kysely SQLite output; wrapped adapter naming options such as `usePlural` are not currently part of the supported contract.
+`sqlfu/better-auth` is a Better Auth adapter wrapper, not a sqlfu database
+driver adapter. It exists so Better Auth's `auth generate` command can write
+the auth-owned part of sqlfu's configured `definitions.sql`, while sqlfu still
+owns database diffs and migrations.
 
 ```ts
 import {betterAuth} from 'better-auth';
@@ -102,7 +113,7 @@ export const auth = betterAuth({
 });
 ```
 
-Then run generation against the configured definitions file:
+Then run generation, draft the sqlfu migration, and apply it:
 
 ```sh
 npx auth@latest generate --yes
@@ -110,26 +121,8 @@ npx sqlfu draft
 npx sqlfu migrate
 ```
 
-If you pass `--output`, the path must resolve to `sqlfuConfig.definitions`. If you omit `--output`, sqlfu uses the definitions file from `sqlfu.config.*`. The definitions file may be empty, or it must contain exactly one managed section:
-
-```sql
-create table "posts" ("id" integer primary key not null);
-
-create table "comments" (
-  "id" integer primary key not null,
-  "postId" integer not null references "posts" ("id") on delete cascade
-);
-
--- #region sqlfu:better-auth
-create table "user" ("id" text primary key not null, "email" text not null unique);
-create table "session" ("id" text primary key not null, "userId" text not null);
-create index "session_userId_idx" on "session" ("userId");
--- #endregion sqlfu:better-auth
-
-create table "audit_log" ("id" integer primary key not null);
-```
-
-In that example, `posts`, `comments`, and `audit_log` are kept because they are outside the managed section. `user`, `session`, and `session_userId_idx` are replaced whenever `npx auth generate` rewrites the `sqlfu:better-auth` region.
+See [Better Auth](./integrations/better-auth.md) for first-run append behavior,
+the managed region format, runtime adapter delegation, and troubleshooting.
 
 ## Local and embedded
 
@@ -256,7 +249,7 @@ export default {
 ```ts
 import {DurableObject} from 'cloudflare:workers';
 import {createDurableObjectClient} from 'sqlfu';
-import {migrate} from '../migrations/.generated/migrations';
+import {migrate} from '../migrations/.generated/migrations.ts';
 
 export class Counter extends DurableObject {
   client: ReturnType<typeof createDurableObjectClient>;
