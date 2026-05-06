@@ -54,6 +54,7 @@ export function buildDemoConfig(): SqlfuProjectConfig {
       prettyErrors: true,
       sync: false,
       experimentalJsonTypes: false,
+      runtime: 'sqlfu',
       importExtension: '.js',
       authority: 'desired_schema',
     },

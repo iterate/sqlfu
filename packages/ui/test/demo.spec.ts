@@ -23,6 +23,140 @@ test('demo mode runs fully in-browser', async ({page}) => {
   await expect(page.getByRole('button', {name: 'sqlfu draft'})).toBeVisible();
 });
 
+test('demo mode keeps scrolling inside the sidebar and main panes', async ({page}) => {
+  await page.setViewportSize({width: 900, height: 320});
+  await page.goto('http://127.0.0.1:3218/?demo=1#schema');
+
+  await expect(page.getByRole('heading', {name: 'Schema', exact: true})).toBeVisible();
+
+  const layout = await page.evaluate(() => {
+    const sidebar = document.querySelector<HTMLElement>('.sidebar');
+    const main = document.querySelector<HTMLElement>('.main');
+    if (!sidebar || !main) {
+      throw new Error('Expected sidebar and main panes to be present');
+    }
+
+    return {
+      documentClientHeight: document.documentElement.clientHeight,
+      documentScrollHeight: document.documentElement.scrollHeight,
+      mainClientHeight: main.clientHeight,
+      mainOverflowY: getComputedStyle(main).overflowY,
+      mainScrollHeight: main.scrollHeight,
+      sidebarClientHeight: sidebar.clientHeight,
+      sidebarOverflowY: getComputedStyle(sidebar).overflowY,
+      sidebarScrollHeight: sidebar.scrollHeight,
+    };
+  });
+
+  expect(layout.documentScrollHeight).toBeLessThanOrEqual(layout.documentClientHeight + 1);
+  expect(layout.sidebarOverflowY).toBe('auto');
+  expect(layout.sidebarScrollHeight).toBeGreaterThan(layout.sidebarClientHeight);
+  expect(layout.mainOverflowY).toBe('auto');
+  expect(layout.mainScrollHeight).toBeGreaterThan(layout.mainClientHeight);
+});
+
+test('demo mode table columns resize from the visible header edge', async ({page}) => {
+  await page.setViewportSize({width: 1100, height: 640});
+  await page.goto('http://127.0.0.1:3218/?demo=1#table/products');
+
+  await expect(page.locator('.reactgrid').getByText('Chai')).toBeVisible();
+
+  const productNameHeader = page.locator('.reactgrid [data-cell-rowidx="0"][data-cell-colidx="2"]');
+  const initialBox = await productNameHeader.boundingBox();
+  if (!initialBox) {
+    throw new Error('Expected product_name header cell to be visible');
+  }
+
+  await page.mouse.move(initialBox.x + initialBox.width - 3, initialBox.y + initialBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(initialBox.x + initialBox.width + 80, initialBox.y + initialBox.height / 2, {steps: 8});
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const currentBox = await productNameHeader.boundingBox();
+      return currentBox?.width || 0;
+    })
+    .toBeGreaterThan(initialBox.width + 40);
+});
+
+test('demo mode shows a readable column width hint below the header while resizing', async ({page}) => {
+  await page.setViewportSize({width: 1100, height: 640});
+  await page.goto('http://127.0.0.1:3218/?demo=1#table/products');
+
+  await expect(page.locator('.reactgrid').getByText('Chai')).toBeVisible();
+
+  const productNameHeader = page.locator('.reactgrid [data-cell-rowidx="0"][data-cell-colidx="2"]');
+  const initialBox = await productNameHeader.boundingBox();
+  if (!initialBox) {
+    throw new Error('Expected product_name header cell to be visible');
+  }
+
+  await page.mouse.move(initialBox.x + initialBox.width - 3, initialBox.y + initialBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(initialBox.x + initialBox.width + 70, initialBox.y + initialBox.height / 2, {steps: 8});
+
+  const hint = page.locator('.rg-column-resize-hint');
+  await expect(hint).toHaveText(/Width: \d+px/);
+
+  const hintBox = await hint.boundingBox();
+  const headerBox = await productNameHeader.boundingBox();
+  await page.mouse.up();
+  if (!hintBox || !headerBox) {
+    throw new Error('Expected resize hint and header boxes to be visible');
+  }
+  expect(hintBox.y).toBeGreaterThanOrEqual(headerBox.y + headerBox.height - 1);
+});
+
+test('demo mode leaves drag room after the rightmost column', async ({page}) => {
+  await page.setViewportSize({width: 1100, height: 640});
+  await page.goto('http://127.0.0.1:3218/?demo=1#table/products');
+
+  await expect(page.locator('.reactgrid').getByText('Chai')).toBeVisible();
+
+  const tableScroll = page.locator('.table-scroll');
+  await tableScroll.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+  });
+
+  const discontinuedHeader = page.locator('.reactgrid [data-cell-rowidx="0"][data-cell-colidx="10"]');
+  await expect(discontinuedHeader).toBeVisible();
+
+  const scrollBox = await tableScroll.boundingBox();
+  const initialBox = await discontinuedHeader.boundingBox();
+  if (!scrollBox || !initialBox) {
+    throw new Error('Expected table scroller and discontinued header to be visible');
+  }
+
+  expect(initialBox.x + initialBox.width).toBeLessThan(scrollBox.x + scrollBox.width - 80);
+
+  await page.mouse.move(initialBox.x + initialBox.width - 3, initialBox.y + initialBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(initialBox.x + initialBox.width + 110, initialBox.y + initialBox.height / 2, {steps: 8});
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const currentBox = await discontinuedHeader.boundingBox();
+      return currentBox?.width || 0;
+    })
+    .toBeGreaterThan(initialBox.width + 70);
+});
+
+test('demo mode default 100/page table view actually fetches 100 rows', async ({page}) => {
+  await page.setViewportSize({width: 1100, height: 640});
+  await page.goto('http://127.0.0.1:3218/?demo=1#table/customers');
+
+  await expect(page.getByRole('button', {name: '100 rows per page'})).toBeVisible();
+
+  const tableScroll = page.locator('.table-scroll');
+  await tableScroll.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+
+  await expect(page.locator('.reactgrid').getByText('Wolski  Zajazd')).toBeVisible();
+});
+
 test('demo mode: clicking the same sort column 3 times (asc → desc → off) does not freeze', async ({page}) => {
   await page.goto('http://127.0.0.1:3218/?demo=1#table/products');
   await expect(page.locator('.reactgrid').getByText('Chai')).toBeVisible();

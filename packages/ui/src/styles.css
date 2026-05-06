@@ -183,9 +183,20 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html,
+body {
+  overflow: hidden;
+}
+
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100%;
 }
 
 a {
@@ -210,12 +221,15 @@ table {
 .app-shell {
   display: grid;
   grid-template-columns: 15rem minmax(0, 1fr);
-  grid-template-rows: auto 1fr;
-  min-height: 100vh;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .mode-banner {
   grid-column: 1 / -1;
+  grid-row: 1;
   display: flex;
   align-items: center;
   gap: 0.85rem;
@@ -256,7 +270,9 @@ table {
 }
 
 .startup-shell {
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 100%;
+  overflow: auto;
   display: grid;
   place-items: center;
   padding: 2rem;
@@ -449,6 +465,10 @@ table {
 }
 
 .sidebar {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 0;
+  overflow: auto;
   padding: 1rem 0.75rem;
   border-right: 1px solid var(--line);
   background: var(--sidebar-gradient);
@@ -456,6 +476,11 @@ table {
 }
 
 .main {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
   padding: 2rem;
 }
 
@@ -734,6 +759,7 @@ h3 {
   position: relative;
   overflow: auto;
   margin-top: 0.35rem;
+  --rg-resize-scroll-buffer: clamp(12rem, 30vw, 24rem);
 }
 
 .cell-content-wrap {
@@ -875,6 +901,8 @@ h3 {
 }
 
 .reactgrid {
+  box-sizing: content-box;
+  padding-right: var(--rg-resize-scroll-buffer, 0);
   min-width: max-content;
   color: var(--text);
 }
@@ -967,9 +995,9 @@ h3 {
 .reactgrid-content .rg-pane .rg-cell .rg-touch-column-resize-handle {
   position: absolute;
   top: 0;
-  right: -0.3rem;
+  right: 0;
   z-index: 2;
-  width: 0.7rem;
+  width: 0.75rem;
   height: 100%;
   cursor: col-resize;
   pointer-events: auto;
@@ -978,8 +1006,8 @@ h3 {
 .reactgrid-content .rg-pane .rg-cell .rg-touch-column-resize-handle .rg-resize-handle {
   position: absolute;
   top: 0;
-  right: 0.28rem;
-  width: 0.14rem;
+  right: 0;
+  width: 0.45rem;
   height: 100%;
   background: transparent;
 }
@@ -987,6 +1015,25 @@ h3 {
 .reactgrid-content .rg-pane .rg-cell .rg-touch-column-resize-handle:hover .rg-resize-handle,
 .reactgrid-content .rg-pane .rg-cell .rg-touch-column-resize-handle:active .rg-resize-handle {
   background: var(--accent);
+}
+
+.reactgrid-content .rg-column-resize-hint,
+.reactgrid-content .rg-row-resize-hint {
+  position: absolute;
+  top: 0;
+  z-index: 8;
+  transform: translate(0.35rem, calc(34px + 0.2rem));
+  padding: 0.28rem 0.45rem;
+  border: 1px solid var(--accent-border-strong);
+  border-radius: 0.28rem;
+  background: var(--panel-strong);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', 'Menlo', monospace;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .reactgrid-content .rg-pane .rg-cell.dirty-cell {
@@ -1560,6 +1607,10 @@ form textarea {
     grid-template-columns: 1fr;
   }
 
+  .app-shell {
+    grid-template-rows: auto minmax(8rem, 32vh) minmax(0, 1fr);
+  }
+
   .authorities-grid {
     grid-template-columns: 1fr;
     grid-template-rows: auto;
@@ -1571,11 +1622,15 @@ form textarea {
   }
 
   .sidebar {
+    grid-column: 1;
+    grid-row: 2;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
 
   .main {
+    grid-column: 1;
+    grid-row: 3;
     padding: 1rem;
   }
 

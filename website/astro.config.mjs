@@ -22,9 +22,6 @@ export default defineConfig({
       allowedHosts: ['.trycloudflare.com', '.ngrok.app', '.ngrok.dev'],
     },
   },
-  redirects: {
-    '/docs': '/docs/getting-started',
-  },
   integrations: [
     starlight({
       title: 'sqlfu',

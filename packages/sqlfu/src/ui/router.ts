@@ -383,18 +383,20 @@ export const uiRouter = {
         z.object({
           relationName: z.string(),
           page: z.number().int(),
+          pageSize: z.number().int().min(1).max(1000),
         }),
       )
       .handler(async ({context, input}) => {
         const config = requireProjectConfig(context.project);
         await using database = await context.host.openDb(config);
-        return await getTableRows(database.client, input.relationName, input.page);
+        return await getTableRows(database.client, input.relationName, input.page, input.pageSize);
       }),
     save: uiBase
       .input(
         z.object({
           relationName: z.string(),
           page: z.number().int(),
+          pageSize: z.number().int().min(1).max(1000),
           originalRows: z.array(rowRecordSchema),
           rows: z.array(rowRecordSchema),
           rowKeys: z.array(tableRowKeySchema),
@@ -410,6 +412,7 @@ export const uiRouter = {
         z.object({
           relationName: z.string(),
           page: z.number().int(),
+          pageSize: z.number().int().min(1).max(1000),
           originalRow: rowRecordSchema,
           rowKey: tableRowKeySchema,
         }),
@@ -941,9 +944,13 @@ async function getRelationCount(client: Client, relationName: string) {
   return Number(rows[0]?.count ?? 0);
 }
 
-async function getTableRows(client: Client, relationName: string, page: number): Promise<TableRowsResponse> {
+async function getTableRows(
+  client: Client,
+  relationName: string,
+  page: number,
+  pageSize: number,
+): Promise<TableRowsResponse> {
   const safePage = Math.max(0, page);
-  const pageSize = 25;
   const relation = await getRelationInfo(client, relationName);
   const relationColumns = await getRelationColumns(client, relationName);
   const columns = relationColumns.map((column) => column.name);
@@ -971,6 +978,7 @@ async function saveTableRows(
   relationName: string,
   input: {
     page: number;
+    pageSize: number;
     originalRows: unknown[];
     rows: unknown[];
     rowKeys: TableRowKey[];
@@ -1018,7 +1026,7 @@ async function saveTableRows(
     await client.run({sql: statement.sql, args: statement.args as QueryArg[]});
   }
 
-  return await getTableRows(client, relationName, input.page);
+  return await getTableRows(client, relationName, input.page, input.pageSize);
 }
 
 async function deleteTableRow(
@@ -1026,6 +1034,7 @@ async function deleteTableRow(
   relationName: string,
   input: {
     page: number;
+    pageSize: number;
     originalRow: unknown;
     rowKey: TableRowKey | undefined;
   },
@@ -1046,7 +1055,7 @@ async function deleteTableRow(
     throw new Error(`Delete affected ${result.rowsAffected ?? 0} rows`);
   }
 
-  return await getTableRows(client, relationName, input.page);
+  return await getTableRows(client, relationName, input.page, input.pageSize);
 }
 
 function slugifyQueryName(value: string) {

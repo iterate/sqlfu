@@ -37,6 +37,7 @@ import {columnWidthAlgorithm} from './column-width.js';
 import type {UiRouter} from 'sqlfu/ui/browser';
 import {SqlCodeMirror, TextCodeMirror, TextDiffCodeMirror} from './sql-codemirror.js';
 import {RelationQueryPanel} from './relation-query-panel.js';
+import {DEFAULT_LIMIT} from './relation-query-builder.js';
 import * as Popover from '@radix-ui/react-popover';
 import {
   Dialog,
@@ -1073,12 +1074,13 @@ function TablePanel(input: {relation: StudioRelation}) {
     input: {
       relationName: input.relation.name,
       page: 0,
+      pageSize: DEFAULT_LIMIT,
     },
   });
   const fallbackRows: TableRowsResponse = {
     relation: input.relation.name,
     page: 0,
-    pageSize: 25,
+    pageSize: DEFAULT_LIMIT,
     editable: false,
     rowKeys: [],
     rows: [],
@@ -1134,6 +1136,7 @@ function TablePanel(input: {relation: StudioRelation}) {
     saveRowsMutation.mutate({
       relationName: input.relation.name,
       page: 0,
+      pageSize: rowsData.pageSize,
       originalRows: displayedOriginalRows.map((row) => ({...row})),
       rows: displayedRows.map((row) => ({...row})),
       rowKeys: displayedRowKeys,
@@ -1171,6 +1174,7 @@ function TablePanel(input: {relation: StudioRelation}) {
     deleteRowMutation.mutate({
       relationName: input.relation.name,
       page: 0,
+      pageSize: rowsData.pageSize,
       rowKey,
       originalRow,
     });
