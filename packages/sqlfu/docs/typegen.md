@@ -193,8 +193,8 @@ await recordSlackWebhook(client, {
 });
 ```
 
-The generated wrapper accepts the TypeScript `definition`, serializes inputs
-with `JSON.stringify`, and parses selected result columns before returning them.
+The generated wrapper accepts the TypeScript `definition`, serializes inputs as
+pretty-printed JSON text, and parses selected result columns before returning them.
 The `definition` value is not a validator schema and sqlfu does not resolve
 imports, aliases, or references from it. The `encoding` column controls how the
 logical type is encoded for SQLite; this first experimental slice only supports

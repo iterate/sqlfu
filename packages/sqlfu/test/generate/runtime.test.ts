@@ -176,7 +176,7 @@ test('generate with runtime: effect-v3 decodes sqlfu_types JSON result columns',
 
   await project.generate();
   const generatedModule = await project.readText('sql/.generated/slack-webhooks.sql.ts');
-  expect(generatedModule).toContain('JSON.stringify(params.payload)');
+  expect(generatedModule).toContain('JSON.stringify(params.payload, null, 2)');
   expect(generatedModule).toContain(`payload: (JSON.parse(row.payload) as listSlackWebhooks.Result["payload"])`);
   expect(generatedModule).toContain('sqlClient.unsafe<any>');
 
@@ -380,7 +380,7 @@ test('generate stringifies json declared-type inputs and parses json result colu
   const generatedTables = await project.readText('sql/.generated/tables.ts');
 
   expect(generatedModule).toContain('payload: unknown;');
-  expect(generatedModule).toContain('JSON.stringify(params.payload)');
+  expect(generatedModule).toContain('JSON.stringify(params.payload, null, 2)');
   expect(generatedModule).toContain('JSON.parse');
   expect(generatedTables).toContain('payload: unknown;');
   const catalog = JSON.parse(await project.readText('.sqlfu/query-catalog.json'));
@@ -422,7 +422,7 @@ test('generate stringifies json declared-type inputs and parses json result colu
     sql: `select payload from webhooks`,
     args: [],
   });
-  expect(rawRows).toMatchObject([{payload: JSON.stringify(payload)}]);
+  expect(rawRows).toMatchObject([{payload: JSON.stringify(payload, null, 2)}]);
 
   await expect(mod.listWebhooks(client)).resolves.toEqual([
     {
@@ -512,7 +512,7 @@ test('generate uses sqlfu_types view rows for typed JSON logical columns with th
 
   expect(generatedModule).toContain('action: "message" | "reaction";');
   expect(generatedModule).toContain('content: string');
-  expect(generatedModule).toContain('JSON.stringify(params.payload)');
+  expect(generatedModule).toContain('JSON.stringify(params.payload, null, 2)');
   expect(generatedModule).toContain(`payload: (JSON.parse(row.payload) as listSlackWebhooks.Result["payload"])`);
   expect(generatedModule).not.toContain('TextDecoder');
   expect(generatedModule).not.toContain('params.payload != null');
@@ -569,7 +569,7 @@ test('generate uses sqlfu_types view rows for typed JSON logical columns with th
     sql: `select payload from slack_webhooks`,
     args: [],
   });
-  expect(rawRows).toMatchObject([{payload: JSON.stringify(payload)}]);
+  expect(rawRows).toMatchObject([{payload: JSON.stringify(payload, null, 2)}]);
 
   await expect(mod.listSlackWebhooks(client)).resolves.toEqual([
     {

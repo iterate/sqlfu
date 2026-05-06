@@ -79,7 +79,7 @@ insert into slack_webhooks (payload, created_at) values (?, ?);
 const recordSlackWebhookQuery = (params: recordSlackWebhook.Params) => ({
 	name: "recordSlackWebhook",
 	sql: recordSlackWebhookSql,
-	args: [JSON.stringify(params.payload), params.createdAt],
+	args: [JSON.stringify(params.payload, null, 2), params.createdAt],
 });
 
 export const recordSlackWebhook = Object.assign(
@@ -216,7 +216,7 @@ insert into slack_webhooks (payload, created_at) values (?, ?);
 const recordSlackWebhookQuery = (params: recordSlackWebhook.Params) => ({
 	name: "recordSlackWebhook",
 	sql: recordSlackWebhookSql,
-	args: [JSON.stringify(params.payload), params.createdAt],
+	args: [JSON.stringify(params.payload, null, 2), params.createdAt],
 });
 
 export const recordSlackWebhook = Object.assign(
@@ -363,7 +363,7 @@ insert into slack_webhooks (payload) values (?);
 const recordSlackWebhookQuery = (params: recordSlackWebhook.Params) => ({
 	name: "recordSlackWebhook",
 	sql: recordSlackWebhookSql,
-	args: [JSON.stringify(params.payload)],
+	args: [JSON.stringify(params.payload, null, 2)],
 });
 
 export const recordSlackWebhook = Object.assign(
