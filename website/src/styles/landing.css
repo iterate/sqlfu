@@ -1085,7 +1085,10 @@ a {
 }
 
 .tweet-testimonial {
-  max-width: 36rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  max-width: 74rem;
   margin: 1.6rem auto 0;
   font-family: ui-sans-serif, system-ui, sans-serif;
 }
@@ -1214,6 +1217,7 @@ a {
   }
 
   .tweet-testimonial {
+    grid-template-columns: 1fr;
     max-width: none;
   }
 
