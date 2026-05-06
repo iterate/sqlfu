@@ -95,6 +95,22 @@ test('createSchema preserves application SQL outside the managed Better Auth sec
   );
 });
 
+test('createSchema formats generated Better Auth SQL by default', async () => {
+  await using fixture = await createBetterAuthFixture({
+    files: {
+      'definitions.sql': '',
+    },
+  });
+
+  const schema = await createAdapterForFixture(fixture).createSchema?.({}, 'definitions.sql');
+
+  expect(schema?.code).toContain(dedent`
+    create table "user" (
+      "id" text not null primary key,
+  `);
+  expect(schema?.code).not.toContain('create table "user" ("id" text not null primary key');
+});
+
 test('createSchema returns empty code when definitions are already up to date', async () => {
   await using fixture = await createBetterAuthFixture({
     files: {
@@ -126,15 +142,33 @@ test('createSchema rejects an output file that is not the configured definitions
   );
 });
 
-test('createSchema rejects nonempty definitions without a Better Auth fence', async () => {
+test('createSchema appends a managed section to nonempty definitions when the combined schema applies cleanly', async () => {
   await using fixture = await createBetterAuthFixture({
     files: {
-      'definitions.sql': 'create table "posts" ("id" integer primary key not null);\n',
+      'definitions.sql': 'create table someotherthing(id int, name text);\n',
+    },
+  });
+
+  const schema = await createAdapterForFixture(fixture).createSchema?.({}, 'definitions.sql');
+
+  expect(schema?.code).toMatch(
+    /^create table someotherthing\(id int, name text\);\n\n-- #region sqlfu:better-auth/,
+  );
+  expect(schema?.code).toContain(dedent`
+    create table "user" (
+      "id" text not null primary key,
+  `);
+});
+
+test('createSchema rejects first-time append when the combined schema cannot apply cleanly', async () => {
+  await using fixture = await createBetterAuthFixture({
+    files: {
+      'definitions.sql': 'create table "user" ("id" integer primary key not null);\n',
     },
   });
 
   await expect(createAdapterForFixture(fixture).createSchema?.({}, 'definitions.sql')).rejects.toThrow(
-    /no sqlfu Better Auth managed section[\s\S]*-- #region sqlfu:better-auth/,
+    /could not append sqlfu Better Auth managed section[\s\S]*scratch SQLite database/,
   );
 });
 
