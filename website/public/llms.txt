@@ -32,8 +32,17 @@ The main mental model: SQL artifacts are the source, TypeScript wrappers and UI 
 
 Task-oriented pages for operating sqlfu in a real application.
 
+- [Guides](https://sqlfu.dev/docs/guides): Runtime-specific setup guides for Durable Objects, D1, Node SQLite, Bun SQLite, Turso/libSQL, Expo SQLite, and sqlite-wasm.
+- [Durable Objects](https://sqlfu.dev/docs/guides/durable-objects): Practical Durable Objects setup: config, generated migration bundle, createDurableObjectClient(), and generated query usage.
+- [Cloudflare D1](https://sqlfu.dev/docs/guides/cloudflare-d1): Use sqlfu with Cloudflare D1: D1 migration preset, db factories, createD1Client(), and generated query wrappers.
+- [Node SQLite](https://sqlfu.dev/docs/guides/node-sqlite): Use sqlfu with node:sqlite, better-sqlite3, or native libsql in Node while keeping generated wrappers synchronous.
+- [Bun SQLite](https://sqlfu.dev/docs/guides/bun-sqlite): Use sqlfu with bun:sqlite: local file config, sync wrappers, and createBunClient() at runtime.
+- [Turso and libSQL](https://sqlfu.dev/docs/guides/turso-libsql): Use sqlfu with Turso Cloud, @libsql/client, @tursodatabase/serverless, and Turso embedded/sync drivers.
+- [Expo SQLite](https://sqlfu.dev/docs/guides/expo-sqlite): Use sqlfu with Expo SQLite: generate from definitions, bundle migrations, and run createExpoSqliteClient() in app startup.
+- [sqlite-wasm](https://sqlfu.dev/docs/guides/sqlite-wasm): Use sqlfu with @sqlite.org/sqlite-wasm in the browser, including OPFS, generated migrations, and generated query wrappers.
 - [CLI](https://sqlfu.dev/docs/cli): What npx sqlfu does, what each subcommand is for, and how check, draft, migrate, generate, sync, and format fit together.
 - [Adapters](https://sqlfu.dev/docs/adapters): Client factories for better-sqlite3, node:sqlite, bun:sqlite, libsql, Cloudflare D1, Durable Objects, Expo, sqlite-wasm, and more.
+- [Cloudflare D1 details](https://sqlfu.dev/docs/cloudflare-d1): Deployed Cloudflare D1 access with alchemy state, raw database IDs, and createD1HttpClient().
 - [Runtime validation](https://sqlfu.dev/docs/runtime-validation): Generate arktype, valibot, zod, or zod/mini schemas as the source of truth. Validate params and rows at the wrapper boundary.
 - [Observability](https://sqlfu.dev/docs/observability): Named queries reach OpenTelemetry, Sentry, PostHog, Datadog via a single instrument() hook.
 - [Lint Plugin](https://sqlfu.dev/docs/lint-plugin): ESLint rules for enforcing the SQL First model: query-naming and format-sql.
@@ -62,6 +71,7 @@ Executable snapshot fixtures for `sqlfu generate`. Each page shows real inputs a
 - [Query shapes](https://sqlfu.dev/docs/examples/query-shapes): One test per query "shape" the generator recognizes: insert, insert-returning, update, delete, aggregate, user-defined function, and CTE.
 - [Result types](https://sqlfu.dev/docs/examples/result-types): Result-type inference fixtures: how `sqlfu generate` derives column types from the analyzed schema, aliases, view columns, `is not null` narrowing, expression aliases, and `limit 1` single-row shape.
 - [Validators](https://sqlfu.dev/docs/examples/validators): Validator-integration fixtures: zod, valibot, zod/mini, arktype.
+- [Logical types](https://sqlfu.dev/docs/examples/logical-types): Logical-type fixtures for metadata-backed declared SQLite types.
 
 ## Optional
 

@@ -26,11 +26,72 @@ const docs = [
     description: 'Overview, quick start, CLI model, and core concepts.',
   },
   {
+    slug: 'guides',
+    title: 'Guides',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides.md'),
+    description:
+      'Runtime-specific setup guides for Durable Objects, D1, Node SQLite, Bun SQLite, Turso/libSQL, Expo SQLite, and sqlite-wasm.',
+  },
+  {
+    slug: 'guides/durable-objects',
+    title: 'Durable Objects',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides', 'durable-objects.md'),
+    description:
+      'Practical Durable Objects setup: config, generated migration bundle, createDurableObjectClient(), and generated query usage.',
+  },
+  {
+    slug: 'guides/cloudflare-d1',
+    title: 'Cloudflare D1',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides', 'cloudflare-d1.md'),
+    description:
+      'Use sqlfu with Cloudflare D1: D1 migration preset, db factories, createD1Client(), and generated query wrappers.',
+  },
+  {
+    slug: 'guides/node-sqlite',
+    title: 'Node SQLite',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides', 'node-sqlite.md'),
+    description:
+      'Use sqlfu with node:sqlite, better-sqlite3, or native libsql in Node while keeping generated wrappers synchronous.',
+  },
+  {
+    slug: 'guides/bun-sqlite',
+    title: 'Bun SQLite',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides', 'bun-sqlite.md'),
+    description: 'Use sqlfu with bun:sqlite: local file config, sync wrappers, and createBunClient() at runtime.',
+  },
+  {
+    slug: 'guides/turso-libsql',
+    title: 'Turso and libSQL',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides', 'turso-libsql.md'),
+    description:
+      'Use sqlfu with Turso Cloud, @libsql/client, @tursodatabase/serverless, and Turso embedded/sync drivers.',
+  },
+  {
+    slug: 'guides/expo-sqlite',
+    title: 'Expo SQLite',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides', 'expo-sqlite.md'),
+    description:
+      'Use sqlfu with Expo SQLite: generate from definitions, bundle migrations, and run createExpoSqliteClient() in app startup.',
+  },
+  {
+    slug: 'guides/sqlite-wasm',
+    title: 'sqlite-wasm',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides', 'sqlite-wasm.md'),
+    description:
+      'Use sqlfu with @sqlite.org/sqlite-wasm in the browser, including OPFS, generated migrations, and generated query wrappers.',
+  },
+  {
     slug: 'adapters',
     title: 'Adapters',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'adapters.md'),
     description:
       'Client factories for better-sqlite3, node:sqlite, bun:sqlite, libsql, Cloudflare D1, Durable Objects, Expo, sqlite-wasm, and more.',
+  },
+  {
+    slug: 'cloudflare-d1',
+    title: 'Cloudflare D1 details',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'cloudflare-d1.md'),
+    description: 'Deployed Cloudflare D1 access with alchemy state, raw database IDs, and createD1HttpClient().',
   },
   {
     slug: 'imports',
@@ -174,6 +235,7 @@ for (const doc of docs) {
   // Starlight's <Tabs>) round-trip as .mdx into the Starlight content collection.
   const sourceExtension = path.extname(doc.sourcePath);
   const destPath = path.join(contentDocsDir, `${doc.slug}${sourceExtension}`);
+  await fs.mkdir(path.dirname(destPath), {recursive: true});
   await fs.writeFile(destPath, frontmatter + content);
 
   for (const assetPath of assetPaths) {

@@ -144,15 +144,17 @@ test('generate with runtime: effect-v3 returns programs that use Effect SQL cont
 test('generate with runtime: effect-v3 decodes sqlfu_types JSON result columns', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
-      create view sqlfu_types as
-      select
-        'slack_payload' as name,
-        'json' as encoding,
-        'typescript' as format,
-        '{
-          action: "message" | "reaction";
-          content: string
-        }' as definition;
+      create view sqlfu_types (name, encoding, format, definition) as
+      values
+        (
+          'slack_payload',
+          'json',
+          'typescript',
+          '{
+            action: "message" | "reaction";
+            content: string
+          }'
+        );
 
       create table slack_webhooks (
         id integer primary key,
@@ -434,15 +436,17 @@ test('generate stringifies json declared-type inputs and parses json result colu
 test('generate ignores sqlfu_types view rows unless experimental JSON types are enabled', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
-      create view sqlfu_types as
-      select
-        'slack_payload' as name,
-        'json' as encoding,
-        'typescript' as format,
-        '{
-          action: "message" | "reaction";
-          content: string
-        }' as definition;
+      create view sqlfu_types (name, encoding, format, definition) as
+      values
+        (
+          'slack_payload',
+          'json',
+          'typescript',
+          '{
+            action: "message" | "reaction";
+            content: string
+          }'
+        );
 
       create table slack_webhooks (
         id integer primary key,
@@ -472,15 +476,17 @@ test('generate ignores sqlfu_types view rows unless experimental JSON types are 
 test('generate uses sqlfu_types view rows for typed JSON logical columns with the experimental flag', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
-      create view sqlfu_types as
-      select
-        'slack_payload' as name,
-        'json' as encoding,
-        'typescript' as format,
-        '{
-          action: "message" | "reaction";
-          content: string
-        }' as definition;
+      create view sqlfu_types (name, encoding, format, definition) as
+      values
+        (
+          'slack_payload',
+          'json',
+          'typescript',
+          '{
+            action: "message" | "reaction";
+            content: string
+          }'
+        );
 
       create table slack_webhooks (
         id integer primary key,
@@ -598,12 +604,9 @@ test('generate rejects the old sqlfu_types table metadata shape with the experim
 test('generate rejects unsupported sqlfu_types encoding values with the experimental flag', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
-      create view sqlfu_types as
-      select
-        'slack_payload' as name,
-        'blob' as encoding,
-        'typescript' as format,
-        '{ action: "message" | "reaction"; content: string }' as definition;
+      create view sqlfu_types (name, encoding, format, definition) as
+      values
+        ('slack_payload', 'blob', 'typescript', '{ action: "message" | "reaction"; content: string }');
 
       create table slack_webhooks (
         id integer primary key,
@@ -622,12 +625,9 @@ test('generate rejects unsupported sqlfu_types encoding values with the experime
 test('generate rejects unsupported sqlfu_types definition formats with the experimental flag', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
-      create view sqlfu_types as
-      select
-        'slack_payload' as name,
-        'json' as encoding,
-        'json-schema' as format,
-        '{"type":"object"}' as definition;
+      create view sqlfu_types (name, encoding, format, definition) as
+      values
+        ('slack_payload', 'json', 'json-schema', '{"type":"object"}');
 
       create table slack_webhooks (
         id integer primary key,

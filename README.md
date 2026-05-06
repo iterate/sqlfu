@@ -279,7 +279,7 @@ Required fields:
 
 Optional fields:
 
-- `db` -- the database sqlfu talks to for `migrate`, `check`, `sync`, `goto`, `baseline`, and the UI. Either a filesystem path (opens a local sqlite file) or a factory returning a `DisposableAsyncClient`. See [Pluggable `db`](#pluggable-db). Can be omitted when you only use `sqlfu generate` and the default `generate.authority`.
+- `db` -- the database sqlfu talks to for `migrate`, `check`, `sync`, `goto`, `baseline`, and the UI. Either a filesystem path (opens a local sqlite file) or a factory returning a `DisposableAsyncClient`. If omitted, commands that need a database use `.sqlfu/app.db`; this is useful for authoring migrations and generated types before wiring a runtime database. See [Pluggable `db`](#pluggable-db).
 - `migrations` -- directory containing migration files. Omit if you don't use migrations (library-author projects).
 - `generate.authority` -- where `sqlfu generate` reads the schema from. See [`generate.authority`](#generateauthority). Default `'desired_schema'`.
 - `generate.experimentalJsonTypes` -- opt into experimental JSON logical-type handling. Today this covers SQLite columns declared exactly as `json`; the same flag is reserved for typed JSON metadata/schema support.
@@ -298,6 +298,11 @@ Relative paths inside that config are resolved from the config file's directory,
 ### Pluggable `db`
 
 When your app talks to an adapter-mediated database (Cloudflare D1, Turso, libsql, a miniflare binding), point sqlfu at the same client your app uses by giving `db` a factory instead of a path. Every sqlfu command that touches the DB -- `migrate`, `check`, `sync`, `goto`, `baseline`, the UI, and `generate` when its authority needs a DB -- will then operate on the *real* database, not a scratch file.
+
+You can also leave `db` out while you are still authoring SQL. sqlfu will use
+`.sqlfu/app.db` as a local dev database for commands that need one. Add a
+factory when you want those commands to operate on the deployed or
+adapter-managed database instead.
 
 ```ts
 import {defineConfig, createD1Client} from 'sqlfu';

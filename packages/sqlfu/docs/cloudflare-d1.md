@@ -21,6 +21,11 @@ local Miniflare sqlite database, keep using
 [`findMiniflareD1Path`](../README.md#pluggable-db). The two helpers are
 deliberate alternatives, not a deprecation.
 
+If you only want sqlfu to author migrations and generate typed wrappers, you
+can omit `db` entirely. Commands that need a database use the local
+`.sqlfu/app.db` file; add a D1 `db` factory only when you want `migrate`,
+`check`, `sync`, or the UI to operate on the real D1 database.
+
 ## The one-line recipe
 
 If you're on Alchemy v2 and have an `alchemy.run.ts` declaring a
