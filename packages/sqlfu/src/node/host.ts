@@ -54,23 +54,15 @@ function isNodeSqliteExperimentalWarning(warning: string | Error, args: unknown[
 
 /**
  * Open whatever `config.db` points to — a local sqlite file if it's a string,
- * or a user-provided factory if it's a function. The factory is invoked on every
- * call; users memoize inside the factory if they want to share an expensive
- * resource across sqlfu commands.
- *
- * Throws a named, actionable error when `db` is undefined — projects on
- * `generate.authority: 'desired_schema'` can run `sqlfu generate` without a
- * DB, but anything that reads/writes the real database needs one.
+ * a user-provided factory if it's a function, or sqlfu's project-local default
+ * SQLite file when `db` is omitted. The factory is invoked on every call; users
+ * memoize inside the factory if they want to share an expensive resource across
+ * sqlfu commands.
  */
-export async function openConfigDb(db: SqlfuProjectConfig['db']): Promise<DisposableAsyncClient> {
-  if (db == null) {
-    throw new Error(
-      'sqlfu: this command needs a database, but `db` is not set in sqlfu.config.ts. ' +
-        'Add `db: "./app.sqlite"` (local sqlite) or `db: () => openMyRemoteClient()` (factory) and rerun.',
-    );
-  }
-  if (typeof db === 'function') return await db();
-  return openLocalSqliteFile(db);
+export async function openConfigDb(config: SqlfuProjectConfig): Promise<DisposableAsyncClient> {
+  if (typeof config.db === 'function') return await config.db();
+  if (typeof config.db === 'string') return openLocalSqliteFile(config.db);
+  return openLocalSqliteFile(path.join(config.projectRoot, '.sqlfu', 'app.db'));
 }
 
 /**
@@ -104,7 +96,7 @@ export async function createNodeHost(): Promise<SqlfuHost> {
 
   const host: SqlfuHost = {
     fs: nodeFs,
-    openDb: (config) => openConfigDb(config.db),
+    openDb: (config) => openConfigDb(config),
     execAdHocSql: async (client, sql, params): Promise<AdHocSqlResult> => {
       // Now that every adapter exposes `client.prepare`, execAdHocSql is a
       // thin classifier-and-bind. The keyword classifier (`sqlReturnsRows`)
