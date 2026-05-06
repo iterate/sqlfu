@@ -144,15 +144,17 @@ test('generate with runtime: effect-v3 returns programs that use Effect SQL cont
 test('generate with runtime: effect-v3 decodes sqlfu_types JSON result columns', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
-      create view sqlfu_types as
-      select
-        'slack_payload' as name,
-        'json' as encoding,
-        'typescript' as format,
-        '{
-          action: "message" | "reaction";
-          content: string
-        }' as definition;
+      create view sqlfu_types (name, encoding, format, definition) as
+      values
+        (
+          'slack_payload',
+          'json',
+          'typescript',
+          '{
+            action: "message" | "reaction";
+            content: string
+          }'
+        );
 
       create table slack_webhooks (
         id integer primary key,
@@ -174,7 +176,7 @@ test('generate with runtime: effect-v3 decodes sqlfu_types JSON result columns',
 
   await project.generate();
   const generatedModule = await project.readText('sql/.generated/slack-webhooks.sql.ts');
-  expect(generatedModule).toContain('JSON.stringify(params.payload)');
+  expect(generatedModule).toContain('JSON.stringify(params.payload, null, 2)');
   expect(generatedModule).toContain(`payload: (JSON.parse(row.payload) as listSlackWebhooks.Result["payload"])`);
   expect(generatedModule).toContain('sqlClient.unsafe<any>');
 
@@ -378,7 +380,7 @@ test('generate stringifies json declared-type inputs and parses json result colu
   const generatedTables = await project.readText('sql/.generated/tables.ts');
 
   expect(generatedModule).toContain('payload: unknown;');
-  expect(generatedModule).toContain('JSON.stringify(params.payload)');
+  expect(generatedModule).toContain('JSON.stringify(params.payload, null, 2)');
   expect(generatedModule).toContain('JSON.parse');
   expect(generatedTables).toContain('payload: unknown;');
   const catalog = JSON.parse(await project.readText('.sqlfu/query-catalog.json'));
@@ -420,7 +422,7 @@ test('generate stringifies json declared-type inputs and parses json result colu
     sql: `select payload from webhooks`,
     args: [],
   });
-  expect(rawRows).toMatchObject([{payload: JSON.stringify(payload)}]);
+  expect(rawRows).toMatchObject([{payload: JSON.stringify(payload, null, 2)}]);
 
   await expect(mod.listWebhooks(client)).resolves.toEqual([
     {
@@ -434,15 +436,17 @@ test('generate stringifies json declared-type inputs and parses json result colu
 test('generate ignores sqlfu_types view rows unless experimental JSON types are enabled', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
-      create view sqlfu_types as
-      select
-        'slack_payload' as name,
-        'json' as encoding,
-        'typescript' as format,
-        '{
-          action: "message" | "reaction";
-          content: string
-        }' as definition;
+      create view sqlfu_types (name, encoding, format, definition) as
+      values
+        (
+          'slack_payload',
+          'json',
+          'typescript',
+          '{
+            action: "message" | "reaction";
+            content: string
+          }'
+        );
 
       create table slack_webhooks (
         id integer primary key,
@@ -472,15 +476,17 @@ test('generate ignores sqlfu_types view rows unless experimental JSON types are 
 test('generate uses sqlfu_types view rows for typed JSON logical columns with the experimental flag', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
-      create view sqlfu_types as
-      select
-        'slack_payload' as name,
-        'json' as encoding,
-        'typescript' as format,
-        '{
-          action: "message" | "reaction";
-          content: string
-        }' as definition;
+      create view sqlfu_types (name, encoding, format, definition) as
+      values
+        (
+          'slack_payload',
+          'json',
+          'typescript',
+          '{
+            action: "message" | "reaction";
+            content: string
+          }'
+        );
 
       create table slack_webhooks (
         id integer primary key,
@@ -506,7 +512,7 @@ test('generate uses sqlfu_types view rows for typed JSON logical columns with th
 
   expect(generatedModule).toContain('action: "message" | "reaction";');
   expect(generatedModule).toContain('content: string');
-  expect(generatedModule).toContain('JSON.stringify(params.payload)');
+  expect(generatedModule).toContain('JSON.stringify(params.payload, null, 2)');
   expect(generatedModule).toContain(`payload: (JSON.parse(row.payload) as listSlackWebhooks.Result["payload"])`);
   expect(generatedModule).not.toContain('TextDecoder');
   expect(generatedModule).not.toContain('params.payload != null');
@@ -563,7 +569,7 @@ test('generate uses sqlfu_types view rows for typed JSON logical columns with th
     sql: `select payload from slack_webhooks`,
     args: [],
   });
-  expect(rawRows).toMatchObject([{payload: JSON.stringify(payload)}]);
+  expect(rawRows).toMatchObject([{payload: JSON.stringify(payload, null, 2)}]);
 
   await expect(mod.listSlackWebhooks(client)).resolves.toEqual([
     {
@@ -598,12 +604,9 @@ test('generate rejects the old sqlfu_types table metadata shape with the experim
 test('generate rejects unsupported sqlfu_types encoding values with the experimental flag', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
-      create view sqlfu_types as
-      select
-        'slack_payload' as name,
-        'blob' as encoding,
-        'typescript' as format,
-        '{ action: "message" | "reaction"; content: string }' as definition;
+      create view sqlfu_types (name, encoding, format, definition) as
+      values
+        ('slack_payload', 'blob', 'typescript', '{ action: "message" | "reaction"; content: string }');
 
       create table slack_webhooks (
         id integer primary key,
@@ -622,12 +625,9 @@ test('generate rejects unsupported sqlfu_types encoding values with the experime
 test('generate rejects unsupported sqlfu_types definition formats with the experimental flag', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
-      create view sqlfu_types as
-      select
-        'slack_payload' as name,
-        'json' as encoding,
-        'json-schema' as format,
-        '{"type":"object"}' as definition;
+      create view sqlfu_types (name, encoding, format, definition) as
+      values
+        ('slack_payload', 'json', 'json-schema', '{"type":"object"}');
 
       create table slack_webhooks (
         id integer primary key,

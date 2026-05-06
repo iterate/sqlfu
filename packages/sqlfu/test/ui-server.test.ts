@@ -47,6 +47,7 @@ test('sqlfu server serves a local backend page and the ui rpc contract from pack
   const rows = await fixture.client.table.list({
     relationName: 'posts',
     page: 0,
+    pageSize: 25,
   });
   expect(rows).toMatchObject({
     relation: 'posts',

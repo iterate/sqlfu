@@ -3070,7 +3070,7 @@ function toDriverValue(
   },
 ): string {
   if (field.logicalType === 'json') {
-    return `JSON.stringify(${valueExpression})`;
+    return `JSON.stringify(${valueExpression}, null, 2)`;
   }
   if (field.tsType === 'Date') {
     if (field.toDriver?.includes(`split('T')[0]`) && !field.toDriver.includes(`replace('T', ' ')`)) {
