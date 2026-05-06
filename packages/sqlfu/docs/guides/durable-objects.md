@@ -21,7 +21,7 @@ src/durable-objects/counter/
 |-- migrations/
 |   `-- 20260506000000_create_counter.sql
 |-- sql/
-|   |-- increment.sql
+|   |-- queries.sql
 |   `-- .generated/
 |-- sqlfu.config.ts
 `-- counter.ts
@@ -38,8 +38,9 @@ npx sqlfu --config src/durable-objects/counter/sqlfu.config.ts generate
 ## Config
 
 Durable Object storage is not available to the Node CLI as a simple local file,
-so the common Durable Object config omits `db`. `draft`, `check`, and `generate`
-can still use `definitions.sql` plus migration files.
+so the common Durable Object config omits `db`. sqlfu uses `.sqlfu/app.db` as a
+local authoring database for commands that need one, and `draft` plus `generate`
+still read from `definitions.sql` and migration files.
 
 ```ts
 import {defineConfig} from 'sqlfu';
@@ -69,7 +70,7 @@ create table counters (
 );
 ```
 
-Author the runtime query in `sql/increment.sql`:
+Author the runtime query in `sql/queries.sql`:
 
 ```sql
 /** @name incrementCounter */
@@ -99,8 +100,8 @@ Pass the full `ctx.storage` object to the adapter:
 import {DurableObject} from 'cloudflare:workers';
 import {createDurableObjectClient} from 'sqlfu';
 
-import {migrate} from './migrations/.generated/migrations';
-import {incrementCounter} from './sql/.generated/increment.sql';
+import {migrate} from './migrations/.generated/migrations.ts';
+import {incrementCounter} from './sql/.generated/queries.sql.ts';
 
 type Env = {};
 

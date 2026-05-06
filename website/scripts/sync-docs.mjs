@@ -26,6 +26,13 @@ const docs = [
     description: 'Overview, quick start, CLI model, and core concepts.',
   },
   {
+    slug: 'guides',
+    title: 'Guides',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides.md'),
+    description:
+      'Runtime-specific setup guides for Durable Objects, D1, Node SQLite, Bun SQLite, Turso/libSQL, Expo SQLite, and sqlite-wasm.',
+  },
+  {
     slug: 'guides/durable-objects',
     title: 'Durable Objects',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides', 'durable-objects.md'),

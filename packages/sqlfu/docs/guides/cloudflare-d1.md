@@ -14,7 +14,7 @@ src/db/
 |-- definitions.sql
 |-- migrations/
 |-- queries/
-|   `-- list-posts.sql
+|   `-- queries.sql
 `-- sqlfu.config.ts
 ```
 
@@ -23,6 +23,27 @@ src/db/
 If sqlfu owns the D1 migration table, use the default migration preset. If your
 project is taking over from wrangler or alchemy D1 migrations, use the D1 preset
 so sqlfu reads and writes `d1_migrations`:
+
+You do not need to connect sqlfu to your alchemy dev database just to author
+migrations and generate types. If you omit `db`, sqlfu uses a local SQLite file
+at `.sqlfu/app.db` for commands that need a database, while `draft` and
+`generate` still read from your SQL files. Add a `db` factory when you want
+`migrate`, `check`, `sync`, or the UI to operate on the real D1 database.
+
+For authoring only, omit `db`:
+
+```ts
+import {defineConfig} from 'sqlfu';
+
+export default defineConfig({
+  definitions: './definitions.sql',
+  migrations: {path: './migrations', preset: 'd1'},
+  queries: './queries',
+});
+```
+
+When you want sqlfu commands to talk to the real deployed D1 database, add a
+factory:
 
 ```ts
 import {defineConfig} from 'sqlfu';
@@ -51,6 +72,8 @@ create table posts (
 );
 ```
 
+Put the query in `queries/queries.sql`:
+
 ```sql
 /** @name listPublishedPosts */
 select id, slug, title
@@ -76,7 +99,7 @@ the runtime is D1; they only need a sqlfu `AsyncClient`.
 ```ts
 import {createD1Client} from 'sqlfu';
 
-import {listPublishedPosts} from './db/queries/.generated/list-posts.sql';
+import {listPublishedPosts} from './db/queries/.generated/queries.sql.ts';
 
 type Env = {
   DB: D1Database;

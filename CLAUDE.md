@@ -3,6 +3,22 @@ Note: this library is in pre-pre-pre-alpha. There are zero users. It is EXTREMEL
 
 Prefer lowercase SQL keywords.
 
+## Docs examples
+
+For small docs, examples, and guides, put query examples in a catch-all
+`queries.sql` file in the appropriate folder rather than naming the file after a
+single query like `list-posts.sql`. Use `@name` comments for the individual
+generated wrapper names.
+
+When importing generated TypeScript from docs examples, use the fully-qualified
+generated extension:
+
+```ts
+import {listPosts} from './sql/.generated/queries.sql.ts';
+```
+
+Do not shorten that to `./sql/.generated/queries.sql`.
+
 When documenting or testing `sqlfu_types` definitions, format multiline
 TypeScript type strings so the type body flows with the SQL string literal:
 

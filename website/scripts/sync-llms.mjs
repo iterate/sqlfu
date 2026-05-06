@@ -22,6 +22,7 @@ const sections = [
     title: 'Features and guides',
     lead: 'Task-oriented pages for operating sqlfu in a real application.',
     slugs: [
+      'guides',
       'guides/durable-objects',
       'guides/cloudflare-d1',
       'guides/node-sqlite',

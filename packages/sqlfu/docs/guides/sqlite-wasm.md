@@ -4,7 +4,7 @@ Use this guide when your app runs in the browser with `@sqlite.org/sqlite-wasm`.
 
 The authoring loop is the same as [Getting Started](../getting-started.md):
 schema in `definitions.sql`, reviewed migrations in `migrations/`, queries in
-`sql/*.sql`, generated wrappers in `sql/.generated/`. The browser runtime uses
+`sql/queries.sql`, generated wrappers in `sql/.generated/`. The browser runtime uses
 the sqlite-wasm adapter and the generated migration bundle.
 
 ## Config
@@ -34,6 +34,8 @@ create table notes (
 );
 ```
 
+Put the query in `sql/queries.sql`:
+
 ```sql
 /** @name listNotes */
 select id, title, body
@@ -54,8 +56,8 @@ npx sqlfu generate
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 import {createSqliteWasmClient} from 'sqlfu';
 
-import {migrate} from './migrations/.generated/migrations';
-import {listNotes} from './sql/.generated/list-notes.sql';
+import {migrate} from './migrations/.generated/migrations.ts';
+import {listNotes} from './sql/.generated/queries.sql.ts';
 
 export async function openBrowserDatabase() {
   const sqlite3 = await sqlite3InitModule();

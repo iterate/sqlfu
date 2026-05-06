@@ -184,7 +184,7 @@ Review the file, commit it, then run `npx sqlfu migrate` and `npx sqlfu generate
 
 Pick the path that matches where you are:
 
-- **Need Turso, D1, Bun, or another driver?** [Adapters](/docs/adapters): copy-paste snippets for every supported runtime, plus guidance on sync vs async.
+- **Need Turso, D1, Bun, Durable Objects, or another runtime?** [Guides](/docs/guides) has end-to-end setup pages; [Adapters](/docs/adapters) has the compact adapter reference.
 - **Want to understand how migrations work?** [SQL migrations](/docs/migration-model): the replay-based model, what `sqlfu check` verifies, and what to do when a migration fails.
 - **Want to handle adapter errors consistently?** [Errors](/docs/errors): normalized `SqlfuError.kind` values and handler examples.
 - **Need validated rows for tRPC or forms?** [Runtime validation](/docs/runtime-validation): opt-in validation with arktype, valibot, or zod baked into the generated wrappers.

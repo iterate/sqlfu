@@ -33,6 +33,8 @@ create table todos (
 );
 ```
 
+Put the query in `sql/queries.sql`:
+
 ```sql
 /** @name listTodos */
 select id, title, completed
@@ -57,8 +59,8 @@ generated migration bundle.
 import * as SQLite from 'expo-sqlite';
 import {createExpoSqliteClient} from 'sqlfu';
 
-import {migrate} from './migrations/.generated/migrations';
-import {listTodos} from './sql/.generated/list-todos.sql';
+import {migrate} from './migrations/.generated/migrations.ts';
+import {listTodos} from './sql/.generated/queries.sql.ts';
 
 export async function openAppDatabase() {
   const db = await SQLite.openDatabaseAsync('app.db');

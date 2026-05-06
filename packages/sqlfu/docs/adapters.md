@@ -7,6 +7,18 @@ on top.
 
 This page lists every adapter that ships in `sqlfu` today, with a copy-paste snippet for each.
 
+For an end-to-end setup, use the matching guide:
+
+| Runtime | Guide |
+| --- | --- |
+| Durable Objects | [Durable Objects](./guides/durable-objects.md) |
+| Cloudflare D1 | [Cloudflare D1](./guides/cloudflare-d1.md) |
+| Node SQLite / better-sqlite3 / native libsql | [Node SQLite](./guides/node-sqlite.md) |
+| Bun SQLite | [Bun SQLite](./guides/bun-sqlite.md) |
+| Turso and libSQL | [Turso and libSQL](./guides/turso-libsql.md) |
+| Expo SQLite | [Expo SQLite](./guides/expo-sqlite.md) |
+| sqlite-wasm | [sqlite-wasm](./guides/sqlite-wasm.md) |
+
 If you already know which driver you want to use, jump to the section below. If
 you're picking from scratch, see [Choosing an adapter](#choosing-an-adapter) at
 the bottom. For the shared client contract, see [Runtime client](https://sqlfu.dev/docs/client).
@@ -256,7 +268,7 @@ export default {
 ```ts
 import {DurableObject} from 'cloudflare:workers';
 import {createDurableObjectClient} from 'sqlfu';
-import {migrate} from '../migrations/.generated/migrations';
+import {migrate} from '../migrations/.generated/migrations.ts';
 
 export class Counter extends DurableObject {
   client: ReturnType<typeof createDurableObjectClient>;

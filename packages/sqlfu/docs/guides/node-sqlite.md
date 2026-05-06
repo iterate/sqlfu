@@ -40,6 +40,8 @@ create table posts (
 );
 ```
 
+Put the query in `sql/queries.sql`:
+
 ```sql
 /** @name findPostBySlug */
 select id, slug, title
@@ -64,7 +66,7 @@ npx sqlfu generate
 import {DatabaseSync} from 'node:sqlite';
 import {createNodeSqliteClient} from 'sqlfu';
 
-import {findPostBySlug} from './sql/.generated/find-post-by-slug.sql';
+import {findPostBySlug} from './sql/.generated/queries.sql.ts';
 
 const db = new DatabaseSync('./db/app.sqlite');
 const client = createNodeSqliteClient(db);
@@ -80,7 +82,7 @@ Use `better-sqlite3` when you want its mature native driver surface:
 import Database from 'better-sqlite3';
 import {createBetterSqlite3Client} from 'sqlfu';
 
-import {findPostBySlug} from './sql/.generated/find-post-by-slug.sql';
+import {findPostBySlug} from './sql/.generated/queries.sql.ts';
 
 const db = new Database('./db/app.sqlite');
 const client = createBetterSqlite3Client(db);
@@ -96,7 +98,7 @@ Use native `libsql` when you want a local embedded libSQL database:
 import Database from 'libsql';
 import {createLibsqlSyncClient} from 'sqlfu';
 
-import {findPostBySlug} from './sql/.generated/find-post-by-slug.sql';
+import {findPostBySlug} from './sql/.generated/queries.sql.ts';
 
 const db = new Database('./db/app.sqlite');
 const client = createLibsqlSyncClient(db);

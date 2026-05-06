@@ -50,6 +50,8 @@ create table organizations (
 );
 ```
 
+Put the query in `sql/queries.sql`:
+
 ```sql
 /** @name findOrganization */
 select id, slug, name
@@ -72,7 +74,7 @@ npx sqlfu generate
 import {createClient} from '@libsql/client';
 import {createLibsqlClient} from 'sqlfu';
 
-import {findOrganization} from './sql/.generated/find-organization.sql';
+import {findOrganization} from './sql/.generated/queries.sql.ts';
 
 const raw = createClient({
   url: process.env.TURSO_DATABASE_URL!,
@@ -89,7 +91,7 @@ const organization = await findOrganization(client, {slug: 'acme'});
 import {connect} from '@tursodatabase/serverless';
 import {createTursoServerlessClient} from 'sqlfu';
 
-import {findOrganization} from './sql/.generated/find-organization.sql';
+import {findOrganization} from './sql/.generated/queries.sql.ts';
 
 const connection = connect({
   url: process.env.TURSO_DATABASE_URL!,
@@ -108,7 +110,7 @@ Both packages use `createTursoDatabaseClient()` at the sqlfu boundary:
 import {connect} from '@tursodatabase/database';
 import {createTursoDatabaseClient} from 'sqlfu';
 
-import {findOrganization} from './sql/.generated/find-organization.sql';
+import {findOrganization} from './sql/.generated/queries.sql.ts';
 
 const db = await connect('app.db');
 const client = createTursoDatabaseClient(db);

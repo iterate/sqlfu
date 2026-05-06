@@ -37,6 +37,8 @@ create table jobs (
 );
 ```
 
+Put the query in `sql/queries.sql`:
+
 ```sql
 /** @name listJobsByStatus */
 select id, name, status
@@ -59,7 +61,7 @@ npx sqlfu generate
 import {Database} from 'bun:sqlite';
 import {createBunClient} from 'sqlfu';
 
-import {listJobsByStatus} from './sql/.generated/list-jobs-by-status.sql';
+import {listJobsByStatus} from './sql/.generated/queries.sql.ts';
 
 const db = new Database('./db/app.sqlite');
 const client = createBunClient(db);

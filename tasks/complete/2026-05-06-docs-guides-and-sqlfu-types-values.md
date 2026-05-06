@@ -6,7 +6,7 @@ base: main
 
 # Docs Guides And sqlfu_types Values Examples
 
-Summary: Done on this branch. Added the Guides section and adapter/runtime guide pages, rewrote `sqlfu_types` docs/tests/fixtures to the column-list `values` view shape, and verified the touched generate/docs surfaces. Remaining work is PR review.
+Summary: Done on this branch. Added the Guides overview and adapter/runtime guide pages, rewrote `sqlfu_types` docs/tests/fixtures to the column-list `values` view shape, incorporated PR feedback on guide links/query-file naming/generated import extensions, and verified the touched generate/docs surfaces. Remaining work is PR review.
 
 Assumptions:
 
@@ -38,3 +38,4 @@ Checklist:
 - 2026-05-06: Added the guide source pages and navigation wiring before running tests.
 - 2026-05-06: Replaced the old `select ... as name` `sqlfu_types` examples with `create view sqlfu_types (name, encoding, format, definition) as values ...`.
 - 2026-05-06: Verification passed: `pnpm --filter sqlfu exec vitest --run test/generate/runtime.test.ts test/generate/fixtures.test.ts`, `pnpm exec oxfmt --check website/astro.config.mjs website/scripts/sync-docs.mjs website/scripts/sync-llms.mjs packages/sqlfu/test/generate/runtime.test.ts`, `pnpm --filter @sqlfu/ui build`, and `pnpm --filter sqlfu-website build`.
+- 2026-05-06: Follow-up feedback added a Guides overview page, adapter/getting-started/D1 links to Guides, `.sqlfu/app.db` authoring guidance after #95 merged, `queries.sql`/`.sql.ts` guide examples, an `AGENTS.md -> CLAUDE.md` symlink, and a follow-up sweep task for older docs examples.

@@ -32,6 +32,7 @@ The main mental model: SQL artifacts are the source, TypeScript wrappers and UI 
 
 Task-oriented pages for operating sqlfu in a real application.
 
+- [Guides](https://sqlfu.dev/docs/guides): Runtime-specific setup guides for Durable Objects, D1, Node SQLite, Bun SQLite, Turso/libSQL, Expo SQLite, and sqlite-wasm.
 - [Durable Objects](https://sqlfu.dev/docs/guides/durable-objects): Practical Durable Objects setup: config, generated migration bundle, createDurableObjectClient(), and generated query usage.
 - [Cloudflare D1](https://sqlfu.dev/docs/guides/cloudflare-d1): Use sqlfu with Cloudflare D1: D1 migration preset, db factories, createD1Client(), and generated query wrappers.
 - [Node SQLite](https://sqlfu.dev/docs/guides/node-sqlite): Use sqlfu with node:sqlite, better-sqlite3, or native libsql in Node while keeping generated wrappers synchronous.

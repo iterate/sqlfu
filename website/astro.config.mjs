@@ -73,6 +73,7 @@ export default defineConfig({
         {
           label: 'Guides',
           items: [
+            {label: 'Overview', slug: 'docs/guides'},
             {label: 'Durable Objects', slug: 'docs/guides/durable-objects'},
             {label: 'Cloudflare D1', slug: 'docs/guides/cloudflare-d1'},
             {label: 'Node SQLite', slug: 'docs/guides/node-sqlite'},
