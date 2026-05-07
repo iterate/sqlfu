@@ -56,7 +56,7 @@ export function instrumentClient(
   if (client.sync) {
     return instrumentSync(client, syncHookFrom(hook as SyncQueryExecutionHookInput));
   }
-  return instrumentAsync(client, asyncHookFrom(hook as AsyncQueryExecutionHookInput));
+  return instrumentAsync(client as AsyncClient, asyncHookFrom(hook as AsyncQueryExecutionHookInput));
 }
 
 /**
@@ -248,7 +248,7 @@ function instrumentImpl(
   if (client.sync) {
     return instrumentSync(client, composeSyncHooks(...(hooks as SyncQueryExecutionHookInput[])));
   }
-  return instrumentAsync(client, composeAsyncHooks(...(hooks as AsyncQueryExecutionHookInput[])));
+  return instrumentAsync(client as AsyncClient, composeAsyncHooks(...(hooks as AsyncQueryExecutionHookInput[])));
 }
 
 /**

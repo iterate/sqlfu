@@ -199,3 +199,32 @@ function rewriteRegion(name: string, body: string, defaultConfig: Record<string,
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
+// `language` plumbing — confirms the option is wired through to the
+// vendored formatter. We use a query containing a postgres-only keyword
+// (`ilike`) to find a layout the two dialects disagree on.
+describe('formatSql language option', () => {
+  test('defaults to sqlite (backwards-compat)', () => {
+    const out = formatSql('select * from foo');
+    expect(out).toContain('select');
+  });
+
+  test('postgresql language differs from sqlite for pg-only constructs', () => {
+    // `||/` is the postgres cube-root operator. The pg vendored
+    // tokenizer recognises it as a single token; sqlite doesn't, so
+    // its tokenizer chokes / emits a different layout. Either way:
+    // pg accepts the input and produces *different* output than
+    // sqlite (which is the whole point of the language option).
+    const sql = "select 27 ||/ x as cube_root from t";
+    const pgOut = formatSql(sql, {style: 'upstream', language: 'postgresql'});
+    let sqliteOut: string | null = null;
+    try {
+      sqliteOut = formatSql(sql, {style: 'upstream', language: 'sqlite'});
+    } catch {
+      // sqlite's tokenizer rejects the cube-root operator — that itself
+      // proves the language option matters.
+    }
+    expect(pgOut).toContain('||/');
+    if (sqliteOut !== null) expect(pgOut).not.toBe(sqliteOut);
+  });
+});

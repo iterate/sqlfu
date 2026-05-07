@@ -91,8 +91,8 @@ export async function generate(input: GenerateOptions = {}) {
   return generateQueryTypesForConfig(config, host);
 }
 
-export function format(sql: string) {
-  return formatSql(sql);
+export function format(sql: string, options: {language?: 'sqlite' | 'postgresql'} = {}) {
+  return formatSql(sql, {language: options.language});
 }
 
 export async function serve(input: ServeOptions = {}) {

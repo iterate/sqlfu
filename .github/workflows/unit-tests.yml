@@ -30,3 +30,34 @@ jobs:
 
       - name: Run sqlfu migration and schemadiff unit tests
         run: pnpm --dir packages/sqlfu exec vitest test/migrations test/schemadiff --run
+
+  pg-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Same docker compose dev runs locally. Keeps the "how do I run
+      # this on my laptop" answer one shell command away from "how does
+      # CI run this".
+      - name: Start postgres via docker compose
+        run: docker compose -f packages/pg/test/docker-compose.yml up -d --wait
+
+      - name: Run @sqlfu/pg tests
+        run: pnpm --filter @sqlfu/pg exec vitest --run
+
+      - name: Stop postgres
+        if: always()
+        run: docker compose -f packages/pg/test/docker-compose.yml down

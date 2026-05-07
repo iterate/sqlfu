@@ -175,15 +175,21 @@ export type Dialect = {
   extractSchemaFromClient(client: Client, options?: {excludedTables?: string[]}): Promise<string>;
 
   /**
-   * Materialize the project's schema (per `config.generate.authority`) into a
-   * dialect-specific form ready for typegen lookups + query analysis. Returned
-   * handle is opaque to the caller and disposed via `Symbol.asyncDispose`.
+   * Apply pre-read schema source SQL to a fresh dialect-specific scratch
+   * database, returning a handle ready for typegen lookups + query
+   * analysis. The caller (typegen entry point) reads the schema source —
+   * via `readSchemaForAuthority` — *before* this call, so the dialect
+   * doesn't need to know which authority is in play.
    *
    * Sqlite's materialized form is a temp `.sqlite` file at
-   * `<projectRoot>/.sqlfu/typegen.db`; pg's is a temp schema in a connected pg
-   * server.
+   * `<projectRoot>/.sqlfu/typegen.db`; pg's is an ephemeral
+   * `CREATE DATABASE`'d database. Both are disposed via
+   * `Symbol.asyncDispose` on the returned handle.
    */
-  materializeTypegenSchema(host: SqlfuHost, config: SqlfuProjectConfig): Promise<MaterializedTypegenSchema>;
+  materializeTypegenSchema(
+    host: SqlfuHost,
+    input: {projectRoot: string; sourceSql: string; experimentalJsonTypes: boolean},
+  ): Promise<MaterializedTypegenSchema>;
 
   /** Extract relation (table/view) shapes from the materialized schema. */
   loadSchemaForTypegen(materialized: MaterializedTypegenSchema): Promise<ReadonlyMap<string, RelationInfo>>;

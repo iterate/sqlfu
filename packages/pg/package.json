@@ -1,0 +1,52 @@
+{
+  "name": "@sqlfu/pg",
+  "version": "0.0.0",
+  "description": "Postgres dialect for sqlfu — schema diff, typegen, formatter, migration table DDL, advisory-lock migration runner.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mmkal/sqlfu.git",
+    "directory": "packages/pg"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsgo -p tsconfig.build.json && tsgo -p src/vendor/tsconfig.build.json",
+    "typecheck": "tsgo -p tsconfig.typecheck.json && tsgo -p src/vendor/tsconfig.json",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "lodash": "^4.17.21",
+    "neverthrow": "^7.1.0",
+    "pg": "^8.13.0",
+    "pgsql-ast-parser": "^11.1.0",
+    "pluralize": "^8.0.0",
+    "sql-formatter": "^15.7.0",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "sqlfu": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.17.20",
+    "@types/node": "^24.5.2",
+    "@types/pg": "^8.11.10",
+    "@types/pluralize": "0.0.33",
+    "@typescript/native-preview": "^7.0.0-dev.20260414.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.1",
+    "yaml": "^2.8.4"
+  }
+}

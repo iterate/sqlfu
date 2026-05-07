@@ -156,8 +156,13 @@ export const router = {
           .describe('One or more .sql file paths or glob patterns.'),
       }),
     )
-    .handler(async ({input}) => {
-      const result = await formatSqlFiles(input.paths, process.cwd());
+    .handler(async ({context, input}) => {
+      // Use the project's configured dialect if there's a sqlfu project
+      // visible from cwd; otherwise fall back to the default sqlite
+      // formatter. `format` should still work as a one-off `.sql`
+      // beautifier outside a project.
+      const language = await detectFormatLanguage(context);
+      const result = await formatSqlFiles(input.paths, process.cwd(), {language});
       const lines: string[] = [];
       if (result.formatted.length > 0) {
         lines.push('Formatted files:', ...result.formatted.map((filePath) => `  ${filePath}`));
@@ -329,3 +334,19 @@ export const router = {
     }),
   },
 };
+
+/**
+ * Pick a sql-formatter dialect for `sqlfu format`. Reads the project's
+ * configured dialect when one's loadable; falls back to sqlite (the
+ * default) when there's no project — `sqlfu format` is also useful as a
+ * one-shot file beautifier outside any project context.
+ */
+async function detectFormatLanguage(context: SqlfuCommandRouterContext): Promise<'sqlite' | 'postgresql' | undefined> {
+  try {
+    const project = await loadContextProjectState(context);
+    if (!project.initialized) return undefined;
+    return project.config.dialect.name === 'postgresql' ? 'postgresql' : 'sqlite';
+  } catch {
+    return undefined;
+  }
+}

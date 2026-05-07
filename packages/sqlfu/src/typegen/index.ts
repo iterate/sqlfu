@@ -54,7 +54,12 @@ export async function generateQueryTypesForConfig(
   host: SqlfuHost,
 ): Promise<GenerateQueryTypesResult> {
   const dialect = config.dialect;
-  await using materialized = await dialect.materializeTypegenSchema(host, config);
+  const sourceSql = await readSchemaForAuthority(config, host);
+  await using materialized = await dialect.materializeTypegenSchema(host, {
+    projectRoot: config.projectRoot,
+    sourceSql,
+    experimentalJsonTypes: config.generate.experimentalJsonTypes,
+  });
   const schema = await dialect.loadSchemaForTypegen(materialized);
   const queryDocuments = await loadQueryDocuments(config.queries);
   const querySources = queryDocuments.flatMap((queryDocument) => queryDocument.queries);
@@ -295,7 +300,12 @@ export async function analyzeAdHocSqlForConfig(
   sql: string,
 ): Promise<AdHocQueryAnalysis> {
   const dialect = config.dialect;
-  await using materialized = await dialect.materializeTypegenSchema(host, config);
+  const sourceSql = await readSchemaForAuthority(config, host);
+  await using materialized = await dialect.materializeTypegenSchema(host, {
+    projectRoot: config.projectRoot,
+    sourceSql,
+    experimentalJsonTypes: config.generate.experimentalJsonTypes,
+  });
   const schema = await dialect.loadSchemaForTypegen(materialized);
   const [analysis] = await dialect.analyzeQueries(materialized, [
     {
@@ -412,9 +422,12 @@ type ParameterExpansion =
       acceptsSingleOrArray: boolean;
     };
 
-export async function materializeTypegenDatabase(config: SqlfuProjectConfig, host: SqlfuHost) {
-  const tempDbPath = path.join(config.projectRoot, '.sqlfu', 'typegen.db');
-  const schemaSql = await readSchemaForAuthority(config, host);
+export async function materializeTypegenDatabase(input: {
+  projectRoot: string;
+  sourceSql: string;
+  experimentalJsonTypes: boolean;
+}) {
+  const tempDbPath = path.join(input.projectRoot, '.sqlfu', 'typegen.db');
 
   await fs.mkdir(path.dirname(tempDbPath), {recursive: true});
   await fs.rm(tempDbPath, {force: true});
@@ -422,12 +435,23 @@ export async function materializeTypegenDatabase(config: SqlfuProjectConfig, hos
   await fs.rm(`${tempDbPath}-wal`, {force: true});
 
   await using typegenDatabase = await openMainDevDatabase(tempDbPath);
-  await typegenDatabase.client.raw(schemaSql);
+  await typegenDatabase.client.raw(input.sourceSql);
 
   return tempDbPath;
 }
 
-async function readSchemaForAuthority(config: SqlfuProjectConfig, host: SqlfuHost): Promise<string> {
+/**
+ * Read the canonical schema source for the project's chosen typegen
+ * authority. Used by sqlite's `materializeTypegenDatabase` and exported
+ * for pg-side dialects to use for the same purpose. The result is a SQL
+ * string ready to apply to a scratch DB.
+ *
+ * Each authority delegates through dialect methods
+ * (`materializeSchemaSql` / `extractSchemaFromClient`), so the function
+ * itself stays dialect-neutral — adding a new dialect doesn't require
+ * touching this code.
+ */
+export async function readSchemaForAuthority(config: SqlfuProjectConfig, host: SqlfuHost): Promise<string> {
   const authority = config.generate.authority;
   switch (authority) {
     case 'desired_schema':
@@ -3809,12 +3833,12 @@ function mapSqliteTypeToTs(columnType: string): string {
 // api/exports, ui/server) all transitively load this module, so the real
 // methods are in place before any caller invokes them.
 registerSqliteTypegenImpls({
-  materializeTypegenSchema: async (host, config) => {
-    const databasePath = await materializeTypegenDatabase(config, host);
+  materializeTypegenSchema: async (_host, input) => {
+    const databasePath = await materializeTypegenDatabase(input);
     return {
       dialect: 'sqlite',
       databasePath,
-      experimentalJsonTypes: config.generate.experimentalJsonTypes,
+      experimentalJsonTypes: input.experimentalJsonTypes,
       [Symbol.asyncDispose]: async () => {
         // Sqlite leaves the typegen db on disk between runs — the next
         // materialize wipes it. No active disposal needed.

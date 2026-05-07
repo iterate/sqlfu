@@ -3,26 +3,38 @@
  * https://github.com/sql-formatter-org/sql-formatter at version 15.7.3 / commit
  * a66b90020b7373155aa2e95a1bdc7d18055ae601 (MIT).
  *
- * sqlfu is sqlite-only, so we call `formatDialect` directly with the sqlite
- * dialect (rather than upstream's `format`, which ships a 20-dialect lookup
- * table). This lets esbuild tree-shake the other dialects out of the bundle.
- * If sqlfu ever grows multi-dialect formatting again, reintroduce a thin
- * language-string lookup here, not in the vendored code.
+ * Calls `formatDialect` with a per-call dialect (sqlite / postgresql) rather
+ * than upstream's `format`, which ships a 20-dialect lookup table. esbuild
+ * still tree-shakes unused dialects out of the bundle (the import below
+ * pulls in only the two we actually expose).
  */
 
 import {formatDialect} from './vendor/sql-formatter/sqlFormatter.js';
+import {postgresql} from './vendor/sql-formatter/languages/postgresql/postgresql.formatter.js';
 import {sqlite} from './vendor/sql-formatter/languages/sqlite/sqlite.formatter.js';
 
 import type {FormatOptionsWithLanguage as VendoredFormatOptionsWithLanguage} from './vendor/sql-formatter/sqlFormatter.js';
 
 export type SqlFormatStyle = 'sqlfu' | 'upstream';
 
+/** Subset of the vendored dialects we expose by name. */
+export type SqlFormatLanguage = 'sqlite' | 'postgresql';
+
 export type FormatSqlOptions = Omit<VendoredFormatOptionsWithLanguage, 'language'> & {
   style?: SqlFormatStyle;
   printWidth?: number;
   inlineClauses?: boolean;
   newlineBeforeTableName?: boolean;
+  /**
+   * Pick the SQL dialect to format for. Default `'sqlite'` keeps the
+   * historical behavior; consumers driven by a project config (the CLI,
+   * the lint plugin, the public `format()` API) pass through whatever
+   * the project's `dialect.name` resolves to.
+   */
+  language?: SqlFormatLanguage;
 };
+
+const dialectsByLanguage = {sqlite, postgresql} as const;
 
 const sqlfuDefaultOptions = {
   tabWidth: 2,
@@ -40,12 +52,13 @@ export function formatSql(sql: string, options: FormatSqlOptions = {}): string {
     printWidth = 80,
     inlineClauses = style === 'sqlfu',
     newlineBeforeTableName = false,
+    language = 'sqlite',
     ...rest
   } = options;
   const vendoredOptions = style === 'sqlfu' ? {...sqlfuDefaultOptions, ...rest} : rest;
   const formatted = formatDialect(sql, {
     ...vendoredOptions,
-    dialect: sqlite,
+    dialect: dialectsByLanguage[language],
   });
 
   if (!inlineClauses) {
@@ -131,8 +144,8 @@ function isStandaloneComment(line: string): boolean {
  * rule formats inline SQL templates. Pure string-in, string-out; preserves a
  * trailing newline if the input had one.
  */
-export function formatSqlFileContents(contents: string): string {
+export function formatSqlFileContents(contents: string, options: {language?: SqlFormatLanguage} = {}): string {
   if (!contents.trim()) return contents;
-  const formatted = formatSql(contents, {style: 'sqlfu'}).trim();
+  const formatted = formatSql(contents, {style: 'sqlfu', language: options.language}).trim();
   return formatted + (contents.match(/\s*$/)?.[0] || '');
 }

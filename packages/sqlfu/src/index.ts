@@ -35,6 +35,7 @@ export * from './adapters/expo-sqlite.js';
 export * from './adapters/sqlite-wasm.js';
 export * from './adapters/turso-database.js';
 export * from './adapters/turso-serverless.js';
+export * from './adapters/pg.js';
 
 export {defineConfig} from './config.js';
 
@@ -42,7 +43,15 @@ export {defineConfig} from './config.js';
 // automatically when `defineConfig` omits `dialect`. Postgres support arrives
 // via `pgDialect` from `@sqlfu/pg` (separate package, dev-only dependency).
 export {sqliteDialect} from './dialect.js';
-export type {Dialect, DiffSchemaInput} from './dialect.js';
+export type {
+  Dialect,
+  DialectColumnInfo,
+  DiffSchemaInput,
+  MaterializedTypegenSchema,
+  QueryAnalysis,
+  QueryAnalysisInput,
+  RelationInfo,
+} from './dialect.js';
 
 // Pure-SQLite text helpers — no node:*, useful on the light path for
 // anyone wrangling migration SQL, splitting statements, or extracting
