@@ -15,6 +15,7 @@ import {
 import {presetTableName} from '../migrations/preset-queries.js';
 
 import {materializeDefinitionsSchemaFor, materializeMigrationsSchemaFor, readMigrationFiles} from '../materialize.js';
+import {sha256} from '../vendor/sha256.js';
 
 export function migrationsPresetOf(context: SqlfuContext): SqlfuMigrationPreset {
   return context.config.migrations?.preset ?? 'sqlfu';
@@ -316,7 +317,7 @@ export async function applySyncSql(context: SqlfuContext, confirm: SqlfuCommandC
         'sync could not apply definitions.sql safely to the current database.',
         'Create a migration with `sqlfu draft`, edit it if needed, then run `sqlfu migrate`.',
         '',
-        `Cause: ${summarizeSqlite3defError(error)}`,
+        `Cause: ${summarizeErrorLastLine(error)}`,
       ].join('\n'),
     );
   }
@@ -369,7 +370,7 @@ export async function applyMigrateSql(context: SqlfuContext, confirm: SqlfuComma
     throw new Error(
       formatMigrateFailure({
         failedName,
-        cause: summarizeSqlite3defError(error),
+        cause: summarizeErrorLastLine(error),
         postFailure,
       }),
     );
@@ -899,11 +900,56 @@ async function safeDiff(
   context: SqlfuContext,
   input: {baselineSql: string; desiredSql: string; allowDestructive: boolean},
 ): Promise<string[] | null> {
-  try {
-    return await context.config.dialect.diffSchema(context.host, input);
-  } catch {
-    return null;
+  // `dialect.diffSchema` is a pure function of (baseline, desired,
+  // allowDestructive) for a given dialect — same inputs, same diff
+  // statements. For pg it's also expensive (two scratch databases via
+  // CREATE/DROP DATABASE per call), so memoising across requests has a
+  // significant impact on the UI's `analyzeDatabase` pipeline (called
+  // ~3x per page render via repoDrift / schemaDrift / syncDrift).
+  const dialectName = context.config.dialect.name;
+  const key = `${dialectName}\0${input.allowDestructive ? '1' : '0'}\0${diffHash(input.baselineSql)}\0${diffHash(input.desiredSql)}`;
+  const cached = diffCache.get(key);
+  if (cached) {
+    diffCache.delete(key);
+    diffCache.set(key, cached);
+    return cached;
   }
+  const promise = (async () => {
+    try {
+      return await context.config.dialect.diffSchema(context.host, input);
+    } catch {
+      return null;
+    }
+  })();
+  if (diffCache.size >= DIFF_CACHE_LIMIT) {
+    const oldest = diffCache.keys().next().value;
+    if (oldest !== undefined) diffCache.delete(oldest);
+  }
+  diffCache.set(key, promise);
+  promise.then(
+    (value) => {
+      if (value === null && diffCache.get(key) === promise) {
+        // Errors are likely transient (scratch-DB blip, pg-migra hiccup).
+        // Don't pin them in the cache — let the next call retry.
+        diffCache.delete(key);
+      }
+    },
+    () => {
+      if (diffCache.get(key) === promise) diffCache.delete(key);
+    },
+  );
+  return promise;
+}
+
+// Process-local cache for `dialect.diffSchema` results. Pure function of the
+// inputs, so safe to memoise across requests. See note in `safeDiff` for the
+// motivating workload.
+const diffCache = new Map<string, Promise<string[] | null>>();
+const DIFF_CACHE_LIMIT = 64;
+
+function diffHash(content: string): string {
+  const bytes = sha256(new TextEncoder().encode(content));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 async function getMigrationIntegrity(
@@ -918,7 +964,14 @@ async function getMigrationIntegrity(
   return (await host.digest(currentContent)) === appliedChecksum ? ('ok' as const) : ('checksum mismatch' as const);
 }
 
-function summarizeSqlite3defError(error: unknown) {
+/**
+ * Stringify an error to its last non-empty line, with a leading
+ * `YYYY/MM/DD HH:MM:SS ` timestamp stripped. Originally introduced for
+ * the sqlite3def-formatted multi-line errors (hence the previous name)
+ * but it's been generic since — works for pg, sqlite, and anything else
+ * where we just want the actionable bit at the end of an error chain.
+ */
+function summarizeErrorLastLine(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   const line =
     message

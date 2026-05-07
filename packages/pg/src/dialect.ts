@@ -21,6 +21,7 @@ import type {Dialect} from 'sqlfu';
 import {pgDiffSchema} from './impl/schemadiff.js';
 import {pgFormatSql} from './impl/format.js';
 import {pgQuoteIdentifier} from './impl/identifiers.js';
+import {pgGetRelationColumns, pgGetRelationInfo, pgListLiveRelations} from './impl/live-introspection.js';
 import {pgDefaultMigrationTableDdl, pgWithMigrationLock} from './impl/migrations.js';
 import {pgExtractSchemaFromClient, pgMaterializeSchemaSql} from './impl/schema.js';
 import {pgAnalyzeQueries, pgLoadSchemaForTypegen, pgMaterializeTypegenSchema} from './impl/typegen.js';
@@ -49,6 +50,9 @@ export function pgDialect(options: PgDialectOptions): Dialect {
     withMigrationLock: pgWithMigrationLock,
     materializeSchemaSql: pgMaterializeSchemaSql(adminUrl),
     extractSchemaFromClient: pgExtractSchemaFromClient,
+    listLiveRelations: pgListLiveRelations,
+    getRelationInfo: pgGetRelationInfo,
+    getRelationColumns: pgGetRelationColumns,
     materializeTypegenSchema: pgMaterializeTypegenSchema(adminUrl),
     loadSchemaForTypegen: pgLoadSchemaForTypegen,
     analyzeQueries: pgAnalyzeQueries,

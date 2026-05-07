@@ -38,7 +38,7 @@ import {formatSql, type FormatSqlOptions} from './formatter.js';
 import type {SqlfuHost} from './host.js';
 import {diffBaselineSqlToDesiredSql} from './schemadiff/sqlite/index.js';
 import {quoteIdentifier as sqliteQuoteIdentifier} from './schemadiff/sqlite/identifiers.js';
-import {extractSchema as extractSqliteSchema} from './sqlite-text.js';
+import {excludeReservedSqliteObjects, extractSchema as extractSqliteSchema} from './sqlite-text.js';
 import type {AsyncClient, Client, SqlfuProjectConfig} from './types.js';
 import type {VendoredQueryAnalysis, VendoredQueryInput} from './typegen/analyze-vendored-typesql.js';
 
@@ -175,6 +175,49 @@ export type Dialect = {
   extractSchemaFromClient(client: Client, options?: {excludedTables?: string[]}): Promise<string>;
 
   /**
+   * List relations (tables + views) on a live client. Used by the studio's
+   * schema browser. Returns one entry per user-visible relation:
+   *   - `name` — relation identifier as it appears to SQL
+   *   - `kind` — 'table' or 'view'
+   *   - `sql` — definition string when available (sqlite returns the
+   *     `CREATE TABLE …` / `CREATE VIEW …` text from `sqlite_schema`;
+   *     pg returns `pg_get_viewdef(...)` for views, `undefined` for tables
+   *     since reconstructing CREATE TABLE syntactically requires more
+   *     than `pg_get_viewdef`)
+   *
+   * System tables (sqlite's reserved objects, postgres catalogs in
+   * non-public schemas) are filtered out.
+   */
+  listLiveRelations(client: Client): Promise<Array<{name: string; kind: 'table' | 'view'; sql?: string}>>;
+
+  /**
+   * Look up one relation by name, same shape as one entry of
+   * `listLiveRelations`. Throws if no relation exists with that name.
+   * Distinct from `listLiveRelations` so callers don't have to filter
+   * a possibly-large list to find one entry.
+   */
+  getRelationInfo(
+    client: Client,
+    relationName: string,
+  ): Promise<{name: string; kind: 'table' | 'view'; sql?: string}>;
+
+  /**
+   * Per-relation column metadata for the studio's row editor and schema
+   * browser. Returns the columns in declaration order with:
+   *   - `name`, `type` — as the dialect reports them
+   *   - `notNull` — true when the column has a NOT NULL constraint
+   *   - `primaryKey` — true when the column is part of the primary key
+   *
+   * Sqlite's `PRAGMA table_xinfo` exposes hidden columns (e.g.
+   * `__sqlfu_rowid__`); those are filtered out before returning. Pg
+   * filters dropped/system attributes the same way.
+   */
+  getRelationColumns(
+    client: Client,
+    relationName: string,
+  ): Promise<Array<{name: string; type: string; notNull: boolean; primaryKey: boolean}>>;
+
+  /**
    * Apply pre-read schema source SQL to a fresh dialect-specific scratch
    * database, returning a handle ready for typegen lookups + query
    * analysis. The caller (typegen entry point) reads the schema source —
@@ -259,6 +302,49 @@ export function sqliteDialect(): Dialect {
     },
     extractSchemaFromClient: async (client, options) =>
       extractSqliteSchema(client, 'main', {excludedTables: [...(options?.excludedTables ?? [])]}),
+
+    listLiveRelations: async (client) => {
+      const rows = await client.all<{name: string; type: string; sql: string | null}>({
+        sql: `select name, type, sql from sqlite_master where type in ('table', 'view') and ${excludeReservedSqliteObjects} order by type, name`,
+        args: [],
+      });
+      return rows.map((row) => ({
+        name: String(row.name),
+        kind: row.type === 'view' ? 'view' : 'table',
+        sql: typeof row.sql === 'string' ? row.sql : undefined,
+      }));
+    },
+
+    getRelationInfo: async (client, relationName) => {
+      const rows = await client.all<{name: string; type: string; sql: string | null}>({
+        sql: `select name, type, sql from sqlite_schema where name = ?`,
+        args: [relationName],
+      });
+      const row = rows[0];
+      if (!row || (row.type !== 'table' && row.type !== 'view')) {
+        throw new Error(`Unknown relation "${relationName}"`);
+      }
+      return {
+        name: row.name,
+        kind: row.type as 'table' | 'view',
+        sql: typeof row.sql === 'string' ? row.sql : undefined,
+      };
+    },
+
+    getRelationColumns: async (client, relationName) => {
+      const rows = await client.all<Record<string, unknown>>({
+        sql: `PRAGMA table_xinfo(${sqliteQuoteIdentifier(relationName)})`,
+        args: [],
+      });
+      return rows
+        .filter((row) => Number(row.hidden ?? 0) === 0)
+        .map((row) => ({
+          name: String(row.name),
+          type: typeof row.type === 'string' ? row.type : '',
+          notNull: Number(row.notnull ?? 0) === 1,
+          primaryKey: Number(row.pk ?? 0) >= 1,
+        }));
+    },
 
     materializeTypegenSchema:
       sqliteTypegenImpls?.materializeTypegenSchema ?? (() => typegenStub('materializeTypegenSchema')),

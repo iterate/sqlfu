@@ -314,9 +314,15 @@ importers:
       '@playwright/test':
         specifier: ^1.59.1
         version: 1.59.1
+      '@sqlfu/pg':
+        specifier: workspace:*
+        version: link:../pg
       '@types/node':
         specifier: ^24.12.0
         version: 24.12.0
+      '@types/pg':
+        specifier: ^8.15.6
+        version: 8.15.6
       '@types/react':
         specifier: ^19.2.2
         version: 19.2.14
@@ -338,6 +344,9 @@ importers:
       miniflare:
         specifier: ^4.20260409.0
         version: 4.20260415.0
+      pg:
+        specifier: ^8.20.0
+        version: 8.20.0
       sqlfu:
         specifier: workspace:*
         version: link:../sqlfu

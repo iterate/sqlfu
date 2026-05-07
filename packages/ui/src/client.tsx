@@ -750,6 +750,24 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
     }
   };
 
+  // Surface a persistent indicator for the most-recently-run schema
+  // command. Lives at the top of the panel (rather than inside a
+  // recommendation row) because successful commands typically resolve
+  // the recommendation that prompted them — the row vanishes on the
+  // next refetch, taking any inline status with it. Both the indicator
+  // and a real user benefit from a stable place to read "did my last
+  // run succeed?" while the page re-renders around it.
+  const lastCommand = runCommandMutation.variables?.command;
+  const lastCommandStatus = lastCommand
+    ? runCommandMutation.isPending
+      ? 'running'
+      : runCommandMutation.isSuccess
+        ? 'success'
+        : runCommandMutation.isError
+          ? 'error'
+          : null
+    : null;
+
   return (
     <section className="panel">
       <header className="panel-header">
@@ -757,6 +775,21 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
           <h2>Schema</h2>
           <p className="muted">{input.projectName}</p>
         </div>
+        {lastCommand && lastCommandStatus ? (
+          <p
+            className={`schema-command-status ${lastCommandStatus}`}
+            role="status"
+            aria-live="polite"
+          >
+            {lastCommandStatus === 'running' ? `Running ${lastCommand}…` : null}
+            {lastCommandStatus === 'success' ? (
+              <>
+                <span aria-hidden="true">✓</span> {lastCommand} succeeded
+              </>
+            ) : null}
+            {lastCommandStatus === 'error' ? `${lastCommand} failed` : null}
+          </p>
+        ) : null}
       </header>
 
       <div className="stack schema-cards">
