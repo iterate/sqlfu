@@ -110,6 +110,10 @@ Future Phase C work (not in this PR):
 
 Main added stronger SQL runner / saved-query support for named parameters such as `:slug`. The pg runtime adapter already accepted named params, but `pgDialect.analyzeQueries` sent the original SQL to `PREPARE`, so a saved pg query using the UI's named-param style generated `//Invalid SQL`. Fixed by normalizing named parameters to pg `$N` placeholders before analysis while preserving the friendly generated param names (`params.slug`). Covered by `pgDialect.analyzeQueries accepts sqlfu named parameters`.
 
+### Main-merge audit note: workspace scripts
+
+The stack added `packages/pg`, but root `build` / `typecheck` still covered only `sqlfu`, `@sqlfu/ui`, and the website after the latest main merge. Added `@sqlfu/pg` to those scripts plus a root `pg` convenience script. Root `test` is still intentionally unchanged until the pg suite has a CI policy for requiring/skipping a reachable Postgres service.
+
 ### Warts identified (still open)
 
 1. **Env-var hack for connection URLs.** `SQLFU_PG_DIFF_BASELINE_URL`, `SQLFU_PG_DIFF_DESIRED_URL`, `SQLFU_PG_TYPEGEN_URL` should all become proper config fields. Likely shape: a new `dialectConfig` block (or letting the dialect read its own keys off `config.db`'s connection string for typegen).
