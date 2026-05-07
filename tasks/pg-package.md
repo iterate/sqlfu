@@ -84,6 +84,7 @@ Future Phase C work (not in this PR):
 - [x] Integration test: pgDialect.diffSchema across the four cases (matching, create-table, refused-destructive, allowed-destructive). Uses two CREATE DATABASE'd ephemeral databases per test.
 - [x] Integration test: pgDialect.materializeTypegenSchema → loadSchemaForTypegen against a table+view fixture.
 - [x] Integration test: pgDialect.analyzeQueries — SELECT (with notNull inference), INSERT...RETURNING (with result columns + nullability), LEFT JOIN (smoke), broken-SQL (ok:false).
+- [x] Integration test: pgDialect.analyzeQueries accepts sqlfu named parameters (`:slug`) and rewrites them to pg `$N` placeholders while preserving generated parameter names. _(Added after auditing main's SQL runner named-parameter work against the pg stack.)_
 - [x] Integration test: pgDialect.materializeSchemaSql with and without excludedTables.
 - [x] Migra fixture suite: 28 lifted from pgkit, 12 passing, 5 skipped, 11 todo.
 - [ ] Integration test: pgDialect.withMigrationLock blocks concurrent calls. Two real pg connections needed for genuine concurrency; deferred until the migration-runner integration with pg lands.
@@ -104,6 +105,10 @@ Future Phase C work (not in this PR):
 - **NodePostgresLike adapter** (commit `f0d9a0e`): in main sqlfu (transport, not dialect). `createNodePostgresClient(pool)` returns an `AsyncClient`. Translates sqlfu's prepared-statement params (named-Record or positional) into pg's `$1, $2, …` shape; transactions acquire a `PoolClient` via `pool.connect()` so begin/commit land on the same connection.
 - **diffSchema via migra** (commit `6fb9287`): two pgkit clients pointing at separate databases, run `Migration.create + add_all_changes`, return statements as a string array. Env-var-driven for now (`SQLFU_PG_DIFF_BASELINE_URL` / `SQLFU_PG_DIFF_DESIRED_URL`). Tests use a `startPglitePairFixture` that spins up two pglite-socket instances.
 - **typegen materialize+loadSchema**: temp schema, `set search_path`, apply DDL; introspect via `pg_class` + `pg_attribute`; produces the dialect-neutral `RelationInfo` map. Reads `SQLFU_PG_TYPEGEN_URL` from env. Currently honors only `generate.authority='desired_schema'` because the schema-source readers in main sqlfu's typegen are sqlite-only.
+
+### Main-merge audit note: named parameters
+
+Main added stronger SQL runner / saved-query support for named parameters such as `:slug`. The pg runtime adapter already accepted named params, but `pgDialect.analyzeQueries` sent the original SQL to `PREPARE`, so a saved pg query using the UI's named-param style generated `//Invalid SQL`. Fixed by normalizing named parameters to pg `$N` placeholders before analysis while preserving the friendly generated param names (`params.slug`). Covered by `pgDialect.analyzeQueries accepts sqlfu named parameters`.
 
 ### Warts identified (still open)
 

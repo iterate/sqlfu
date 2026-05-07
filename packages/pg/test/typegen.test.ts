@@ -160,6 +160,31 @@ test(
   },
 );
 
+test('pgDialect.analyzeQueries accepts sqlfu named parameters', {timeout: 30_000}, async () => {
+  const sql = `create table posts (id integer primary key, slug text not null, title text not null);`;
+  await withProject(sql, async (config, host, dialect) => {
+    await using materialized = await dialect.materializeTypegenSchema(host, {
+      projectRoot: config.projectRoot,
+      sourceSql: sql,
+      experimentalJsonTypes: false,
+    });
+    const analyses = await dialect.analyzeQueries(materialized, [
+      {sqlPath: 'find-post.sql', sqlContent: 'select id, slug, title from posts where slug = :slug'},
+    ]);
+
+    const [analysis] = analyses;
+    if (!analysis.ok) {
+      throw new Error(`expected ok analysis, got error: ${analysis.error.description}`);
+    }
+    expect(analysis.descriptor).toMatchObject({
+      sql: 'select id, slug, title from posts where slug = $1',
+      queryType: 'Select',
+      parameters: [{name: 'slug', tsType: 'string', notNull: false, toDriver: 'identity', isArray: false}],
+    });
+    expect(analysis.descriptor.columns.map((column) => column.name)).toEqual(['id', 'slug', 'title']);
+  });
+});
+
 test(
   'pgDialect.analyzeQueries handles LEFT JOIN queries end-to-end',
   {timeout: 30_000},
