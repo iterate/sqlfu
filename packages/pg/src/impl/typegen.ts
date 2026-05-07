@@ -171,13 +171,14 @@ export const pgAnalyzeQueries: Dialect['analyzeQueries'] = async (materialized, 
 async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): Promise<QueryAnalysis> {
   const stmtName = `sqlfu_analyze_${randomSuffix()}`;
   const viewName = `sqlfu_view_${randomSuffix()}`;
-  const queryType = classifyQuery(query.sqlContent);
+  const analysisSql = normalizeSqlForPgAnalysis(query.sqlContent);
+  const queryType = classifyQuery(analysisSql.sql);
 
   try {
     await client.raw('begin');
     try {
       // PREPARE the statement — pg parses and validates here.
-      await client.raw(`prepare ${quoteIdent(stmtName)} as ${query.sqlContent}`);
+      await client.raw(`prepare ${quoteIdent(stmtName)} as ${analysisSql.sql}`);
 
       // Read param types. `parameter_types` is a regtype[] (textual type
       // names like `'integer'`, `'text'`).
@@ -198,7 +199,7 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
       // literal, and rewrites `$$ … $$` dollar-quoted forms to plain
       // `'…'` so `pgsql-ast-parser` can parse them. See the file
       // header for the empirical safety argument.
-      const neutralizedSql = neutralizeStringLiterals(query.sqlContent);
+      const neutralizedSql = neutralizeStringLiterals(analysisSql.sql);
 
       // Pass 1: column baseline via temp view (Select-like queries only).
       const baselineColumns =
@@ -217,7 +218,7 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
         template: [neutralizedSql],
         fields: [],
         parameters: paramTypes.map((typeName, index) => ({
-          name: `$${index + 1}`,
+          name: analysisSql.parameterNames[index] || `$${index + 1}`,
           regtype: typeName,
           typescript: pgTypeToTs(typeName),
         })),
@@ -249,7 +250,7 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
       const columns = mergeColumns(baselineColumns, analysedFields);
 
       const parameters = paramTypes.map((typeName, index) => ({
-        name: `$${index + 1}`,
+        name: analysisSql.parameterNames[index] || `$${index + 1}`,
         tsType: pgTypeToTs(typeName),
         notNull: false,
         toDriver: 'identity',
@@ -260,7 +261,7 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
         sqlPath: query.sqlPath,
         ok: true,
         descriptor: {
-          sql: query.sqlContent,
+          sql: analysisSql.sql,
           queryType,
           multipleRowsResult: queryType === 'Select' || /\breturning\b/iu.test(query.sqlContent),
           columns,
@@ -286,6 +287,117 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
       },
     };
   }
+}
+
+function normalizeSqlForPgAnalysis(sql: string): {sql: string; parameterNames: string[]} {
+  const parameterIndexes = new Map<string, number>();
+  const parameterNames: string[] = [];
+  let output = '';
+  let hasNamedParameters = false;
+  let hasNativeParameters = false;
+  let index = 0;
+
+  while (index < sql.length) {
+    const char = sql[index]!;
+    const next = sql[index + 1];
+
+    const dollarQuote = char === '$' ? readDollarQuoteTag(sql, index) : null;
+    if (dollarQuote) {
+      const closingIndex = sql.indexOf(dollarQuote, index + dollarQuote.length);
+      const end = closingIndex === -1 ? sql.length : closingIndex + dollarQuote.length;
+      output += sql.slice(index, end);
+      index = end;
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      const end = readQuotedEnd(sql, index, char);
+      output += sql.slice(index, end);
+      index = end;
+      continue;
+    }
+
+    if (char === '-' && next === '-') {
+      const lineEnd = sql.indexOf('\n', index);
+      const end = lineEnd === -1 ? sql.length : lineEnd;
+      output += sql.slice(index, end);
+      index = end;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      const close = sql.indexOf('*/', index + 2);
+      const end = close === -1 ? sql.length : close + 2;
+      output += sql.slice(index, end);
+      index = end;
+      continue;
+    }
+
+    if (char === ':' && next === ':') {
+      output += '::';
+      index += 2;
+      continue;
+    }
+
+    if (char === '$') {
+      const nativeMatch = sql.slice(index).match(/^\$\d+\b/u);
+      if (nativeMatch) {
+        hasNativeParameters = true;
+        output += nativeMatch[0];
+        index += nativeMatch[0].length;
+        continue;
+      }
+    }
+
+    if (char === ':' || char === '@' || char === '$') {
+      const match = sql.slice(index + 1).match(/^[A-Za-z_][A-Za-z0-9_]*/u);
+      if (match) {
+        hasNamedParameters = true;
+        const name = match[0]!;
+        let position = parameterIndexes.get(name);
+        if (!position) {
+          position = parameterNames.length + 1;
+          parameterIndexes.set(name, position);
+          parameterNames.push(name);
+        }
+        output += `$${position}`;
+        index += name.length + 1;
+        continue;
+      }
+    }
+
+    output += char;
+    index += 1;
+  }
+
+  if (hasNamedParameters && hasNativeParameters) {
+    throw new Error('pgDialect query analysis cannot mix named parameters and native $N parameters.');
+  }
+
+  return {
+    sql: hasNamedParameters ? output : sql,
+    parameterNames: hasNamedParameters ? parameterNames : [],
+  };
+}
+
+function readDollarQuoteTag(sql: string, index: number): string | null {
+  const match = sql.slice(index).match(/^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/u);
+  return match ? match[0]! : null;
+}
+
+function readQuotedEnd(sql: string, start: number, quote: "'" | '"'): number {
+  let index = start + 1;
+  while (index < sql.length) {
+    if (sql[index] === quote) {
+      if (sql[index + 1] === quote) {
+        index += 2;
+        continue;
+      }
+      return index + 1;
+    }
+    index += 1;
+  }
+  return sql.length;
 }
 
 interface BaselineColumn {
