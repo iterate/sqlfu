@@ -2,11 +2,19 @@ import type {AsyncClient, Client, PreparedStatementParams, QueryArg, SyncClient}
 import {normalizeSchemaSqlForExtraction} from './schemadiff/sqlite/sqltext.js';
 
 /**
- * Returns true for statements that produce a result set — `select`, `with`,
- * `pragma`, `explain`, `values`, and any of the write variants with a
- * `returning` clause. Used by `execAdHocSql` to decide whether the UI should
- * render rows or a row-count summary. Strips leading comments/whitespace so a
- * commented query is classified by its actual first keyword.
+ * Returns true for statements that produce a result set. Heuristic by design;
+ * union of sqlite and postgres row-returning keywords:
+ *
+ * - `select`, `with`, `explain`, `values` — both dialects.
+ * - `pragma` — sqlite only (invalid syntax in pg; never matches a valid pg
+ *   statement so over-inclusion is harmless).
+ * - `show`, `table`, `fetch` — pg only (invalid syntax in sqlite; same
+ *   harmless-overinclusion argument).
+ * - …plus any write statement with a `returning` clause.
+ *
+ * Used by `execAdHocSql` to decide whether the UI should render rows or a
+ * row-count summary. Strips leading comments/whitespace so a commented query
+ * is classified by its actual first keyword.
  *
  * Try/catch on `.all()` is *not* a safe substitute: node:sqlite returns `[]`
  * for writes (no error to catch), and better-sqlite3 may execute partial side
@@ -15,7 +23,7 @@ import {normalizeSchemaSqlForExtraction} from './schemadiff/sqlite/sqltext.js';
  */
 export function sqlReturnsRows(sql: string): boolean {
   const stripped = sql.replace(/^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)+/u, '');
-  if (/^(select|with|pragma|explain|values)\b/iu.test(stripped)) return true;
+  if (/^(select|with|pragma|explain|values|show|table|fetch)\b/iu.test(stripped)) return true;
   return /\breturning\b/iu.test(sql);
 }
 

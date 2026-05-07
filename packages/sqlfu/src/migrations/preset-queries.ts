@@ -11,6 +11,7 @@
 // variant in the returned `ResolvedPresetShape` so downstream inserts/selects
 // adapt.
 
+import type {Dialect} from '../dialect.js';
 import type {Client} from '../types.js';
 import type {SqlfuMigrationPreset} from '../types.js';
 import {awaited, type DualGenerator} from '../dual-dispatch.js';
@@ -29,10 +30,11 @@ export function presetTableName(preset: SqlfuMigrationPreset): string {
 export function* ensureMigrationTableGen(
   client: Client,
   preset: SqlfuMigrationPreset,
+  dialect: Dialect,
 ): DualGenerator<ResolvedPresetShape> {
   if (preset === 'sqlfu') {
     yield client.run({
-      sql: `create table if not exists ${SQLFU_TABLE} (\n  name text primary key check (name not like '%.sql'),\n  checksum text not null,\n  applied_at text not null\n);`,
+      sql: dialect.defaultMigrationTableDdl(SQLFU_TABLE),
       args: [],
       name: 'ensureMigrationTable',
     });

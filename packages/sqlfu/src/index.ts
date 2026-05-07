@@ -38,6 +38,12 @@ export * from './adapters/turso-serverless.js';
 
 export {defineConfig} from './config.js';
 
+// Pluggable dialect surface. The default `sqliteDialect` is wired up
+// automatically when `defineConfig` omits `dialect`. Postgres support arrives
+// via `pgDialect` from `@sqlfu/pg` (separate package, dev-only dependency).
+export {sqliteDialect} from './dialect.js';
+export type {Dialect, DiffSchemaInput} from './dialect.js';
+
 // Pure-SQLite text helpers — no node:*, useful on the light path for
 // anyone wrangling migration SQL, splitting statements, or extracting
 // schema from a running client.

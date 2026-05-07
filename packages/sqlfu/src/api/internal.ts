@@ -4,7 +4,6 @@ import {basename, joinPath} from '../paths.js';
 import {createDefaultInitPreview} from '../init-preview.js';
 import type {LoadedSqlfuProject} from '../config.js';
 import {migrationNickname} from '../naming.js';
-import {extractSchema} from '../sqlite-text.js';
 import {
   applyMigrations,
   baselineMigrationHistory,
@@ -14,8 +13,6 @@ import {
   type Migration,
 } from '../migrations/index.js';
 import {presetTableName} from '../migrations/preset-queries.js';
-import {diffSchemaSql} from '../schemadiff/index.js';
-import {inspectSqliteSchemaSql, schemasEqual} from '../schemadiff/sqlite/index.js';
 
 import {materializeDefinitionsSchemaFor, materializeMigrationsSchemaFor, readMigrationFiles} from '../materialize.js';
 
@@ -46,8 +43,8 @@ export async function getSchemaAuthorities(context: SqlfuContext) {
 
   await using database = await context.host.openDb(context.config);
   const preset = migrationsPresetOf(context);
-  const applied = await readMigrationHistory(database.client, {preset});
-  const liveSchema = await extractSchema(database.client, 'main', {
+  const applied = await readMigrationHistory(database.client, {preset, dialect: context.config.dialect});
+  const liveSchema = await context.config.dialect.extractSchemaFromClient(database.client, {
     excludedTables: schemaDriftExcludedTables(context),
   });
   const appliedByName = new Map(applied.map((migration) => [migration.name, migration]));
@@ -110,7 +107,7 @@ export async function getMigrationResultantSchema(
   }
 
   await using database = await context.host.openDb(context.config);
-  const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(context)});
+  const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(context), dialect: context.config.dialect});
   const targetIndex = applied.findIndex((migration) => migration.name === input.id);
   if (targetIndex === -1) {
     throw new Error(`migration history entry ${input.id} not found`);
@@ -240,7 +237,7 @@ export async function applyDraftSql(
   const migrations = await readMigrationsFromContext(context);
   const definitionsSql = await readDefinitionsSql(context.host, context.config.definitions);
   const baselineSql = migrations.length === 0 ? '' : await materializeMigrationsSchemaForContext(context, migrations);
-  const diffLines = await diffSchemaSql(context.host, {
+  const diffLines = await context.config.dialect.diffSchema(context.host, {
     baselineSql,
     desiredSql: definitionsSql,
     allowDestructive: true,
@@ -286,11 +283,11 @@ function projectRelativePath(config: SqlfuProjectConfig, filePath: string) {
 export async function applySyncSql(context: SqlfuContext, confirm: SqlfuCommandConfirm) {
   const definitionsSql = await readDefinitionsSql(context.host, context.config.definitions);
   await using database = await context.host.openDb(context.config);
-  const baselineSql = await extractSchema(database.client, 'main', {
+  const baselineSql = await context.config.dialect.extractSchemaFromClient(database.client, {
     excludedTables: schemaDriftExcludedTables(context),
   });
   try {
-    const diffLines = await diffSchemaSql(context.host, {
+    const diffLines = await context.config.dialect.diffSchema(context.host, {
       baselineSql,
       desiredSql: definitionsSql,
       allowDestructive: true,
@@ -337,7 +334,8 @@ export async function applyMigrateSql(context: SqlfuContext, confirm: SqlfuComma
 
   await using database = await context.host.openDb(context.config);
   const preset = migrationsPresetOf(context);
-  const applied = await readMigrationHistory(database.client, {preset});
+  const dialect = context.config.dialect;
+  const applied = await readMigrationHistory(database.client, {preset, dialect});
   const appliedNames = new Set(applied.map((migration) => migration.name));
   const pendingMigrations = migrations.filter((migration) => !appliedNames.has(migrationName(migration)));
   if (pendingMigrations.length > 0) {
@@ -355,10 +353,10 @@ export async function applyMigrateSql(context: SqlfuContext, confirm: SqlfuComma
 
   try {
     // apply migrations even if there are zero pending, because this will validate migration history
-    await applyMigrations(database.client, {migrations, preset});
+    await applyMigrations(database.client, {migrations, preset, dialect});
   } catch (error) {
     // figure out which migration was the first one to not make it into history
-    const appliedAfter = await readMigrationHistory(database.client, {preset});
+    const appliedAfter = await readMigrationHistory(database.client, {preset, dialect});
     const appliedAfterNames = new Set(appliedAfter.map((migration) => migration.name));
     const failed = pendingMigrations.find((migration) => !appliedAfterNames.has(migrationName(migration)));
     const failedName = failed ? migrationName(failed) : 'migration';
@@ -400,8 +398,8 @@ async function analyzeMigrateHealthWithClient(
   migrations: Migration[],
   client: Client,
 ): Promise<MigrateHealthAnalysis> {
-  const applied = await readMigrationHistory(client, {preset: migrationsPresetOf(context)});
-  const liveSchema = await extractSchema(client, 'main', {
+  const applied = await readMigrationHistory(client, {preset: migrationsPresetOf(context), dialect: context.config.dialect});
+  const liveSchema = await context.config.dialect.extractSchemaFromClient(client, {
     excludedTables: schemaDriftExcludedTables(context),
   });
   const migrationByName = new Map(migrations.map((migration) => [migrationName(migration), migration]));
@@ -453,7 +451,7 @@ async function analyzeMigrateHealthWithClient(
     .map((historical) => migrationByName.get(historical.name))
     .filter((migration): migration is Migration => Boolean(migration));
   const historicalSchema = await materializeMigrationsSchemaForContext(context, historicalMigrations);
-  const schemaDrift = await compareSchemasForContext(context.host, historicalSchema, liveSchema);
+  const schemaDrift = await compareSchemasForContext(context, historicalSchema, liveSchema);
 
   if (schemaDrift.isDifferent) {
     const recommendedBaselineTarget = await findRecommendedTarget(context, migrations, liveSchema);
@@ -552,6 +550,7 @@ export async function applyBaselineSql(context: SqlfuContext, input: {target: st
     migrations,
     target: input.target,
     preset: migrationsPresetOf(context),
+    dialect: context.config.dialect,
   });
 }
 
@@ -562,10 +561,10 @@ export async function applyGotoSql(context: SqlfuContext, input: {target: string
 
   await using database = await context.host.openDb(context.config);
   const preset = migrationsPresetOf(context);
-  const liveSchema = await extractSchema(database.client, 'main', {
+  const liveSchema = await context.config.dialect.extractSchemaFromClient(database.client, {
     excludedTables: schemaDriftExcludedTables(context),
   });
-  const diffLines = await diffSchemaSql(context.host, {
+  const diffLines = await context.config.dialect.diffSchema(context.host, {
     baselineSql: liveSchema,
     desiredSql: targetSchema,
     allowDestructive: true,
@@ -584,7 +583,7 @@ export async function applyGotoSql(context: SqlfuContext, input: {target: string
     if (confirmedSql?.trim()) {
       await tx.raw(confirmedSql.trim());
     }
-    await replaceMigrationHistory(tx, {migrations: targetMigrations, preset});
+    await replaceMigrationHistory(tx, {migrations: targetMigrations, preset, dialect: context.config.dialect});
   });
 }
 
@@ -616,11 +615,14 @@ function slugify(value: string) {
 }
 
 export const materializeDefinitionsSchemaForContext = (context: SqlfuContext, definitionsSql: string) =>
-  materializeDefinitionsSchemaFor(context.host, definitionsSql, {excludedTables: schemaDriftExcludedTables(context)});
+  materializeDefinitionsSchemaFor(context.host, definitionsSql, {
+    excludedTables: schemaDriftExcludedTables(context),
+    dialect: context.config.dialect,
+  });
 export const materializeMigrationsSchemaForContext = (context: SqlfuContext, migrations: Migration[]) =>
   materializeMigrationsSchemaFor(context.host, migrations, {
     excludedTables: schemaDriftExcludedTables(context),
-    preset: migrationsPresetOf(context),
+    dialect: context.config.dialect,
   });
 
 function getMigrationsThroughTarget(migrations: Migration[], target: string) {
@@ -641,15 +643,15 @@ export async function analyzeDatabase(context: SqlfuContext) {
   ]);
 
   await using database = await host.openDb(context.config);
-  const liveSchema = await extractSchema(database.client, 'main', {
+  const liveSchema = await context.config.dialect.extractSchemaFromClient(database.client, {
     excludedTables: schemaDriftExcludedTables(context),
   });
-  const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(context)});
+  const applied = await readMigrationHistory(database.client, {preset: migrationsPresetOf(context), dialect: context.config.dialect});
   const hasAppliedHistory = applied.length > 0;
   const appliedNames = new Set(applied.map((migration) => migration.name));
   const migrationByName = new Map(migrations.map((migration) => [migrationName(migration), migration]));
 
-  const repoDrift = await compareSchemasForContext(host, desiredSchema, migrationsSchema);
+  const repoDrift = await compareSchemasForContext(context, desiredSchema, migrationsSchema);
   const historyMismatch = await findHistoryMismatch(host, applied, migrations, migrationByName);
   const hasPendingMigrations =
     !historyMismatch && migrations.some((migration) => !appliedNames.has(migrationName(migration)));
@@ -658,8 +660,8 @@ export async function analyzeDatabase(context: SqlfuContext) {
     .map((historical) => migrationByName.get(historical.name))
     .filter((migration): migration is Migration => Boolean(migration));
   const historicalSchema = await materializeMigrationsSchemaForContext(context, historicalMigrations);
-  const schemaDrift = await compareSchemasForContext(host, historicalSchema, liveSchema);
-  const syncDrift = await compareSchemasForContext(host, desiredSchema, liveSchema);
+  const schemaDrift = await compareSchemasForContext(context, historicalSchema, liveSchema);
+  const syncDrift = await compareSchemasForContext(context, desiredSchema, liveSchema);
   const recommendedBaselineTarget = await findRecommendedTarget(context, migrations, liveSchema);
   const recommendedGotoTarget =
     !repoDrift.isDifferent && !historyMismatch && migrations.length > 0 ? migrationName(migrations.at(-1)!) : null;
@@ -860,38 +862,48 @@ async function findRecommendedTarget(context: SqlfuContext, migrations: Migratio
       // prefix containing the same migration is also untrustworthy. stop searching.
       return null;
     }
-    if (!(await compareSchemasForContext(context.host, candidateSchema, liveSchema)).isDifferent) {
+    if (!(await compareSchemasForContext(context, candidateSchema, liveSchema)).isDifferent) {
       return migrationName(candidate.at(-1)!);
     }
   }
   return null;
 }
 
-export async function compareSchemasForContext(host: SqlfuHost, left: string, right: string) {
-  const [leftInspected, rightInspected] = await Promise.all([
-    inspectSqliteSchemaSql(host, left),
-    inspectSqliteSchemaSql(host, right),
+export async function compareSchemasForContext(context: SqlfuContext, left: string, right: string) {
+  // Equality + syncability both fall out of `dialect.diffSchema`. A clean
+  // diff (zero statements) in BOTH directions means the two schemas are
+  // structurally equal; if either direction produces statements but the
+  // destructive direction succeeds, syncing is possible.
+  //
+  // Previously this function used a sqlite-specific
+  // `inspectSqliteSchemaSql` + `schemasEqual` round-trip. The diff-only
+  // version is dialect-portable and slightly more accurate — the inspector
+  // ignored e.g. trigger ordering that the diff engine catches.
+  const [leftToRight, rightToLeft] = await Promise.all([
+    safeDiff(context, {baselineSql: left, desiredSql: right, allowDestructive: true}),
+    safeDiff(context, {baselineSql: right, desiredSql: left, allowDestructive: true}),
   ]);
 
-  const isDifferent = !schemasEqual(leftInspected, rightInspected);
-  let isSyncable = false;
-  if (isDifferent) {
-    try {
-      const syncPlan = await diffSchemaSql(host, {
-        baselineSql: right,
-        desiredSql: left,
-        allowDestructive: true,
-      });
-      isSyncable = syncPlan.length > 0;
-    } catch {
-      isSyncable = false;
-    }
-  }
+  const isDifferent = (leftToRight?.length ?? 0) > 0 || (rightToLeft?.length ?? 0) > 0;
+  // Syncable means: we can produce a plan from `right` toward `left` (the
+  // 'desired') without erroring, and that plan is non-empty.
+  const isSyncable = isDifferent && rightToLeft != null && rightToLeft.length > 0;
 
   return {
     isDifferent,
     isSyncable,
   };
+}
+
+async function safeDiff(
+  context: SqlfuContext,
+  input: {baselineSql: string; desiredSql: string; allowDestructive: boolean},
+): Promise<string[] | null> {
+  try {
+    return await context.config.dialect.diffSchema(context.host, input);
+  } catch {
+    return null;
+  }
 }
 
 async function getMigrationIntegrity(

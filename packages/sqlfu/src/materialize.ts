@@ -1,15 +1,15 @@
 // Helpers that materialise a schema from some source (definitions.sql, a
 // migrations list, the migration history recorded in a live DB) into a scratch
-// DB and return the resulting schema SQL. Extracted from api.ts so callers that
-// only need these (typegen's authority dispatcher) don't have to pull api.ts's
-// full import graph (schemadiff, formatter, vendored sql-formatter) along for
-// the ride.
+// DB and return the resulting schema SQL. Now thin wrappers over the
+// dialect's `materializeSchemaSql` method — each dialect picks its own
+// scratch primitive (sqlite: `host.openScratchDb`; pg: `CREATE DATABASE` on
+// a configured admin URL).
 
+import type {Dialect} from './dialect.js';
 import type {SqlfuHost} from './host.js';
 import {joinPath} from './paths.js';
-import type {SqlfuMigrationPreset, SqlfuProjectConfig} from './types.js';
-import {applyMigrations, type Migration} from './migrations/index.js';
-import {extractSchema} from './sqlite-text.js';
+import type {SqlfuProjectConfig} from './types.js';
+import type {Migration} from './migrations/index.js';
 
 export type MaterializeSchemaOptions = {
   /**
@@ -19,38 +19,46 @@ export type MaterializeSchemaOptions = {
    * verbatim.
    */
   excludedTables?: string[];
-};
-
-export type MaterializeMigrationsSchemaOptions = MaterializeSchemaOptions & {
-  /**
-   * Preset to use when populating the scratch DB. Defaults to `'sqlfu'`. This
-   * must match the caller's `excludedTables` choice — if the scratch DB
-   * creates `sqlfu_migrations` but `excludedTables` only strips
-   * `d1_migrations`, the bookkeeping table leaks into the baseline and the
-   * schema-diff engine concludes it should be dropped. Callers that know the
-   * user's configured preset should pass it explicitly.
-   */
-  preset?: SqlfuMigrationPreset;
+  /** Dialect responsible for materializing + extracting. */
+  dialect: Dialect;
 };
 
 export async function materializeDefinitionsSchemaFor(
   host: SqlfuHost,
   definitionsSql: string,
-  options: MaterializeSchemaOptions = {},
+  options: MaterializeSchemaOptions,
 ): Promise<string> {
-  await using database = await host.openScratchDb('materialize-definitions');
-  await database.client.raw(definitionsSql);
-  return extractSchema(database.client, 'main', {excludedTables: [...(options.excludedTables ?? [])]});
+  return options.dialect.materializeSchemaSql(host, {
+    sourceSql: definitionsSql,
+    excludedTables: options.excludedTables,
+  });
 }
 
 export async function materializeMigrationsSchemaFor(
   host: SqlfuHost,
   migrations: Migration[],
-  options: MaterializeMigrationsSchemaOptions = {},
+  options: MaterializeSchemaOptions,
 ): Promise<string> {
-  await using database = await host.openScratchDb('materialize-migrations');
-  await applyMigrations(database.client, {migrations, preset: options.preset ?? 'sqlfu'});
-  return extractSchema(database.client, 'main', {excludedTables: [...(options.excludedTables ?? [])]});
+  // Concatenate migration contents and apply as one DDL blob. The resulting
+  // schema is what callers want; the bookkeeping table (`sqlfu_migrations` /
+  // `d1_migrations`) is not created here because we bypass `applyMigrations`.
+  // That's deliberate — for materialization-for-extraction, the bookkeeping
+  // is noise.
+  //
+  // Each migration's content gets a trailing `;\n` so adjacent migrations
+  // don't merge into a single (invalid) statement. Migrations may or may
+  // not include their own trailing semicolon — both shapes are common in
+  // user-authored .sql files.
+  return options.dialect.materializeSchemaSql(host, {
+    sourceSql: migrations.map((migration) => terminateStatement(migration.content)).join('\n'),
+    excludedTables: options.excludedTables,
+  });
+}
+
+function terminateStatement(sql: string): string {
+  const trimmed = sql.trim();
+  if (!trimmed) return '';
+  return trimmed.endsWith(';') ? sql : `${sql};\n`;
 }
 
 export async function readMigrationFiles(host: SqlfuHost, config: SqlfuProjectConfig): Promise<Migration[]> {

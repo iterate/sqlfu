@@ -1,5 +1,6 @@
 import {sha256} from '../vendor/sha256.js';
 
+import {sqliteDialect, type Dialect} from '../dialect.js';
 import type {AsyncClient, Client, SqlfuMigrationPreset, SyncClient} from '../types.js';
 import {basename} from '../paths.js';
 import {awaited, driveAsync, driveSync, type DualGenerator} from '../dual-dispatch.js';
@@ -52,7 +53,7 @@ export function migrationName(migration: {path: string}) {
   return basename(migration.path, '.sql');
 }
 
-type HistoryParams = {preset?: SqlfuMigrationPreset};
+type HistoryParams = {preset?: SqlfuMigrationPreset; dialect?: Dialect};
 
 export function readMigrationHistory(client: SyncClient, params?: HistoryParams): MigrationHistoryRow[];
 export function readMigrationHistory(client: AsyncClient, params?: HistoryParams): Promise<MigrationHistoryRow[]>;
@@ -65,13 +66,18 @@ export function readMigrationHistory(
   params: HistoryParams = {},
 ): MigrationHistoryRow[] | Promise<MigrationHistoryRow[]> {
   const preset = params.preset ?? 'sqlfu';
+  const dialect = params.dialect ?? sqliteDialect();
   return client.sync
-    ? driveSync(readMigrationHistoryGen(client, preset))
-    : driveAsync(readMigrationHistoryGen(client, preset));
+    ? driveSync(readMigrationHistoryGen(client, preset, dialect))
+    : driveAsync(readMigrationHistoryGen(client, preset, dialect));
 }
 
-function* readMigrationHistoryGen(client: Client, preset: SqlfuMigrationPreset): DualGenerator<MigrationHistoryRow[]> {
-  const shape = yield* ensureMigrationTableGen(client, preset);
+function* readMigrationHistoryGen(
+  client: Client,
+  preset: SqlfuMigrationPreset,
+  dialect: Dialect,
+): DualGenerator<MigrationHistoryRow[]> {
+  const shape = yield* ensureMigrationTableGen(client, preset, dialect);
   const rows = yield* awaited(client.all<MigrationHistoryRow>(selectHistoryQuery(shape)));
   return rows.map((row) => ({...row, name: normalizeHistoryName(shape, row.name)}));
 }
@@ -79,19 +85,26 @@ function* readMigrationHistoryGen(client: Client, preset: SqlfuMigrationPreset):
 type ApplyMigrationsParams = {
   migrations: Migration[];
   preset?: SqlfuMigrationPreset;
+  dialect?: Dialect;
 };
 
 type BaselineParams = {
   migrations: Migration[];
   target: string;
   preset?: SqlfuMigrationPreset;
+  dialect?: Dialect;
 };
 
 export function applyMigrations(client: SyncClient, params: ApplyMigrationsParams): void;
 export function applyMigrations(client: AsyncClient, params: ApplyMigrationsParams): Promise<void>;
 export function applyMigrations(client: Client, params: ApplyMigrationsParams): void | Promise<void>;
 export function applyMigrations(client: Client, params: ApplyMigrationsParams): void | Promise<void> {
-  return client.sync ? driveSync(applyMigrationsGen(client, params)) : driveAsync(applyMigrationsGen(client, params));
+  if (client.sync) {
+    return driveSync(applyMigrationsGen(client, params));
+  }
+  const dialect = params.dialect ?? sqliteDialect();
+  const run = () => driveAsync(applyMigrationsGen(client, params));
+  return dialect.withMigrationLock ? dialect.withMigrationLock(client, run) : run();
 }
 
 export function baselineMigrationHistory(client: SyncClient, params: BaselineParams): void;
@@ -106,6 +119,7 @@ export function baselineMigrationHistory(client: Client, params: BaselineParams)
 type ReplaceParams = {
   migrations: Migration[];
   preset?: SqlfuMigrationPreset;
+  dialect?: Dialect;
 };
 
 export function replaceMigrationHistory(client: SyncClient, params: ReplaceParams): void;
@@ -119,7 +133,8 @@ export function replaceMigrationHistory(client: Client, params: ReplaceParams): 
 
 function* applyMigrationsGen(client: Client, params: ApplyMigrationsParams): DualGenerator<void> {
   const preset = params.preset ?? 'sqlfu';
-  const shape = yield* ensureMigrationTableGen(client, preset);
+  const dialect = params.dialect ?? sqliteDialect();
+  const shape = yield* ensureMigrationTableGen(client, preset, dialect);
   const appliedRaw = yield* awaited(client.all<MigrationHistoryRow>(selectHistoryQuery(shape)));
   const applied = appliedRaw.map((row) => ({...row, name: normalizeHistoryName(shape, row.name)}));
   const byName = new Map(params.migrations.map((migration) => [migrationName(migration), migration]));
@@ -179,14 +194,19 @@ function* baselineMigrationHistoryGen(client: Client, params: BaselineParams): D
   }
   const appliedSlice = params.migrations.slice(0, targetIndex + 1);
   yield client.transaction((tx) => {
-    const innerGen = replaceMigrationHistoryGen(tx, {migrations: appliedSlice, preset: params.preset});
+    const innerGen = replaceMigrationHistoryGen(tx, {
+      migrations: appliedSlice,
+      preset: params.preset,
+      dialect: params.dialect,
+    });
     return tx.sync ? (driveSync(innerGen) as unknown as Promise<void>) : driveAsync(innerGen);
   });
 }
 
 function* replaceMigrationHistoryGen(client: Client, params: ReplaceParams): DualGenerator<void> {
   const preset = params.preset ?? 'sqlfu';
-  const shape = yield* ensureMigrationTableGen(client, preset);
+  const dialect = params.dialect ?? sqliteDialect();
+  const shape = yield* ensureMigrationTableGen(client, preset, dialect);
   yield client.run(deleteHistoryQuery(shape));
   for (const migration of params.migrations) {
     yield client.run(

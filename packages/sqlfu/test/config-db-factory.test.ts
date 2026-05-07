@@ -4,6 +4,7 @@ import {expect, test} from 'vitest';
 
 import {autoAcceptConfirm, createSqlfuApi} from '../src/api/core.js';
 import {getCheckMismatches} from '../src/api/internal.js';
+import {sqliteDialect} from '../src/dialect.js';
 import {createBetterSqlite3Client} from '../src/index.js';
 import {createNodeHost, openLocalSqliteFile} from '../src/node/host.js';
 import type {SqlfuDbFactory, SqlfuProjectConfig} from '../src/types.js';
@@ -78,6 +79,7 @@ async function createFactoryFixture(input: {migrations?: Record<string, string>;
       importExtension: '.js',
       authority: 'desired_schema',
     },
+    dialect: sqliteDialect(),
   };
 
   const host = await createNodeHost();

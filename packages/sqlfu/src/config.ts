@@ -7,6 +7,7 @@ import type {
   SqlfuProjectConfig,
   SqlfuValidator,
 } from './types.js';
+import {sqliteDialect} from './dialect.js';
 import {createDefaultInitPreview} from './init-preview.js';
 import {dirname, resolvePath} from './paths.js';
 
@@ -42,6 +43,7 @@ export function resolveProjectConfig(
       importExtension: fileConfig.generate?.importExtension ?? inferImportExtension(tsconfigPreferences),
       authority: fileConfig.generate?.authority ?? 'desired_schema',
     },
+    dialect: fileConfig.dialect || sqliteDialect(),
   };
 }
 

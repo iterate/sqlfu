@@ -2,6 +2,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import {analyzeVendoredTypesqlQueries} from './analyze-vendored-typesql.js';
+import {
+  assertSqliteMaterialized,
+  registerSqliteTypegenImpls,
+  type DialectColumnInfo,
+  type LogicalType,
+  type RelationInfo,
+} from '../dialect.js';
+import {quoteIdentifier as sqliteQuoteIdentifier} from '../schemadiff/sqlite/identifiers.js';
 import type {
   AdHocQueryAnalysis,
   JsonSchema,
@@ -45,16 +53,15 @@ export async function generateQueryTypesForConfig(
   config: SqlfuProjectConfig,
   host: SqlfuHost,
 ): Promise<GenerateQueryTypesResult> {
-  const databasePath = await materializeTypegenDatabase(config, host);
-  const schema = await loadSchema(databasePath, {
-    experimentalJsonTypes: config.generate.experimentalJsonTypes,
-  });
+  const dialect = config.dialect;
+  await using materialized = await dialect.materializeTypegenSchema(host, config);
+  const schema = await dialect.loadSchemaForTypegen(materialized);
   const queryDocuments = await loadQueryDocuments(config.queries);
   const querySources = queryDocuments.flatMap((queryDocument) => queryDocument.queries);
   assertUniqueQueryFunctionNames(querySources);
 
-  const queryAnalyses = await analyzeVendoredTypesqlQueries(
-    databasePath,
+  const queryAnalyses = await dialect.analyzeQueries(
+    materialized,
     querySources.map((query) => ({
       sqlPath: query.sqlPath,
       sqlContent: query.analysisSqlContent,
@@ -287,11 +294,10 @@ export async function analyzeAdHocSqlForConfig(
   host: SqlfuHost,
   sql: string,
 ): Promise<AdHocQueryAnalysis> {
-  const databasePath = await materializeTypegenDatabase(config, host);
-  const schema = await loadSchema(databasePath, {
-    experimentalJsonTypes: config.generate.experimentalJsonTypes,
-  });
-  const [analysis] = await analyzeVendoredTypesqlQueries(databasePath, [
+  const dialect = config.dialect;
+  await using materialized = await dialect.materializeTypegenSchema(host, config);
+  const schema = await dialect.loadSchemaForTypegen(materialized);
+  const [analysis] = await dialect.analyzeQueries(materialized, [
     {
       sqlPath: path.join(config.queries, '__sql_runner__.sql'),
       sqlContent: sql,
@@ -315,26 +321,17 @@ type DisposableClient = {
   [Symbol.asyncDispose](): Promise<void>;
 };
 
-type TsColumn = {
-  name: string;
-  tsType: string;
-  notNull: boolean;
-  logicalType?: LogicalType;
-  plainTsType?: boolean;
-};
-
-type LogicalType = 'json';
+// `TsColumn` and `RelationInfo` are imported from `../dialect.js` as
+// `DialectColumnInfo` and `RelationInfo` so both sqlite and pg dialects
+// produce values of the same shape. Local alias keeps the rest of the
+// file's identifier choices stable. `LogicalType` likewise lives on the
+// dialect surface so sqlite (`declared-type=json`) and any future pg
+// mapping (`json`/`jsonb`) agree on the column-encoding hint.
+type TsColumn = DialectColumnInfo;
 
 type LogicalTypeInfo = {
   logicalType: LogicalType;
   tsType: string;
-};
-
-type RelationInfo = {
-  kind: 'table' | 'view';
-  name: string;
-  columns: ReadonlyMap<string, TsColumn>;
-  sql?: string;
 };
 
 type GeneratedField = {
@@ -415,7 +412,7 @@ type ParameterExpansion =
       acceptsSingleOrArray: boolean;
     };
 
-async function materializeTypegenDatabase(config: SqlfuProjectConfig, host: SqlfuHost) {
+export async function materializeTypegenDatabase(config: SqlfuProjectConfig, host: SqlfuHost) {
   const tempDbPath = path.join(config.projectRoot, '.sqlfu', 'typegen.db');
   const schemaSql = await readSchemaForAuthority(config, host);
 
@@ -460,7 +457,7 @@ async function readDefinitionsAsSchemaSql(config: SqlfuProjectConfig, host: Sqlf
     }
     throw error;
   }
-  return materializeDefinitionsSchemaFor(host, definitionsSql);
+  return materializeDefinitionsSchemaFor(host, definitionsSql, {dialect: config.dialect});
 }
 
 async function replayMigrationFilesAsSchemaSql(config: SqlfuProjectConfig, host: SqlfuHost): Promise<string> {
@@ -470,10 +467,12 @@ async function replayMigrationFilesAsSchemaSql(config: SqlfuProjectConfig, host:
     );
   }
   const migrations = await readMigrationFiles(host, config);
-  // Concatenate into one SQL blob and replay raw. Going through `materializeMigrationsSchemaFor`
-  // would apply through `applyMigrations`, which creates the `sqlfu_migrations` bookkeeping
-  // table — noise for typegen, which wants the user's schema reflected as-is.
-  return materializeDefinitionsSchemaFor(host, migrations.map((migration) => migration.content).join('\n'));
+  // Concatenate into one SQL blob and replay raw. The materializeSchemaSql
+  // dialect method handles scratch-DB creation + schema extraction; no
+  // `applyMigrations` round-trip means no bookkeeping table noise.
+  return materializeDefinitionsSchemaFor(host, migrations.map((migration) => migration.content).join('\n'), {
+    dialect: config.dialect,
+  });
 }
 
 async function replayMigrationHistoryAsSchemaSql(config: SqlfuProjectConfig, host: SqlfuHost): Promise<string> {
@@ -483,7 +482,7 @@ async function replayMigrationHistoryAsSchemaSql(config: SqlfuProjectConfig, hos
     );
   }
   await using live = await openLiveDb(config.db, 'migration_history');
-  const history = await Promise.resolve(readMigrationHistory(live.client, {preset: config.migrations.preset}));
+  const history = await Promise.resolve(readMigrationHistory(live.client, {preset: config.migrations.preset, dialect: config.dialect}));
 
   const migrations = await readMigrationFiles(host, config);
   const byName = new Map(migrations.map((migration) => [migrationName(migration), migration]));
@@ -499,7 +498,9 @@ async function replayMigrationHistoryAsSchemaSql(config: SqlfuProjectConfig, hos
     matched.push(file);
   }
 
-  return materializeDefinitionsSchemaFor(host, matched.map((migration) => migration.content).join('\n'));
+  return materializeDefinitionsSchemaFor(host, matched.map((migration) => migration.content).join('\n'), {
+    dialect: config.dialect,
+  });
 }
 
 async function readLiveSchema(config: SqlfuProjectConfig): Promise<string> {
@@ -509,7 +510,7 @@ async function readLiveSchema(config: SqlfuProjectConfig): Promise<string> {
   // bookkeeping is created in the first place. Without a `migrations` block there's no
   // bookkeeping in play; default to sqlfu's table name so we still strip it if present.
   const excludedTable = presetTableName(config.migrations?.preset ?? 'sqlfu');
-  return extractSchema(source.client, 'main', {excludedTables: [excludedTable]});
+  return config.dialect.extractSchemaFromClient(source.client, {excludedTables: [excludedTable]});
 }
 
 async function openLiveDb(
@@ -3387,7 +3388,7 @@ async function loadRelationColumns(
   logicalTypes: ReadonlyMap<string, LogicalTypeInfo>,
 ): Promise<ReadonlyMap<string, TsColumn>> {
   const pragmaResult = await client.all<Record<string, unknown>>({
-    sql: `PRAGMA table_xinfo("${escapeSqliteIdentifier(relationName)}")`,
+    sql: `PRAGMA table_xinfo(${sqliteQuoteIdentifier(relationName)})`,
     args: [],
   });
 
@@ -3802,6 +3803,34 @@ function mapSqliteTypeToTs(columnType: string): string {
   return 'number';
 }
 
+// Side-effect registration: install real sqlite typegen impls so they're
+// baked into every dialect produced by `sqliteDialect()` after this module
+// loads. See dialect.ts header for why this lives here. Heavy entries (CLI,
+// api/exports, ui/server) all transitively load this module, so the real
+// methods are in place before any caller invokes them.
+registerSqliteTypegenImpls({
+  materializeTypegenSchema: async (host, config) => {
+    const databasePath = await materializeTypegenDatabase(config, host);
+    return {
+      dialect: 'sqlite',
+      databasePath,
+      experimentalJsonTypes: config.generate.experimentalJsonTypes,
+      [Symbol.asyncDispose]: async () => {
+        // Sqlite leaves the typegen db on disk between runs — the next
+        // materialize wipes it. No active disposal needed.
+      },
+    } satisfies AsyncDisposable & {dialect: string; databasePath: string; experimentalJsonTypes: boolean};
+  },
+  loadSchemaForTypegen: async (materialized) => {
+    const sqliteMaterialized = assertSqliteMaterialized(materialized);
+    return loadSchema(sqliteMaterialized.databasePath, {
+      experimentalJsonTypes: sqliteMaterialized.experimentalJsonTypes,
+    });
+  },
+  analyzeQueries: async (materialized, queries) =>
+    analyzeVendoredTypesqlQueries(assertSqliteMaterialized(materialized).databasePath, queries),
+});
+
 function logicalTypeForDeclaredSqliteType(columnType: string, options: LoadSchemaOptions): LogicalType | undefined {
   if (!options.experimentalJsonTypes) {
     return undefined;
@@ -3843,8 +3872,4 @@ function normalizePlainTsType(value: string, location: string): string {
     return normalized;
   }
   throw new Error(`${location} must be a non-empty TypeScript type string.`);
-}
-
-function escapeSqliteIdentifier(value: string): string {
-  return value.replaceAll('"', '""');
 }

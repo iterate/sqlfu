@@ -3,6 +3,7 @@ import path from 'node:path';
 import {expect, test} from 'vitest';
 
 import {autoAcceptConfirm, createSqlfuApi} from '../src/api/core.js';
+import {sqliteDialect} from '../src/dialect.js';
 import {createBetterSqlite3Client} from '../src/index.js';
 import {createNodeHost, openLocalSqliteFile} from '../src/node/host.js';
 import {generateQueryTypesForConfig} from '../src/typegen/index.js';
@@ -124,6 +125,7 @@ async function createAuthorityFixture(input: {
       importExtension: '.js',
       authority: input.authority ?? 'desired_schema',
     },
+    dialect: sqliteDialect(),
   };
 
   await writeFixtureFiles(root, {

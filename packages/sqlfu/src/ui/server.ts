@@ -6,6 +6,7 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {RPCHandler} from '@orpc/server/fetch';
 import type {ViteDevServer} from 'vite';
 import {resolveProjectConfig} from '../config.js';
+import {sqliteDialect} from '../dialect.js';
 import {loadProjectStateFrom, loadProjectStateFromConfigPath} from '../node/config.js';
 import {PortInUseError, getListeningProcesses} from '../node/port-process.js';
 import {generateQueryTypesForConfig} from '../typegen/index.js';
@@ -300,6 +301,7 @@ async function ensureDatabase(host: SqlfuHost, projectRoot: string) {
       importExtension: '.js',
       authority: 'desired_schema',
     },
+    dialect: sqliteDialect(),
   });
   try {
     const definitionsSql = await fs.readFile(path.join(projectRoot, 'definitions.sql'), 'utf8');

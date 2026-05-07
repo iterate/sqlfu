@@ -1,4 +1,4 @@
-import {createSqliteWasmClient, sqlReturnsRows} from 'sqlfu';
+import {createSqliteWasmClient, sqliteDialect, sqlReturnsRows} from 'sqlfu';
 import {
   analyzeVendoredTypesqlQueriesWithClient,
   isInternalUnsupportedSqlAnalysisError,
@@ -58,6 +58,7 @@ export function buildDemoConfig(): SqlfuProjectConfig {
       importExtension: '.js',
       authority: 'desired_schema',
     },
+    dialect: sqliteDialect(),
   };
 }
 
