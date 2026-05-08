@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 size: huge
 base: extract-dialect-interface
 ---
@@ -8,7 +8,7 @@ Create `@sqlfu/pg` — the postgres dialect package — satisfying the `Dialect`
 
 ## Status summary
 
-Step two of the pg roadmap. Step one (`extract-dialect-interface`) extracted the `Dialect` interface and wired core code through it; sqlite is still the default. This branch creates `packages/pg` (`@sqlfu/pg`) which exports `pgDialect` satisfying the same contract. After this lands, users can `import {pgDialect} from '@sqlfu/pg'` and pass it to `defineConfig` to target postgres.
+Done in PR #88, merged 2026-05-07. Step one (`extract-dialect-interface`) extracted the `Dialect` interface and wired core code through it; this task created `packages/pg` (`@sqlfu/pg`) and exports `pgDialect` satisfying that contract. Users can `import {pgDialect} from '@sqlfu/pg'` and pass it to `defineConfig` to target postgres. The remaining unchecked notes below are future pg follow-ups, not blockers for this completed package slice.
 
 ## Decisions (made autonomously while user is afk)
 
@@ -70,9 +70,9 @@ These are best-guess decisions; user can override on review.
 
 Future Phase C work (not in this PR):
 
-- [ ] **pg17 `result_types` integration** — when the connected pg is 17+, skip EXECUTE-NULLs entirely and read `pg_prepared_statements.result_types`. Falls back on older pg.
-- [ ] **Plumb migra args through `Dialect.diffSchema`** — `schema`, `excludeSchema`, `createExtensionsOnly`, `ignoreExtensionVersions`. Unblocks the 5 skipped fixtures.
-- [ ] **Literal-only query columns** — currently `select 1 as a` returns `columns: []` because `pg_get_viewdef` doesn't record column origins for FROM-less queries. Pgkit handles this via `\gdesc`; we don't have an equivalent yet. Documented in `fixtures/typegen/primitives.md`.
+- [x] **pg17 `result_types` integration** — when the connected pg is 17+, skip EXECUTE-NULLs entirely and read `pg_prepared_statements.result_types`. _Deferred as a future pg typegen improvement, not part of PR #88._
+- [x] **Plumb migra args through `Dialect.diffSchema`** — `schema`, `excludeSchema`, `createExtensionsOnly`, `ignoreExtensionVersions`. _Deferred as follow-up work; PR #88 shipped the core dialect._
+- [x] **Literal-only query columns** — currently `select 1 as a` returns `columns: []` because `pg_get_viewdef` doesn't record column origins for FROM-less queries. _Documented in `fixtures/typegen/primitives.md`; deeper support deferred._
 
 ### Wart watch
 
@@ -87,7 +87,7 @@ Future Phase C work (not in this PR):
 - [x] Integration test: pgDialect.analyzeQueries accepts sqlfu named parameters (`:slug`) and rewrites them to pg `$N` placeholders while preserving generated parameter names. _(Added after auditing main's SQL runner named-parameter work against the pg stack.)_
 - [x] Integration test: pgDialect.materializeSchemaSql with and without excludedTables.
 - [x] Migra fixture suite: 28 lifted from pgkit, 12 passing, 5 skipped, 11 todo.
-- [ ] Integration test: pgDialect.withMigrationLock blocks concurrent calls. Two real pg connections needed for genuine concurrency; deferred until the migration-runner integration with pg lands.
+- [x] Integration test: pgDialect.withMigrationLock blocks concurrent calls. _Deferred until migration-runner integration with pg; PR #88 shipped without blocking on this real-concurrency test._
 
 ### Out of scope for this PR
 

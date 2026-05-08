@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 size: small
 ---
 
@@ -9,7 +9,7 @@ size: small
 
 Regenerate the typegen output (wrappers under `queries/.generated/`, tables file, barrel, query catalog, migrations bundle) whenever an input file changes. Today the dev loop is "edit SQL → run `sqlfu generate` → look at types → repeat"; watch mode closes that loop so the user keeps typing and `.generated/` stays fresh.
 
-**Executive summary:** implementation landed. `--watch` flag wired into the CLI; `watchGenerateQueryTypesForConfig` is a reusable entry-point that takes an `AbortSignal` so tests shut it down cleanly. Current branch tip is a plain Node watcher experiment: `src/node/watcher.ts` exposes the small chokidar-shaped API this PR uses, backed by `fs.watch` plus full `fs.glob`/file-content snapshots on every native event and a 500ms reconciliation scan. `.generated/` is ignored so regen output doesn't re-trigger regen. Errors are logged and the watcher keeps running. 5 integration tests and package typecheck pass.
+**Executive summary:** done in PR #60, merged 2026-05-01. `--watch` flag is wired into the CLI; `watchGenerateQueryTypesForConfig` is a reusable entry-point that takes an `AbortSignal` so tests shut it down cleanly. Current branch tip is a plain Node watcher experiment: `src/node/watcher.ts` exposes the small chokidar-shaped API this PR uses, backed by `fs.watch` plus full `fs.glob`/file-content snapshots on every native event and a 500ms reconciliation scan. `.generated/` is ignored so regen output doesn't re-trigger regen. Errors are logged and the watcher keeps running. 5 integration tests and package typecheck passed in the implementation branch.
 
 ## Scope
 

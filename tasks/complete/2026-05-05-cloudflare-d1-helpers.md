@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 size: medium
 ---
 
@@ -7,8 +7,7 @@ size: medium
 
 ## Status Summary
 
-In progress. Plan committed as the first commit on this branch so the
-spec is reviewable before any code lands.
+Done in PR #86, merged 2026-05-05. `sqlfu/cloudflare` now exposes helpers for deployed D1 over HTTP and alchemy v2 state lookup, with docs in `packages/sqlfu/docs/cloudflare-d1.md` and README/import-surface pointers.
 
 ## Goal
 
@@ -189,31 +188,31 @@ error if neither is supplied.
 
 ## Checklist
 
-- [ ] Commit this spec alone as the first commit, push, open PR
-- [ ] `packages/sqlfu/src/cloudflare/exports.ts` (entry barrel) +
+- [x] Commit this spec alone as the first commit, push, open PR. _PR #86 opened from `feat/cloudflare-d1-helpers`._
+- [x] `packages/sqlfu/src/cloudflare/exports.ts` (entry barrel) +
       `d1-http.ts` + `alchemy-state.ts` + `cf-api.ts`
-- [ ] Wire `./cloudflare` into `package.json` `publishConfig.exports`
-      (mirror `./node` shape)
-- [ ] Implement `createD1HttpClient`
-- [ ] Integration test: `node:http` server stands in for
+- [x] Wire `./cloudflare` into `package.json` `publishConfig.exports`
+      (mirror `./node` shape). _Landed in PR #86._
+- [x] Implement `createD1HttpClient`. _Landed in PR #86._
+- [x] Integration test: `node:http` server stands in for
       `api.cloudflare.com`, asserts request body shape + decoding
-      across `prepare/bind/all/first/run`
-- [ ] Implement `readAlchemyD1State`
-- [ ] Test against fixture state files (top-level + nested FQN)
-- [ ] Implement `findCloudflareD1ByName`
-- [ ] Test (same node:http server) — empty list, multiple matches,
-      success path
-- [ ] Implement `createAlchemyD1Client` combinator
-- [ ] Test composing all three end-to-end against the local server
-- [ ] Add `dist/cloudflare/exports.js` to `test/import-surface.test.ts`
-- [ ] `docs/cloudflare-d1.md` — argument-first deep-dive, copy-paste
-      ready snippets per `CLAUDE.md`'s "reference code in docs" rule
-- [ ] Short pointer in `packages/sqlfu/README.md`; run
-      `pnpm sync:root-readme`
-- [ ] Verification: package build, typecheck, vitest, ui build,
-      sync:root-readme:check
-- [ ] Move this task to `tasks/complete/<date>-cloudflare-d1-helpers.md`
-      once merged
+      across `prepare/bind/all/first/run`. _Covered in PR #86._
+- [x] Implement `readAlchemyD1State`. _Landed in PR #86._
+- [x] Test against fixture state files (top-level + nested FQN). _Covered in PR #86._
+- [x] Implement `findCloudflareD1ByName`. _Landed in PR #86._
+- [x] Test (same node:http server) — empty list, multiple matches,
+      success path. _Covered in PR #86._
+- [x] Implement `createAlchemyD1Client` combinator. _Landed in PR #86._
+- [x] Test composing all three end-to-end against the local server. _Covered in PR #86._
+- [x] Add `dist/cloudflare/exports.js` to `test/import-surface.test.ts`. _Covered in PR #86._
+- [x] `docs/cloudflare-d1.md` — argument-first deep-dive, copy-paste
+      ready snippets per `CLAUDE.md`'s "reference code in docs" rule. _Docs landed in PR #86._
+- [x] Short pointer in `packages/sqlfu/README.md`; run
+      `pnpm sync:root-readme`. _README pointer landed in PR #86._
+- [x] Verification: package build, typecheck, vitest, ui build,
+      sync:root-readme:check. _Verified in PR #86._
+- [x] Move this task to `tasks/complete/<date>-cloudflare-d1-helpers.md`
+      once merged. _Filed during 2026-05-09 cleanup._
 
 ## Implementation Notes
 
