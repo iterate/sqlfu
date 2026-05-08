@@ -346,7 +346,7 @@ export default defineConfig({
 
 `findMiniflareD1Path()` walks up from `process.cwd()` until it finds a supported Miniflare v3 persist root. Today that means Alchemy's `.alchemy/miniflare/v3` layout. It then derives the same D1 object sqlite filename Miniflare uses for the slug. Pass `{miniflareV3Root}` as the second argument if your config runs outside that project tree.
 
-For deployed cloud D1 — including [Alchemy v2](https://alchemy.run), which connects `alchemy dev` directly to real D1 instead of a local Miniflare sqlite — point sqlfu at the cloud database over HTTP using `sqlfu/cloudflare`:
+For deployed cloud D1, including [Alchemy v2](https://alchemy.run), which connects `alchemy dev` directly to real D1 instead of a local Miniflare sqlite, point sqlfu at the cloud database over HTTP using `sqlfu/cloudflare`:
 
 ```ts
 import {defineConfig} from 'sqlfu';
