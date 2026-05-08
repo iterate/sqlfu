@@ -380,7 +380,7 @@ const demo = {
         (() => {
           const params = new URLSearchParams(window.location.search);
           if (params.get('animation')) return;
-          if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+          const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
           const rows = Array.from(document.querySelectorAll('[data-walkthrough-step]'));
           if (rows.length === 0) return;
@@ -618,10 +618,21 @@ const demo = {
           };
 
           for (const row of rows) {
-            for (const target of row.querySelectorAll('[data-type-speed]')) {
-              prepareTyping(target);
+            for (const tabbed of row.querySelectorAll('[data-tabbed-artifact]')) {
+              for (const tab of tabbed.querySelectorAll('[data-tab-for]')) {
+                tab.addEventListener('click', () => {
+                  switchArtifactTab(tabbed, tab.dataset.tabFor || 'terminal');
+                });
+              }
+            }
+            if (!prefersReducedMotion) {
+              for (const target of row.querySelectorAll('[data-type-speed]')) {
+                prepareTyping(target);
+              }
             }
           }
+          if (prefersReducedMotion) return;
+
           document.documentElement.classList.add('landing-anim-ready');
           for (const row of rows) {
             resetRow(row);
@@ -629,13 +640,6 @@ const demo = {
             row.addEventListener('landing-demo-replay', () => void playRow(row));
             for (const replayButton of row.querySelectorAll('[data-replay-demo]')) {
               replayButton.addEventListener('click', () => void playRow(row));
-            }
-            for (const tabbed of row.querySelectorAll('[data-tabbed-artifact]')) {
-              for (const tab of tabbed.querySelectorAll('[data-tab-for]')) {
-                tab.addEventListener('click', () => {
-                  switchArtifactTab(tabbed, tab.dataset.tabFor || 'terminal');
-                });
-              }
             }
           }
 
