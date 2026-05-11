@@ -64,7 +64,7 @@ the `SqlfuHost` and config/project loading context yourself.
 ## `sqlfu/cloudflare`
 
 Use `sqlfu/cloudflare` for config-time helpers that point sqlfu at a
-Cloudflare D1 database — local sqlite for `wrangler dev` / alchemy v1's
+Cloudflare D1 database: local sqlite for `wrangler dev` / alchemy v1's
 Miniflare, or HTTP for deployed cloud D1 (alchemy v2, wrangler, Terraform,
 manual provisioning).
 

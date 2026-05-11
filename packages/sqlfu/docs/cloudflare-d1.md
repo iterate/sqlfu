@@ -2,7 +2,7 @@
 
 Sqlfu can talk to a deployed Cloudflare D1 database directly, so `migrate`,
 `check`, `sync`, `goto`, `baseline`, and the UI all operate on the **real**
-cloud database your worker uses — not a separate local sqlite file.
+cloud database your worker uses, not a separate local sqlite file.
 
 This is the recommended path if you're using:
 
@@ -53,9 +53,9 @@ copy-paste UUIDs into your config.
 ## Compose your own factory
 
 `sqlfu/cloudflare` is just four small helpers, and `createAlchemyD1Client`
-is one valid composition. If your project doesn't fit it — different
-state location, dynamic database resolution, custom auth source, you're
-not on alchemy — wire your own factory from the parts. The two patterns
+is one valid composition. If your project doesn't fit it because it uses a
+different state location, dynamic database resolution, a custom auth source,
+or no alchemy at all, wire your own factory from the parts. The two patterns
 below cover almost everything.
 
 ### Compose with alchemy state
@@ -88,8 +88,8 @@ export default defineConfig({
 State lives at `.alchemy/state/<stack>/<stage>/<encoded-fqn>.json`.
 `readAlchemyD1State` walks up from the cwd until it finds an
 `.alchemy/state/` directory, so it works from any subdirectory of your
-project. Pass `{alchemyDir: '/abs/path/to/.alchemy'}` to override —
-useful when your config runs outside the project tree.
+project. Pass `{alchemyDir: '/abs/path/to/.alchemy'}` to override when your
+config runs outside the project tree.
 
 `fqn` is the resource's
 [fully-qualified name](https://github.com/alchemy-run/alchemy-effect/blob/main/packages/alchemy/src/FQN.ts)
@@ -98,14 +98,14 @@ inside the alchemy app. For a top-level
 nested `Namespace("Auth").run(...)` containing a
 `D1Database("database")`, it's `"Auth/database"`.
 
-This helper is **alchemy v2 specific** — alchemy v1 stored state at a
+This helper is **alchemy v2 specific**. Alchemy v1 stored state at a
 different path and in a different shape. If you're on v1, prefer
 `findCloudflareD1ByName` (below).
 
 ### Compose without alchemy
 
-If you're not on alchemy — or you just don't want sqlfu reading alchemy's
-state files — point at the deployed D1 with credentials and either an
+If you're not on alchemy, or you just don't want sqlfu reading alchemy's
+state files, point at the deployed D1 with credentials and either an
 explicit `databaseId` or a name lookup:
 
 ```ts
@@ -125,8 +125,8 @@ export default defineConfig({
 });
 ```
 
-If you've already got a `databaseId` — env var, hardcoded UUID,
-whatever — skip the lookup and pass it straight to `createD1HttpClient`.
+If you've already got a `databaseId` from an env var, a hardcoded UUID,
+or another source, skip the lookup and pass it straight to `createD1HttpClient`.
 The lookup uses `GET /accounts/{id}/d1/database?name=...` and throws on
 zero or multiple matches; use it when:
 
@@ -136,14 +136,14 @@ zero or multiple matches; use it when:
   multiple environments by reading `process.env.STAGE`).
 - You're not using alchemy at all.
 
-`createD1HttpClient` returns a sqlfu `AsyncClient` directly — no separate
+`createD1HttpClient` returns a sqlfu `AsyncClient` directly. There is no separate
 `createD1Client` wrap. Both helpers accept `fetch` and `apiBase` as DI
 hooks for tests, proxies, or custom transports.
 
 ## Reference code as a starting point, not a forever API
 
-These helpers are simple wrappers. If you outgrow them — you want
-caching, retries, custom auth flows, a reverse proxy — copy
+These helpers are simple wrappers. If you outgrow them because you want
+caching, retries, custom auth flows, or a reverse proxy, copy
 `createD1HttpClient` from the source and edit it. The stable contract
 is sqlfu's `AsyncClient` (the type returned by every `db` factory);
 the helper is one valid way to produce one.

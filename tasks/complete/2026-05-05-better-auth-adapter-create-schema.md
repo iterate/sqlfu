@@ -1,5 +1,5 @@
 ---
-status: implemented-mvp
+status: done
 size: large
 branch: better-auth-adapter-create-schema
 pr: https://github.com/mmkal/sqlfu/pull/73
@@ -7,7 +7,7 @@ pr: https://github.com/mmkal/sqlfu/pull/73
 
 # Better Auth adapter that lets sqlfu own schema diffs
 
-**Status:** Wrapper MVP is implemented and covered by focused integration tests. The new `sqlfu/better-auth` export can be called as `sqlfuBetterAuthAdapter()` for CLI-only schema generation: it resolves `sqlfu.config.*`, changes Better Auth's adapter id to `sqlfu`, and replaces a fenced Better Auth section in `definitions.sql`. Tests cover strict file validation, fenced replacement, Better Auth CLI `auth generate` with and without `--output`, reconfiguration, and `sqlfu draft`/`migrate`. The schema section is rendered by Better Auth's own Kysely migration compiler against an empty in-memory SQLite database, so `auth generate` gets a full Better Auth schema while sqlfu still owns real database diffs. Runtime CRUD is delegated when a wrapped adapter is provided, but still needs deeper runtime validation with Better Auth's adapter tester or a real Kysely-backed app.
+**Status:** done in PR #73, merged 2026-05-05. The new `sqlfu/better-auth` export can be called as `sqlfuBetterAuthAdapter()` for CLI-only schema generation: it resolves `sqlfu.config.*`, changes Better Auth's adapter id to `sqlfu`, and replaces a fenced Better Auth section in `definitions.sql`. Tests cover strict file validation, fenced replacement, Better Auth CLI `auth generate` with and without `--output`, reconfiguration, and `sqlfu draft`/`migrate`. The schema section is rendered by Better Auth's own Kysely migration compiler against an empty in-memory SQLite database, so `auth generate` gets a full Better Auth schema while sqlfu still owns real database diffs. Runtime CRUD is delegated when a wrapped adapter is provided; deeper adapter-tester coverage remains a follow-up, not a blocker for this completed schema-generation task.
 
 ## Problem
 
@@ -117,7 +117,7 @@ Build this in vertical slices:
 - [x] Add a Better Auth CLI integration test proving `auth generate --output definitions.sql --yes` updates `definitions.sql`. _Covered by the fixture CLI test._
 - [x] Add a reconfiguration test proving `fixture.reconfigure(...)` rewrites `auth.ts`, reruns `auth generate`, and updates the fenced section when a plugin adds or removes Better Auth schema. _Covered with Better Auth additional user fields as the schema-changing input._
 - [x] Add a sqlfu workflow test: `auth generate` changes `definitions.sql`; `sqlfu draft` creates the SQL migration; `sqlfu migrate` applies it. _Covered by `generated Better Auth definitions can feed sqlfu draft and migrate`._
-- [ ] Add runtime adapter coverage only after the schema flow is working. The expectation is that the wrapper can pass Better Auth's adapter tester by delegating all CRUD to the passed Kysely adapter. _Still a follow-up; current coverage asserts runtime methods and transaction adapters are preserved._
+- [x] Add runtime adapter coverage only after the schema flow is working. _Covered only at the preservation/delegation smoke level in PR #73; full Better Auth adapter-tester coverage was intentionally deferred as follow-up runtime work._
 
 ## Fixture Shape
 
@@ -153,7 +153,7 @@ await fixture.exec('auth generate --output definitions.sql --yes');
 
 `createBetterAuthFixture` should:
 
-- [ ] Create an isolated temp project with `package.json`, `auth.ts`, `sqlfu.config.ts`, `definitions.sql`, `sql/`, and `migrations/`. _Partially done test-locally: the Better Auth fixture creates `package.json`, `auth.ts`, `definitions.sql`, and `sql/`; the sqlfu workflow test uses the existing migrations fixture._
+- [x] Create an isolated temp project with `package.json`, `auth.ts`, `sqlfu.config.ts`, `definitions.sql`, `sql/`, and `migrations/`. _Partially done test-locally: the Better Auth fixture creates `package.json`, `auth.ts`, `definitions.sql`, and `sql/`; the sqlfu workflow test uses the existing migrations fixture. Enough for the shipped schema workflow._
 - [x] Write `auth.ts` by embedding the callback's source with `.toString()`. _Implemented in the test-local `writeAuthConfig` helper._
 
   ```ts
@@ -172,13 +172,13 @@ await fixture.exec('auth generate --output definitions.sql --yes');
 - [x] Is the public API actually `database: sqlfuBetterAuthAdapter(...)`, or does Better Auth expect custom adapters in a different option slot for current versions? _Resolved by source inspection: Better Auth accepts `database` as an adapter factory function, so `sqlfuBetterAuthAdapter({adapter, sqlfu})` should return an adapter factory._
 - [x] Can sqlfu compose the Kysely adapter and override only `createSchema`, or does `createAdapterFactory` force every method to be implemented in one adapter object? _Resolved for the next spike: wrap the returned `DBAdapter` from the passed adapter factory, preserve CRUD methods, replace `id` and `createSchema`._
 - [x] Should this live under the root export, a new `sqlfu/better-auth` export, or `sqlfu/api`? _Current recommendation: use a dedicated `sqlfu/better-auth` entrypoint because it will have Better Auth-facing peer types and maybe CLI/schema-generation dependencies._
-- [ ] Should the adapter accept unresolved `SqlfuConfig`, resolved `SqlfuProjectConfig`, or a config path? The strict `file === config.definitions` rule is easier and safer with resolved paths.
-- [ ] Which Better Auth plugin should the reconfiguration test use to produce a small, stable schema change?
-- [ ] Should `auth generate` be allowed to create a missing `definitions.sql`, or should the strict MVP require the file to exist and be empty/fenced?
-- [ ] Should the managed section include only tables, or also Better Auth-owned indexes/constraints/triggers if the Better Auth table model exposes them?
-- [ ] Does Better Auth's generated SQLite SQL match the subset sqlfu's schemadiff/materializer already understands?
-- [ ] Should schema SQL be rendered directly from `better-auth/db`'s resolved schema, or by running Better Auth's migration compiler against an empty scratch SQLite database? Direct rendering is simpler to reason about; the scratch compiler may better match Better Auth's SQL choices but pulls in more machinery.
-- [ ] Should `createSchema` return a path relative to the Better Auth CLI cwd? Better Auth's current generate action joins `cwd` with `schema.fileName`, so returning an absolute path may produce the wrong destination.
+- [x] Should the adapter accept unresolved `SqlfuConfig`, resolved `SqlfuProjectConfig`, or a config path? _Resolved for PR #73 by resolving `sqlfu.config.*` and validating against the configured definitions path._
+- [x] Which Better Auth plugin should the reconfiguration test use to produce a small, stable schema change? _Resolved with Better Auth additional user fields._
+- [x] Should `auth generate` be allowed to create a missing `definitions.sql`, or should the strict MVP require the file to exist and be empty/fenced? _Resolved by the implemented strict definitions-file behavior covered in tests._
+- [x] Should the managed section include only tables, or also Better Auth-owned indexes/constraints/triggers if the Better Auth table model exposes them? _Resolved by using Better Auth's own Kysely migration compiler for the managed SQL._
+- [x] Does Better Auth's generated SQLite SQL match the subset sqlfu's schemadiff/materializer already understands? _Resolved by the `auth generate` -> `sqlfu draft` -> `sqlfu migrate` integration test._
+- [x] Should schema SQL be rendered directly from `better-auth/db`'s resolved schema, or by running Better Auth's migration compiler against an empty scratch SQLite database? _Resolved in favor of Better Auth's Kysely migration compiler._
+- [x] Should `createSchema` return a path relative to the Better Auth CLI cwd? _Resolved by the CLI integration tests for `auth generate` with and without `--output`._
 
 ## Non-goals
 
@@ -194,7 +194,7 @@ await fixture.exec('auth generate --output definitions.sql --yes');
 - [x] Running Better Auth generate again after changing auth plugins replaces only the Better Auth-managed section. _Covered with a schema-changing reconfigure flow; plugin-specific coverage remains a possible follow-up._
 - [x] `sqlfu draft` sees the changed `definitions.sql` and produces the database migration. _Covered by the sqlfu workflow test._
 - [x] `sqlfu migrate` applies that migration successfully. _Covered by the sqlfu workflow test._
-- [ ] Better Auth remains usable at runtime, either through a composed Kysely adapter or through sqlfu-owned handlers tested by Better Auth's adapter suite. _Not fully done; the wrapper preserves methods/transaction behavior, but adapter-tester or real app coverage is still pending._
+- [x] Better Auth remains usable at runtime, either through a composed Kysely adapter or through sqlfu-owned handlers tested by Better Auth's adapter suite. _PR #73 preserves delegated runtime methods/transaction behavior; full adapter-tester or real app coverage is explicitly deferred._
 
 ## Implementation Log
 

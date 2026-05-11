@@ -279,13 +279,6 @@ a {
   border-radius: 0.35rem;
 }
 
-.section-title {
-  margin: 2.8rem 0 1.2rem;
-  font-size: 1.7rem;
-  letter-spacing: -0.02em;
-  text-align: center;
-}
-
 .feature-stack {
   display: grid;
   gap: 1.5rem;

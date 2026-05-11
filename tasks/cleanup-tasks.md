@@ -7,11 +7,39 @@ size: small
 
 ## Status summary
 
-2026-04-30 pass is done pending PR review. The pass refreshed this evergreen task, normalized one low-risk bare task file, and removed four clean merged worktrees. No root task files needed filing into `tasks/complete/`; the merged PRs surveyed had already handled their task files or were evergreen passes.
+2026-05-09 pass is done. Five clearly merged task files were filed into `tasks/complete/`, their stale status summaries were normalized first, and 25 clean merged/closed worktrees were removed. Remaining worktrees are the current branch, closed-but-still-useful worktrees, dirty worktrees, or branches with no PR found.
 
 Sometimes agents forget to move their task files to "done". Look at recent commits and see if that's happened. If it has, open a housekeeping PR to do just that. While you're there, you can also add to Implementation Notes if there's anything you spot in the change that wasn't tidied up properly that also wasn't documented in the task file.
 
 Make sure local worktrees are cleaned up too.
+
+## 2026-05-09 pass
+
+Branch: `bedtime-introducing-sqlfu-2026-05-09`.
+PR: #100.
+
+Scope:
+
+- File root task files only when the matching PR is clearly merged and the remaining unchecked items are stale or deferred follow-ups.
+- Remove clean local worktrees whose PRs are merged or intentionally closed.
+- Leave dirty worktrees, no-PR worktrees, and closed-unmerged tasks that still represent possible future work.
+- Keep evergreen tasks open and append notes rather than moving them to `complete/`.
+
+Checklist:
+
+- [x] Inspect current open and recently closed/merged PRs. _only open PR at survey time was #99; merged candidates included #60, #73, #86, #88, #89._
+- [x] Inspect local worktrees and cleanliness. _25 cleanup candidates were clean; `effect-client-interop` and `typesql-ddl-support` were dirty and left alone._
+- [x] File clearly completed task files into `tasks/complete/` with date-prefixed filenames. _filed `generate-watch`, `better-auth-adapter-create-schema`, `cloudflare-d1-helpers`, `pg-package`, and `pg-ui`._
+- [x] Normalize stale status summaries/checklists before moving task files. _updated statuses to `done` and marked stale/deferred checklist items with breadcrumbs so the completed folder does not imply unfinished active work._
+- [x] Remove safe, clean, merged/closed local worktrees. _removed 25 worktrees including `generate-watch`, `cloudflare-d1-helpers`, `pg-package`-related stacked branches, docs branches, and merged UI/docs feature branches._
+- [x] Verify final task tree and worktree list. _remaining worktrees: current checkout, `sqlfu-vendor-sqlite3def`, `api-extractor`, `detect-spurious-definitions`, `drizzle-benchmark-sqlfu`, `effect-client-interop`, and `typesql-ddl-support`._
+
+Implementation notes:
+
+- Left `tasks/landing-demo-maintainability.md` open even though PR #81 merged because the task explicitly preserves remaining fake-trace and Outbox follow-ups.
+- Left `tasks/sql-runner-named-params.md` open even though PR #43 merged because the PR recorded a repro and the task still describes the sqlite-wasm `@name` / `$name` bug.
+- Left `tasks/pg.md` open because it is a broader pg roadmap file, not just the completed `pg-package` / `pg-ui` slices.
+- Left `api-extractor`, `detect-spurious-definitions`, `drizzle-benchmark-sqlfu`, `effect-client-interop`, `typesql-ddl-support`, and `sqlfu-vendor-sqlite3def` worktrees in place. The first two still have active root tasks despite closed PRs, one has no PR found, two are dirty or carry user edits, and one is outside the normal `../worktrees/sqlfu/` cleanup set.
 
 ## 2026-04-30 pass
 

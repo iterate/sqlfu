@@ -4,6 +4,31 @@ Go through all of the docs and improve them. Look for inconsistencies, informati
 
 I want you to think holistically about the docs, as mentioned in your agent instructions for this repo. From time to time that will mean re-thinking docs entirely. Sometimes it will mean creating a separate task in the branch you create for *changing the product* instead. Docs are most useful when not thought of as something entirely downstream from the product code - if there's no clear way to write about a concept, the concept might be poorly thought through. You are free to flag that as an alternative to documenting weirdness.
 
+## 2026-05-09 pass
+
+Status: done for this bedtime pass. The main docs work was the aggressive rewrite of `website/src/content/blog/introducing-sqlfu.md`: it dropped from about 2,750 words to about 1,250 while preserving the SQL-first argument, iterate/agent motivation, example query, feature inventory, limits, and acknowledgements. A small em-dash sweep also cleaned the newly-added Cloudflare D1 docs/README prose. Website build is green.
+
+Scope:
+
+- Use the `writing-well` checklist on the introductory blog post.
+- Prefer deletion and consolidation over line-by-line polishing.
+- Keep the current direct Astro blog content location rather than restoring the old `blog/` sync pipeline.
+- Run an em-dash scan over source docs surfaces and fix small obvious rough prose found during the pass.
+
+Checklist:
+
+- [x] Rewrite `website/src/content/blog/introducing-sqlfu.md` for length and clarity. _removed the long fictional startup timeline, collapsed the ORM/query-builder discussion, kept one concrete generated-wrapper example, and folded prior art/thanks into a compact closing section._
+- [x] Scan for writing-smell terms in the rewritten blog post. _clean for em-dashes and the common filler patterns checked in this pass._
+- [x] Sweep newly-added docs em-dashes where the fix was small and local. _cleaned `packages/sqlfu/README.md`, `packages/sqlfu/docs/imports.md`, and `packages/sqlfu/docs/cloudflare-d1.md`._
+- [x] Verify website build. _`pnpm --filter @sqlfu/ui build` and `pnpm --filter sqlfu-website build` passed; website build emitted duplicate-id warnings already visible during content sync, then built 48 pages and passed `node --test test/*.test.mjs`._
+
+Implementation notes:
+
+- The post now frames sqlfu as "SQL in, TypeScript out" and avoids a long anti-ORM cold open.
+- ORM/query-builder comparisons are intentionally fair: Drizzle and Kysely are named as good tools; sqlfu's distinction is checked-in static SQL artifacts.
+- Acknowledgements now mention TypeSQL, sql-formatter, prettier-plugin-sql-cst, Drizzle Studio, CodeMirror, React, TanStack Query, Radix UI, sqlite-wasm, Atlas/Skeema, pgkit, and the schemainspect/migra lineage without becoming a bibliography.
+- The em-dash scan still finds historical references inside old task logs and generated website docs until the website sync runs; source docs touched by this pass were cleaned directly.
+
 ## 2026-04-30 pass
 
 Status: done for the main pass, with active PR review tweaks still being folded in. Landing-page pacing now walks through schema + migration drafting, type generation, runtime adapter portability, and a compact feature showcase one idea at a time. Follow-up review added syntax-highlighted, replayable typed/run/reveal animation, moved demo boxes under the explanatory copy, made the schema/draft demo reflect real CLI output, and tuned the first two demos to start only when the whole surface is in view. Latest landing tweaks make the schema edit add a nullable `published integer` column, keep the informative draft SQL visible while replacing only the confirmation options with `Wrote ...`, move replay to right-side icon buttons, type in `src/app.ts`, reveal the type hint after the file types, keep the generate terminal output focused on the single query wrapper, split runtime adapters from the feature showcase, and make the Batteries panels cover common CLI commands first, then admin UI, linting, formatting, tracing, and agent skill installation at a fixed height. The tracing snippet now stays focused on sqlfu instrumentation rather than Hono setup. `/docs` now uses Runtime client, SQL migrations, Type generation from SQL, and Admin UI as concepts, with secondary surfaces in Features, Recipes, and Reference. Final messaging pass aligned `generate.authority` wording with the landing page and docs, tightened Admin UI naming, and logged intentional repetition. Website build is green.
