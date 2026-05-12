@@ -1,6 +1,9 @@
 {
   "name": "sqlfu-workspace",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/mmkal/sqlfu"

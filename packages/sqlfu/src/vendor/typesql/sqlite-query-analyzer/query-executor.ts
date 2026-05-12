@@ -4,7 +4,7 @@
  *
  * Local modifications:
  * - route runtime database loading through `SQLFU_SQLITE_RUNTIME` so sqlfu can pick
- *   between bun:sqlite, node:sqlite, and better-sqlite3 at runtime
+ *   between bun:sqlite and node:sqlite at runtime
  * - import Either/Result helpers from sqlfu's vendored `small-utils` instead of neverthrow
  * - ESM-compatible relative import suffixes
  */
@@ -30,18 +30,8 @@ async function loadDatabaseConstructor(): Promise<new (databaseUri: string) => D
 		return Database as unknown as new (databaseUri: string) => DatabaseType;
 	}
 
-	// `node:sqlite` landed in Node 22. Fall back to better-sqlite3 on older Node so the vendored
-	// typesql analyzer works across every Node version sqlfu supports. sqlfu divergence.
-	try {
-		const {DatabaseSync} = await import('node:sqlite');
-		return DatabaseSync as unknown as new (databaseUri: string) => DatabaseType;
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException)?.code !== 'ERR_UNKNOWN_BUILTIN_MODULE') throw error;
-		const {default: BetterSqlite3} = (await import('better-sqlite3' as any)) as {
-			default: new (databaseUri: string) => DatabaseType;
-		};
-		return BetterSqlite3;
-	}
+	const {DatabaseSync} = await import('node:sqlite');
+	return DatabaseSync as unknown as new (databaseUri: string) => DatabaseType;
 }
 
 export async function createSqliteClient(client: 'sqlite' | 'better-sqlite3' | 'bun:sqlite' | 'd1' | 'libsql', databaseUri: string, attachList: string[], loadExtensions: string[]): Promise<Result<DatabaseClient, TypeSqlError>> {
