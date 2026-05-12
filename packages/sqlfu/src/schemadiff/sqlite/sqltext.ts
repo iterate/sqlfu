@@ -33,7 +33,7 @@ export function normalizeStoredSqlWithIdentifiers(sql: string, identifiers: stri
 
 export function normalizeViewDefinition(createSql: string): string {
   const normalized = normalizeComparableSql(createSql);
-  const match = normalized.match(/\bas\s+(.+)$/u);
+  const match = normalized.match(/\bas\s+(.+)$/iu);
   return match?.[1] ?? normalized;
 }
 

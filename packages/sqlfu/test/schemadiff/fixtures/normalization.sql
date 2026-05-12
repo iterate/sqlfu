@@ -30,12 +30,12 @@ end;
 
 -- #region: tokenizer-unknown valid SQLite keeps a visible view diff
 -- baseline:
-create view unicode_alias as select 1 as café;
+CREATE VIEW unicode_alias AS select 1 as café;
 -- desired:
-create view unicode_alias as select 2 as café;
+CREATE VIEW unicode_alias AS select 2 as café;
 -- output:
 drop view unicode_alias;
-CREATE VIEW unicode_alias as select 2 as café;
+CREATE VIEW unicode_alias AS select 2 as café;
 -- #endregion
 
 -- #region: redundant view predicate parentheses are a documented false positive
