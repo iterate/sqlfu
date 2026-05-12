@@ -569,33 +569,14 @@ async function openMainDevDatabase(dbPath: string): Promise<DisposableClient> {
     };
   }
 
-  // `node:sqlite` landed in Node 22. On Node 20 we fall back to better-sqlite3, which is already
-  // used by the vendored typesql analyzer and works across every Node version sqlfu supports.
-  // The fallback keeps `sqlfu generate` working for users (and our own build job) before they
-  // upgrade to Node 22.
-  try {
-    const {DatabaseSync} = await import('node:sqlite');
-    const database = new DatabaseSync(dbPath);
-    return {
-      client: createNodeSqliteClient(database as Parameters<typeof createNodeSqliteClient>[0]),
-      async [Symbol.asyncDispose]() {
-        database.close();
-      },
-    };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code !== 'ERR_UNKNOWN_BUILTIN_MODULE') throw error;
-    const {default: BetterSqlite3} = (await import('better-sqlite3' as any)) as {
-      default: new (path: string) => unknown;
-    };
-    const {createBetterSqlite3Client} = await import('../adapters/better-sqlite3.js');
-    const database = new BetterSqlite3(dbPath) as Parameters<typeof createBetterSqlite3Client>[0] & {close(): void};
-    return {
-      client: createBetterSqlite3Client(database),
-      async [Symbol.asyncDispose]() {
-        database.close();
-      },
-    };
-  }
+  const {DatabaseSync} = await import('node:sqlite');
+  const database = new DatabaseSync(dbPath);
+  return {
+    client: createNodeSqliteClient(database as Parameters<typeof createNodeSqliteClient>[0]),
+    async [Symbol.asyncDispose]() {
+      database.close();
+    },
+  };
 }
 
 async function loadQueryDocuments(queriesDir: string): Promise<QueryDocument[]> {
