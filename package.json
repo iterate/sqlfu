@@ -3,7 +3,7 @@
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/mmkal/sqlfu"
+    "url": "https://github.com/iterate/sqlfu"
   },
   "scripts": {
     "dev-project": "tsx packages/sqlfu/src/cli --config packages/ui/test/projects/dev-project/sqlfu.config.ts",
