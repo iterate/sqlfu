@@ -47,64 +47,125 @@ export function rewriteNamedParamsToPositional(
   if (Array.isArray(params)) return {sql, args: params as QueryArg[]};
 
   const named = params as Record<string, unknown>;
-  const order: string[] = [];
+  const parameters = scanSqliteNamedParameters(sql);
   let out = '';
-  let i = 0;
-  while (i < sql.length) {
-    const ch = sql[i]!;
-    if (ch === "'" || ch === '"') {
-      const quote = ch;
-      const start = i;
-      i += 1;
-      while (i < sql.length) {
-        if (sql[i] === quote) {
-          if (sql[i + 1] === quote) {
-            i += 2;
-            continue;
-          }
-          i += 1;
-          break;
-        }
-        i += 1;
-      }
-      out += sql.slice(start, i);
-      continue;
-    }
-    if (ch === '-' && sql[i + 1] === '-') {
-      const eol = sql.indexOf('\n', i);
-      const end = eol === -1 ? sql.length : eol;
-      out += sql.slice(i, end);
-      i = end;
-      continue;
-    }
-    if (ch === '/' && sql[i + 1] === '*') {
-      const close = sql.indexOf('*/', i + 2);
-      const end = close === -1 ? sql.length : close + 2;
-      out += sql.slice(i, end);
-      i = end;
-      continue;
-    }
-    if (ch === ':' || ch === '$' || ch === '@') {
-      const rest = sql.slice(i + 1);
-      const match = /^[a-zA-Z_][a-zA-Z0-9_]*/u.exec(rest);
-      if (match) {
-        order.push(match[0]);
-        out += '?';
-        i += 1 + match[0].length;
-        continue;
-      }
-    }
-    out += ch;
-    i += 1;
+  let cursor = 0;
+  for (const parameter of parameters) {
+    out += sql.slice(cursor, parameter.start);
+    out += '?';
+    cursor = parameter.end;
   }
+  out += sql.slice(cursor);
 
-  const args = order.map((name) => {
-    if (!Object.prototype.hasOwnProperty.call(named, name)) {
-      throw new Error(`SQL: missing value for named parameter "${name}".`);
+  const args = parameters.map((parameter) => {
+    if (!Object.prototype.hasOwnProperty.call(named, parameter.name)) {
+      throw new Error(`SQL: missing value for named parameter "${parameter.name}".`);
     }
-    return named[name] as QueryArg;
+    return named[parameter.name] as QueryArg;
   });
   return {sql: out, args};
+}
+
+export type SqliteNamedParameter = {
+  parameter: string;
+  name: string;
+  start: number;
+  end: number;
+};
+
+export function scanSqliteNamedParameters(sql: string): SqliteNamedParameter[] {
+  const out: SqliteNamedParameter[] = [];
+  let index = 0;
+  while (index < sql.length) {
+    const code = sql.charCodeAt(index);
+    if (code === 0x27 /* ' */) {
+      index = scanQuotedSql(sql, index, 0x27);
+      continue;
+    }
+    if (code === 0x22 /* " */) {
+      index = scanQuotedSql(sql, index, 0x22);
+      continue;
+    }
+    if (code === 0x60 /* ` */) {
+      index = scanQuotedSql(sql, index, 0x60);
+      continue;
+    }
+    if (code === 0x5b /* [ */) {
+      index = scanBracketedSqlIdentifier(sql, index);
+      continue;
+    }
+    if (code === 0x2d /* - */ && sql.charCodeAt(index + 1) === 0x2d /* - */) {
+      index = scanSqlLineComment(sql, index + 2);
+      continue;
+    }
+    if (code === 0x2f /* / */ && sql.charCodeAt(index + 1) === 0x2a /* * */) {
+      index = scanSqlBlockComment(sql, index + 2);
+      continue;
+    }
+    if (isNamedParameterPrefix(code) && isIdentStart(sql.charCodeAt(index + 1))) {
+      const start = index;
+      index += 2;
+      while (index < sql.length && isIdentCont(sql.charCodeAt(index))) index += 1;
+      const parameter = sql.slice(start, index);
+      out.push({parameter, name: parameter.slice(1), start, end: index});
+      continue;
+    }
+    index += 1;
+  }
+  return out;
+}
+
+function scanQuotedSql(sql: string, start: number, quote: number): number {
+  let index = start + 1;
+  while (index < sql.length) {
+    if (sql.charCodeAt(index) === quote) {
+      if (sql.charCodeAt(index + 1) === quote) {
+        index += 2;
+        continue;
+      }
+      return index + 1;
+    }
+    index += 1;
+  }
+  return sql.length;
+}
+
+function scanBracketedSqlIdentifier(sql: string, start: number): number {
+  let index = start + 1;
+  while (index < sql.length) {
+    if (sql.charCodeAt(index) === 0x5d /* ] */) return index + 1;
+    index += 1;
+  }
+  return sql.length;
+}
+
+function scanSqlLineComment(sql: string, start: number): number {
+  let index = start;
+  while (index < sql.length && sql.charCodeAt(index) !== 0x0a /* \n */) index += 1;
+  return index;
+}
+
+function scanSqlBlockComment(sql: string, start: number): number {
+  let index = start;
+  while (index < sql.length) {
+    if (sql.charCodeAt(index) === 0x2a /* * */ && sql.charCodeAt(index + 1) === 0x2f /* / */) {
+      return index + 2;
+    }
+    index += 1;
+  }
+  return sql.length;
+}
+
+function isIdentStart(code: number): boolean {
+  return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a) || code === 0x5f;
+}
+
+function isIdentCont(code: number): boolean {
+  return isIdentStart(code) || (code >= 0x30 && code <= 0x39);
+}
+
+function isNamedParameterPrefix(code: number): boolean {
+  return code === 0x3a /* : */ || code === 0x40 /* @ */ || code === 0x24 /* $ */;
 }
 
 /**
