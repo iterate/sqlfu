@@ -21,7 +21,7 @@ import type {
 } from './query-catalog.js';
 import {loadProjectConfig} from '../node/config.js';
 import {createNodeHost} from '../node/host.js';
-import type {Client, SqlfuGenerateRuntime, SqlfuProjectConfig, SqlfuValidator} from '../types.js';
+import type {Client, SqlfuGenerateCasing, SqlfuGenerateRuntime, SqlfuProjectConfig, SqlfuValidator} from '../types.js';
 import type {SqlfuHost} from '../host.js';
 import {excludeReservedSqliteObjects, extractSchema} from '../sqlite-text.js';
 import {createBunClient, createNodeSqliteClient} from '../index.js';
@@ -89,6 +89,7 @@ export async function generateQueryTypesForConfig(
         validator: config.generate.validator,
         prettyErrors: config.generate.prettyErrors,
         sync: config.generate.sync,
+        casing: config.generate.casing,
         runtime: config.generate.runtime,
       });
       await fs.writeFile(wrapperPath, contents);
@@ -120,6 +121,7 @@ function renderQueryDocument(input: {
   validator: SqlfuValidator | null;
   prettyErrors: boolean;
   sync: boolean;
+  casing: SqlfuGenerateCasing;
   runtime: SqlfuGenerateRuntime;
 }): string {
   const renderedQueries = input.queryDocument.queries.map((querySource) => {
@@ -170,6 +172,7 @@ function renderQueryDocument(input: {
       validator: input.validator,
       prettyErrors: input.prettyErrors,
       sync: input.sync,
+      casing: input.casing,
       runtime: input.runtime,
       localNames,
     });
@@ -371,6 +374,23 @@ type GeneratedQueryDescriptor = {
     toDriver: string;
     isArray: boolean;
   })[];
+};
+
+type FieldMapping<TField extends GeneratedField = GeneratedField> = {
+  raw: TField;
+  public: TField;
+};
+
+type FieldMappingPlan<TField extends GeneratedField = GeneratedField> = {
+  rawFields: TField[];
+  publicFields: TField[];
+  mappings: FieldMapping<TField>[];
+  hasNameChanges: boolean;
+};
+
+type DescriptorCasingPlan = {
+  descriptor: GeneratedQueryDescriptor;
+  dataMapping: FieldMappingPlan<GeneratedField & {toDriver: string; isArray: boolean}> | null;
 };
 
 type QueryFile = {
@@ -1355,14 +1375,16 @@ async function writeQueryCatalog(
       return [];
     }
 
-    const {descriptor} = prepareQueryDescriptor({
+    const prepared = prepareQueryDescriptor({
       descriptor: refineDescriptor(analysis.descriptor, querySource.analysisSqlContent, schema),
       explicitParameterExpansions: querySource.parameterExpansions,
       sourceSql: querySource.sqlContent,
     });
-    const columns = getResultFields(descriptor).map((field) => toCatalogField(field));
+    const {descriptor, dataMapping} = applyGeneratedInputCasing(prepared.descriptor, config.generate.casing);
+    const resultMapping = mapColumnDerivedFields(getResultFields(descriptor), config.generate.casing);
+    const columns = resultMapping.mappings.map((mapping) => toCatalogField(mapping.public, mapping.raw.name));
     const args = [
-      ...(descriptor.data ?? []).map((field) => toCatalogArgument('data', field)),
+      ...(dataMapping?.mappings.map((mapping) => toCatalogArgument('data', mapping.public, mapping.raw.name)) ?? []),
       ...descriptor.parameters.map((field) => toCatalogArgument('params', field)),
     ];
 
@@ -1381,7 +1403,7 @@ async function writeQueryCatalog(
       paramsSchema: descriptor.parameters.length
         ? objectSchema(`${functionName} params`, descriptor.parameters)
         : undefined,
-      resultSchema: objectSchema(`${functionName} result`, getResultFields(descriptor), {fieldKind: 'result'}),
+      resultSchema: objectSchema(`${functionName} result`, resultMapping.publicFields, {fieldKind: 'result'}),
       columns,
     };
     return [queryEntry];
@@ -1426,6 +1448,7 @@ function renderQueryWrapper(input: {
   validator: SqlfuValidator | null;
   prettyErrors: boolean;
   sync: boolean;
+  casing: SqlfuGenerateCasing;
   runtime: SqlfuGenerateRuntime;
   localNames?: LocalNames;
 }): string {
@@ -1438,6 +1461,7 @@ function renderQueryWrapper(input: {
       sourceSql: input.sourceSql,
       descriptor: input.descriptor,
       parameterExpansions: input.parameterExpansions,
+      casing: input.casing,
       runtime: input.runtime,
       localNames: input.localNames,
     });
@@ -1452,6 +1476,7 @@ function renderQueryWrapper(input: {
       emitter: getValidatorEmitter(input.validator),
       prettyErrors: input.prettyErrors,
       sync: input.sync,
+      casing: input.casing,
       localNames: input.localNames,
     });
   }
@@ -1462,9 +1487,10 @@ function renderQueryWrapper(input: {
 
   const clientType = input.sync ? 'SyncClient' : 'Client';
   const maybeAsync = input.sync ? '' : 'async ';
-  const hasData = (input.descriptor.data?.length ?? 0) > 0;
-  const hasParams = input.descriptor.parameters.length > 0;
-  const resultMode = getResultMode(input.descriptor);
+  const {descriptor} = applyGeneratedInputCasing(input.descriptor, input.casing);
+  const hasData = (descriptor.data?.length ?? 0) > 0;
+  const hasParams = descriptor.parameters.length > 0;
+  const resultMode = getResultMode(descriptor);
   // SELECT-like results (a row type users hand-wrote in their select list) get a named
   // Result type + reified shape. Non-SELECT without RETURNING (metadata mode) just passes
   // client.run's return through — the caller sees QueryMetadata directly. No Result type,
@@ -1473,10 +1499,13 @@ function renderQueryWrapper(input: {
   const dataTypeRef = `${functionName}.Data`;
   const paramsTypeRef = `${functionName}.Params`;
   const resultTypeRef = `${functionName}.Result`;
-  const resultFields = getResultFields(input.descriptor);
-  const decodeJsonResults = hasJsonFields(resultFields);
+  const resultMapping = mapColumnDerivedFields(getResultFields(descriptor), input.casing);
+  const resultFields = resultMapping.publicFields;
+  const resultMapperName = resultMapping.hasNameChanges || hasJsonFields(resultFields) ? 'mapResult' : null;
+  const resultRawFields = resultMapperName ? resultMapping.mappings.map((mapping) => rawResultField(mapping.raw)) : [];
+  const decodeJsonResults = hasJsonFields(resultFields) && !resultMapperName;
 
-  const queryArgs = buildQueryArgs(input.descriptor);
+  const queryArgs = buildQueryArgs(descriptor);
 
   const functionSignatureArgs: string[] = [`client: ${clientType}`];
   if (hasData) functionSignatureArgs.push(`data: ${dataTypeRef}`);
@@ -1496,7 +1525,7 @@ function renderQueryWrapper(input: {
       })
     : renderExpandedQueryDeclaration({
         sourceSql: input.sourceSql,
-        descriptor: input.descriptor,
+        descriptor,
         parameterExpansions: input.parameterExpansions,
         factoryArgs,
         queryArgs,
@@ -1514,21 +1543,31 @@ function renderQueryWrapper(input: {
 
   const namespaceLines: string[] = [];
   if (hasData) {
-    namespaceLines.push(`\texport type Data = ${renderObjectTypeBody(input.descriptor.data!, 'parameter')};`);
+    namespaceLines.push(`\texport type Data = ${renderObjectTypeBody(descriptor.data!, 'parameter')};`);
   }
   if (hasParams) {
-    namespaceLines.push(`\texport type Params = ${renderObjectTypeBody(input.descriptor.parameters, 'parameter')};`);
+    namespaceLines.push(`\texport type Params = ${renderObjectTypeBody(descriptor.parameters, 'parameter')};`);
   }
   if (emitResultType) {
+    if (resultMapperName) {
+      namespaceLines.push(`\texport type RawResult = ${renderObjectTypeBody(resultRawFields, 'result')};`);
+    }
     namespaceLines.push(`\texport type Result = ${renderObjectTypeBody(resultFields, 'result')};`);
   }
+
+  const resultMapperLines =
+    emitResultType && resultMapperName
+      ? ['', ...renderResultMapper(functionName, resultMapping.mappings, resultTypeRef)]
+      : [];
 
   const implementationLines = emitResultType
     ? buildGeneratedImplementation({
         resultMode,
         resultType: resultTypeRef,
+        rawResultType: resultMapperName ? `${functionName}.RawResult` : undefined,
         resultFields,
         decodeJsonResults,
+        resultMapperName,
         queryReference,
         sync: input.sync,
         indent: '\t\t',
@@ -1540,12 +1579,17 @@ function renderQueryWrapper(input: {
     ``,
     ...renderSqlConstant(input.descriptor.sql, sqlName),
     queryDeclaration,
+    ...resultMapperLines,
     ``,
     `export const ${functionName} = Object.assign(`,
     functionDeclaration,
     ...implementationLines,
     `\t},`,
-    `\t{ ${objectProperty('sql', sqlName)}, ${objectProperty('query', queryName)} },`,
+    `\t{ ${[
+      objectProperty('sql', sqlName),
+      objectProperty('query', queryName),
+      ...(resultMapperName ? [objectProperty('mapResult', resultMapperName)] : []),
+    ].join(', ')} },`,
     `);`,
     ``,
     ...(namespaceLines.length === 0 ? [] : [`export namespace ${functionName} {`, ...namespaceLines, `}`, ``]),
@@ -1557,23 +1601,28 @@ function renderEffectSqlQueryWrapper(input: {
   sourceSql: string;
   descriptor: GeneratedQueryDescriptor;
   parameterExpansions: ParameterExpansion[];
+  casing: SqlfuGenerateCasing;
   runtime: 'effect-v3' | 'effect-v4-unstable';
   localNames?: LocalNames;
 }): string {
   const functionName = input.functionName;
   const sqlName = input.localNames?.sql || 'sql';
   const queryName = input.localNames?.query || 'query';
-  const hasData = (input.descriptor.data?.length ?? 0) > 0;
-  const hasParams = input.descriptor.parameters.length > 0;
-  const resultMode = getResultMode(input.descriptor);
+  const {descriptor} = applyGeneratedInputCasing(input.descriptor, input.casing);
+  const hasData = (descriptor.data?.length ?? 0) > 0;
+  const hasParams = descriptor.parameters.length > 0;
+  const resultMode = getResultMode(descriptor);
   const emitResultType = resultMode !== 'metadata';
   const dataTypeRef = `${functionName}.Data`;
   const paramsTypeRef = `${functionName}.Params`;
   const resultTypeRef = `${functionName}.Result`;
-  const resultFields = getResultFields(input.descriptor);
-  const decodeJsonResults = hasJsonFields(resultFields);
+  const resultMapping = mapColumnDerivedFields(getResultFields(descriptor), input.casing);
+  const resultFields = resultMapping.publicFields;
+  const resultMapperName = resultMapping.hasNameChanges || hasJsonFields(resultFields) ? 'mapResult' : null;
+  const resultRawFields = resultMapperName ? resultMapping.mappings.map((mapping) => rawResultField(mapping.raw)) : [];
+  const decodeJsonResults = hasJsonFields(resultFields) && !resultMapperName;
 
-  const queryArgs = buildQueryArgs(input.descriptor);
+  const queryArgs = buildQueryArgs(descriptor);
 
   const functionSignatureArgs: string[] = [];
   if (hasData) functionSignatureArgs.push(`data: ${dataTypeRef}`);
@@ -1593,7 +1642,7 @@ function renderEffectSqlQueryWrapper(input: {
       })
     : renderExpandedQueryDeclaration({
         sourceSql: input.sourceSql,
-        descriptor: input.descriptor,
+        descriptor,
         parameterExpansions: input.parameterExpansions,
         factoryArgs,
         queryArgs,
@@ -1604,14 +1653,22 @@ function renderEffectSqlQueryWrapper(input: {
 
   const namespaceLines: string[] = [];
   if (hasData) {
-    namespaceLines.push(`\texport type Data = ${renderObjectTypeBody(input.descriptor.data!, 'parameter')};`);
+    namespaceLines.push(`\texport type Data = ${renderObjectTypeBody(descriptor.data!, 'parameter')};`);
   }
   if (hasParams) {
-    namespaceLines.push(`\texport type Params = ${renderObjectTypeBody(input.descriptor.parameters, 'parameter')};`);
+    namespaceLines.push(`\texport type Params = ${renderObjectTypeBody(descriptor.parameters, 'parameter')};`);
   }
   if (emitResultType) {
+    if (resultMapperName) {
+      namespaceLines.push(`\texport type RawResult = ${renderObjectTypeBody(resultRawFields, 'result')};`);
+    }
     namespaceLines.push(`\texport type Result = ${renderObjectTypeBody(resultFields, 'result')};`);
   }
+
+  const resultMapperLines =
+    emitResultType && resultMapperName
+      ? ['', ...renderResultMapper(functionName, resultMapping.mappings, resultTypeRef)]
+      : [];
 
   return [
     `import * as Effect from 'effect/Effect';`,
@@ -1619,19 +1676,26 @@ function renderEffectSqlQueryWrapper(input: {
     ``,
     ...renderSqlConstant(input.descriptor.sql, sqlName),
     queryDeclaration,
+    ...resultMapperLines,
     ``,
     `export const ${functionName} = Object.assign(`,
     `\tfunction ${functionName}(${functionSignatureArgs.join(', ')}) {`,
     ...buildEffectSqlImplementation({
       resultMode,
       resultType: resultTypeRef,
+      rawResultType: resultMapperName ? `${functionName}.RawResult` : undefined,
       resultFields,
       decodeJsonResults,
+      resultMapperName,
       queryReference,
       indent: '\t\t',
     }),
     `\t},`,
-    `\t{ ${objectProperty('sql', sqlName)}, ${objectProperty('query', queryName)} },`,
+    `\t{ ${[
+      objectProperty('sql', sqlName),
+      objectProperty('query', queryName),
+      ...(resultMapperName ? [objectProperty('mapResult', resultMapperName)] : []),
+    ].join(', ')} },`,
     `);`,
     ``,
     ...(namespaceLines.length === 0 ? [] : [`export namespace ${functionName} {`, ...namespaceLines, `}`, ``]),
@@ -2059,6 +2123,7 @@ function renderValidatorQueryWrapper(input: {
   emitter: ValidatorEmitter;
   prettyErrors: boolean;
   sync: boolean;
+  casing: SqlfuGenerateCasing;
   localNames?: LocalNames;
 }): string {
   const functionName = input.functionName;
@@ -2067,11 +2132,15 @@ function renderValidatorQueryWrapper(input: {
   const dataSchemaName = input.localNames?.dataSchema || 'Data';
   const paramsSchemaName = input.localNames?.paramsSchema || 'Params';
   const resultSchemaName = input.localNames?.resultSchema || 'Result';
-  const {descriptor, emitter, prettyErrors, sync} = input;
+  const {emitter, prettyErrors, sync} = input;
+  const {descriptor} = applyGeneratedInputCasing(input.descriptor, input.casing);
   const clientType = sync ? 'SyncClient' : 'Client';
   const resultMode = getResultMode(descriptor);
-  const resultFields = getResultFields(descriptor);
-  const decodeJsonResults = hasJsonFields(resultFields);
+  const resultMapping = mapColumnDerivedFields(getResultFields(descriptor), input.casing);
+  const resultFields = resultMapping.publicFields;
+  const resultMapperName = resultMapping.hasNameChanges || hasJsonFields(resultFields) ? 'mapResult' : null;
+  const resultRawFields = resultMapperName ? resultMapping.mappings.map((mapping) => rawResultField(mapping.raw)) : [];
+  const decodeJsonResults = hasJsonFields(resultFields) && !resultMapperName;
   const hasData = (descriptor.data?.length ?? 0) > 0;
   const hasParams = descriptor.parameters.length > 0;
   // Same logic as plain-TS: only SELECT-like queries declare a Result schema and get their rows
@@ -2152,17 +2221,23 @@ function renderValidatorQueryWrapper(input: {
         queryVariableName: queryName,
       });
   const queryReference = buildQueryReference(hasData, hasParams, dataExpression!, paramsExpression!, queryName);
+  const resultMapperLines =
+    emitResultSchema && resultMapperName
+      ? ['', ...renderResultMapper(functionName, resultMapping.mappings, resultTypeRef)]
+      : [];
 
   const implementationLines = emitResultSchema
     ? buildValidatorImplementation({
         resultMode,
         resultSchemaName,
         resultTypeRef,
+        rawResultTypeRef: resultMapperName ? `${functionName}.RawResult` : undefined,
         castResult: hasPlainTsTypes(resultFields),
         resultFields,
         emitter,
         prettyErrors,
         decodeJsonResults,
+        resultMapperName,
         queryReference,
         sync,
       })
@@ -2172,6 +2247,7 @@ function renderValidatorQueryWrapper(input: {
   if (hasData) attachedProperties.push(objectProperty('Data', dataSchemaName));
   if (hasParams) attachedProperties.push(objectProperty('Params', paramsSchemaName));
   if (emitResultSchema) attachedProperties.push(objectProperty('Result', resultSchemaName));
+  if (resultMapperName) attachedProperties.push(objectProperty('mapResult', resultMapperName));
   attachedProperties.push(objectProperty('sql', sqlName), objectProperty('query', queryName));
 
   const namespaceLines: string[] = [];
@@ -2194,6 +2270,9 @@ function renderValidatorQueryWrapper(input: {
     );
   }
   if (emitResultSchema) {
+    if (resultMapperName) {
+      namespaceLines.push(`\texport type RawResult = ${renderObjectTypeBody(resultRawFields, 'result')};`);
+    }
     namespaceLines.push(
       `\texport type Result = ${validatorNamespaceType(
         resultFields,
@@ -2221,6 +2300,7 @@ function renderValidatorQueryWrapper(input: {
     ...schemaDeclarations,
     ...sqlLines,
     queryDeclaration,
+    ...resultMapperLines,
     ``,
     `export const ${functionName} = Object.assign(`,
     functionDeclaration,
@@ -2259,6 +2339,22 @@ function validatorNamespaceType(
 
 function objectProperty(propertyName: string, variableName: string): string {
   return propertyName === variableName ? propertyName : `${propertyName}: ${variableName}`;
+}
+
+function isTsIdentifier(value: string): boolean {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value);
+}
+
+function propertyAccess(objectExpression: string, propertyName: string): string {
+  return isTsIdentifier(propertyName)
+    ? `${objectExpression}.${propertyName}`
+    : `${objectExpression}[${JSON.stringify(propertyName)}]`;
+}
+
+function objectLiteralProperty(propertyName: string, valueExpression: string): string {
+  return isTsIdentifier(propertyName)
+    ? `${propertyName}: ${valueExpression}`
+    : `${JSON.stringify(propertyName)}: ${valueExpression}`;
 }
 
 function renderObjectSchemaDeclaration(
@@ -2471,31 +2567,38 @@ function buildValidatorImplementation(input: {
   resultMode: 'many' | 'nullableOne' | 'one' | 'metadata';
   resultSchemaName: string;
   resultTypeRef: string;
+  rawResultTypeRef?: string;
   castResult: boolean;
   resultFields: GeneratedField[];
   emitter: ValidatorEmitter;
   prettyErrors: boolean;
   decodeJsonResults: boolean;
+  resultMapperName: string | null;
   queryReference: string;
   sync: boolean;
 }): string[] {
   const {emitter, prettyErrors, queryReference, sync} = input;
   const maybeAwait = sync ? '' : 'await ';
   const q = queryReference;
-  const rawRowsAnnotation = input.decodeJsonResults ? ': any[]' : '';
+  const resultRowsType = input.resultMapperName ? `<${input.rawResultTypeRef!}>` : '';
+  const rawRowsAnnotation = input.decodeJsonResults && !input.resultMapperName ? ': any[]' : '';
   const returnType = input.castResult ? input.resultTypeRef : null;
+  const publicRowExpression = (rowExpression: string) =>
+    input.resultMapperName
+      ? `${input.resultMapperName}(${rowExpression})`
+      : jsonDecodedRowExpression(rowExpression, input.resultFields, input.resultTypeRef);
   const rowExpr = (rowExpression: string) =>
     rowParseExpressionOrNull(
       emitter,
       input.resultSchemaName,
-      jsonDecodedRowExpression(rowExpression, input.resultFields, input.resultTypeRef),
+      publicRowExpression(rowExpression),
       prettyErrors,
     );
   const rowBlock = (rowExpression: string, indent: string) =>
     rowParseStatements(
       emitter,
       input.resultSchemaName,
-      jsonDecodedRowExpression(rowExpression, input.resultFields, input.resultTypeRef),
+      publicRowExpression(rowExpression),
       prettyErrors,
       indent,
       returnType,
@@ -2506,12 +2609,12 @@ function buildValidatorImplementation(input: {
     const expr = parsedExpression && returnType ? `(${parsedExpression} as ${returnType})` : parsedExpression;
     if (expr) {
       return [
-        `\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all(${q});`,
+        `\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all${resultRowsType}(${q});`,
         `\t\treturn rows.map((row) => ${expr});`,
       ];
     }
     return [
-      `\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all(${q});`,
+      `\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all${resultRowsType}(${q});`,
       `\t\treturn rows.map((row) => {`,
       ...rowBlock('row', '\t\t\t'),
       `\t\t});`,
@@ -2523,12 +2626,12 @@ function buildValidatorImplementation(input: {
     const expr = parsedExpression && returnType ? `(${parsedExpression} as ${returnType})` : parsedExpression;
     if (expr) {
       return [
-        `\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all(${q});`,
+        `\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all${resultRowsType}(${q});`,
         `\t\treturn rows.length > 0 ? ${expr} : null;`,
       ];
     }
     return [
-      `\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all(${q});`,
+      `\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all${resultRowsType}(${q});`,
       `\t\tif (rows.length === 0) return null;`,
       ...rowBlock('rows[0]', '\t\t'),
     ];
@@ -2538,9 +2641,12 @@ function buildValidatorImplementation(input: {
     const parsedExpression = rowExpr('rows[0]');
     const expr = parsedExpression && returnType ? `(${parsedExpression} as ${returnType})` : parsedExpression;
     if (expr) {
-      return [`\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all(${q});`, `\t\treturn ${expr};`];
+      return [`\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all${resultRowsType}(${q});`, `\t\treturn ${expr};`];
     }
-    return [`\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all(${q});`, ...rowBlock('rows[0]', '\t\t')];
+    return [
+      `\t\tconst rows${rawRowsAnnotation} = ${maybeAwait}client.all${resultRowsType}(${q});`,
+      ...rowBlock('rows[0]', '\t\t'),
+    ];
   }
 
   // metadata mode: call client.run(), guard expected keys, then parse the assembled object.
@@ -2988,10 +3094,12 @@ function toCatalogArgument(
     toDriver: string;
     isArray: boolean;
   },
+  rawName?: string,
 ): QueryCatalogArgument {
   return {
     scope,
     name: field.name,
+    ...(rawName && rawName !== field.name ? {rawName} : {}),
     tsType: field.tsType,
     notNull: field.notNull,
     optional: Boolean(field.optional),
@@ -3019,9 +3127,10 @@ function inferDriverEncoding(field: {
   return 'identity';
 }
 
-function toCatalogField(field: GeneratedField): QueryCatalogField {
+function toCatalogField(field: GeneratedField, rawName?: string): QueryCatalogField {
   return {
     name: field.name,
+    ...(rawName && rawName !== field.name ? {rawName} : {}),
     tsType: field.tsType,
     notNull: field.notNull,
     optional: Boolean(field.optional),
@@ -3151,6 +3260,136 @@ function toCamelCase(value: string): string {
   );
 }
 
+function mapColumnDerivedFields<TField extends GeneratedField>(
+  fields: TField[],
+  casing: SqlfuGenerateCasing,
+): FieldMappingPlan<TField> {
+  const candidates = fields.map((field) => (casing === 'camel' ? toPropertyCamelCase(field.name) : field.name));
+  const candidateCounts = new Map<string, number>();
+  for (const candidate of candidates) {
+    candidateCounts.set(candidate, (candidateCounts.get(candidate) || 0) + 1);
+  }
+
+  const mappings = fields.map((field, index): FieldMapping<TField> => {
+    const candidate = candidates[index]!;
+    const publicName = candidateCounts.get(candidate)! > 1 ? field.name : candidate;
+    return {
+      raw: field,
+      public: renameGeneratedField(field, publicName),
+    };
+  });
+
+  return {
+    rawFields: mappings.map((mapping) => mapping.raw),
+    publicFields: mappings.map((mapping) => mapping.public),
+    mappings,
+    hasNameChanges: mappings.some((mapping) => mapping.raw.name !== mapping.public.name),
+  };
+}
+
+function applyGeneratedInputCasing(descriptor: GeneratedQueryDescriptor, casing: SqlfuGenerateCasing): DescriptorCasingPlan {
+  const parameters = descriptor.parameters.map((field) => mapColumnDerivedObjectFields(field, casing));
+  const dataWithPublicObjectFields = descriptor.data?.map((field) => mapColumnDerivedObjectFields(field, casing));
+  const dataMapping = dataWithPublicObjectFields ? mapColumnDerivedFields(dataWithPublicObjectFields, casing) : null;
+  return {
+    descriptor: {
+      ...descriptor,
+      parameters,
+      data: dataMapping?.publicFields,
+    },
+    dataMapping,
+  };
+}
+
+function mapColumnDerivedObjectFields<TField extends GeneratedField>(field: TField, casing: SqlfuGenerateCasing): TField {
+  if (!field.objectFields) {
+    return field;
+  }
+
+  const objectMapping = mapColumnDerivedFields(field.objectFields, casing);
+  const publicFieldByRawName = new Map(
+    objectMapping.mappings.map((mapping) => [mapping.raw.name, mapping.public] as const),
+  );
+  const driverObjectFields = field.driverObjectFields?.map(
+    (driverField) => publicFieldByRawName.get(driverField.name) || mapColumnDerivedFields([driverField], casing).publicFields[0]!,
+  );
+  return {
+    ...field,
+    objectFields: objectMapping.publicFields,
+    driverObjectFields,
+    tsType: objectFieldTypeExpression(field, objectMapping.publicFields),
+  };
+}
+
+function objectFieldTypeExpression(field: GeneratedField, objectFields: GeneratedField[]): string {
+  const objectType = renderInlineObjectTsType(objectFields);
+  if (field.acceptsSingleOrArray) {
+    return `${objectType} | Array<${objectType}>`;
+  }
+  return field.isArray ? `Array<${objectType}>` : objectType;
+}
+
+function renameGeneratedField<TField extends GeneratedField>(field: TField, name: string): TField {
+  return {
+    ...field,
+    name,
+  };
+}
+
+function renderResultMapper(functionName: string, mappings: FieldMapping[], resultTypeRef: string): string[] {
+  return [
+    `function mapResult(row: ${functionName}.RawResult): ${resultTypeRef} {`,
+    `\treturn {`,
+    ...mappings.map(
+      (mapping) => `\t\t${objectLiteralProperty(mapping.public.name, resultMapperValue(mapping, resultTypeRef))},`,
+    ),
+    `\t};`,
+    `}`,
+  ];
+}
+
+function resultMapperValue(mapping: FieldMapping, resultTypeRef: string): string {
+  const rawValue = propertyAccess('row', mapping.raw.name);
+  if (mapping.public.logicalType !== 'json') {
+    return rawValue;
+  }
+  const parsedValue = `JSON.parse(${rawValue})`;
+  if (mapping.public.tsType === 'unknown') {
+    return parsedValue;
+  }
+  return `(${parsedValue} as ${resultTypeRef}[${JSON.stringify(mapping.public.name)}])`;
+}
+
+function rawResultField(field: GeneratedField): GeneratedField {
+  if (field.logicalType !== 'json') {
+    return field;
+  }
+  return {
+    ...field,
+    tsType: 'string',
+    logicalType: undefined,
+    plainTsType: undefined,
+  };
+}
+
+function toPropertyCamelCase(value: string): string {
+  const parts = value.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  if (parts.length === 0) {
+    return '';
+  }
+  if (parts.length === 1) {
+    const [part] = parts;
+    return `${part![0]!.toLowerCase()}${part!.slice(1)}`;
+  }
+  return (
+    parts[0]!.toLowerCase() +
+    parts
+      .slice(1)
+      .map((part) => `${part[0]!.toUpperCase()}${part.slice(1).toLowerCase()}`)
+      .join('')
+  );
+}
+
 /**
  * SELECT-like bodies only (`many` / `nullableOne` / `one` — i.e. every mode except `metadata`).
  * Metadata mode is rendered as a plain `return client.run(query);` pass-through at the call site.
@@ -3158,8 +3397,10 @@ function toCamelCase(value: string): string {
 function buildGeneratedImplementation(input: {
   resultMode: 'many' | 'nullableOne' | 'one';
   resultType: string;
+  rawResultType?: string;
   resultFields: GeneratedField[];
   decodeJsonResults: boolean;
+  resultMapperName: string | null;
   queryReference: string;
   sync: boolean;
   indent: string;
@@ -3167,6 +3408,26 @@ function buildGeneratedImplementation(input: {
   const maybeAwait = input.sync ? '' : 'await ';
   const i = input.indent;
   const q = input.queryReference;
+
+  if (input.resultMapperName) {
+    const rawResultType = input.rawResultType!;
+    if (input.resultMode === 'many') {
+      return [
+        `${i}const rows = ${maybeAwait}client.all<${rawResultType}>(${q});`,
+        `${i}return rows.map(${input.resultMapperName});`,
+      ];
+    }
+    if (input.resultMode === 'nullableOne') {
+      return [
+        `${i}const rows = ${maybeAwait}client.all<${rawResultType}>(${q});`,
+        `${i}return rows.length > 0 ? ${input.resultMapperName}(rows[0]!) : null;`,
+      ];
+    }
+    return [
+      `${i}const rows = ${maybeAwait}client.all<${rawResultType}>(${q});`,
+      `${i}return ${input.resultMapperName}(rows[0]!);`,
+    ];
+  }
 
   if (input.resultMode === 'many') {
     if (input.decodeJsonResults) {
@@ -3205,8 +3466,10 @@ function buildGeneratedImplementation(input: {
 function buildEffectSqlImplementation(input: {
   resultMode: 'many' | 'nullableOne' | 'one' | 'metadata';
   resultType: string;
+  rawResultType?: string;
   resultFields: GeneratedField[];
   decodeJsonResults: boolean;
+  resultMapperName: string | null;
   queryReference: string;
   indent: string;
 }): string[] {
@@ -3227,10 +3490,15 @@ function buildEffectSqlImplementation(input: {
   }
 
   lines.push(
-    `${bodyIndent}const rows = yield* sqlClient.unsafe<${input.decodeJsonResults ? 'any' : input.resultType}>(generatedQuery.sql, generatedQuery.args);`,
+    `${bodyIndent}const rows = yield* sqlClient.unsafe<${input.resultMapperName ? input.rawResultType : input.decodeJsonResults ? 'any' : input.resultType}>(generatedQuery.sql, generatedQuery.args);`,
   );
 
   if (input.resultMode === 'many') {
+    if (input.resultMapperName) {
+      lines.push(`${bodyIndent}return rows.map(${input.resultMapperName});`);
+      lines.push(`${i}});`);
+      return lines;
+    }
     if (input.decodeJsonResults) {
       lines.push(`${bodyIndent}return rows.map((row): ${input.resultType} => ${rowExpression('row')});`);
     } else {
@@ -3241,6 +3509,11 @@ function buildEffectSqlImplementation(input: {
   }
 
   if (input.resultMode === 'nullableOne') {
+    if (input.resultMapperName) {
+      lines.push(`${bodyIndent}return rows.length > 0 ? ${input.resultMapperName}(rows[0]!) : null;`);
+      lines.push(`${i}});`);
+      return lines;
+    }
     const value = input.decodeJsonResults
       ? `(${rowExpression('rows[0]')} as ${input.resultType})`
       : rowExpression('rows[0]');
@@ -3249,6 +3522,11 @@ function buildEffectSqlImplementation(input: {
     return lines;
   }
 
+  if (input.resultMapperName) {
+    lines.push(`${bodyIndent}return ${input.resultMapperName}(rows[0]!);`);
+    lines.push(`${i}});`);
+    return lines;
+  }
   const value = input.decodeJsonResults
     ? `(${rowExpression('rows[0]')} as ${input.resultType})`
     : rowExpression('rows[0]');

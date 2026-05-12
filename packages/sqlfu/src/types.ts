@@ -112,6 +112,7 @@ export type SqlValue = QueryArg | SqlFragment;
 
 export type SqlfuValidator = 'arktype' | 'valibot' | 'zod' | 'zod-mini';
 export type SqlfuGenerateRuntime = 'sqlfu' | 'effect-v3' | 'effect-v4-unstable';
+export type SqlfuGenerateCasing = 'camel' | 'preserve';
 
 /**
  * Schema source of truth for `sqlfu generate`. Controls where typegen reads
@@ -181,6 +182,15 @@ export interface SqlfuGenerateConfig {
    * such as reserved `sqlfu_types` declarations.
    */
   experimentalJsonTypes?: boolean;
+  /**
+   * Property casing for generated SQL-derived TypeScript shapes. Default `'camel'`.
+   *
+   * - `'camel'` = column-derived `Data` / `Result` fields use camelCase at the generated query boundary.
+   * - `'preserve'` = generated properties keep the SQL-derived names.
+   *
+   * User-authored placeholder `Params` preserve the names written in SQL in both modes.
+   */
+  casing?: SqlfuGenerateCasing;
   /**
    * Runtime API emitted by `sqlfu generate`.
    *
@@ -315,6 +325,7 @@ export interface SqlfuProjectConfig {
     prettyErrors: boolean;
     sync: boolean;
     experimentalJsonTypes: boolean;
+    casing: SqlfuGenerateCasing;
     runtime: SqlfuGenerateRuntime;
     importExtension: '.js' | '.ts';
     authority: SqlfuAuthority;

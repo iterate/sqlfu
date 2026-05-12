@@ -1,9 +1,9 @@
 ---
-status: ready
+status: complete
 size: medium
 ---
 
-**Status:** design resolved; implementation not started. Query identity camelCasing is already complete. This task adds `generate.casing`, defaulting to camelCase, so generated query modules become an explicit SQL-to-application boundary: column-derived fields become camelCase in generated query data/results with visible mapping, while user-authored placeholder params remain exactly as written. Public docs should recommend camelCase placeholder names when users want a fully camelCase generated query API. If two raw fields would map to the same camelCase name, only that collision group should keep raw casing instead of failing generation. `preserve` remains available as the opt-out.
+**Status:** complete and verified. `generate.casing` defaults to `'camel'`, generated query modules now expose camelCased column-derived `Data` / `Result` shapes with explicit `RawResult` and `mapResult` boundaries when needed, and `generate.casing: 'preserve'` keeps literal SQL-derived names without no-op mapper output. User-authored placeholder `Params` remain exactly as written. Docs now cover the model in `packages/sqlfu/docs/typegen.md`, with a short config-reference note in the README.
 
 Below is the bot-written spec for this task. I, the human, think this:
 We should probably let people use whatever valid params they want when using `:myParam`. i.e. don't touch casing on that. Just encourage people to use camel-case with those things.
@@ -136,6 +136,17 @@ select name, applied_at /* as appliedAt */ from sqlfu_migrations;
 Raised in review of #23 at comment [#3111982883](https://github.com/mmkal/sqlfu/pull/23#discussion_r3111982883) — specifically the `insert-migration.sql.ts` generated output where `applied_at` as a TS field read as un-idiomatic.
 
 PR #23 shipped with option A (preserve). If we pick anything else here, #23's `appliedAt` → `applied_at` UI rename becomes the wrong direction and we'll revert it.
+
+## Implementation checklist
+
+- [x] Add and validate `generate.casing: 'camel' | 'preserve'` with default `'camel'`. *Implemented in `packages/sqlfu/src/types.ts` and `packages/sqlfu/src/config.ts`; config tests cover defaults and invalid values.*
+- [x] CamelCase column-derived generated query data and result properties by default. *Implemented in `packages/sqlfu/src/typegen/index.ts`; runtime tests cover result rows, update data, and inferred object inputs.*
+- [x] Preserve user-authored placeholder params exactly as written. *Covered by the update-data and object-input runtime tests.*
+- [x] Emit explicit `RawResult` and `mapResult` when raw database rows differ from public results. *Generated for casing or JSON/logical decoding and attached via `Object.assign`; fixtures now show the mapper body.*
+- [x] Avoid no-op mapper output in preserve mode or collision fallback. *Covered by runtime tests for `generate.casing: 'preserve'` and colliding `published_at` / `publishedAt` fields.*
+- [x] Map raw rows before validator result schemas validate public shapes. *Covered by the zod runtime test.*
+- [x] Update query catalog metadata to expose public names with optional raw names. *Implemented in `packages/sqlfu/src/typegen/query-catalog.ts` and asserted in the JSON logical-type catalog test.*
+- [x] Document the behavior and follow-up table-row-type decision. *Added the typegen docs section, README config line, ADR, and `tasks/reconsider-generated-table-row-types.md`.*
 
 ## Grill-with-docs log
 
