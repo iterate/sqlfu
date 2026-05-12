@@ -25,10 +25,10 @@ Use `runtime: 'effect-v3'` for stable Effect v3 / `@effect/sql`. Use
 `unstable` so sqlfu can later add `runtime: 'effect-v4'` for the eventual stable
 `effect/sql` import.
 
-Given:
+Given this query in `sql/queries.sql`:
 
 ```sql
--- sql/list-posts.sql
+/** @name listPosts */
 select id, slug, title
 from posts
 order by id
@@ -38,7 +38,7 @@ limit :limit;
 sqlfu emits a function shaped like:
 
 ```ts
-import {listPosts} from './sql/.generated/list-posts.sql';
+import {listPosts} from './sql/.generated/queries.sql.ts';
 
 const program = Effect.gen(function*() {
   const posts = yield* listPosts({limit: 10});

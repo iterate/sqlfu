@@ -16,7 +16,7 @@ usually run before deployment rather than in your hot application path.
 
 ```ts
 import type {Client} from 'sqlfu';
-import {getPosts} from './sql/.generated/get-posts.sql';
+import {getPosts} from './sql/.generated/queries.sql.ts';
 
 export async function renderFeed(client: Client) {
   const posts = await getPosts(client, {limit: 10});
