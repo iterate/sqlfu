@@ -24,7 +24,7 @@ sqlfu ready at https://sqlfu.dev/ui {terminal-output=ready output-pause=520}
 
 ```ts artifact=tracing speed=fast
 import {instrument} from "sqlfu";
-import {getPosts} from "./.generated/get-posts.sql.ts";
+import {getPosts} from "./.generated/queries.sql.ts";
 
 const client = instrument(
   baseClient,
@@ -40,14 +40,14 @@ app.get("/posts", async (c) => {
 ## terminal
 
 ```term artifact=lint
-$ npx eslint sql/get-posts.sql src/app.ts {speed=command run-command}
+$ npx eslint sql/queries.sql src/app.ts {speed=command run-command}
 
-sql/get-posts.sql {terminal-output=errors output-pause=650}
+sql/queries.sql {terminal-output=errors output-pause=650}
   1:1  error  generated wrapper is stale; run npx sqlfu generate {terminal-output=errors}
        sqlfu/generated-query-freshness {terminal-output=errors}
  {terminal-output=errors}
 src/app.ts {terminal-output=errors}
-  8:21 error  use ./sql/.generated/get-posts.sql.ts instead {terminal-output=errors}
+  8:21 error  use ./sql/.generated/queries.sql.ts instead {terminal-output=errors}
        sqlfu/query-naming {terminal-output=errors}
 ```
 
@@ -57,8 +57,8 @@ src/app.ts {terminal-output=errors}
 $ npx sqlfu format "sql/**/*.sql" {speed=command run-command}
 
 Formatted files: {terminal-output=formatted output-pause=520}
-  sql/get-posts.sql {terminal-output=formatted}
-  sql/get-comments.sql {terminal-output=formatted}
+  sql/queries.sql {terminal-output=formatted}
+  definitions.sql {terminal-output=formatted}
 ```
 
 ## terminal

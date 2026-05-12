@@ -8,7 +8,8 @@ For the cases where you _do_ have optional filters, the trick is to push the "is
 
 Say you want to list posts with any combination of: filter by author, filter by a minimum published date, filter by a search substring in the title. All three are optional.
 
-```sql (sql/list-posts.sql)
+```sql (sql/queries.sql)
+/** @name listPosts */
 select id, title, author, published_at
 from posts
 where (:author is null or author = :author)

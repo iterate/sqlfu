@@ -4,7 +4,7 @@
 
 ```ts artifact=app speed=fast
 import type {Client} from "sqlfu";
-import {getPosts} from "./.generated/get-posts.sql.ts";
+import {getPosts} from "./.generated/queries.sql.ts";
 
 export async function renderFeed(client: Client) {
   const posts = await getPosts(client, {limit: 10});

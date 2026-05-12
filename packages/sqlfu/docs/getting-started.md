@@ -15,8 +15,8 @@ If you want to see the finished project running in your browser first, [open the
 │   └── 20260101000000_add_posts_table.sql
 ├── sql/
 │   ├── .generated/
-│   │   └── get-posts.sql.ts
-│   └── get-posts.sql
+│   │   └── queries.sql.ts
+│   └── queries.sql
 └── sqlfu.config.ts
 ```
 
@@ -102,9 +102,10 @@ This applies any pending migrations to your dev database (`db/app.sqlite`) and r
 
 ## Add a query
 
-Create `sql/get-posts.sql`:
+Create `sql/queries.sql`:
 
 ```sql
+/** @name getPosts */
 select id, slug, title, body, published
 from posts
 where published = 1
@@ -112,7 +113,7 @@ order by id desc
 limit :limit
 ```
 
-Query files live next to the code that calls them. The filename is the query's identity -- it shows up in generated types, observability spans, and error messages.
+Query files live next to the code that calls them. The `@name` comment is the query's identity: it shows up in generated types, observability spans, and error messages.
 
 ## Generate types
 
@@ -121,8 +122,8 @@ npx sqlfu generate
 ```
 
 sqlfu reads your `.sql` files against `definitions.sql` by default and emits
-typed wrappers into `sql/.generated/`. For `get-posts.sql` you get a `getPosts`
-function with typed params and a typed result row attached via a namespace
+typed wrappers into `sql/.generated/`. For the `@name getPosts` query you get a
+`getPosts` function with typed params and a typed result row attached via a namespace
 (`getPosts.Params`, `getPosts.Result`). The function also carries `.sql` and
 `.query` (including `name: "getPosts"`) as static properties used by
 observability hooks.
@@ -136,7 +137,7 @@ next step can call the wrapper against `db/app.sqlite`.
 ```ts
 import {DatabaseSync} from 'node:sqlite';
 import {createNodeSqliteClient} from 'sqlfu';
-import {getPosts} from './sql/.generated/get-posts.sql';
+import {getPosts} from './sql/.generated/queries.sql.ts';
 
 const db = new DatabaseSync('./db/app.sqlite');
 const client = createNodeSqliteClient(db);

@@ -320,7 +320,7 @@ generate: {
 The function name (camelCase, matching the SQL filename) is the identifier for everything related to the query:
 
 ```ts
-import {findPostBySlug} from './sql/.generated/find-post-by-slug.sql.js';
+import {findPostBySlug} from './sql/.generated/find-post-by-slug.sql.ts';
 
 // Call it.
 const post = await findPostBySlug(client, {slug: 'hello'});
@@ -399,7 +399,7 @@ If `generate.validator` is unset, `null`, or `undefined`, the generator emits th
 The generated file is readable and small. If you want a _specific_ validator refinement (e.g. `.url()`, `.email()`, custom refinements) for a column, the honest answer today is to wrap the generated function in your application code:
 
 ```ts
-import {findPostBySlug as rawFindPostBySlug} from './sql/.generated/find-post-by-slug.sql.js';
+import {findPostBySlug as rawFindPostBySlug} from './sql/.generated/find-post-by-slug.sql.ts';
 import {z} from 'zod';
 
 const RichParams = rawFindPostBySlug.Params.extend({
