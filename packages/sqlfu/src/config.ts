@@ -51,7 +51,7 @@ export function inferImportExtension(tsconfigPreferences: TsconfigPreferences): 
   return tsconfigPreferences.prefersTsImportExtensions ? '.ts' : '.js';
 }
 
-const validValidators: SqlfuValidator[] = ['arktype', 'valibot', 'zod', 'zod-mini'];
+const validValidators: SqlfuValidator[] = ['arktype', 'typebox', 'valibot', 'zod', 'zod-mini'];
 const validGenerateRuntimes: SqlfuGenerateRuntime[] = ['sqlfu', 'effect-v3', 'effect-v4-unstable'];
 const validAuthorities: SqlfuAuthority[] = ['desired_schema', 'migrations', 'migration_history', 'live_schema'];
 const validPrefixes: SqlfuMigrationPrefix[] = ['iso', 'four-digit'];
@@ -114,7 +114,7 @@ export function assertConfigShape(configPath: string, config: object): asserts c
     if ('zod' in generateRecord) {
       throw new Error(
         `Invalid sqlfu config at ${configPath}: "generate.zod" is no longer supported. ` +
-          `Use "generate.validator: 'zod' | 'valibot' | 'zod-mini' | null" instead.`,
+          `Use "generate.validator: 'zod' | 'valibot' | 'zod-mini' | 'typebox' | null" instead.`,
       );
     }
 

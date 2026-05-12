@@ -88,7 +88,8 @@
   "dependencies": {
     "@clack/prompts": "^1.2.0",
     "@orpc/server": "^1.13.13",
-    "trpc-cli": "^0.14.0",
+    "trpc-cli": "https://pkg.pr.new/mmkal/trpc-cli@e9c8057",
+    "typebox": "^1.1.38",
     "zod": "^4.3.6"
   },
   "devDependencies": {

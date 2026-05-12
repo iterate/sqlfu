@@ -103,3 +103,4 @@ export {applyMigrations, migrationsFromBundle} from './migrations/index.js';
 export type {Migration, MigrationBundle} from './migrations/index.js';
 
 export {prettifyStandardSchemaError} from './vendor/standard-schema/errors.js';
+export {parseTypeBox, prettifyTypeBoxError} from './typebox.js';

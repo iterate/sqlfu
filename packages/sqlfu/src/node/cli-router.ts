@@ -1,5 +1,6 @@
 import {os} from '@orpc/server';
-import {z} from 'zod';
+import {typeboxToStandardSchema} from 'trpc-cli';
+import Type from 'typebox';
 
 import {
   type SqlfuCommandRouterContext,
@@ -33,6 +34,14 @@ import {
 
 const base = os.$context<SqlfuCommandRouterContext>();
 
+function input<const Schema extends object>(schema: Schema) {
+  return typeboxToStandardSchema(schema);
+}
+
+function optionalObjectInput<const Properties extends Record<string, object>>(properties: Properties) {
+  return input(Type.Union([Type.Object(properties), Type.Undefined()]));
+}
+
 export const router = {
   serve: base
     .meta({
@@ -40,17 +49,14 @@ export const router = {
       description: `Start the local sqlfu backend server used by the hosted studio at sqlfu.dev/ui.`,
     })
     .input(
-      z
-        .object({
-          port: z.number().int().positive(),
-          ui: z
-            .boolean()
-            .describe(
-              `Also serve @sqlfu/ui on the same port. Requires @sqlfu/ui@${packageJson.version} to be installed.`,
-            ),
-        })
-        .partial()
-        .optional(),
+      optionalObjectInput({
+        port: Type.Optional(Type.Integer({minimum: 1})),
+        ui: Type.Optional(
+          Type.Boolean({
+            description: `Also serve @sqlfu/ui on the same port. Requires @sqlfu/ui@${packageJson.version} to be installed.`,
+          }),
+        ),
+      }),
     )
     .handler(async ({context, input}) => {
       const project = await loadContextProjectState(context);
@@ -99,12 +105,9 @@ export const router = {
       description: `Stop the process listening on the local sqlfu backend port.`,
     })
     .input(
-      z
-        .object({
-          port: z.number().int().positive(),
-        })
-        .partial()
-        .optional(),
+      optionalObjectInput({
+        port: Type.Optional(Type.Integer({minimum: 1})),
+      }),
     )
     .handler(async ({input}) => {
       const port = input?.port || 56081;
@@ -122,16 +125,13 @@ export const router = {
       description: `Generate TypeScript functions for all queries in the sql/ directory.`,
     })
     .input(
-      z
-        .object({
-          watch: z
-            .boolean()
-            .describe(
-              `Run generate once, then re-run whenever a query, definitions.sql, or migration file changes. Exits on SIGINT.`,
-            ),
-        })
-        .partial()
-        .optional(),
+      optionalObjectInput({
+        watch: Type.Optional(
+          Type.Boolean({
+            description: `Run generate once, then re-run whenever a query, definitions.sql, or migration file changes. Exits on SIGINT.`,
+          }),
+        ),
+      }),
     )
     .handler(async ({context, input}) => {
       const sqlfuContext = await loadContextConfig(context);
@@ -148,13 +148,15 @@ export const router = {
       description: `Format .sql files in place.`,
     })
     .input(
-      z.object({
-        paths: z
-          .array(z.string().min(1))
-          .min(1)
-          .meta({positional: true})
-          .describe('One or more .sql file paths or glob patterns.'),
-      }),
+      input(
+        Type.Object({
+          paths: Type.Array(Type.String({minLength: 1}), {
+            minItems: 1,
+            positional: true,
+            description: 'One or more .sql file paths or glob patterns.',
+          }),
+        }),
+      ),
     )
     .handler(async ({context, input}) => {
       // Use the project's configured dialect if there's a sqlfu project
@@ -192,15 +194,14 @@ export const router = {
       description: `Create a migration file from the diff between replayed migrations and definitions.sql.`,
     })
     .input(
-      z
-        .object({
-          name: z
-            .string()
-            .min(1)
-            .describe('The name of the migration to create. If omitted one is derived from the drafted SQL.'),
-        })
-        .partial()
-        .optional(),
+      optionalObjectInput({
+        name: Type.Optional(
+          Type.String({
+            minLength: 1,
+            description: 'The name of the migration to create. If omitted one is derived from the drafted SQL.',
+          }),
+        ),
+      }),
     )
     .handler(async ({context, input}) => {
       const result = await applyDraftSql(await loadContextConfig(context), input, context.confirm);
@@ -213,16 +214,13 @@ export const router = {
       aliases: {options: {yes: 'y'}},
     })
     .input(
-      z
-        .object({
-          yes: z
-            .boolean()
-            .describe(
-              `Skip the confirmation prompt and apply pending migrations. Defaults to true when stdin is not a TTY (e.g. CI, piped invocations), false otherwise.`,
-            ),
-        })
-        .partial()
-        .optional(),
+      optionalObjectInput({
+        yes: Type.Optional(
+          Type.Boolean({
+            description: `Skip the confirmation prompt and apply pending migrations. Defaults to true when stdin is not a TTY (e.g. CI, piped invocations), false otherwise.`,
+          }),
+        ),
+      }),
     )
     .handler(async ({context, input}) => {
       const yes = input?.yes ?? !process.stdin.isTTY;
@@ -258,9 +256,11 @@ export const router = {
       description: `Find migrations by substring and show whether each one is applied.`,
     })
     .input(
-      z.object({
-        text: z.string().min(1),
-      }),
+      input(
+        Type.Object({
+          text: Type.String({minLength: 1}),
+        }),
+      ),
     )
     .handler(async ({context, input}) => {
       const initializedContext = await loadContextConfig(context);
@@ -282,9 +282,11 @@ export const router = {
       description: `Set migration history to an exact target without changing the live schema.`,
     })
     .input(
-      z.object({
-        target: z.string().min(1),
-      }),
+      input(
+        Type.Object({
+          target: Type.String({minLength: 1}),
+        }),
+      ),
     )
     .handler(async ({context, input}) => {
       await applyBaselineSql(await loadContextConfig(context), input, context.confirm);
@@ -295,9 +297,11 @@ export const router = {
       description: `Change the database schema and migration history to match an exact migration target.`,
     })
     .input(
-      z.object({
-        target: z.string().min(1).meta({positional: true}),
-      }),
+      input(
+        Type.Object({
+          target: Type.String({minLength: 1, positional: true}),
+        }),
+      ),
     )
     .handler(async ({context, input}) => {
       await applyGotoSql(await loadContextConfig(context), input, context.confirm);

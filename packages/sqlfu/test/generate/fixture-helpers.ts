@@ -157,6 +157,8 @@ async function ensureTypecheckProject(): Promise<Project> {
         'zod/mini': [path.join(packageRoot, 'node_modules', 'zod', 'mini')],
         valibot: [path.join(packageRoot, 'node_modules', 'valibot')],
         arktype: [path.join(packageRoot, 'node_modules', 'arktype')],
+        typebox: [path.join(packageRoot, 'node_modules', 'typebox')],
+        'typebox/schema': [path.join(packageRoot, 'node_modules', 'typebox', 'build', 'schema', 'index.d.mts')],
         '@effect/sql': [path.join(packageRoot, 'node_modules', '@effect', 'sql', 'dist', 'dts', 'index.d.ts')],
         '@effect/sql/*': [path.join(packageRoot, 'node_modules', '@effect', 'sql', 'dist', 'dts', '*.d.ts')],
         'effect/unstable/sql': [path.join(packageRoot, 'test', 'generate', 'effect-v4-unstable-sql.d.ts')],

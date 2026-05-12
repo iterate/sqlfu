@@ -91,8 +91,11 @@ importers:
         specifier: workspace:*
         version: link:../ui
       trpc-cli:
-        specifier: ^0.14.0
-        version: 0.14.0(@orpc/server@1.13.13(@opentelemetry/api@1.9.1)(crossws@0.3.5)(ws@8.20.0))(effect@3.21.2)(valibot@1.3.1(typescript@5.9.3))(zod@4.3.6)
+        specifier: https://pkg.pr.new/mmkal/trpc-cli@e9c8057
+        version: https://pkg.pr.new/mmkal/trpc-cli@e9c8057(@orpc/server@1.13.13(@opentelemetry/api@1.9.1)(crossws@0.3.5)(ws@8.20.0))(effect@3.21.2)(typebox@1.1.38)(valibot@1.3.1(typescript@5.9.3))(zod@4.3.6)
+      typebox:
+        specifier: ^1.1.38
+        version: 1.1.38
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -7002,8 +7005,9 @@ packages:
   trough@2.2.0:
     resolution: {integrity: sha512-tmMpK00BjZiUyVyvrBK7knerNgmgvcV/KLVyuma/SC+TQN167GrMRciANTz09+k3zW8L8t60jWO1GpfkZdjTaw==}
 
-  trpc-cli@0.14.0:
-    resolution: {integrity: sha512-Ibin1oLB6gGWfx/YfzbS+GYy3t2RbMUm+qUal8VYtGMt5kpwL6FteMNz1Mk9x7w0jB72xGxQm4B5VWtnO/Nihw==}
+  trpc-cli@https://pkg.pr.new/mmkal/trpc-cli@e9c8057:
+    resolution: {integrity: sha512-5p63lQWNS8+PbQfoPnvsYSMQ+/blSGuHuBKHWniH4TIYSL+8haGXHHco+AddfMMUydU9RcxSq6RrQUHyh95j6g==, tarball: https://pkg.pr.new/mmkal/trpc-cli@e9c8057}
+    version: 0.0.0-dev-20260512125756
     engines: {node: '>=18'}
     hasBin: true
     peerDependencies:
@@ -7011,6 +7015,7 @@ packages:
       '@trpc/server': ^10.45.2 || ^11.0.1
       '@valibot/to-json-schema': ^1.1.0
       effect: ^3.14.2 || ^4.0.0
+      typebox: ^1.1.37
       valibot: ^1.1.0
       zod: ^3.24.0 || ^4.0.0
     peerDependenciesMeta:
@@ -7021,6 +7026,8 @@ packages:
       '@valibot/to-json-schema':
         optional: true
       effect:
+        optional: true
+      typebox:
         optional: true
       valibot:
         optional: true
@@ -7068,6 +7075,9 @@ packages:
   type-fest@5.5.0:
     resolution: {integrity: sha512-PlBfpQwiUvGViBNX84Yxwjsdhd1TUlXr6zjX7eoirtCPIr08NAmxwa+fcYBTeRQxHo9YC9wwF3m9i700sHma8g==}
     engines: {node: '>=20'}
+
+  typebox@1.1.38:
+    resolution: {integrity: sha512-pZ0aQPmMmXoUvSbeuWf/Hzsc+avNw/Zd6VeE8CFgkVGWyuHPJvqeJJDeJqLve+K70LvjYIoleGcoJHPT17cWoA==}
 
   typescript-eslint@8.59.0:
     resolution: {integrity: sha512-BU3ONW9X+v90EcCH9ZS6LMackcVtxRLlI3XrYyqZIwVSHIk7Qf7bFw1z0M9Q0IUxhTMZCf8piY9hTYaNEIASrw==}
@@ -15067,12 +15077,13 @@ snapshots:
 
   trough@2.2.0: {}
 
-  trpc-cli@0.14.0(@orpc/server@1.13.13(@opentelemetry/api@1.9.1)(crossws@0.3.5)(ws@8.20.0))(effect@3.21.2)(valibot@1.3.1(typescript@5.9.3))(zod@4.3.6):
+  trpc-cli@https://pkg.pr.new/mmkal/trpc-cli@e9c8057(@orpc/server@1.13.13(@opentelemetry/api@1.9.1)(crossws@0.3.5)(ws@8.20.0))(effect@3.21.2)(typebox@1.1.38)(valibot@1.3.1(typescript@5.9.3))(zod@4.3.6):
     dependencies:
       commander: 14.0.3
     optionalDependencies:
       '@orpc/server': 1.13.13(@opentelemetry/api@1.9.1)(crossws@0.3.5)(ws@8.20.0)
       effect: 3.21.2
+      typebox: 1.1.38
       valibot: 1.3.1(typescript@5.9.3)
       zod: 4.3.6
 
@@ -15111,6 +15122,8 @@ snapshots:
   type-fest@5.5.0:
     dependencies:
       tagged-tag: 1.0.0
+
+  typebox@1.1.38: {}
 
   typescript-eslint@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3):
     dependencies:

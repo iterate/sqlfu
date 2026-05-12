@@ -765,6 +765,50 @@ test('generate with validator: zod-mini validates at runtime via standard schema
   await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(/Invalid input[\s\S]+slug/);
 });
 
+test('generate with validator: typebox validates at runtime via compiled TypeBox parsers', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create table posts (
+        id integer primary key,
+        slug text not null,
+        title text,
+        status text not null check (status in ('draft', 'published'))
+      );
+    `,
+    files: {
+      'sql/find-post-by-slug.sql': `select id, slug, title, status from posts where slug = :slug limit 1;`,
+    },
+    config: {generate: {validator: 'typebox'}},
+  });
+
+  await project.generate();
+  await project.applyStatements(`insert into posts (id, slug, title, status) values (1, 'hello', 'Hello', 'draft');`);
+
+  const mod = await project.importTranspiledModule<{
+    findPostBySlug: (client: unknown, params: {slug: string}) => Promise<unknown>;
+  }>('sql/.generated/find-post-by-slug.sql.ts');
+
+  using database = project.openDatabase();
+  const client = createNodeSqliteClient(database.database);
+
+  await expect(mod.findPostBySlug(client, {slug: 'hello'})).resolves.toMatchObject({
+    id: 1,
+    slug: 'hello',
+    status: 'draft',
+  });
+  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toThrow(
+    /Validation failed:[\s\S]+\/slug must be string/,
+  );
+
+  const badClient = {
+    ...client,
+    all: async () => [{id: 'not-a-number', slug: 'oops', title: null, status: 'draft'}],
+  };
+  await expect(mod.findPostBySlug(badClient as never, {slug: 'x'})).rejects.toThrow(
+    /Validation failed:[\s\S]+\/id must be number/,
+  );
+});
+
 test('generate with validator: arktype validates at runtime via standard schema', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: dedent`
@@ -827,6 +871,30 @@ test('generate with prettyErrors: false + validator: zod lets the raw ZodError p
   });
 });
 
+test('generate with prettyErrors: false + validator: typebox lets the raw ParseError propagate', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: `create table posts (id integer primary key, slug text not null);`,
+    files: {
+      'sql/find-post-by-slug.sql': `select id, slug from posts where slug = :slug limit 1;`,
+    },
+    config: {generate: {validator: 'typebox', prettyErrors: false}},
+  });
+
+  await project.generate();
+
+  const mod = await project.importTranspiledModule<{
+    findPostBySlug: (client: unknown, params: {slug: string}) => Promise<unknown>;
+  }>('sql/.generated/find-post-by-slug.sql.ts');
+
+  using database = project.openDatabase();
+  const client = createNodeSqliteClient(database.database);
+
+  await expect(mod.findPostBySlug(client, {slug: 42 as unknown as string})).rejects.toSatisfy((error: unknown) => {
+    if (error instanceof Error && error.message.includes('Validation failed')) return false;
+    return Array.isArray((error as unknown as {errors?: unknown}).errors);
+  });
+});
+
 for (const validator of ['valibot', 'zod-mini', 'arktype'] as const) {
   test(`generate with prettyErrors: false + validator: ${validator} throws raw issues inline`, async () => {
     await using project = await createRuntimeFixture({
@@ -860,7 +928,7 @@ async function createRuntimeFixture(input: {
   files: Record<string, string>;
   config?: {
     generate?: {
-      validator?: 'arktype' | 'valibot' | 'zod' | 'zod-mini' | null;
+      validator?: 'arktype' | 'typebox' | 'valibot' | 'zod' | 'zod-mini' | null;
       prettyErrors?: boolean;
       sync?: boolean;
       experimentalJsonTypes?: boolean;
@@ -978,6 +1046,9 @@ function rewriteBareImports(source: string): string {
     'zod/mini': pathToFileURL(path.join(packageRoot, 'node_modules', 'zod', 'mini', 'index.js')).href,
     valibot: pathToFileURL(path.join(packageRoot, 'node_modules', 'valibot', 'dist', 'index.mjs')).href,
     arktype: pathToFileURL(path.join(packageRoot, 'node_modules', 'arktype', 'out', 'index.js')).href,
+    typebox: pathToFileURL(path.join(packageRoot, 'node_modules', 'typebox', 'build', 'index.mjs')).href,
+    'typebox/schema': pathToFileURL(path.join(packageRoot, 'node_modules', 'typebox', 'build', 'schema', 'index.mjs'))
+      .href,
     '@effect/sql': pathToFileURL(path.join(packageRoot, 'node_modules', '@effect', 'sql', 'dist', 'esm', 'index.js'))
       .href,
     'effect/Effect': pathToFileURL(path.join(packageRoot, 'node_modules', 'effect', 'dist', 'esm', 'Effect.js')).href,

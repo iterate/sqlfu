@@ -1887,18 +1887,19 @@ function buildQueryReference(
  * overall file layout (schemas as module-scoped consts, namespace merging, Object.assign)
  * is identical across all of them.
  *
- * The emission split between `'zod'` and `'standard'` flavours mirrors the real divide:
+ * The emission split between `'zod'`, `'standard'`, and `'typebox'` flavours mirrors the real divide:
  * zod has a first-class `safeParse` + `z.prettifyError`, so it doesn't need anything from
  * sqlfu at runtime. Valibot, zod-mini, and arktype share the Standard Schema
  * `~standard.validate` entry point — the generated wrapper inlines the result-guard
  * (promise-check, issues-check) and, when pretty errors are on, calls sqlfu's re-export of
- * `prettifyStandardSchemaError` on the failure result. When pretty errors are off, nothing
- * is imported from sqlfu.
+ * `prettifyStandardSchemaError` on the failure result. TypeBox compiles schemas with
+ * `typebox/schema` and parses via `Validator.Parse`, optionally routing parse errors through
+ * sqlfu's TypeBox-native formatter.
  */
 type ValidatorEmitter = {
   importLine: string;
-  /** `'zod'` uses safeParse/z.prettifyError; `'standard'` uses `~standard.validate` + sqlfu helper. */
-  parseFlavour: 'zod' | 'standard';
+  /** `zod`, Standard Schema, or TypeBox-native validation. */
+  parseFlavour: 'zod' | 'standard' | 'typebox';
   /**
    * Render a single `"  name: expression,"` line for a schema object. Controls both the
    * key (for validators like arktype that express optionality via `"name?"`) and the value
@@ -1967,6 +1968,23 @@ const valibotEmitter: ValidatorEmitter = {
   inferExpression: (schemaName) => `v.InferOutput<typeof ${schemaName}>`,
 };
 
+const typeboxEmitter: ValidatorEmitter = {
+  importLine: [`import Type from 'typebox';`, `import Schema from 'typebox/schema';`].join('\n'),
+  parseFlavour: 'typebox',
+  renderFieldLine: valueWrappedFieldLine(
+    (field) => typeboxExpressionForField(field),
+    (expression) => `Type.Union([${expression}, Type.Null()])`,
+    (expression) => `Type.Optional(${expression})`,
+  ),
+  objectSchemaDeclaration: ({schemaName, fieldLines}) => [
+    `const ${schemaName} = Type.Object({`,
+    ...fieldLines,
+    `});`,
+    `const ${typeboxValidatorName(schemaName)} = Schema.Compile(${schemaName});`,
+  ],
+  inferExpression: (schemaName) => `Type.Static<typeof ${schemaName}>`,
+};
+
 /**
  * Arktype's idiomatic shape is TS-syntax-as-schema: `type({slug: "string", title: "string | null"})`.
  * Optional fields are expressed by suffixing `"?"` on the *key*, not by wrapping the value. Primitive
@@ -1990,6 +2008,7 @@ function getValidatorEmitter(validator: SqlfuValidator): ValidatorEmitter {
   if (validator === 'zod') return zodEmitter;
   if (validator === 'zod-mini') return zodMiniEmitter;
   if (validator === 'valibot') return valibotEmitter;
+  if (validator === 'typebox') return typeboxEmitter;
   return arktypeEmitter;
 }
 
@@ -2239,12 +2258,18 @@ function renderValidatorQueryWrapper(input: {
  *  - zod path never needs a runtime helper (uses `z.prettifyError` directly).
  *  - standard-schema path pulls in `prettifyStandardSchemaError` when pretty errors are on,
  *    so the inline failure branch can turn issues into a readable message.
+ *  - typebox path pulls in `parseTypeBox` when pretty errors are on, so generated
+ *    wrappers still parse with TypeBox's compiled validator while formatting TypeBox
+ *    `ParseError.errors`.
  *  - with pretty errors off, no runtime value is imported from sqlfu in either path — the
  *    generated file is fully self-contained apart from its validator library.
  */
 function buildRuntimeImports(emitter: ValidatorEmitter, prettyErrors: boolean, clientType: string): string {
   if (emitter.parseFlavour === 'standard' && prettyErrors) {
     return `import {type ${clientType}, prettifyStandardSchemaError} from 'sqlfu';`;
+  }
+  if (emitter.parseFlavour === 'typebox' && prettyErrors) {
+    return `import {type ${clientType}, parseTypeBox} from 'sqlfu';`;
   }
   return `import type {${clientType}} from 'sqlfu';`;
 }
@@ -2344,6 +2369,53 @@ function valibotExpressionForTsType(tsType: string): string {
   return 'v.unknown()';
 }
 
+function typeboxExpressionForField(field: GeneratedField): string {
+  if (field.objectFields) {
+    const objectExpression = `Type.Object({ ${field.objectFields
+      .map((objectField) => {
+        let expression = typeboxExpressionForField(objectField);
+        if (!objectField.notNull) expression = `Type.Union([${expression}, Type.Null()])`;
+        return `${objectField.name}: ${expression}`;
+      })
+      .join(', ')} })`;
+    if (field.acceptsSingleOrArray) {
+      return `Type.Union([${objectExpression}, Type.Array(${objectExpression})])`;
+    }
+    return field.isArray ? `Type.Array(${objectExpression})` : objectExpression;
+  }
+  if (field.plainTsType) {
+    return `Type.Script(\`${escapeTemplateLiteralChunk(field.tsType)}\`)`;
+  }
+  return typeboxExpressionForTsType(field.tsType);
+}
+
+function typeboxExpressionForTsType(tsType: string): string {
+  if (tsType === 'string') return 'Type.String()';
+  if (tsType === 'number') return 'Type.Number()';
+  if (tsType === 'boolean') return 'Type.Boolean()';
+  if (tsType === 'Date') {
+    return `Type.Refine(Type.Unsafe<Date>({}), (value) => value instanceof Date, () => 'must be Date')`;
+  }
+  if (tsType === 'Uint8Array' || tsType === 'ArrayBuffer') {
+    return `Type.Refine(Type.Unsafe<Uint8Array>({}), (value) => value instanceof Uint8Array, () => 'must be Uint8Array')`;
+  }
+  if (tsType === 'any') return 'Type.Unknown()';
+  if (tsType.endsWith('[]')) {
+    return `Type.Array(${typeboxExpressionForTsType(tsType.slice(0, -2))})`;
+  }
+
+  const enumValues = parseStringLiteralUnion(tsType);
+  if (enumValues) {
+    return `Type.Union([${enumValues.map((value) => `Type.Literal(${JSON.stringify(value)})`).join(', ')}])`;
+  }
+
+  return 'Type.Unknown()';
+}
+
+function typeboxValidatorName(schemaName: string): string {
+  return `${schemaName}Validator`;
+}
+
 type InputValidation = {
   /** Preamble statements to emit before the `query(...)` call (guards / throws). */
   statements: string[];
@@ -2386,6 +2458,19 @@ function buildInputValidation(
       expression: `${parsedName}.data`,
     };
   }
+  if (emitter.parseFlavour === 'typebox') {
+    const validatorName = typeboxValidatorName(schemaName);
+    if (!prettyErrors) {
+      return {
+        statements: [],
+        expression: `${validatorName}.Parse(${rawVariable})`,
+      };
+    }
+    return {
+      statements: [],
+      expression: `parseTypeBox(${validatorName}, ${rawVariable})`,
+    };
+  }
 
   // Standard Schema flavour (valibot, zod-mini). Inline result-guard either way.
   const resultName = `parsed${schemaName}Result`;
@@ -2416,6 +2501,9 @@ function rowParseExpressionOrNull(
   if (emitter.parseFlavour === 'zod' && !prettyErrors) {
     return `${schemaName}.parse(${rowExpression})`;
   }
+  if (emitter.parseFlavour === 'typebox' && !prettyErrors) {
+    return `${typeboxValidatorName(schemaName)}.Parse(${rowExpression})`;
+  }
   return null;
 }
 
@@ -2441,6 +2529,9 @@ function rowParseStatements(
       `${indent}if (!parsed.success) throw new Error(z.prettifyError(parsed.error));`,
       `${indent}return ${parsedData};`,
     ];
+  }
+  if (emitter.parseFlavour === 'typebox') {
+    return [`${indent}return parseTypeBox(${typeboxValidatorName(schemaName)}, ${rowExpression});`];
   }
   // Standard Schema — same inline 3-step guard as for params, flipped to prettyErrors.
   return [
