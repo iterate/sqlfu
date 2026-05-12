@@ -142,6 +142,7 @@ function renderQueryDocument(input: {
           dataSchema: `${querySource.functionName}Data`,
           paramsSchema: `${querySource.functionName}Params`,
           resultSchema: `${querySource.functionName}Result`,
+          resultMapper: `${querySource.functionName}MapResult`,
         }
       : undefined;
 
@@ -211,6 +212,7 @@ type LocalNames = {
   dataSchema: string;
   paramsSchema: string;
   resultSchema: string;
+  resultMapper: string;
 };
 
 function isEffectSqlRuntime(runtime: SqlfuGenerateRuntime): runtime is 'effect-v3' | 'effect-v4-unstable' {
@@ -1501,7 +1503,8 @@ function renderQueryWrapper(input: {
   const resultTypeRef = `${functionName}.Result`;
   const resultMapping = mapColumnDerivedFields(getResultFields(descriptor), input.casing);
   const resultFields = resultMapping.publicFields;
-  const resultMapperName = resultMapping.hasNameChanges || hasJsonFields(resultFields) ? 'mapResult' : null;
+  const resultMapperName =
+    resultMapping.hasNameChanges || hasJsonFields(resultFields) ? input.localNames?.resultMapper || 'mapResult' : null;
   const resultRawFields = resultMapperName ? resultMapping.mappings.map((mapping) => rawResultField(mapping.raw)) : [];
   const decodeJsonResults = hasJsonFields(resultFields) && !resultMapperName;
 
@@ -1557,7 +1560,7 @@ function renderQueryWrapper(input: {
 
   const resultMapperLines =
     emitResultType && resultMapperName
-      ? ['', ...renderResultMapper(functionName, resultMapping.mappings, resultTypeRef)]
+      ? ['', ...renderResultMapper(resultMapperName, functionName, resultMapping.mappings, resultTypeRef)]
       : [];
 
   const implementationLines = emitResultType
@@ -1618,7 +1621,8 @@ function renderEffectSqlQueryWrapper(input: {
   const resultTypeRef = `${functionName}.Result`;
   const resultMapping = mapColumnDerivedFields(getResultFields(descriptor), input.casing);
   const resultFields = resultMapping.publicFields;
-  const resultMapperName = resultMapping.hasNameChanges || hasJsonFields(resultFields) ? 'mapResult' : null;
+  const resultMapperName =
+    resultMapping.hasNameChanges || hasJsonFields(resultFields) ? input.localNames?.resultMapper || 'mapResult' : null;
   const resultRawFields = resultMapperName ? resultMapping.mappings.map((mapping) => rawResultField(mapping.raw)) : [];
   const decodeJsonResults = hasJsonFields(resultFields) && !resultMapperName;
 
@@ -1667,7 +1671,7 @@ function renderEffectSqlQueryWrapper(input: {
 
   const resultMapperLines =
     emitResultType && resultMapperName
-      ? ['', ...renderResultMapper(functionName, resultMapping.mappings, resultTypeRef)]
+      ? ['', ...renderResultMapper(resultMapperName, functionName, resultMapping.mappings, resultTypeRef)]
       : [];
 
   return [
@@ -2138,7 +2142,8 @@ function renderValidatorQueryWrapper(input: {
   const resultMode = getResultMode(descriptor);
   const resultMapping = mapColumnDerivedFields(getResultFields(descriptor), input.casing);
   const resultFields = resultMapping.publicFields;
-  const resultMapperName = resultMapping.hasNameChanges || hasJsonFields(resultFields) ? 'mapResult' : null;
+  const resultMapperName =
+    resultMapping.hasNameChanges || hasJsonFields(resultFields) ? input.localNames?.resultMapper || 'mapResult' : null;
   const resultRawFields = resultMapperName ? resultMapping.mappings.map((mapping) => rawResultField(mapping.raw)) : [];
   const decodeJsonResults = hasJsonFields(resultFields) && !resultMapperName;
   const hasData = (descriptor.data?.length ?? 0) > 0;
@@ -2223,7 +2228,7 @@ function renderValidatorQueryWrapper(input: {
   const queryReference = buildQueryReference(hasData, hasParams, dataExpression!, paramsExpression!, queryName);
   const resultMapperLines =
     emitResultSchema && resultMapperName
-      ? ['', ...renderResultMapper(functionName, resultMapping.mappings, resultTypeRef)]
+      ? ['', ...renderResultMapper(resultMapperName, functionName, resultMapping.mappings, resultTypeRef)]
       : [];
 
   const implementationLines = emitResultSchema
@@ -3336,9 +3341,14 @@ function renameGeneratedField<TField extends GeneratedField>(field: TField, name
   };
 }
 
-function renderResultMapper(functionName: string, mappings: FieldMapping[], resultTypeRef: string): string[] {
+function renderResultMapper(
+  resultMapperName: string,
+  functionName: string,
+  mappings: FieldMapping[],
+  resultTypeRef: string,
+): string[] {
   return [
-    `function mapResult(row: ${functionName}.RawResult): ${resultTypeRef} {`,
+    `function ${resultMapperName}(row: ${functionName}.RawResult): ${resultTypeRef} {`,
     `\treturn {`,
     ...mappings.map(
       (mapping) => `\t\t${objectLiteralProperty(mapping.public.name, resultMapperValue(mapping, resultTypeRef))},`,

@@ -90,6 +90,40 @@ test('generate defaults SQL-derived query results to an explicit camelCase bound
   expect(rows[0]).not.toHaveProperty('published_at');
 });
 
+test('generate gives multi-query result mappers unique local names', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: `create table posts (id integer primary key, published_at text not null, reviewed_at text not null);`,
+    files: {
+      'sql/queries.sql': dedent`
+        /** @name listPublishedPosts */
+        select id, published_at from posts order by id;
+
+        /** @name listReviewedPosts */
+        select id, reviewed_at from posts order by id;
+      `,
+    },
+  });
+
+  await project.generate();
+  await project.applyStatements(
+    `insert into posts (id, published_at, reviewed_at) values (1, '2026-05-12', '2026-05-13');`,
+  );
+
+  const generated = await project.readText('sql/.generated/queries.sql.ts');
+  expect(generated).toContain(`function listPublishedPostsMapResult(row: listPublishedPosts.RawResult)`);
+  expect(generated).toContain(`function listReviewedPostsMapResult(row: listReviewedPosts.RawResult)`);
+
+  const mod = await project.importTranspiledModule<{
+    listPublishedPosts(client: ReturnType<typeof createNodeSqliteClient>): Promise<Array<{publishedAt: string}>>;
+    listReviewedPosts(client: ReturnType<typeof createNodeSqliteClient>): Promise<Array<{reviewedAt: string}>>;
+  }>('sql/.generated/queries.sql.ts');
+
+  using database = project.openDatabase();
+  const client = createNodeSqliteClient(database.database);
+  await expect(mod.listPublishedPosts(client)).resolves.toMatchObject([{publishedAt: '2026-05-12'}]);
+  await expect(mod.listReviewedPosts(client)).resolves.toMatchObject([{reviewedAt: '2026-05-13'}]);
+});
+
 test('generate defaults column-derived update data to camelCase while preserving params', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: `create table posts (id integer primary key, published_at text not null);`,
