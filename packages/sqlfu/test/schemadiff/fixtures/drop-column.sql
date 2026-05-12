@@ -221,3 +221,35 @@ end;
 -- output:
 alter table person drop column nickname;
 -- #endregion
+
+-- #region: cte shadowing dropped table name should not make a view a blocker
+-- baseline:
+create table person(name text, nickname text);
+create view cte_person_names as
+with person as (select 'display' as nickname)
+select nickname from person;
+-- desired:
+create table person(name text);
+create view cte_person_names as
+with person as (select 'display' as nickname)
+select nickname from person;
+-- output:
+alter table person drop column nickname;
+-- #endregion
+
+-- #region: trigger writing same-named column on another table should not block column drop
+-- baseline:
+create table person(name text, nickname text);
+create table audit_log(nickname text);
+create trigger person_log after update on person begin
+  insert into audit_log(nickname) values ('changed');
+end;
+-- desired:
+create table person(name text);
+create table audit_log(nickname text);
+create trigger person_log after update on person begin
+  insert into audit_log(nickname) values ('changed');
+end;
+-- output:
+alter table person drop column nickname;
+-- #endregion
