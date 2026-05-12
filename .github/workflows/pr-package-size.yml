@@ -26,6 +26,10 @@ jobs:
 
       - run: corepack enable
 
+      - name: Pin pnpm for setup-node cache
+        working-directory: head
+        run: corepack prepare "$(node -p "require('./package.json').packageManager")" --activate
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
