@@ -303,7 +303,7 @@ A few rules of thumb:
 - **You're on Node ≥ 22 and want no extra deps**: `node:sqlite`.
 - **Mobile / browser**: Expo SQLite or `sqlite-wasm`.
 
-And probably the best thing: you don't have to choose *one*. You can define separate entrypoints for your local, test and production environments and write your application logic using the shared sqlfu `Client` interface, then pass around two different clients, and they'll behave in the same way.
+You do not have to choose one adapter for the whole app. Define separate entrypoints for local, test, and production environments, write application logic against the shared sqlfu `Client` interface, and pass in the client for the current runtime.
 
 ## Writing a custom adapter
 

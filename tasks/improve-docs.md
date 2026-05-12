@@ -6,12 +6,12 @@ I want you to think holistically about the docs, as mentioned in your agent inst
 
 ## Status summary
 
-2026-05-12 pass is in progress. Plan is a narrow writing-well pass over source docs surfaces after the recent landing/blog work, with an em-dash scan as the discovery tool. Main missing pieces are the scan, a small set of prose fixes, and docs build verification.
+2026-05-12 pass is done. Source docs were clean for em dashes, so this stayed narrow: four small writing-well edits replaced generic or chatty phrasing with concrete risk/adapter/runtime wording. Website build is green after building the UI package prerequisite.
 
 ## 2026-05-12 pass
 
 Branch: `bedtime-evergreen-2026-05-12`.
-PR: TBD.
+PR: #102.
 
 Scope:
 
@@ -22,11 +22,11 @@ Scope:
 
 Checklist:
 
-- [ ] Scan source docs surfaces for em-dashes and writing-well smells.
-- [ ] Make small prose fixes where the underlying concept is already clear.
-- [ ] Create a follow-up task if the docs expose a product or information-architecture gap that should not be fixed as prose.
-- [ ] Verify docs/website build appropriate to touched files.
-- [ ] Update this section with brief italic breadcrumbs as items land.
+- [x] Scan source docs surfaces for em-dashes and writing-well smells. _source docs surfaces were clean for em dashes once generated website output and historical task logs were excluded; the writing-well scan highlighted generic wording in adapters, migration model, runtime validation, and UI README prose._
+- [x] Make small prose fixes where the underlying concept is already clear. _tightened adapter choice wording, made `goto` risk concrete, changed runtime validation's "closes the loop" line to say what wrapper checks do, and replaced "intentionally powerful" in the UI README with the actual database access risk._
+- [x] Create a follow-up task if the docs expose a product or information-architecture gap that should not be fixed as prose. _none needed this pass; issues found were local prose problems, not unclear product concepts._
+- [x] Verify docs/website build appropriate to touched files. _`pnpm --filter @sqlfu/ui build` passed; `pnpm --filter sqlfu-website build` then built 48 pages, synced the UI bundle, and passed the website test._
+- [x] Update this section with brief italic breadcrumbs as items land. _this update._
 
 ## 2026-05-09 pass
 

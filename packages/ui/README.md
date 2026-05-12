@@ -106,7 +106,7 @@ With `prefixPath: '/my-db'`, the helper handles `/my-db`, `/my-db/assets/...`, `
 
 The minimum useful host is just `openDb`. That is enough for the table browser and SQL runner. File-system-backed features, scratch database analysis, and generated query catalog features need more host capabilities (`fs`, `openScratchDb`, `catalog`) and otherwise fail explicitly rather than pretending the worker has a filesystem.
 
-Do not mount this unauthenticated on the public internet. The UI is intentionally powerful: it can inspect tables and run SQL against the database returned by `host.openDb`. The passphrase form above is deliberately bare so the routing shape is visible; a real application should usually reuse its existing signed session or auth middleware.
+Do not mount this unauthenticated on the public internet. The UI can inspect tables and run SQL against the database returned by `host.openDb`. The passphrase form above is deliberately bare so the routing shape is visible; a real application should usually reuse its existing signed session or auth middleware.
 
 ## Local development
 

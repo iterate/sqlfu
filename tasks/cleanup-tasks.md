@@ -7,7 +7,7 @@ size: small
 
 ## Status summary
 
-2026-05-12 pass is in progress. Initial survey found no open PRs before tonight's workers started, a dirty local `main` blog edit that this pass will not touch, and existing dirty/revisit-able worktrees to preserve. Main missing pieces are the merged/closed PR survey, any safe task filing, and local worktree pruning.
+2026-05-12 pass is done. `intro-blog.md` was filed into `tasks/complete/` after PR #100 merged. No local worktrees were safe to prune; the remaining ones are active tonight, dirty, no-PR, or previously preserved revisit branches.
 
 Sometimes agents forget to move their task files to "done". Look at recent commits and see if that's happened. If it has, open a housekeeping PR to do just that. While you're there, you can also add to Implementation Notes if there's anything you spot in the change that wasn't tidied up properly that also wasn't documented in the task file.
 
@@ -16,7 +16,7 @@ Make sure local worktrees are cleaned up too.
 ## 2026-05-12 pass
 
 Branch: `bedtime-evergreen-2026-05-12`.
-PR: TBD.
+PR: #102.
 
 Scope:
 
@@ -27,18 +27,20 @@ Scope:
 
 Checklist:
 
-- [ ] Inspect current open and recently closed/merged PRs.
-- [ ] Inspect local worktrees and cleanliness.
-- [ ] File clearly completed task files into `tasks/complete/` with date-prefixed filenames.
-- [ ] Normalize stale status summaries/checklists before moving any task files.
-- [ ] Remove safe, clean, merged/closed local worktrees.
-- [ ] Verify final task tree and worktree list.
+- [x] Inspect current open and recently closed/merged PRs. _open at survey time: #101, #102, #103 plus later bedtime worker PRs; newly merged cleanup candidate: #100._
+- [x] Inspect local worktrees and cleanliness. _tonight's worker worktrees are active; `effect-client-interop` and `typesql-ddl-support` are dirty; `api-extractor`, `detect-spurious-definitions`, `drizzle-benchmark-sqlfu`, and `sqlfu-vendor-sqlite3def` were left as preserved/no-PR/revisit-able worktrees._
+- [x] File clearly completed task files into `tasks/complete/` with date-prefixed filenames. _filed `intro-blog.md` as `tasks/complete/2026-05-11-intro-blog.md` after PR #100 merged._
+- [x] Normalize stale status summaries/checklists before moving any task files. _marked the intro blog task as done and updated its final PR checklist breadcrumb._
+- [x] Remove safe, clean, merged/closed local worktrees. _none removed; no remaining worktree met the safe-prune bar._
+- [x] Verify final task tree and worktree list. _root task list no longer includes `intro-blog.md`; worktree list still includes only active bedtime worktrees plus the previously preserved dirty/revisit/no-PR worktrees._
 
 Implementation notes:
 
 - Local `main` was dirty before this pass with `website/src/content/blog/introducing-sqlfu.md`; this branch is based on `origin/main` and leaves that edit alone.
 - `origin/main` advanced to `0f14ae6` before this pass, so all bedtime branches are based on that commit rather than the dirty local checkout.
 - Existing dirty worktrees at survey time: `effect-client-interop` and `typesql-ddl-support`. Existing revisit-able or no-PR worktrees include `api-extractor`, `detect-spurious-definitions`, `drizzle-benchmark-sqlfu`, and `sqlfu-vendor-sqlite3def`.
+- PR #99 merged after the prior cleanup pass, but it was a direct website fix and no root task file matched it.
+- PR #100 merged `bedtime-introducing-sqlfu-2026-05-09`; that task still lived at the root with a stale final checklist item, so this pass filed it.
 
 ## 2026-05-09 pass
 

@@ -247,7 +247,7 @@ Mutates:
 
 It makes the database look like the schema implied by migrations through `<target>`, and records that history in the database.
 
-This is a more powerful and more dangerous command than `migrate`.
+This is higher-risk than `migrate`: it rewrites live schema and records new migration history in one operation.
 
 It should not mutate:
 
