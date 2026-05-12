@@ -53,6 +53,14 @@ If I report a bug, it's fine to investigate first, but reproduce with a red test
 
 Sometimes I'll reference "pgkit". That's a similar project I built a while ago for postgresql. It's checked out next door at ../pgkit, so you should freely explore the code as a reference implementation.
 
+## Pull request bodies
+
+When a PR changes expected fixture output, generated SQL, diagnostics, or other
+snapshot-like behavior, include a short before/after section in the PR body.
+Show the old output or old failure mode, then the new output. The goal is that a
+reviewer can understand why the fixture changed without checking out the branch
+or mentally reconstructing the previous behavior from the diff.
+
 ## Deciding where a feature gets documented
 
 Don't jump straight to "add a section to the README". Most non-trivial features need information on several surfaces, and each one is doing a different job. Work through these in order:
