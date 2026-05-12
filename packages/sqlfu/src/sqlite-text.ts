@@ -77,31 +77,13 @@ export function scanSqliteNamedParameters(sql: string): SqliteNamedParameter[] {
   const out: SqliteNamedParameter[] = [];
   let index = 0;
   while (index < sql.length) {
+    const skippedEnd = scanSqlIgnoredRange(sql, index);
+    if (skippedEnd !== null) {
+      index = skippedEnd;
+      continue;
+    }
+
     const code = sql.charCodeAt(index);
-    if (code === 0x27 /* ' */) {
-      index = scanQuotedSql(sql, index, 0x27);
-      continue;
-    }
-    if (code === 0x22 /* " */) {
-      index = scanQuotedSql(sql, index, 0x22);
-      continue;
-    }
-    if (code === 0x60 /* ` */) {
-      index = scanQuotedSql(sql, index, 0x60);
-      continue;
-    }
-    if (code === 0x5b /* [ */) {
-      index = scanBracketedSqlIdentifier(sql, index);
-      continue;
-    }
-    if (code === 0x2d /* - */ && sql.charCodeAt(index + 1) === 0x2d /* - */) {
-      index = scanSqlLineComment(sql, index + 2);
-      continue;
-    }
-    if (code === 0x2f /* / */ && sql.charCodeAt(index + 1) === 0x2a /* * */) {
-      index = scanSqlBlockComment(sql, index + 2);
-      continue;
-    }
     if (isNamedParameterPrefix(code) && isIdentStart(sql.charCodeAt(index + 1))) {
       const start = index;
       index += 2;
@@ -113,6 +95,21 @@ export function scanSqliteNamedParameters(sql: string): SqliteNamedParameter[] {
     index += 1;
   }
   return out;
+}
+
+function scanSqlIgnoredRange(sql: string, start: number): number | null {
+  const code = sql.charCodeAt(start);
+  if (code === 0x27 /* ' */) return scanQuotedSql(sql, start, 0x27);
+  if (code === 0x22 /* " */) return scanQuotedSql(sql, start, 0x22);
+  if (code === 0x60 /* ` */) return scanQuotedSql(sql, start, 0x60);
+  if (code === 0x5b /* [ */) return scanBracketedSqlIdentifier(sql, start);
+  if (code === 0x2d /* - */ && sql.charCodeAt(start + 1) === 0x2d /* - */) {
+    return scanSqlLineComment(sql, start + 2);
+  }
+  if (code === 0x2f /* / */ && sql.charCodeAt(start + 1) === 0x2a /* * */) {
+    return scanSqlBlockComment(sql, start + 2);
+  }
+  return null;
 }
 
 function scanQuotedSql(sql: string, start: number, quote: number): number {
@@ -386,77 +383,17 @@ export function splitSqlStatements(sql: string): string[] {
   const statements: string[] = [];
   let current = '';
   let index = 0;
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-  let inLineComment = false;
-  let inBlockComment = false;
 
   while (index < sql.length) {
     const char = sql[index]!;
-    const next = sql[index + 1];
-
-    if (inLineComment) {
-      current += char;
-      if (char === '\n') {
-        inLineComment = false;
-      }
-      index += 1;
+    const skippedEnd = scanSqlIgnoredRange(sql, index);
+    if (skippedEnd !== null) {
+      current += sql.slice(index, skippedEnd);
+      index = skippedEnd;
       continue;
     }
 
-    if (inBlockComment) {
-      current += char;
-      if (char === '*' && next === '/') {
-        current += next;
-        inBlockComment = false;
-        index += 2;
-        continue;
-      }
-      index += 1;
-      continue;
-    }
-
-    if (!inSingleQuote && !inDoubleQuote && char === '-' && next === '-') {
-      inLineComment = true;
-      current += char;
-      current += next;
-      index += 2;
-      continue;
-    }
-
-    if (!inSingleQuote && !inDoubleQuote && char === '/' && next === '*') {
-      inBlockComment = true;
-      current += char;
-      current += next;
-      index += 2;
-      continue;
-    }
-
-    if (char === "'" && !inDoubleQuote) {
-      current += char;
-      if (inSingleQuote && next === "'") {
-        current += next;
-        index += 2;
-        continue;
-      }
-      inSingleQuote = !inSingleQuote;
-      index += 1;
-      continue;
-    }
-
-    if (char === '"' && !inSingleQuote) {
-      current += char;
-      if (inDoubleQuote && next === '"') {
-        current += next;
-        index += 2;
-        continue;
-      }
-      inDoubleQuote = !inDoubleQuote;
-      index += 1;
-      continue;
-    }
-
-    if (char === ';' && !inSingleQuote && !inDoubleQuote) {
+    if (char === ';') {
       if (isTriggerStatementInProgress(current) && !isTriggerTerminator(current)) {
         current += char;
         index += 1;
@@ -486,62 +423,18 @@ export function splitSqlStatements(sql: string): string[] {
 
 function isCommentOnlySql(sql: string) {
   let index = 0;
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-  let inLineComment = false;
-  let inBlockComment = false;
 
   while (index < sql.length) {
     const char = sql[index]!;
-    const next = sql[index + 1];
 
-    if (inLineComment) {
-      if (char === '\n') {
-        inLineComment = false;
-      }
-      index += 1;
+    const skippedEnd = scanSqlIgnoredRange(sql, index);
+    if (skippedEnd !== null) {
+      if (char !== '-' && char !== '/') return false;
+      index = skippedEnd;
       continue;
     }
 
-    if (inBlockComment) {
-      if (char === '*' && next === '/') {
-        inBlockComment = false;
-        index += 2;
-        continue;
-      }
-      index += 1;
-      continue;
-    }
-
-    if (!inSingleQuote && !inDoubleQuote && char === '-' && next === '-') {
-      inLineComment = true;
-      index += 2;
-      continue;
-    }
-
-    if (!inSingleQuote && !inDoubleQuote && char === '/' && next === '*') {
-      inBlockComment = true;
-      index += 2;
-      continue;
-    }
-
-    if (char === "'" && !inDoubleQuote) {
-      if (inSingleQuote && next === "'") {
-        index += 2;
-        continue;
-      }
-      inSingleQuote = !inSingleQuote;
-      index += 1;
-      continue;
-    }
-
-    if (char === '"' && !inSingleQuote) {
-      inDoubleQuote = !inDoubleQuote;
-      index += 1;
-      continue;
-    }
-
-    if (!inSingleQuote && !inDoubleQuote && !/\s/u.test(char)) {
+    if (!/\s/u.test(char)) {
       return false;
     }
 
