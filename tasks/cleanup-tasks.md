@@ -7,11 +7,38 @@ size: small
 
 ## Status summary
 
-2026-05-09 pass is done. Five clearly merged task files were filed into `tasks/complete/`, their stale status summaries were normalized first, and 25 clean merged/closed worktrees were removed. Remaining worktrees are the current branch, closed-but-still-useful worktrees, dirty worktrees, or branches with no PR found.
+2026-05-12 pass is in progress. Initial survey found no open PRs before tonight's workers started, a dirty local `main` blog edit that this pass will not touch, and existing dirty/revisit-able worktrees to preserve. Main missing pieces are the merged/closed PR survey, any safe task filing, and local worktree pruning.
 
 Sometimes agents forget to move their task files to "done". Look at recent commits and see if that's happened. If it has, open a housekeeping PR to do just that. While you're there, you can also add to Implementation Notes if there's anything you spot in the change that wasn't tidied up properly that also wasn't documented in the task file.
 
 Make sure local worktrees are cleaned up too.
+
+## 2026-05-12 pass
+
+Branch: `bedtime-evergreen-2026-05-12`.
+PR: TBD.
+
+Scope:
+
+- File root task files only when the matching work is clearly merged or done.
+- Remove clean local worktrees only when their PRs are merged or intentionally closed and no local edits are present.
+- Leave dirty worktrees, no-PR worktrees, closed-but-revisit-able branches, and tonight's active worker worktrees in place.
+- Keep evergreen tasks open and append notes instead of moving them to `complete/`.
+
+Checklist:
+
+- [ ] Inspect current open and recently closed/merged PRs.
+- [ ] Inspect local worktrees and cleanliness.
+- [ ] File clearly completed task files into `tasks/complete/` with date-prefixed filenames.
+- [ ] Normalize stale status summaries/checklists before moving any task files.
+- [ ] Remove safe, clean, merged/closed local worktrees.
+- [ ] Verify final task tree and worktree list.
+
+Implementation notes:
+
+- Local `main` was dirty before this pass with `website/src/content/blog/introducing-sqlfu.md`; this branch is based on `origin/main` and leaves that edit alone.
+- `origin/main` advanced to `0f14ae6` before this pass, so all bedtime branches are based on that commit rather than the dirty local checkout.
+- Existing dirty worktrees at survey time: `effect-client-interop` and `typesql-ddl-support`. Existing revisit-able or no-PR worktrees include `api-extractor`, `detect-spurious-definitions`, `drizzle-benchmark-sqlfu`, and `sqlfu-vendor-sqlite3def`.
 
 ## 2026-05-09 pass
 

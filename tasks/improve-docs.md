@@ -4,6 +4,30 @@ Go through all of the docs and improve them. Look for inconsistencies, informati
 
 I want you to think holistically about the docs, as mentioned in your agent instructions for this repo. From time to time that will mean re-thinking docs entirely. Sometimes it will mean creating a separate task in the branch you create for *changing the product* instead. Docs are most useful when not thought of as something entirely downstream from the product code - if there's no clear way to write about a concept, the concept might be poorly thought through. You are free to flag that as an alternative to documenting weirdness.
 
+## Status summary
+
+2026-05-12 pass is in progress. Plan is a narrow writing-well pass over source docs surfaces after the recent landing/blog work, with an em-dash scan as the discovery tool. Main missing pieces are the scan, a small set of prose fixes, and docs build verification.
+
+## 2026-05-12 pass
+
+Branch: `bedtime-evergreen-2026-05-12`.
+PR: TBD.
+
+Scope:
+
+- Use the `writing-well` checklist on source docs prose that still looks rough after the recent landing/blog passes.
+- Run an em-dash scan over docs-facing source files, but avoid generated website output and historical task logs except as breadcrumbs.
+- Keep this pass small and editorial. If a page needs product-design work before it can be documented cleanly, create a follow-up task instead of papering it over.
+- Do not touch the pre-existing dirty `website/src/content/blog/introducing-sqlfu.md` edit in local `main`; this worktree is based on `origin/main`.
+
+Checklist:
+
+- [ ] Scan source docs surfaces for em-dashes and writing-well smells.
+- [ ] Make small prose fixes where the underlying concept is already clear.
+- [ ] Create a follow-up task if the docs expose a product or information-architecture gap that should not be fixed as prose.
+- [ ] Verify docs/website build appropriate to touched files.
+- [ ] Update this section with brief italic breadcrumbs as items land.
+
 ## 2026-05-09 pass
 
 Status: done for this bedtime pass. The main docs work was the aggressive rewrite of `website/src/content/blog/introducing-sqlfu.md`: it dropped from about 2,750 words to about 1,250 while preserving the SQL-first argument, iterate/agent motivation, example query, feature inventory, limits, and acknowledgements. A small em-dash sweep also cleaned the newly-added Cloudflare D1 docs/README prose. Website build is green.
