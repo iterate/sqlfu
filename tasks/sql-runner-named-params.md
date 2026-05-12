@@ -7,11 +7,16 @@ size: small
 
 ## Status
 
-Ready as a small bug task. This PR now records the current repro only. The
-original demo-mode `:name` failure was mostly absorbed by the shared
-`client.prepare()` / sqlite-wasm adapter path on `main`; the remaining visible
-demo bug is for bare UI form params against SQL placeholders written with
-`@name` or `$name`.
+2026-05-12 worker pass in progress. The task is small and narrowly scoped:
+reproduce the sqlite-wasm adapter/demo failure with a red test, fix bare object
+keys for SQL placeholders written as `:name`, `@name`, and `$name`, keep
+already-prefixed object keys and array params working, then file this task under
+`tasks/complete/` when the implementation is verified.
+
+Earlier status: this PR now records the current repro only. The original
+demo-mode `:name` failure was mostly absorbed by the shared `client.prepare()` /
+sqlite-wasm adapter path on `main`; the remaining visible demo bug is for bare
+UI form params against SQL placeholders written with `@name` or `$name`.
 
 ## What's broken
 
@@ -105,6 +110,16 @@ sqlfu's public contract, confirmed by this task:
 - `?NNN` explicit numbering. The UI doesn't expose it; if users type it
   directly into the SQL runner it'll just work via node:sqlite and probably
   via sqlite-wasm too — out of scope to audit.
+
+## Assumptions for the 2026-05-12 pass
+
+- The behavior belongs in the sqlite-wasm adapter rather than the UI because the
+  UI intentionally submits bare form keys.
+- A focused adapter/host-path test is enough for this bug; no browser fixture is
+  needed unless the existing test surface cannot exercise `client.prepare()`.
+- The parameter-name scan only needs to support SQLite's ordinary `:name`,
+  `@name`, and `$name` prefixes. Tcl-style `$name::suffix`/`$name(...)`
+  parameter names stay out of scope for this pass.
 
 ## Implementation Notes
 
