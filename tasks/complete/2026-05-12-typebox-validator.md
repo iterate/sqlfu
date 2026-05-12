@@ -56,3 +56,6 @@ using TypeBox-native schemas and TypeBox-native parsing/error formatting.
   propagate.
 - 2026-05-12: `Type.Script` successfully parses `sqlfu_types` TypeScript object
   definitions into runtime JSON Schema for TypeBox validators.
+- 2026-05-12: Follow-up polished multiline `Type.Script` output by indenting
+  embedded newlines and expanded the PR body with an abbreviated
+  `definitions.sql` plus generated TypeBox file example.

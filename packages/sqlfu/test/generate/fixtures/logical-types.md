@@ -357,9 +357,9 @@ import {type Client, parseTypeBox} from 'sqlfu';
 
 const recordSlackWebhookParams = Type.Object({
 	payload: Type.Script(`{
-  action: "message" | "reaction";
-  content: string
-}`),
+    action: "message" | "reaction";
+    content: string
+  }`),
 });
 const recordSlackWebhookParamsValidator = Schema.Compile(recordSlackWebhookParams);
 const recordSlackWebhookSql = `
@@ -390,9 +390,9 @@ export namespace recordSlackWebhook {
 const listSlackWebhooksResult = Type.Object({
 	id: Type.Number(),
 	payload: Type.Script(`{
-  action: "message" | "reaction";
-  content: string
-}`),
+    action: "message" | "reaction";
+    content: string
+  }`),
 });
 const listSlackWebhooksResultValidator = Schema.Compile(listSlackWebhooksResult);
 const listSlackWebhooksSql = `

@@ -2384,7 +2384,7 @@ function typeboxExpressionForField(field: GeneratedField): string {
     return field.isArray ? `Type.Array(${objectExpression})` : objectExpression;
   }
   if (field.plainTsType) {
-    return `Type.Script(\`${escapeTemplateLiteralChunk(field.tsType)}\`)`;
+    return `Type.Script(\`${escapeTemplateLiteralChunk(field.tsType).replaceAll('\n', '\n  ')}\`)`;
   }
   return typeboxExpressionForTsType(field.tsType);
 }
