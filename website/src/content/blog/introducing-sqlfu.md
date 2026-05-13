@@ -7,6 +7,56 @@ heroImage: "/assets/blog/friendship-regain-sqlfu.png"
 heroAlt: "SQL is back with sqlfu"
 ---
 
+`sqlfu` is a collection of complementary tools for writing typescript applications using plain SQL.
+
+>all you need is sql.
+
+The basic idea is: SQL is a decades-old language, and it's something you need for your schema, your data layer and your migrations. So, you do need SQL, but the aim of sqlfu is to make it so you don't need anything *more* than SQL.
+
+This isn't something against ORMs really, and definitely nothing against any specific ORMs. The hope is that by adopting sqlfu, you can avoid the need for them (in exchange for certain tradeoffs - there's no free lunch).
+
+What sqlfu includes:
+
+- a migrations system:
+   - which assumes you have a single `definitions.sql` expressing your "Desired Schema"
+   - a smart schema-diffing tool, which calculates how to get from your current state to the desired state
+   - a dead-simple migrations runner ([with no down migrations](https://sqlfu.dev/blog/down-considered-harmful))
+- a typescript generation command:
+   - this assumes you write your data-access layer as `.sql` files
+   - creates generated typescript files which you can call using a runtime client from your application
+- a runtime client:
+   - razor thin adapters - *wrapper* around existing, [battle-tested clients](https://sqlfu.dev/docs/adapters)
+- a formatter:
+   - opinionated vendored fork of [sql-formatter](https://npmjs.com/package/sql-formatter)
+- a CLI and UI:
+   - invoke the above features from the command line (`sqlfu migrate`, `sqlfu draft`, `sqlfu generate`, `sqlfu format` etc.)
+   - run `npx sqlfu` to get a browser UI to poke at your local database, view/run/author your schema, migrations and queries
+   - use the "partial-fetch" function to host the UI yourself and add auth for deployed admin access
+
+All of the above is in one small package: `npm install sqlfu`
+
+It's roughly divided into "dev-time" and "runtime".
+
+"dev-time" is the CLI, the UI and the API. It runs heavy-ish-weight procedures like schema inspection (which involves spawning scratch databases) and type generation.
+
+"runtime" is the client and migrator. There's almost nothing to this. It wraps existing database clients in a library-agnostic interface and just... runs SQL. You can freely import this in your application code.
+
+## Why you might want this
+
+ORMs are great. They solve real problems and I have no interest in trying to piss on them. Lots of smart people are very productive with them. I created sqlfu because I wanted to solve the same problems that ORMs do, while trying to avoid having another thing. The thing itself isn't bad, but fewer things can be better than more things.
+
+Assuming you don't want an ORM (which I think is the right neutral assumption, in the same way you don't particularly want a falconry glove, unless you have a falcon), before sqlfu, you're left in a tricky situation. You have to use a hodge-podge of disparate tools which don't know about each other:
+
+- client: `better-sqlite3`, or `libsql`, or `node:sqlite`, or `bun:sqlite`, or `drizzle` to abstract over those
+- migrator/schema-diffing: `flyway`, or `dbmate`, or `atlas`, or `skeema`, or `supabase`, or `drizzle` or a long list of other perfectly-good migrators
+- schema authoring: `sqlite3def` or `drizzle` (author in typescript)
+- type safety: `typesql` or `pgkit` (postgres), or `pgtyped` (postgres), or `drizzle` to write queries directly in typescript
+- formatting: `sql-formatter` or `drizzle` (since you don't write SQL with drizzle, so you can use prettier/oxfmt)
+
+If you are eagle-eyed, you'll see that `drizzle` is an option in *all* of those bullet points. The same applies to `prisma`. That's because they are really great! They solve loads of problems really well! But, they also impose an opinion on you: that you should be using their library to write your crown-jewels - the way your application interacts with your database. `sqlfu` aims to be a one-stop shop to achieve the above, and all you need to do is write in a beautiful language for structured querying.
+
+## An example
+
 `sqlfu` is a SQLite-first toolkit for teams that want the data layer to stay in SQL.
 
 The project starts from a blunt premise: if your schema is SQL, your migrations are SQL, and the query that runs in production is SQL, the source language of your database layer should probably be SQL too. TypeScript should still help. It should give you generated wrappers, typed params, typed rows, runtime validation if you ask for it, and a client that feels natural in application code. It just should not be the language you translate every query into before SQLite ever sees it.
