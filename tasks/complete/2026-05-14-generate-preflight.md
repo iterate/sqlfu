@@ -1,11 +1,11 @@
 ---
-status: in-progress
+status: done
 size: small
 ---
 
 ## generate-preflight: warn or error when generate runs against an empty/stale database
 
-**Status:** Implementation-ready bedtime task. The intended fix is narrow: add a `sqlfu generate` preflight that exits with an actionable error when generation would read an obviously empty or stale live database. The spec commit is complete; implementation and verification remain.
+**Status:** Complete. `sqlfu generate` with `generate.authority: 'live_schema'` now fails before writing generated files when the configured live database has no user schema but the project has schema definitions or migrations. Focused CLI, authority, and package typecheck commands pass.
 
 ---
 
@@ -50,17 +50,17 @@ The exact wording can differ, but the diagnostic must include:
 
 ## Checklist
 
-- [ ] Add a failing integration/CLI spec for `sqlfu generate` against an empty live database in a project with schema definitions. The failure should assert a non-zero exit and the actionable diagnostic, not current hollow output.
-- [ ] Implement the smallest preflight that catches the empty/stale live database case before generation writes hollow wrappers.
-- [ ] Preserve normal generation when the live database has already been migrated.
-- [ ] Run focused tests and typecheck if feasible.
-- [ ] Move this task to `tasks/complete/2026-05-14-generate-preflight.md` once the PR implementation is complete.
+- [x] Add a failing integration/CLI spec for `sqlfu generate` against an empty live database in a project with schema definitions. The failure should assert a non-zero exit and the actionable diagnostic, not current hollow output. _Added `cli-config.test.ts` coverage for `generate.authority: 'live_schema'` with an untouched `app.db`._
+- [x] Implement the smallest preflight that catches the empty/stale live database case before generation writes hollow wrappers. _`readLiveSchema` now checks for empty extracted schema and errors if definitions or migration files indicate expected schema._
+- [x] Preserve normal generation when the live database has already been migrated. _Existing `generate-authority.test.ts` live-schema flow still passes after migrating first._
+- [x] Run focused tests and typecheck if feasible. _Ran `pnpm --filter sqlfu test --run test/cli-config.test.ts`, `pnpm --filter sqlfu test --run test/generate-authority.test.ts`, and `pnpm --filter sqlfu typecheck`._
+- [x] Move this task to `tasks/complete/2026-05-14-generate-preflight.md` once the PR implementation is complete. _Moved on this branch after implementation and verification._
 
-## Out of scope
+## Original solution space
 
-- **Preflight check**: before running `generate`, check for pending migrations or an empty live schema. Error or warn. Same machinery as `sqlfu check`.
-- **Warn-only mode**: emit a warning to stderr but continue, so CI/CD pipelines that run `generate` on a clean DB (e.g., before migration) are not broken.
-- **`--from` flag**: `--from=live` (current default), `--from=replay` (replay migrations into a scratch DB like `draft` does), or `--from=definitions` (derive schema from `definitions.sql` directly). The replay option would make `generate` work in a clean environment without a prior `migrate` step.
+- **Preflight check**: chosen for the clear empty-live-schema misconfiguration.
+- **Warn-only mode**: left out because a warning still allows hollow generated files.
+- **`--from` flag**: left out. Current `origin/main` already has `generate.authority`; this task does not add another source-selection surface.
 - **Something else**: the right fix may be different once the full solution space is explored.
 
 ## Correctness note
@@ -76,3 +76,4 @@ The exact wording can differ, but the diagnostic must include:
 ## Implementation notes
 
 - 2026-05-14: Bedtime decision is to error for the clear misconfiguration rather than warn. This biases toward preventing silent wrong generated types in pre-alpha, where deleting or tightening behavior is preferred over preserving legacy tolerance.
+- 2026-05-14: Current `origin/main` defaults `generate.authority` to `'desired_schema'`, so the live database preflight is scoped to the explicit `'live_schema'` authority path. The fix does not change the default authority or add replay modes.

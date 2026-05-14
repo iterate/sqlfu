@@ -70,6 +70,50 @@ test('generate prints the files it updated', async () => {
   void cwd;
 });
 
+test("generate with authority 'live_schema' refuses an empty live database when the project has schema", async () => {
+  const root = await createTempFixtureRoot('cli-generate-live-schema-preflight');
+  await writeFixtureFiles(root, {
+    'sqlfu.config.ts': dedent`
+      export default {
+        db: './app.db',
+        definitions: './definitions.sql',
+        migrations: './migrations',
+        queries: './sql',
+        generate: {
+          authority: 'live_schema',
+        },
+      };
+    `,
+    'definitions.sql': dedent`
+      create table posts (
+        id integer primary key,
+        title text not null
+      );
+    `,
+    'migrations/2026-05-14T00.00.00.000Z_create_posts.sql': dedent`
+      create table posts (
+        id integer primary key,
+        title text not null
+      );
+    `,
+    'sql/list-posts.sql': 'select id, title from posts order by id;',
+  });
+
+  using cwd = chdir(root);
+
+  const result = await runCliWithExit(['generate']);
+
+  expect(result).toMatchObject({exitCode: 1});
+  expect(result.output).toContain('sqlfu generate');
+  expect(result.output).toMatch(/empty live database|no live schema/u);
+  expect(result.output).toContain('schema definitions');
+  expect(result.output).toContain('pending migrations');
+  expect(result.output).toContain('sqlfu migrate');
+  await expect(fs.stat(path.join(root, 'sql/.generated/list-posts.sql.ts'))).rejects.toMatchObject({code: 'ENOENT'});
+
+  void cwd;
+});
+
 test('database commands use a project-local sqlite database when config omits db', async () => {
   const root = await createTempFixtureRoot('cli-default-db');
   await writeFixtureFiles(root, {
@@ -193,6 +237,14 @@ test('loadProjectState resolves paths relative to the selected config file', asy
 });
 
 async function runCli(argv: string[], cli?: Awaited<ReturnType<typeof createSqlfuCli>>) {
+  const result = await runCliWithExit(argv, cli);
+  if (result.exitCode === 0) {
+    return result.output;
+  }
+  throw new CliExit(result.exitCode);
+}
+
+async function runCliWithExit(argv: string[], cli?: Awaited<ReturnType<typeof createSqlfuCli>>) {
   const output: string[] = [];
   const logger = {
     info(...args: unknown[]) {
@@ -224,13 +276,13 @@ async function runCli(argv: string[], cli?: Awaited<ReturnType<typeof createSqlf
       });
     }
   } catch (error) {
-    if (error instanceof CliExit && error.code === 0) {
-      return output.join('\n');
+    if (error instanceof CliExit) {
+      return {exitCode: error.code, output: output.join('\n')};
     }
     throw error;
   }
 
-  return output.join('\n');
+  return {exitCode: 0, output: output.join('\n')};
 }
 
 function chdir(cwd: string) {

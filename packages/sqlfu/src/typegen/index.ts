@@ -475,7 +475,7 @@ export async function readSchemaForAuthority(config: SqlfuProjectConfig, host: S
     case 'migration_history':
       return replayMigrationHistoryAsSchemaSql(config, host);
     case 'live_schema':
-      return readLiveSchema(config);
+      return readLiveSchema(config, host);
     default: {
       const never: never = authority;
       throw new Error(`Invalid generate.authority: ${JSON.stringify(never)}`);
@@ -543,14 +543,48 @@ async function replayMigrationHistoryAsSchemaSql(config: SqlfuProjectConfig, hos
   });
 }
 
-async function readLiveSchema(config: SqlfuProjectConfig): Promise<string> {
+async function readLiveSchema(config: SqlfuProjectConfig, host: SqlfuHost): Promise<string> {
   await using source = await openLiveDb(config.db, 'live_schema');
   // Exclude the preset's bookkeeping table from the live schema — it's noise, not something
   // the user wrote. The other authorities replay raw SQL into an empty scratch DB so no
   // bookkeeping is created in the first place. Without a `migrations` block there's no
   // bookkeeping in play; default to sqlfu's table name so we still strip it if present.
-  const excludedTable = presetTableName(config.migrations?.preset ?? 'sqlfu');
-  return config.dialect.extractSchemaFromClient(source.client, {excludedTables: [excludedTable]});
+  const excludedTable = presetTableName(config.migrations ? config.migrations.preset : 'sqlfu');
+  const liveSchema = await config.dialect.extractSchemaFromClient(source.client, {excludedTables: [excludedTable]});
+  if (liveSchema.trim()) return liveSchema;
+
+  const expectedSources = await findExpectedLiveSchemaSources(config, host);
+  if (expectedSources.length === 0) return liveSchema;
+
+  throw new Error(formatEmptyLiveSchemaGenerateError(expectedSources));
+}
+
+async function findExpectedLiveSchemaSources(config: SqlfuProjectConfig, host: SqlfuHost): Promise<string[]> {
+  const sources: string[] = [];
+  const definitionsSchema = await readDefinitionsAsSchemaSql(config, host);
+  if (definitionsSchema.trim()) {
+    sources.push('schema definitions');
+  }
+
+  const migrations = await readMigrationFiles(host, config);
+  if (migrations.length > 0) {
+    sources.push('pending migrations');
+  }
+
+  return sources;
+}
+
+function formatEmptyLiveSchemaGenerateError(expectedSources: string[]): string {
+  const sourceLabel =
+    expectedSources.length === 1
+      ? expectedSources[0]!
+      : `${expectedSources.slice(0, -1).join(', ')} and ${expectedSources.at(-1)!}`;
+  return [
+    'sqlfu generate cannot read your schema from an empty live database.',
+    `Your project has ${sourceLabel}, but the configured database has no user tables or views.`,
+    'Run sqlfu migrate first, then run sqlfu generate again.',
+    "If this database is intentionally empty, switch `generate.authority` to 'desired_schema' or 'migrations'.",
+  ].join('\n');
 }
 
 async function openLiveDb(
