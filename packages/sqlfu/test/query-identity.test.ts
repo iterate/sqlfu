@@ -33,6 +33,21 @@ test('query source manifest rendering and parsing round-trip source SQL', () => 
   expect(parseQuerySourceManifest(manifest)).toEqual([entry]);
 });
 
+test('query source manifest keeps the legacy extensionless query path sort order', () => {
+  const manifest = renderQuerySourceManifest({
+    entries: [
+      {sqlFile: 'user-details.sql', generatedFile: 'user-details.sql.ts', sourceSql: 'select 1;'},
+      {sqlFile: 'user.sql', generatedFile: 'user.sql.ts', sourceSql: 'select 2;'},
+    ],
+    importExtension: '.js',
+  });
+
+  expect(manifest.indexOf('export * from "./user.sql.js";')).toBeLessThan(
+    manifest.indexOf('export * from "./user-details.sql.js";'),
+  );
+  expect(parseQuerySourceManifest(manifest).map((entry) => entry.sqlFile)).toEqual(['user.sql', 'user-details.sql']);
+});
+
 test('query source manifest parser ignores malformed entries', () => {
   const manifest = [
     'export const sqlfuQuerySources = [',
