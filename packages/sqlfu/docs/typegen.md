@@ -20,6 +20,80 @@ import {getPost} from './sql/.generated/get-post.sql.ts';
 const post = await getPost(client, {id: 123});
 ```
 
+## Generated casing
+
+`generate.casing` controls generated SQL-derived property names. It defaults to
+`'camel'`, so query wrappers expose application-shaped `Data` and `Result`
+properties while the generated code shows the boundary explicitly:
+
+```sql
+/** @name listPosts */
+select id, published_at
+from posts
+order by id;
+```
+
+```ts
+function mapResult(row: listPosts.RawResult): listPosts.Result {
+  return {
+    id: row.id,
+    publishedAt: row.published_at,
+  };
+}
+
+export const listPosts = Object.assign(
+  async function listPosts(client: Client): Promise<listPosts.Result[]> {
+    const rows = await client.all<listPosts.RawResult>(listPosts.query);
+    return rows.map(mapResult);
+  },
+  { sql, query, mapResult },
+);
+
+export namespace listPosts {
+  export type RawResult = {
+    id: number;
+    published_at: string;
+  };
+
+  export type Result = {
+    id: number;
+    publishedAt: string;
+  };
+}
+```
+
+`RawResult` describes the database row. `mapResult` is the generated field-by-field
+mapper from raw SQL shape to public TypeScript shape, and is attached so you can
+reuse it with other clients. sqlfu emits that mapper only when there is a real
+result transform, such as camelCasing or JSON logical-type decoding.
+
+Placeholder params are different: they are names you wrote in SQL, so sqlfu
+preserves them exactly. If you want a fully camelCase wrapper API, write
+placeholders in camelCase:
+
+```sql
+select id, published_at
+from posts
+where published_at >= :publishedSince;
+```
+
+For update/insert data inferred from column names, sqlfu treats those properties
+as column-derived and camelCases them:
+
+```sql
+update posts
+set published_at = :published_at
+where id = :post_id;
+```
+
+```ts
+await publishPost(client, {publishedAt: '2026-05-12'}, {post_id: 1});
+```
+
+Use `generate.casing: 'preserve'` when you want generated properties to keep the
+SQL-derived names. If two fields would collide after camelCasing, only the
+clashing fields keep their raw names.
+
 If the rest of your app uses Effect, set `generate.runtime: 'effect-v3'` to emit
 functions that return Effect values and require Effect SQL's
 `SqlClient.SqlClient` from the Effect environment:

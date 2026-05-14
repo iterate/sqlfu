@@ -128,6 +128,7 @@ async function createWatchFixture(input: {
       prettyErrors: true,
       sync: false,
       experimentalJsonTypes: false,
+      casing: 'camel',
       runtime: 'sqlfu',
       importExtension: '.js',
       authority: input.authority ?? 'desired_schema',

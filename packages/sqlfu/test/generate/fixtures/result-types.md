@@ -164,18 +164,29 @@ select id, published_at from posts where published_at is not null limit 1;
 `.trim();
 const query = { name: "findPublishedPostBySlug", sql, args: [] };
 
+function mapResult(row: findPublishedPostBySlug.RawResult): findPublishedPostBySlug.Result {
+	return {
+		id: row.id,
+		publishedAt: row.published_at,
+	};
+}
+
 export const findPublishedPostBySlug = Object.assign(
 	async function findPublishedPostBySlug(client: Client): Promise<findPublishedPostBySlug.Result | null> {
-		const rows = await client.all<findPublishedPostBySlug.Result>(query);
-		return rows.length > 0 ? rows[0] : null;
+		const rows = await client.all<findPublishedPostBySlug.RawResult>(query);
+		return rows.length > 0 ? mapResult(rows[0]!) : null;
 	},
-	{ sql, query },
+	{ sql, query, mapResult },
 );
 
 export namespace findPublishedPostBySlug {
-	export type Result = {
+	export type RawResult = {
 		id: number;
 		published_at: string;
+	};
+	export type Result = {
+		id: number;
+		publishedAt: string;
 	};
 }
 ```
