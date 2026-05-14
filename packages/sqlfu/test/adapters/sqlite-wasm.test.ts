@@ -119,6 +119,68 @@ test('createSqliteWasmClient.raw runs multiple statements in a real browser', {t
   ]);
 });
 
+test(
+  'createSqliteWasmClient.prepare binds bare object keys for sqlite named parameter prefixes',
+  {timeout: 60_000},
+  async () => {
+    await using fixture = await createSqliteWasmWebFixture(
+      class ClientNamedParamsTest {
+        client: ReturnType<typeof createSqliteWasmClient>;
+
+        constructor(db: any) {
+          this.client = createSqliteWasmClient(db);
+        }
+
+        async seedPosts() {
+          await this.client.raw(`
+            create table posts (
+              id integer primary key,
+              slug text not null
+            );
+            insert into posts (id, slug) values
+              (1, 'alpha'),
+              (2, 'bravo'),
+              (3, 'charlie');
+          `);
+        }
+
+        async readWithColonBareKey() {
+          const stmt = this.client.prepare('select slug from posts where id = :id');
+          return stmt.all({id: 1});
+        }
+
+        async readWithAtBareKey() {
+          const stmt = this.client.prepare('select slug from posts where id = @id');
+          return stmt.all({id: 2});
+        }
+
+        async readWithDollarBareKey() {
+          const stmt = this.client.prepare('select slug from posts where id = $id');
+          return stmt.all({id: 3});
+        }
+
+        async readWithAlreadyPrefixedKey() {
+          const stmt = this.client.prepare('select slug from posts where id = @id');
+          return stmt.all({'@id': 2});
+        }
+
+        async readWithArrayParams() {
+          const stmt = this.client.prepare('select slug from posts where id = ?');
+          return stmt.all([3]);
+        }
+      },
+    );
+
+    await fixture.stub.seedPosts();
+
+    expect(await fixture.stub.readWithColonBareKey()).toMatchObject([{slug: 'alpha'}]);
+    expect(await fixture.stub.readWithAtBareKey()).toMatchObject([{slug: 'bravo'}]);
+    expect(await fixture.stub.readWithDollarBareKey()).toMatchObject([{slug: 'charlie'}]);
+    expect(await fixture.stub.readWithAlreadyPrefixedKey()).toMatchObject([{slug: 'bravo'}]);
+    expect(await fixture.stub.readWithArrayParams()).toMatchObject([{slug: 'charlie'}]);
+  },
+);
+
 function createSqliteWasmWebFixture<TInstance extends object>(
   classDef: new (...args: any[]) => TInstance,
 ): Promise<BrowserRpcFixture<TInstance>> {
