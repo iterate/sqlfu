@@ -3,7 +3,7 @@ status: complete
 size: medium
 ---
 
-**Status:** complete and verified. `generate.casing` defaults to `'camel'`, generated query modules now expose camelCased column-derived `Data` / `Result` shapes with explicit `RawResult` and `mapResult` boundaries when needed, and `generate.casing: 'preserve'` keeps literal SQL-derived names without no-op mapper output. User-authored placeholder `Params` remain exactly as written. Docs now cover the model in `packages/sqlfu/docs/typegen.md`, with a short config-reference note in the README.
+**Status:** complete and verified. `generate.casing` defaults to `'camel'`, generated query modules now expose camelCased column-derived `Data` / `Result` shapes with explicit `RawResult` and `mapResult` boundaries when needed, and `generate.casing: 'preserve'` keeps literal SQL-derived names without no-op mapper output. User-authored placeholder `Params` remain exactly as written, and raw fields that would collide after camelCasing locally fall back to their raw names. Docs now cover the model in `packages/sqlfu/docs/typegen.md`, with a short config-reference note in the README.
 
 Below is the bot-written spec for this task. I, the human, think this:
 We should probably let people use whatever valid params they want when using `:myParam`. i.e. don't touch casing on that. Just encourage people to use camel-case with those things.
