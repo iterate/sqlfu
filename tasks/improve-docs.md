@@ -4,6 +4,30 @@ Go through all of the docs and improve them. Look for inconsistencies, informati
 
 I want you to think holistically about the docs, as mentioned in your agent instructions for this repo. From time to time that will mean re-thinking docs entirely. Sometimes it will mean creating a separate task in the branch you create for *changing the product* instead. Docs are most useful when not thought of as something entirely downstream from the product code - if there's no clear way to write about a concept, the concept might be poorly thought through. You are free to flag that as an alternative to documenting weirdness.
 
+## 2026-05-14 pass
+
+Status: in progress for this bedtime pass. The first decision is to keep the pass small and focused on the generated query docs after recent merges: #113 extracted parameter expansion internals, #108 clarified the generated casing boundary, and #101 fixed sqlite-wasm named-parameter binding. The main missing piece is a docs edit that makes parameter behavior easier to understand without broad README churn.
+
+Scope:
+
+- Tighten docs users read when choosing parameter shapes for generated query wrappers.
+- Keep `packages/sqlfu/README.md` mostly stable unless a tiny overview sentence is needed.
+- Prefer `packages/sqlfu/docs/typegen.md` and, if useful, the prepared statement / sqlite-wasm docs over landing-page or website information architecture work.
+- Do not move this evergreen task to `tasks/complete/`.
+
+Checklist:
+
+- [x] Create an isolated worktree from `origin/main` and commit this status note first. _worktree is `/Users/mmkal/src/worktrees/sqlfu/bedtime-2026-05-14-improve-docs` on branch `bedtime/2026-05-14-improve-docs`._
+- [ ] Open the early PR after the task-only commit.
+- [ ] Improve generated query parameter docs based on the recent merged parameter and casing work.
+- [ ] Run relevant docs/package checks.
+- [ ] Update the PR body with the net reviewer/user effect.
+
+Implementation notes:
+
+- 2026-05-14: Read the repo instructions and `writing-well` checklist before editing. The main checkout has unrelated website edits, so this pass is staying entirely in the requested worktree.
+- 2026-05-14: Recent merge scan points at `packages/sqlfu/docs/typegen.md` as the primary docs surface. The current page has the right facts, but the parameter section can better separate authored placeholder names, column-derived object fields, runtime placeholder expansion, and sqlite-wasm/prepared-statement named binding.
+
 ## 2026-05-09 pass
 
 Status: done for this bedtime pass. The main docs work was the aggressive rewrite of `website/src/content/blog/introducing-sqlfu.md`: it dropped from about 2,750 words to about 1,250 while preserving the SQL-first argument, iterate/agent motivation, example query, feature inventory, limits, and acknowledgements. A small em-dash sweep also cleaned the newly-added Cloudflare D1 docs/README prose. Website build is green.
