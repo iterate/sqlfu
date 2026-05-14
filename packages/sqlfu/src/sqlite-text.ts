@@ -35,9 +35,10 @@ export function sqlReturnsRows(sql: string): boolean {
  * tokenizer skips string literals and comments so colons/dollars inside
  * quoted strings aren't mistaken for placeholders.
  *
- * Adapters whose driver natively accepts `Record` bindings (better-sqlite3,
- * node:sqlite, libsql, sqlite-wasm) skip this helper and pass the params
- * straight through.
+ * Adapters whose driver natively accepts bare-key `Record` bindings
+ * (better-sqlite3, node:sqlite, libsql) skip this helper and pass the params
+ * straight through. sqlite-wasm accepts prefixed keys, so its adapter maps
+ * sqlfu's bare keys to the SQL placeholder prefix before binding.
  */
 export function rewriteNamedParamsToPositional(
   sql: string,

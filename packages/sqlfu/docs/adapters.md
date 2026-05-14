@@ -77,6 +77,10 @@ const rows = await stmt.all({slug: 'hello-world'});
 
 Prepared handles expose `.all(params)`, `.run(params)`, and `.iterate(params)`. `params` can be a positional array (`[id]`) or a named object (`{slug}`). Adapters that have native prepared statements hold the driver handle and dispose it when the `using` scope exits. Adapters whose driver only exposes an `exec`/`execute` API provide a compatible shim: the method still exists, but each call re-issues the SQL through the driver.
 
+Named object keys are bare identifiers. SQL written as `:slug`, `@slug`, or
+`$slug` all bind from `{slug: 'hello-world'}`; sqlfu adapters translate that
+shape to the underlying driver, including sqlite-wasm. For positional `?`
+placeholders, pass an array.
 
 ## Compatibility matrix
 
