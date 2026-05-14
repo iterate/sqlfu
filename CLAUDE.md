@@ -61,6 +61,11 @@ Show the old output or old failure mode, then the new output. The goal is that a
 reviewer can understand why the fixture changed without checking out the branch
 or mentally reconstructing the previous behavior from the diff.
 
+When a PR body pairs an example SQL query with generated TypeScript usage, show
+the SQL block as the query itself. Put filenames in the surrounding prose or in a
+generated-file `<details>` summary instead of adding path header comments inside
+the SQL block.
+
 ## Deciding where a feature gets documented
 
 Don't jump straight to "add a section to the README". Most non-trivial features need information on several surfaces, and each one is doing a different job. Work through these in order:
