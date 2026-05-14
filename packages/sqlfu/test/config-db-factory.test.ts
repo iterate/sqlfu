@@ -75,6 +75,7 @@ async function createFactoryFixture(input: {migrations?: Record<string, string>;
       prettyErrors: true,
       sync: false,
       experimentalJsonTypes: false,
+      casing: 'camel',
       runtime: 'sqlfu',
       importExtension: '.js',
       authority: 'desired_schema',

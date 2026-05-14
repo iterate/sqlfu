@@ -1,6 +1,7 @@
 import type {
   SqlfuAuthority,
   SqlfuConfig,
+  SqlfuGenerateCasing,
   SqlfuGenerateRuntime,
   SqlfuMigrationPrefix,
   SqlfuMigrationPreset,
@@ -39,6 +40,7 @@ export function resolveProjectConfig(
       prettyErrors: fileConfig.generate?.prettyErrors !== false,
       sync: fileConfig.generate?.sync === true,
       experimentalJsonTypes: fileConfig.generate?.experimentalJsonTypes === true,
+      casing: fileConfig.generate?.casing || 'camel',
       runtime: fileConfig.generate?.runtime || 'sqlfu',
       importExtension: fileConfig.generate?.importExtension ?? inferImportExtension(tsconfigPreferences),
       authority: fileConfig.generate?.authority ?? 'desired_schema',
@@ -52,6 +54,7 @@ export function inferImportExtension(tsconfigPreferences: TsconfigPreferences): 
 }
 
 const validValidators: SqlfuValidator[] = ['arktype', 'valibot', 'zod', 'zod-mini'];
+const validGenerateCasings: SqlfuGenerateCasing[] = ['camel', 'preserve'];
 const validGenerateRuntimes: SqlfuGenerateRuntime[] = ['sqlfu', 'effect-v3', 'effect-v4-unstable'];
 const validAuthorities: SqlfuAuthority[] = ['desired_schema', 'migrations', 'migration_history', 'live_schema'];
 const validPrefixes: SqlfuMigrationPrefix[] = ['iso', 'four-digit'];
@@ -139,6 +142,14 @@ export function assertConfigShape(configPath: string, config: object): asserts c
     const experimentalJsonTypes = generateRecord.experimentalJsonTypes;
     if (experimentalJsonTypes !== undefined && typeof experimentalJsonTypes !== 'boolean') {
       throw new Error(`Invalid sqlfu config at ${configPath}: "generate.experimentalJsonTypes" must be a boolean.`);
+    }
+
+    const casing = generateRecord.casing;
+    if (casing !== undefined && !validGenerateCasings.includes(casing as SqlfuGenerateCasing)) {
+      throw new Error(
+        `Invalid sqlfu config at ${configPath}: "generate.casing" must be 'camel', 'preserve', or undefined. ` +
+          `Got ${JSON.stringify(casing)}.`,
+      );
     }
 
     const runtime = generateRecord.runtime;

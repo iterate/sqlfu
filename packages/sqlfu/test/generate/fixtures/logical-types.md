@@ -104,22 +104,35 @@ select id, payload, created_at from slack_webhooks order by id;
 `.trim();
 const listSlackWebhooksQuery = { name: "listSlackWebhooks", sql: listSlackWebhooksSql, args: [] };
 
+function listSlackWebhooksMapResult(row: listSlackWebhooks.RawResult): listSlackWebhooks.Result {
+	return {
+		id: row.id,
+		payload: (JSON.parse(row.payload) as listSlackWebhooks.Result["payload"]),
+		createdAt: row.created_at,
+	};
+}
+
 export const listSlackWebhooks = Object.assign(
 	async function listSlackWebhooks(client: Client): Promise<listSlackWebhooks.Result[]> {
-		const rows: any[] = await client.all(listSlackWebhooksQuery);
-		return rows.map((row) => ({...row, payload: (JSON.parse(row.payload) as listSlackWebhooks.Result["payload"])}));
+		const rows = await client.all<listSlackWebhooks.RawResult>(listSlackWebhooksQuery);
+		return rows.map(listSlackWebhooksMapResult);
 	},
-	{ sql: listSlackWebhooksSql, query: listSlackWebhooksQuery },
+	{ sql: listSlackWebhooksSql, query: listSlackWebhooksQuery, mapResult: listSlackWebhooksMapResult },
 );
 
 export namespace listSlackWebhooks {
+	export type RawResult = {
+		id: number;
+		payload: string;
+		created_at: number;
+	};
 	export type Result = {
 		id: number;
 		payload: {
 		  action: "message" | "reaction";
 		  content: string
 		};
-		created_at: number;
+		createdAt: number;
 	};
 }
 ```
@@ -245,26 +258,39 @@ select id, payload, created_at from slack_webhooks order by id;
 `.trim();
 const listSlackWebhooksQuery = { name: "listSlackWebhooks", sql: listSlackWebhooksSql, args: [] };
 
+function listSlackWebhooksMapResult(row: listSlackWebhooks.RawResult): listSlackWebhooks.Result {
+	return {
+		id: row.id,
+		payload: (JSON.parse(row.payload) as listSlackWebhooks.Result["payload"]),
+		createdAt: row.created_at,
+	};
+}
+
 export const listSlackWebhooks = Object.assign(
 	function listSlackWebhooks() {
 		return Effect.gen(function*() {
 			const sqlClient = yield* SqlClient.SqlClient;
 			const generatedQuery = listSlackWebhooksQuery;
-			const rows = yield* sqlClient.unsafe<any>(generatedQuery.sql, generatedQuery.args);
-			return rows.map((row): listSlackWebhooks.Result => ({...row, payload: (JSON.parse(row.payload) as listSlackWebhooks.Result["payload"])}));
+			const rows = yield* sqlClient.unsafe<listSlackWebhooks.RawResult>(generatedQuery.sql, generatedQuery.args);
+			return rows.map(listSlackWebhooksMapResult);
 		});
 	},
-	{ sql: listSlackWebhooksSql, query: listSlackWebhooksQuery },
+	{ sql: listSlackWebhooksSql, query: listSlackWebhooksQuery, mapResult: listSlackWebhooksMapResult },
 );
 
 export namespace listSlackWebhooks {
+	export type RawResult = {
+		id: number;
+		payload: string;
+		created_at: number;
+	};
 	export type Result = {
 		id: number;
 		payload: {
 		  action: "message" | "reaction";
 		  content: string
 		};
-		created_at: number;
+		createdAt: number;
 	};
 }
 ```
@@ -393,19 +419,30 @@ select id, payload from slack_webhooks order by id;
 `.trim();
 const listSlackWebhooksQuery = { name: "listSlackWebhooks", sql: listSlackWebhooksSql, args: [] };
 
+function listSlackWebhooksMapResult(row: listSlackWebhooks.RawResult): listSlackWebhooks.Result {
+	return {
+		id: row.id,
+		payload: (JSON.parse(row.payload) as listSlackWebhooks.Result["payload"]),
+	};
+}
+
 export const listSlackWebhooks = Object.assign(
 	async function listSlackWebhooks(client: Client): Promise<listSlackWebhooks.Result[]> {
-		const rows: any[] = await client.all(listSlackWebhooksQuery);
+		const rows = await client.all<listSlackWebhooks.RawResult>(listSlackWebhooksQuery);
 		return rows.map((row) => {
-			const parsed = listSlackWebhooksResult.safeParse(({...row, payload: (JSON.parse(row.payload) as listSlackWebhooks.Result["payload"])}));
+			const parsed = listSlackWebhooksResult.safeParse(listSlackWebhooksMapResult(row));
 			if (!parsed.success) throw new Error(z.prettifyError(parsed.error));
 			return (parsed.data as listSlackWebhooks.Result);
 		});
 	},
-	{ Result: listSlackWebhooksResult, sql: listSlackWebhooksSql, query: listSlackWebhooksQuery },
+	{ Result: listSlackWebhooksResult, mapResult: listSlackWebhooksMapResult, sql: listSlackWebhooksSql, query: listSlackWebhooksQuery },
 );
 
 export namespace listSlackWebhooks {
+	export type RawResult = {
+		id: number;
+		payload: string;
+	};
 	export type Result = {
 		id: number;
 		payload: {
