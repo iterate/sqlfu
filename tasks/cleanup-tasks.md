@@ -7,7 +7,7 @@ size: small
 
 ## Status summary
 
-2026-05-14 pass is in progress. PRs #113, #108, and #101 are merged into `origin/main` and already have completed task files with checklist breadcrumbs. One stale active task, `tasks/intro-blog.md`, is now done on `origin/main` and should be filed next; clean merged local worktree candidates have been identified but not removed until after the early PR.
+2026-05-14 pass is done. PRs #113, #108, and #101 were already represented in `tasks/complete/`; the stale merged `intro-blog` task was filed, and eight clean local worktrees for merged PR branches were removed. Remaining worktrees are open work, closed-unmerged/dirty work, no-PR compare branches, or checkouts outside this pass's safe cleanup scope.
 
 Sometimes agents forget to move their task files to "done". Look at recent commits and see if that's happened. If it has, open a housekeeping PR to do just that. While you're there, you can also add to Implementation Notes if there's anything you spot in the change that wasn't tidied up properly that also wasn't documented in the task file.
 
@@ -30,16 +30,18 @@ Checklist:
 - [x] Inspect PRs #113, #108, and #101. _all three are merged into `main`; #113 added `tasks/complete/2026-05-14-query-parameter-expansion-locality.md`, #108 moved `tasks/typegen-casing-story.md`, and #101 moved `tasks/sql-runner-named-params.md`._
 - [x] Inspect the active task tree for stale completed files. _found `tasks/intro-blog.md`: PR #100 is merged, but the active task still has an unchecked final PR update item._
 - [x] Inspect local worktrees and PR status. _clean merged candidates include `drop-node-20-2026-05-12`, `fix-package-size-pnpm-cache`, `improve-codebase-architecture-2026-05-14`, `pr-body-fixture-before-section`, `schemadiff-normalization-weird-sql-2026-05-12`, `sql-runner-named-params-2026-05-12`, `sweep-doc-query-examples-2026-05-12`, and `typegen-casing`; open/closed-unmerged/dirty worktrees were left out of the candidate set._
-- [ ] Commit this task/status update in isolation and open a PR early.
-- [ ] File completed active task files into `tasks/complete/` with 2026-05-14 date prefixes.
-- [ ] Remove safe clean merged local worktrees, or record why any candidate was left alone.
-- [ ] Verify the final task tree and git status.
+- [x] Commit this task/status update in isolation and open a PR early. _first commit `3fa7ac1`; PR #116 opened before moving task files._
+- [x] File completed active task files into `tasks/complete/` with 2026-05-14 date prefixes. _moved `tasks/intro-blog.md` to `tasks/complete/2026-05-14-intro-blog.md` after marking the final PR item complete._
+- [x] Remove safe clean merged local worktrees, or record why any candidate was left alone. _removed only clean worktrees whose head branches have merged PRs: `drop-node-20-2026-05-12`, `fix-package-size-pnpm-cache`, `improve-codebase-architecture-2026-05-14`, `pr-body-fixture-before-section`, `schemadiff-normalization-weird-sql-2026-05-12`, `sql-runner-named-params-2026-05-12`, `sweep-doc-query-examples-2026-05-12`, and `typegen-casing`._
+- [x] Verify the final task tree and git status. _checked `rg --files tasks | sort`, `git worktree list --porcelain`, and `git status --short`; only the intended task-file move and cleanup log edit remain before this commit._
 
 Implementation notes:
 
 - `tasks/complete/2026-05-14-query-parameter-expansion-locality.md`, `tasks/complete/2026-05-12-typegen-casing-story.md`, and `tasks/complete/2026-05-12-sql-runner-named-params.md` already carry completed checklist breadcrumbs. No duplicate move is needed for #113, #108, or #101.
-- The only active task file found that is clearly done on `origin/main` is `tasks/intro-blog.md`; PR #100 merged on 2026-05-11.
+- The only active task file found that is clearly done on `origin/main` was `tasks/intro-blog.md`; PR #100 merged on 2026-05-11, and the file now lives at `tasks/complete/2026-05-14-intro-blog.md`.
+- Removed local worktree checkouts only; remote and local branches were left intact.
 - Open PR #111 and the active bedtime branches #114/#115 stay in place. Closed-unmerged or dirty worktrees such as `api-extractor`, `bedtime-evergreen-2026-05-12`, `detect-spurious-definitions`, `effect-client-interop`, `typebox-validator`, and `typesql-ddl-support` also stay in place.
+- Replacement compare worktrees `improve-codebase-architecture-2026-05-14-pr-101`, `improve-codebase-architecture-2026-05-14-pr-108`, and `improve-codebase-architecture-2026-05-14-pr-111` were left in place because they are no-PR compare branches rather than direct merged PR heads.
 
 ## 2026-05-09 pass
 

@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 size: small
 ---
 
@@ -7,7 +7,7 @@ size: small
 
 ## Status summary
 
-2026-05-09 bedtime pass is implemented. The post has been cut from roughly 2,750 words to roughly 1,250 words, with the direct SQL-first argument, iterate/agent motivation, feature list, limits, and acknowledgements preserved. Website verification is green; remaining work is final PR body refresh after commits are pushed.
+Done. PR #100 merged on 2026-05-11. The post was cut from roughly 2,750 words to roughly 1,250 words, with the direct SQL-first argument, iterate/agent motivation, feature list, limits, and acknowledgements preserved.
 
 ## 2026-05-09 bedtime pass
 
@@ -33,7 +33,7 @@ Checklist:
 - [x] Rewrite `website/src/content/blog/introducing-sqlfu.md` to a shorter, sharper post. _cut the long YC/startup framing, collapsed ORM/query-builder sections, kept the query example, and moved prior art/thanks into one compact closing section._
 - [x] Update this task with implementation notes and checked breadcrumbs. _this pass now records scope, assumptions, word-count target, and implementation notes._
 - [x] Run the relevant website verification. _`pnpm --filter @sqlfu/ui build` and `pnpm --filter sqlfu-website build` passed; Astro emitted existing duplicate content-id warnings but built 48 pages and website tests passed._
-- [ ] Push the branch and open/update the PR. _PR #100 is open as a draft; final push/body update pending._
+- [x] Push the branch and open/update the PR. _PR #100 merged on 2026-05-11, so the final branch and PR body updates are now represented on `main`._
 
 Need to write an "introducing sqlfu" blogpost with:
 
