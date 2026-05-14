@@ -554,36 +554,60 @@ async function readLiveSchema(config: SqlfuProjectConfig, host: SqlfuHost): Prom
   if (liveSchema.trim()) return liveSchema;
 
   const expectedSources = await findExpectedLiveSchemaSources(config, host);
-  if (expectedSources.length === 0) return liveSchema;
+  if (!expectedSources.schemaDefinitions && !expectedSources.migrationFiles) return liveSchema;
 
   throw new Error(formatEmptyLiveSchemaGenerateError(expectedSources));
 }
 
-async function findExpectedLiveSchemaSources(config: SqlfuProjectConfig, host: SqlfuHost): Promise<string[]> {
-  const sources: string[] = [];
-  const definitionsSchema = await readDefinitionsAsSchemaSql(config, host);
-  if (definitionsSchema.trim()) {
-    sources.push('schema definitions');
-  }
+type ExpectedLiveSchemaSources = {
+  schemaDefinitions: boolean;
+  migrationFiles: boolean;
+};
 
+async function findExpectedLiveSchemaSources(
+  config: SqlfuProjectConfig,
+  host: SqlfuHost,
+): Promise<ExpectedLiveSchemaSources> {
+  const definitionsSql = await readDefinitionsFileIfPresent(config, host);
   const migrations = await readMigrationFiles(host, config);
-  if (migrations.length > 0) {
-    sources.push('pending migrations');
-  }
-
-  return sources;
+  return {
+    schemaDefinitions: definitionsSql.trim().length > 0,
+    migrationFiles: migrations.length > 0,
+  };
 }
 
-function formatEmptyLiveSchemaGenerateError(expectedSources: string[]): string {
-  const sourceLabel =
-    expectedSources.length === 1
-      ? expectedSources[0]!
-      : `${expectedSources.slice(0, -1).join(', ')} and ${expectedSources.at(-1)!}`;
+async function readDefinitionsFileIfPresent(config: SqlfuProjectConfig, host: SqlfuHost): Promise<string> {
+  try {
+    return await host.fs.readFile(config.definitions);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return '';
+    }
+    throw error;
+  }
+}
+
+function formatEmptyLiveSchemaGenerateError(expectedSources: ExpectedLiveSchemaSources): string {
+  const sourceLabels: string[] = [];
+  if (expectedSources.schemaDefinitions) sourceLabels.push('schema definitions');
+  if (expectedSources.migrationFiles) sourceLabels.push('pending migrations');
+  const sourceLabel = sourceLabels.length === 1 ? sourceLabels[0]! : `${sourceLabels[0]} and ${sourceLabels[1]}`;
+
+  const nextStep = expectedSources.migrationFiles
+    ? 'Run sqlfu migrate first, then run sqlfu generate again.'
+    : 'Run sqlfu sync first, or otherwise apply your schema to the live database, then run sqlfu generate again.';
+  const fallbackAuthorities: string[] = [];
+  if (expectedSources.schemaDefinitions) fallbackAuthorities.push("'desired_schema'");
+  if (expectedSources.migrationFiles) fallbackAuthorities.push("'migrations'");
+  const fallbackAuthorityLabel =
+    fallbackAuthorities.length === 1
+      ? fallbackAuthorities[0]!
+      : `${fallbackAuthorities[0]} or ${fallbackAuthorities[1]}`;
   return [
     'sqlfu generate cannot read your schema from an empty live database.',
     `Your project has ${sourceLabel}, but the configured database has no user tables or views.`,
-    'Run sqlfu migrate first, then run sqlfu generate again.',
-    "If this database is intentionally empty, switch `generate.authority` to 'desired_schema' or 'migrations'.",
+    nextStep,
+    `If this database is intentionally empty, switch \`generate.authority\` to ${fallbackAuthorityLabel}.`,
   ].join('\n');
 }
 

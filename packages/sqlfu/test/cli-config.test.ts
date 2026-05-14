@@ -70,7 +70,7 @@ test('generate prints the files it updated', async () => {
   void cwd;
 });
 
-test("generate with authority 'live_schema' refuses an empty live database when the project has schema", async () => {
+test("generate with authority 'live_schema' refuses an empty live database when the project has migrations", async () => {
   const root = await createTempFixtureRoot('cli-generate-live-schema-preflight');
   await writeFixtureFiles(root, {
     'sqlfu.config.ts': dedent`
@@ -109,6 +109,43 @@ test("generate with authority 'live_schema' refuses an empty live database when 
   expect(result.output).toContain('schema definitions');
   expect(result.output).toContain('pending migrations');
   expect(result.output).toContain('sqlfu migrate');
+  await expect(fs.stat(path.join(root, 'sql/.generated/list-posts.sql.ts'))).rejects.toMatchObject({code: 'ENOENT'});
+
+  void cwd;
+});
+
+test("generate with authority 'live_schema' explains definitions-only empty databases without suggesting migrate", async () => {
+  const root = await createTempFixtureRoot('cli-generate-live-schema-definitions-preflight');
+  await writeFixtureFiles(root, {
+    'sqlfu.config.ts': dedent`
+      export default {
+        db: './app.db',
+        definitions: './definitions.sql',
+        queries: './sql',
+        generate: {
+          authority: 'live_schema',
+        },
+      };
+    `,
+    'definitions.sql': dedent`
+      create table posts (
+        id integer primary key,
+        title text not null
+      );
+    `,
+    'sql/list-posts.sql': 'select id, title from posts order by id;',
+  });
+
+  using cwd = chdir(root);
+
+  const result = await runCliWithExit(['generate']);
+
+  expect(result).toMatchObject({exitCode: 1});
+  expect(result.output).toContain('schema definitions');
+  expect(result.output).not.toContain('sqlfu migrate');
+  expect(result.output).toContain('sqlfu sync');
+  expect(result.output).toContain("'desired_schema'");
+  expect(result.output).not.toContain("'migrations'");
   await expect(fs.stat(path.join(root, 'sql/.generated/list-posts.sql.ts'))).rejects.toMatchObject({code: 'ENOENT'});
 
   void cwd;
