@@ -137,12 +137,18 @@ Use the SQL shape to describe richer params:
 
 - `where id = :id`: one scalar value.
 - `where id in (:ids)`: one non-empty scalar array.
-- `values (:post.slug, :post.title)`: one object whose fields are the path
-  segments you wrote after `:post`.
+- `values (:post.slug, :post.published_at)`: one object named `post`; its
+  generated member fields follow `generate.casing`.
 - `insert into posts (slug, title) values :posts`: one object or a non-empty
-  object array whose fields come from the INSERT column list.
-- `where (slug, title) in (:keys)`: a non-empty object array whose fields come
-  from the row-value tuple.
+  object array whose generated member fields come from the INSERT column list.
+- `where (slug, published_at) in (:keys)`: a non-empty object array whose
+  generated member fields come from the row-value tuple.
+
+Top-level placeholder names are preserved literally: `:post`, `:posts`, and
+`:keys` become `post`, `posts`, and `keys`. Object member fields are generated
+SQL-derived fields, so the default `generate.casing: 'camel'` boundary applies
+to them. Use `generate.casing: 'preserve'` if callers should pass raw SQL names
+such as `published_at`.
 
 Runtime-expanded forms (`IN (:ids)`, row-value `IN (:keys)`, and
 `values :posts`) rewrite the SQL before execution so the generated wrapper can
@@ -185,23 +191,24 @@ Use dot paths when a query naturally accepts one object.
 
 ```sql
 /** @name insertPost */
-insert into posts (slug, title)
-values (:post.slug, :post.title)
-returning id, slug, title;
+insert into posts (slug, published_at)
+values (:post.slug, :post.published_at)
+returning id, slug, published_at;
 ```
 
 ```ts
 await insertPost(client, {
   post: {
     slug: 'hello-world',
-    title: 'Hello world',
+    publishedAt: '2026-05-14',
   },
 });
 ```
 
-The generated params type is `{post: {slug: string; title: string}}`. One object
-path segment is supported today; nested paths such as `:post.author.id` are
-intentionally rejected until the type shape is designed.
+The generated params type is `{post: {slug: string; publishedAt: string}}`
+under the default camel casing. One object path segment is supported today;
+nested paths such as `:post.author.id` are intentionally rejected until the type
+shape is designed.
 
 Use an object param directly after `values` when an INSERT column list already
 names the object fields. The placeholder name is still preserved, but the object
