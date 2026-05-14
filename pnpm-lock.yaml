@@ -90,6 +90,9 @@ importers:
       '@sqlfu/ui':
         specifier: workspace:*
         version: link:../ui
+      sqlite3-parser:
+        specifier: 0.7.1
+        version: 0.7.1
       trpc-cli:
         specifier: ^0.14.0
         version: 0.14.0(@orpc/server@1.13.13(@opentelemetry/api@1.9.1)(crossws@0.3.5)(ws@8.20.0))(effect@3.21.2)(valibot@1.3.1(typescript@5.9.3))(zod@4.3.6)
@@ -6828,6 +6831,10 @@ packages:
 
   sql-formatter@15.7.3:
     resolution: {integrity: sha512-5+zl9Nqg5aNjss0tb1G+StpC4dJKbjv3+g8CL/+V+00PfZop+2RKGyi53ScFl0dr+Dkx1LjmUO54Q3N7K3EtMw==}
+    hasBin: true
+
+  sqlite3-parser@0.7.1:
+    resolution: {integrity: sha512-+KcAIcmD9xk4Sz3hNsEI7QEGAMGl3s5PyigIf6ri/u1DzAuAmi5YZInjtnXKqHvx9ySl5e0RYILfCVhTdAeKJg==}
     hasBin: true
 
   stackback@0.0.2:
@@ -14908,6 +14915,8 @@ snapshots:
     dependencies:
       argparse: 2.0.1
       nearley: 2.20.1
+
+  sqlite3-parser@0.7.1: {}
 
   stackback@0.0.2: {}
 
