@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 size: medium
 ---
 
@@ -7,7 +7,7 @@ size: medium
 
 ## Status summary
 
-Architecture pass selected this as the bedtime improvement. Nothing is implemented yet. The intended slice is a behavior-preserving extraction: make query identity and generated source manifest handling a real module, then make typegen and the lint plugin use it instead of each owning path/name/manifest rules.
+Done. Query identity and generated source manifest handling now live in `packages/sqlfu/src/query-identity.ts`. Typegen writes the manifest through that module, the lint plugin reads/checks through the same module, lint tests no longer hand-assemble the manifest protocol, and focused manifest tests cover parsing/rendering.
 
 ## Why this candidate
 
@@ -30,12 +30,12 @@ This is not the lowest-risk test-only cleanup, but it is small enough to land as
 
 ## Checklist
 
-- [ ] Add a query identity/source-manifest module with a small interface for generated wrapper paths, manifest entries, manifest rendering, and manifest parsing.
-- [ ] Use the module from typegen when writing `sql/.generated/queries.ts`.
-- [ ] Use the module from the lint plugin when reading `sql/.generated/queries.ts` and checking expected wrapper paths.
-- [ ] Update lint tests so manifest fixtures are rendered through the same module instead of hand-written string assembly.
-- [ ] Add focused tests for manifest parsing/rendering edge cases that the regex path was implicitly handling.
-- [ ] Run focused lint/typegen tests and typecheck.
+- [x] Add a query identity/source-manifest module with a small interface for generated wrapper paths, manifest entries, manifest rendering, and manifest parsing. _added `packages/sqlfu/src/query-identity.ts`; it owns `queryIdentityFromPath`, generated wrapper path helpers, manifest entry construction, rendering, and parsing._
+- [x] Use the module from typegen when writing `sql/.generated/queries.ts`. _`writeGeneratedQueriesFile` now renders via `renderQuerySourceManifest`, and query function names use `queryIdentityFromPath`._
+- [x] Use the module from the lint plugin when reading `sql/.generated/queries.ts` and checking expected wrapper paths. _`lint-plugin.ts` now imports manifest parsing and wrapper path helpers instead of owning local regex/path functions._
+- [x] Update lint tests so manifest fixtures are rendered through the same module instead of hand-written string assembly. _`queriesManifest` in `test/lint-plugin.test.ts` now delegates to `renderQuerySourceManifest`._
+- [x] Add focused tests for manifest parsing/rendering edge cases that the regex path was implicitly handling. _added `test/query-identity.test.ts` for identity derivation, wrapper paths, manifest round-trip, and malformed-entry filtering._
+- [x] Run focused lint/typegen tests and typecheck. _`pnpm --filter sqlfu test --run test/query-identity.test.ts test/lint-plugin.test.ts test/generate/fixtures.test.ts`, `pnpm --filter sqlfu typecheck`, and `git diff --check` passed._
 
 ## Out of scope
 
@@ -48,3 +48,5 @@ This is not the lowest-risk test-only cleanup, but it is small enough to land as
 
 - Candidate selection came from the 2026-05-14 `improve-codebase-architecture` pass.
 - Main files expected: `packages/sqlfu/src/typegen/index.ts`, `packages/sqlfu/src/lint-plugin.ts`, `packages/sqlfu/src/naming.ts` or a new sibling module, and `packages/sqlfu/test/lint-plugin.test.ts`.
+- Added **Generated query source manifest** to `CONTEXT.md` because the extracted module makes that protocol a named project concept.
+- Kept `@name` annotation parsing in typegen. Moving full query document loading is a separate generated-query-boundary-sized refactor, not this PR.

@@ -40,6 +40,10 @@ _Avoid_: generic camelCase helper
 Generated metadata describing query wrapper names, params, data inputs, and result fields for tools.
 _Avoid_: raw schema catalog
 
+**Generated query source manifest**:
+The generated `queries.ts` metadata that links each authored query file to its generated wrapper file and source SQL for freshness tools.
+_Avoid_: catalog when referring only to stale-generated-file detection
+
 **Generated validator schema**:
 A runtime validator emitted into a generated query module for params, data, or results.
 _Avoid_: raw database validator unless explicitly internal
@@ -80,6 +84,7 @@ _Avoid_: filename when referring to runtime identity
 - A row-returning generated query module exposes both a **Raw generated result type** and a **Generated result mapper** when raw database rows differ from public results, so users can reuse sqlfu's boundary mapping with other clients.
 - Under camelCase query generation, **Generated data input** property names are **Column-derived fields** and follow the same camelCase-with-collision-fallback rule.
 - **Generated params input** property names are user-authored placeholders.
+- The **Generated query source manifest** records generated wrapper file freshness; it is not the **Generated query catalog** used by tools that need query fields and schemas.
 - The **Generated query catalog** describes the application-facing wrapper surface, with raw SQL names retained only as explanatory metadata for mapped column-derived fields.
 - **Generated validator schemas** validate the application-facing wrapper shape; raw database rows are mapped before public result validation.
 - **Logical type decoding** happens inside the **Generated query boundary** while raw database rows are mapped into application results.
