@@ -7,7 +7,7 @@ size: medium
 
 ## Executive summary
 
-Roughly 15% done. The architecture pass has selected the typegen query parameter expansion machinery as the highest-value focused improvement: it currently sits inside the broad generated query boundary module, alongside wrapper rendering, catalog writing, schema loading, and query document discovery. The missing pieces are the extraction, focused tests, verification, PR update, and alternate compare branches for the existing open PRs.
+Roughly 70% done. The architecture pass extracted the typegen query parameter expansion machinery into a dedicated internal module and added focused tests for the new module interface. The missing pieces are pushing the implementation, updating the architecture PR body, and creating alternate compare branches for the existing open PRs.
 
 ## Assumptions
 
@@ -28,11 +28,11 @@ The selected deepening opportunity is the query parameter expansion module insid
 
 ## Checklist
 
-- [ ] Commit this task file by itself before implementation.
-- [ ] Extract named parameter scanning and parameter expansion inference from `packages/sqlfu/src/typegen/index.ts`.
-- [ ] Keep the generated query boundary interface unchanged for users.
-- [ ] Add focused tests for comment/string-safe named parameter scanning and expansion inference.
-- [ ] Run the relevant `sqlfu` tests and typecheck.
+- [x] Commit this task file by itself before implementation. _Committed as `5d940b7`._
+- [x] Extract named parameter scanning and parameter expansion inference from `packages/sqlfu/src/typegen/index.ts`. _Moved the module to `packages/sqlfu/src/typegen/query-parameters.ts`; `index.ts` now imports its interface._
+- [x] Keep the generated query boundary interface unchanged for users. _The extraction only moved internal helpers; generated fixture outputs still pass._
+- [x] Add focused tests for comment/string-safe named parameter scanning and expansion inference. _Added `packages/sqlfu/test/generate/query-parameters.test.ts`._
+- [x] Run the relevant `sqlfu` tests and typecheck. _Ran focused generator tests, fixture tests, package typecheck, package build, and changed-file formatting._
 - [ ] Push the architecture branch and open/update the PR.
 - [ ] Create replacement compare branches for open PRs #111, #108, and #101 based on this architecture branch.
 - [ ] Add a table to the architecture PR body mapping each old PR to the new compare branch.
@@ -40,3 +40,5 @@ The selected deepening opportunity is the query parameter expansion module insid
 ## Implementation log
 
 - 2026-05-14: Created the task from `origin/main` in `../worktrees/sqlfu/improve-codebase-architecture-2026-05-14` after confirming the main checkout has unrelated website work.
+- 2026-05-14: Opened draft PR #113 with the spec-only commit, then implemented the extraction in `packages/sqlfu/src/typegen/query-parameters.ts`.
+- 2026-05-14: The explorer subagent suggested check/migrate analysis as the highest-impact candidate. This task kept the already-recorded parameter-expansion choice because it is a valid deepening change, was already committed as the chosen spec, and intentionally exercises the open-PR adjustment path for typegen-heavy PR #108.
