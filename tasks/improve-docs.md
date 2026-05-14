@@ -6,7 +6,7 @@ I want you to think holistically about the docs, as mentioned in your agent inst
 
 ## 2026-05-14 pass
 
-Status: docs and verification complete for this bedtime pass. The first decision was to keep the pass small and focused on generated query docs after recent merges: #113 extracted parameter expansion internals, #108 clarified the generated casing boundary, and #101 fixed sqlite-wasm named-parameter binding. The docs edits now clarify generated wrapper parameter forms in `packages/sqlfu/docs/typegen.md` and prepared-statement named binding in `packages/sqlfu/docs/adapters.md`; the only remaining handoff step is the final PR-body update after the docs commit is pushed.
+Status: done for this bedtime pass. The first decision was to keep the pass small and focused on generated query docs after recent merges: #113 extracted parameter expansion internals, #108 clarified the generated casing boundary, and #101 fixed sqlite-wasm named-parameter binding. The docs now clarify generated wrapper parameter forms in `packages/sqlfu/docs/typegen.md` and prepared-statement named binding in `packages/sqlfu/docs/adapters.md`; checks are green for the focused docs path and PR #115 has the reviewer-facing summary.
 
 Scope:
 
@@ -21,7 +21,7 @@ Checklist:
 - [x] Open the early PR after the task-only commit. _PR #115 opened after `2afe32a` so the scope note is reviewable before implementation._
 - [x] Improve generated query parameter docs based on the recent merged parameter and casing work. _`typegen.md` now separates authored placeholder names from column-derived object fields and calls out runtime-expanded param limits; `adapters.md` records bare-key binding for `:name` / `@name` / `$name` prepared statements._
 - [x] Run relevant docs/package checks. _After `pnpm install`, `pnpm --dir packages/sqlfu exec vitest run test/generate/query-parameters.test.ts`, `pnpm --filter @sqlfu/ui build`, and `pnpm --filter sqlfu-website build` passed. An initial mis-scoped `pnpm --filter sqlfu test:node -- test/generate/query-parameters.test.ts` ran the full sqlfu suite and hit existing non-doc failures in `resolve-sqlfu-ui` / strict imports._
-- [ ] Update the PR body with the net reviewer/user effect.
+- [x] Update the PR body with the net reviewer/user effect. _PR #115 now explains the docs change from the reader/reviewer perspective and lists the checks run._
 
 Implementation notes:
 
@@ -29,6 +29,7 @@ Implementation notes:
 - 2026-05-14: Recent merge scan points at `packages/sqlfu/docs/typegen.md` as the primary docs surface. The current page has the right facts, but the parameter section can better separate authored placeholder names, column-derived object fields, runtime placeholder expansion, and sqlite-wasm/prepared-statement named binding.
 - 2026-05-14: Chose not to churn the README. It already has a compact parameter summary; the detailed mental model belongs in the Type generation page and the prepared-statement note belongs with adapters.
 - 2026-05-14: Em-dash scan found existing occurrences in historical task logs, agent docs, code comments, and UI test labels. The touched source docs are clean for new em-dashes; the only matches in `tasks/improve-docs.md` are older pass notes.
+- 2026-05-14: Updated PR #115 body after pushing the docs commit. No follow-up task was split out because the broader README already points at the deep-dive page and did not need another local summary.
 
 ## 2026-05-09 pass
 
