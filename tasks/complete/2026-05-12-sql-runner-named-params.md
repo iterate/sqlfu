@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 size: small
 ---
 
@@ -7,11 +7,17 @@ size: small
 
 ## Status
 
-Ready as a small bug task. This PR now records the current repro only. The
-original demo-mode `:name` failure was mostly absorbed by the shared
-`client.prepare()` / sqlite-wasm adapter path on `main`; the remaining visible
-demo bug is for bare UI form params against SQL placeholders written with
-`@name` or `$name`.
+2026-05-12 worker pass complete. The sqlite-wasm adapter now maps bare params
+object keys to the named-parameter prefix used by the prepared SQL, and tests
+cover `:name`, `@name`, `$name`, already-prefixed object keys, array params,
+and the UI demo-path regression. The only missing piece is no broader docs page;
+the contract is captured here and in the adapter comment because this is a
+small demo-path bug fix.
+
+Earlier status: this PR now records the current repro only. The original
+demo-mode `:name` failure was mostly absorbed by the shared `client.prepare()` /
+sqlite-wasm adapter path on `main`; the remaining visible demo bug is for bare
+UI form params against SQL placeholders written with `@name` or `$name`.
 
 ## What's broken
 
@@ -86,15 +92,21 @@ sqlfu's public contract, confirmed by this task:
 
 - [x] Update this task with the current UI repro. _Captured the `@limitt` /
   `$limitt` demo-mode repro that remains on current `main`._
-- [ ] Replace the stale `packages/ui/src/demo/browser-host.test.ts` coverage
+- [x] Replace the stale `packages/ui/src/demo/browser-host.test.ts` coverage
   with a test that exercises the real adapter or host path. The current direct
   raw `db.exec({bind: {limitt: 2}})` assertion fails by design and no longer
-  tests the app path.
-- [ ] Fix `packages/sqlfu/src/adapters/sqlite-wasm.ts` so bare named params
+  tests the app path. _Replaced with an adapter `client.prepare()` path test
+  using `@limitt`, which matches what `browser-host.execAdHocSql` calls._
+- [x] Fix `packages/sqlfu/src/adapters/sqlite-wasm.ts` so bare named params
   bind correctly for `:name`, `@name`, and `$name`. The implementation needs to
-  preserve already-prefixed keys and array params.
-- [ ] Add or update docs/JSDoc for the params contract if this bug fix becomes
-  the place where we formalize it.
+  preserve already-prefixed keys and array params. _`toBind(sql, params)` now
+  scans ordinary named parameters and maps bare object keys to the exact SQL
+  marker; `packages/sqlfu/test/adapters/sqlite-wasm.test.ts` covers the prefix
+  variants and non-regressions in a real browser._
+- [x] Add or update docs/JSDoc for the params contract if this bug fix becomes
+  the place where we formalize it. _Kept formal documentation to this task plus
+  the adapter comment; this is adapter-specific behavior rather than a new docs
+  page._
 
 ## Non-goals
 
@@ -106,6 +118,16 @@ sqlfu's public contract, confirmed by this task:
   directly into the SQL runner it'll just work via node:sqlite and probably
   via sqlite-wasm too — out of scope to audit.
 
+## Assumptions for the 2026-05-12 pass
+
+- The behavior belongs in the sqlite-wasm adapter rather than the UI because the
+  UI intentionally submits bare form keys.
+- A focused adapter/host-path test is enough for this bug; no browser fixture is
+  needed unless the existing test surface cannot exercise `client.prepare()`.
+- The parameter-name scan only needs to support SQLite's ordinary `:name`,
+  `@name`, and `$name` prefixes. Tcl-style `$name::suffix`/`$name(...)`
+  parameter names stay out of scope for this pass.
+
 ## Implementation Notes
 
 - 2026-05-05: Re-checked PR #43 against `main`. The PR only carries this task
@@ -113,3 +135,11 @@ sqlfu's public contract, confirmed by this task:
   and the sqlite-wasm adapter prefixes bare keys as `:name`, so `:limitt` is no
   longer the current repro. `@limitt` and `$limitt` still fail because the
   adapter guesses the colon prefix.
+- 2026-05-12: Added a red browser-backed sqlite-wasm adapter test first. The
+  first meaningful failure was `SqlfuError: Invalid bind() parameter name: :id`
+  for SQL written with `@id`; after the adapter change, the focused
+  sqlite-wasm browser spec and the UI demo-path test pass.
+- 2026-05-12: Broader `pnpm --filter sqlfu test:node` was attempted. It failed
+  in unrelated existing areas: `resolve-sqlfu-ui` cannot import
+  `#serialized-assets`, and Better Auth / Durable Object fixtures hit the 5s
+  timeout. Focused tests and typechecks passed.

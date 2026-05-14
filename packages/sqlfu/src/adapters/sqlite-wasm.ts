@@ -1,6 +1,10 @@
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
-import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
+import {
+  rawSqlWithSqlSplittingAsync,
+  scanSqliteNamedParameters,
+  surroundWithBeginCommitRollbackAsync,
+} from '../sqlite-text.js';
 import type {AsyncClient, PreparedStatement, PreparedStatementParams, QueryArg, ResultRow, SqlQuery} from '../types.js';
 
 export type SqliteWasmBindValue = string | number | bigint | Uint8Array | null;
@@ -64,12 +68,12 @@ export function createSqliteWasmClient(database: SqliteWasmDatabaseLike): AsyncC
     // The wasm runtime caches parsed statements internally, so repeated exec
     // of the same SQL doesn't re-parse at the C level — sqlfu just doesn't
     // hold a native handle. Named params flow through wasm's native `bind`
-    // shape (it accepts `Record` directly).
+    // shape after bare object keys are translated to the prefix used in SQL.
     return {
       async all(params) {
         const rows = database.exec({
           sql,
-          bind: toBind(params),
+          bind: toBind(sql, params),
           rowMode: 'object',
           returnValue: 'resultRows',
         });
@@ -78,14 +82,14 @@ export function createSqliteWasmClient(database: SqliteWasmDatabaseLike): AsyncC
       async run(params) {
         database.exec({
           sql,
-          bind: toBind(params),
+          bind: toBind(sql, params),
         });
         return captureRunResult(database);
       },
       async *iterate(params) {
         const rows = database.exec({
           sql,
-          bind: toBind(params),
+          bind: toBind(sql, params),
           rowMode: 'object',
           returnValue: 'resultRows',
         });
@@ -126,17 +130,29 @@ function toPositionalBind(args: QueryArg[]): SqliteWasmBindValue[] | undefined {
 }
 
 function toBind(
+  sql: string,
   params: PreparedStatementParams | undefined,
 ): SqliteWasmBindValue[] | Record<string, SqliteWasmBindValue> | undefined {
   if (params == null) return undefined;
   if (Array.isArray(params)) return toPositionalBind(params as QueryArg[]);
+  const namedParameters = new Map<string, string>();
+  for (const parameter of scanSqliteNamedParameters(sql)) {
+    if (!namedParameters.has(parameter.name)) namedParameters.set(parameter.name, parameter.parameter);
+  }
   const out: Record<string, SqliteWasmBindValue> = {};
   for (const [key, value] of Object.entries(params)) {
-    out[key.startsWith(':') || key.startsWith('$') || key.startsWith('@') ? key : `:${key}`] = coerceBindValue(
-      value as QueryArg,
-    );
+    out[sqliteWasmBindKey(key, namedParameters)] = coerceBindValue(value as QueryArg);
   }
   return out;
+}
+
+function sqliteWasmBindKey(key: string, namedParameters: Map<string, string>): string {
+  if (hasBindPrefix(key)) return key;
+  return namedParameters.get(key) || `:${key}`;
+}
+
+function hasBindPrefix(key: string): boolean {
+  return key.startsWith(':') || key.startsWith('$') || key.startsWith('@');
 }
 
 function coerceBindValue(value: QueryArg): SqliteWasmBindValue {
