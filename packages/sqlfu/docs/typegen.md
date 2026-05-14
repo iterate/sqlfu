@@ -15,7 +15,7 @@ where id = :id;
 ```
 
 ```ts
-import {getPost} from './sql/.generated/get-post.sql';
+import {getPost} from './sql/.generated/get-post.sql.ts';
 
 const post = await getPost(client, {id: 123});
 ```

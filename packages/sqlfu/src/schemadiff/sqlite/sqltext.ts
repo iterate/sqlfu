@@ -11,30 +11,40 @@ export function normalizeStoredSql(sql: string): string {
 
 export function normalizeStoredSqlWithIdentifiers(sql: string, identifiers: string[]): string {
   const identifierByNormalizedName = new Map(identifiers.map((identifier) => [identifier.toLowerCase(), identifier]));
-  return rewriteSchemaSql(sql, (token) => {
-    if (token.kind === 'KEYWORD') {
-      return token.value.toLowerCase();
-    }
+  try {
+    return rewriteSchemaSql(sql, (token) => {
+      if (token.kind === 'KEYWORD') {
+        return token.value.toLowerCase();
+      }
 
-    if (token.kind !== 'IDENTIFIER') {
-      return token.value;
-    }
+      if (token.kind !== 'IDENTIFIER') {
+        return token.value;
+      }
 
-    const identifier = identifierByNormalizedName.get(unquoteIdentifierToken(token.value).toLowerCase());
-    return identifier ? maybeQuoteIdentifier(identifier) : token.value;
-  });
+      const identifier = identifierByNormalizedName.get(unquoteIdentifierToken(token.value).toLowerCase());
+      return identifier ? maybeQuoteIdentifier(identifier) : token.value;
+    });
+  } catch {
+    // The tokenizer is intentionally lightweight. If SQLite accepts syntax it does not
+    // understand yet, keep the catalog SQL visible instead of dropping the object on the floor.
+    return trimSchemaSql(sql);
+  }
 }
 
 export function normalizeViewDefinition(createSql: string): string {
   const normalized = normalizeComparableSql(createSql);
-  const match = normalized.match(/\bas\s+(.+)$/u);
+  const match = normalized.match(/\bas\s+(.+)$/iu);
   return match?.[1] ?? normalized;
 }
 
 export function normalizeComparableSql(sql: string): string {
-  return rewriteSchemaSql(sql, (token) =>
-    token.kind === 'KEYWORD' || token.kind === 'IDENTIFIER' ? token.value.toLowerCase() : token.value,
-  ).replace(/\s+/gu, ' ');
+  try {
+    return rewriteSchemaSql(sql, normalizeComparableToken).replace(/\s+/gu, ' ');
+  } catch {
+    // Comparison must be conservative: unknown valid SQLite should produce a raw-text
+    // difference, not an error or a false equality from partial token rewriting.
+    return trimSchemaSql(sql).replace(/\s+/gu, ' ');
+  }
 }
 
 export function normalizeSchemaSqlForExtraction(sql: string): string {
@@ -270,7 +280,7 @@ function skipBlockComment(sql: string, startIndex: number): number {
 }
 
 function rewriteSchemaSql(sql: string, rewriteToken: (token: Token) => string): string {
-  const trimmed = sql.trim().replace(/;+$/u, '');
+  const trimmed = trimSchemaSql(sql);
   if (!trimmed) {
     return '';
   }
@@ -287,6 +297,29 @@ function rewriteSchemaSql(sql: string, rewriteToken: (token: Token) => string): 
 
   output += trimmed.slice(position);
   return output;
+}
+
+function normalizeComparableToken(token: Token): string {
+  if (token.kind === 'KEYWORD') {
+    return token.value.toLowerCase();
+  }
+
+  if (token.kind !== 'IDENTIFIER') {
+    return token.value;
+  }
+
+  // SQLite may treat double-quoted text as a string literal in compatibility contexts.
+  // Preserving it can create false positives for case-only quoted identifier changes, but
+  // lowercasing it can create false negatives for semantic literal changes.
+  if (token.value.startsWith('"')) {
+    return token.value;
+  }
+
+  return token.value.toLowerCase();
+}
+
+function trimSchemaSql(sql: string): string {
+  return sql.trim().replace(/;+$/u, '');
 }
 
 function unquoteIdentifierToken(value: string): string {

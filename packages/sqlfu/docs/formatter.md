@@ -15,7 +15,7 @@ rewrites files in place and reports which files changed.
 
 ```txt
 Formatted files:
-  sql/get-posts.sql
+  sql/queries.sql
 Already formatted:
   definitions.sql
 ```
