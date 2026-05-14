@@ -52,6 +52,7 @@ export type QueryCatalogEntry =
 export type QueryCatalogArgument = {
   scope: 'data' | 'params';
   name: string;
+  rawName?: string;
   tsType: string;
   notNull: boolean;
   optional: boolean;
@@ -61,6 +62,7 @@ export type QueryCatalogArgument = {
 
 export type QueryCatalogField = {
   name: string;
+  rawName?: string;
   tsType: string;
   notNull: boolean;
   optional: boolean;

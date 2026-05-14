@@ -282,6 +282,7 @@ Optional fields:
 - `db` -- the database sqlfu talks to for `migrate`, `check`, `sync`, `goto`, `baseline`, and the UI. Either a filesystem path (opens a local sqlite file) or a factory returning a `DisposableAsyncClient`. If omitted, commands that need a database use `.sqlfu/app.db`; this is useful for authoring migrations and generated types before wiring a runtime database. See [Pluggable `db`](#pluggable-db).
 - `migrations` -- directory containing migration files. Omit if you don't use migrations (library-author projects).
 - `generate.authority` -- where `sqlfu generate` reads the schema from. See [`generate.authority`](#generateauthority). Default `'desired_schema'`.
+- `generate.casing` -- generated SQL-derived property casing, either `'camel'` or `'preserve'`. Default `'camel'`.
 - `generate.experimentalJsonTypes` -- opt into experimental JSON logical-type handling. Today this covers SQLite columns declared exactly as `json`; the same flag is reserved for typed JSON metadata/schema support.
 
 `sqlfu` manages its own temporary files under `.sqlfu/`, including scratch databases used for schema diffing. These are generally safe to delete at any time.

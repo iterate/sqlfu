@@ -542,7 +542,7 @@ limit 10;
           "id": {"type": "number"},
           "slug": {"type": "string"},
           "title": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-          "is_published": {"type": "number"},
+          "isPublished": {"type": "number"},
           "status": {"type": "string", "enum": ["draft", "published"]}
         }
       }

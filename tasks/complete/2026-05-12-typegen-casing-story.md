@@ -1,7 +1,9 @@
 ---
-status: needs-grilling
+status: complete
 size: medium
 ---
+
+**Status:** complete and verified. `generate.casing` defaults to `'camel'`, generated query modules now expose camelCased column-derived `Data` / `Result` shapes with explicit `RawResult` and `mapResult` boundaries when needed, and `generate.casing: 'preserve'` keeps literal SQL-derived names without no-op mapper output. User-authored placeholder `Params` remain exactly as written, and raw fields that would collide after camelCasing locally fall back to their raw names. Docs now cover the model in `packages/sqlfu/docs/typegen.md`, with a short config-reference note in the README.
 
 Below is the bot-written spec for this task. I, the human, think this:
 We should probably let people use whatever valid params they want when using `:myParam`. i.e. don't touch casing on that. Just encourage people to use camel-case with those things.
@@ -134,3 +136,36 @@ select name, applied_at /* as appliedAt */ from sqlfu_migrations;
 Raised in review of #23 at comment [#3111982883](https://github.com/mmkal/sqlfu/pull/23#discussion_r3111982883) — specifically the `insert-migration.sql.ts` generated output where `applied_at` as a TS field read as un-idiomatic.
 
 PR #23 shipped with option A (preserve). If we pick anything else here, #23's `appliedAt` → `applied_at` UI rename becomes the wrong direction and we'll revert it.
+
+## Implementation checklist
+
+- [x] Add and validate `generate.casing: 'camel' | 'preserve'` with default `'camel'`. *Implemented in `packages/sqlfu/src/types.ts` and `packages/sqlfu/src/config.ts`; config tests cover defaults and invalid values.*
+- [x] CamelCase column-derived generated query data and result properties by default. *Implemented in `packages/sqlfu/src/typegen/index.ts`; runtime tests cover result rows, update data, and inferred object inputs.*
+- [x] Preserve user-authored placeholder params exactly as written. *Covered by the update-data and object-input runtime tests.*
+- [x] Emit explicit `RawResult` and `mapResult` when raw database rows differ from public results. *Generated for casing or JSON/logical decoding and attached via `Object.assign`; fixtures now show the mapper body.*
+- [x] Avoid no-op mapper output in preserve mode or collision fallback. *Covered by runtime tests for `generate.casing: 'preserve'` and colliding `published_at` / `publishedAt` fields.*
+- [x] Map raw rows before validator result schemas validate public shapes. *Covered by the zod runtime test.*
+- [x] Update query catalog metadata to expose public names with optional raw names. *Implemented in `packages/sqlfu/src/typegen/query-catalog.ts` and asserted in the JSON logical-type catalog test.*
+- [x] Document the behavior and follow-up table-row-type decision. *Added the typegen docs section, README config line, ADR, and `tasks/reconsider-generated-table-row-types.md`.*
+
+## Grill-with-docs log
+
+- 2026-05-12: Resolved that generated query modules should be the explicit SQL-to-application casing boundary. Generated query identity stays camelCase and already matches the function name. Column-derived fields in generated query modules should camelCase into the TypeScript application shape with visible mapping in generated code. User-authored placeholders remain exactly as written: `:publishedSince` produces `publishedSince`, and `:published_since` produces `published_since`.
+- 2026-05-12: Resolved that generated `Data` inputs are column-derived and should camelCase, while generated `Params` inputs are placeholder-derived and should preserve user-authored casing. Docs should recommend writing placeholders in camelCase when using camelCase generated outputs.
+- 2026-05-12: Resolved that generated result fields are always camelCased, including fields that came from explicit SQL aliases. SQL aliases are not a casing escape hatch; the generated query boundary applies one consistent application-shape rule.
+- 2026-05-12: Resolved casing collisions by local fallback, not failure. If multiple raw result/data fields map to the same camelCase key, keep raw names for the clashing fields and continue generating the rest of the wrapper normally. This applies to both generated `Result` fields and generated `Data` / inferred object-input fields.
+- 2026-05-12: Resolved that `sql/.generated/tables.ts` stays raw DB-shaped for this casing task because it is not a generated query boundary. Added `tasks/reconsider-generated-table-row-types.md` to separately decide whether schema-wide row type generation should remain a feature.
+- 2026-05-12: Superseded earlier "raw result is internal only" decision. In camelCase mode, expose the raw result type and the field-by-field result mapper as generated public surface so users can reuse sqlfu's explicit boundary mapping with other clients.
+- 2026-05-12: Resolved that generated query catalog metadata should describe the application-facing wrapper surface. `columns[].name` and column-derived `arguments[].name` should be camelCased after collision fallback, while mapped entries may retain a raw SQL/source name for tooling and diagnostics. Placeholder-derived `params` arguments preserve the authored placeholder name.
+- 2026-05-12: Resolved that generated validator schemas validate the application-facing wrapper shape. Params schemas preserve placeholder-derived names; data and result schemas use camelCased column-derived names after collision fallback. Raw DB rows should be mapped before public result validation.
+- 2026-05-12: Resolved that JSON/logical type result decoding happens during the same raw-row to application-result mapping step. The generated query boundary should do casing conversion and storage decoding together before validation/return.
+- 2026-05-12: Resolved that this should be configurable rather than an unconditional hard-coded behavior. The option should be named `generate.casing`, not `generate.queryCasing`; accepted values, default, and exact controlled surfaces still need to be grilled.
+- 2026-05-12: Resolved that `generate.casing` controls generated property names, not generated symbols. Function names, `SqlQuery.name`, namespace/type names, filenames, and generated table row type names keep their existing naming rules.
+- 2026-05-12: Resolved that `generate.casing` accepts exactly `'camel' | 'preserve'` and defaults to `'camel'`. Projects that want literal SQL-shaped generated properties can opt into preserve mode.
+- 2026-05-12: Resolved that preserve mode should not emit no-op raw/public mapping helpers just to simplify sqlfu internals. Generated code in user repos should stay lean; only emit mapping code when the selected casing/logical type behavior actually changes runtime values.
+- 2026-05-12: Resolved that camelCase mode should use explicit field-by-field mapping in generated code, not a generic runtime helper. The mapper should be attached to the generated function object with `Object.assign`, similar to `sql` and `query`.
+- 2026-05-12: Resolved public names: generated query namespaces expose `RawResult`; generated function objects attach `mapResult`.
+- 2026-05-12: Resolved scope: `RawResult` and `mapResult` are emitted only for row-returning queries. Metadata-only write queries keep the current no-`Result` shape and do not get mapper surface.
+- 2026-05-12: Created accepted ADR `docs/adr/0001-generated-query-casing-boundary.md` recording the `generate.casing` boundary decision.
+- 2026-05-12: Resolved documentation placement. Put the full `generate.casing` mental model in `packages/sqlfu/docs/typegen.md`; add only a concise config-reference mention to `packages/sqlfu/README.md` / generated root README.
+- 2026-05-12: Resolved `RawResult` / `mapResult` emission rule. Emit them for any row-returning query where raw database rows differ from public results, including camelCase mapping or JSON/logical type decoding. Do not emit no-op mapper surface when `generate.casing: 'preserve'` and no other result transform exists.
