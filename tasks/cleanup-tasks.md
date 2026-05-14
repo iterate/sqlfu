@@ -7,11 +7,39 @@ size: small
 
 ## Status summary
 
-2026-05-09 pass is done. Five clearly merged task files were filed into `tasks/complete/`, their stale status summaries were normalized first, and 25 clean merged/closed worktrees were removed. Remaining worktrees are the current branch, closed-but-still-useful worktrees, dirty worktrees, or branches with no PR found.
+2026-05-14 pass is in progress. PRs #113, #108, and #101 are merged into `origin/main` and already have completed task files with checklist breadcrumbs. One stale active task, `tasks/intro-blog.md`, is now done on `origin/main` and should be filed next; clean merged local worktree candidates have been identified but not removed until after the early PR.
 
 Sometimes agents forget to move their task files to "done". Look at recent commits and see if that's happened. If it has, open a housekeeping PR to do just that. While you're there, you can also add to Implementation Notes if there's anything you spot in the change that wasn't tidied up properly that also wasn't documented in the task file.
 
 Make sure local worktrees are cleaned up too.
+
+## 2026-05-14 pass
+
+Branch: `bedtime/2026-05-14-cleanup-tasks`.
+
+Scope:
+
+- Inspect recent merged PRs #113, #108, and #101 against the current `tasks/complete/` state.
+- File active task files only when the matching work is clearly done on `origin/main`.
+- Inspect local worktrees and only remove clean worktrees that clearly correspond to merged PR branches.
+- Leave evergreen tasks open and record this pass here.
+
+Checklist:
+
+- [x] Read repo instructions and create the requested worktree from `origin/main`. _worktree created at `/Users/mmkal/src/worktrees/sqlfu/bedtime-2026-05-14-cleanup-tasks`; main checkout has unrelated website edits and was left untouched._
+- [x] Inspect PRs #113, #108, and #101. _all three are merged into `main`; #113 added `tasks/complete/2026-05-14-query-parameter-expansion-locality.md`, #108 moved `tasks/typegen-casing-story.md`, and #101 moved `tasks/sql-runner-named-params.md`._
+- [x] Inspect the active task tree for stale completed files. _found `tasks/intro-blog.md`: PR #100 is merged, but the active task still has an unchecked final PR update item._
+- [x] Inspect local worktrees and PR status. _clean merged candidates include `drop-node-20-2026-05-12`, `fix-package-size-pnpm-cache`, `improve-codebase-architecture-2026-05-14`, `pr-body-fixture-before-section`, `schemadiff-normalization-weird-sql-2026-05-12`, `sql-runner-named-params-2026-05-12`, `sweep-doc-query-examples-2026-05-12`, and `typegen-casing`; open/closed-unmerged/dirty worktrees were left out of the candidate set._
+- [ ] Commit this task/status update in isolation and open a PR early.
+- [ ] File completed active task files into `tasks/complete/` with 2026-05-14 date prefixes.
+- [ ] Remove safe clean merged local worktrees, or record why any candidate was left alone.
+- [ ] Verify the final task tree and git status.
+
+Implementation notes:
+
+- `tasks/complete/2026-05-14-query-parameter-expansion-locality.md`, `tasks/complete/2026-05-12-typegen-casing-story.md`, and `tasks/complete/2026-05-12-sql-runner-named-params.md` already carry completed checklist breadcrumbs. No duplicate move is needed for #113, #108, or #101.
+- The only active task file found that is clearly done on `origin/main` is `tasks/intro-blog.md`; PR #100 merged on 2026-05-11.
+- Open PR #111 and the active bedtime branches #114/#115 stay in place. Closed-unmerged or dirty worktrees such as `api-extractor`, `bedtime-evergreen-2026-05-12`, `detect-spurious-definitions`, `effect-client-interop`, `typebox-validator`, and `typesql-ddl-support` also stay in place.
 
 ## 2026-05-09 pass
 
