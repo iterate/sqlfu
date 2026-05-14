@@ -215,18 +215,34 @@ import type {Client} from 'sqlfu';
 const sql = `select id, slug, published_at, excerpt from post_summaries;`;
 const query = { name: "listPostSummaries", sql, args: [] };
 
+function mapResult(row: listPostSummaries.RawResult): listPostSummaries.Result {
+	return {
+		id: row.id,
+		slug: row.slug,
+		publishedAt: row.published_at,
+		excerpt: row.excerpt,
+	};
+}
+
 export const listPostSummaries = Object.assign(
 	async function listPostSummaries(client: Client): Promise<listPostSummaries.Result[]> {
-		return client.all<listPostSummaries.Result>(query);
+		const rows = await client.all<listPostSummaries.RawResult>(query);
+		return rows.map(mapResult);
 	},
-	{ sql, query },
+	{ sql, query, mapResult },
 );
 
 export namespace listPostSummaries {
-	export type Result = {
+	export type RawResult = {
 		id: number;
 		slug: string;
 		published_at?: string;
+		excerpt: string;
+	};
+	export type Result = {
+		id: number;
+		slug: string;
+		publishedAt?: string;
 		excerpt: string;
 	};
 }
