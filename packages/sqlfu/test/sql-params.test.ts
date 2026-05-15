@@ -62,6 +62,15 @@ test('sql params bind named records directly to postgres positional placeholders
   });
 });
 
+test('sql params preserve postgres cast syntax after named parameters', () => {
+  expect(bindSqlParamsToPositional(`select :id::int as id`, {id: 1}, 'postgres')).toMatchObject({
+    sql: `select $1::int as id`,
+    args: [1],
+  });
+
+  expect(scanSqlNamedParameters(`select count(*)::int as count`)).toMatchObject([]);
+});
+
 test('sql params bind positional arrays to postgres placeholders while preserving dollar-quoted question marks', () => {
   expect(
     bindSqlParamsToPositional(
@@ -72,6 +81,40 @@ test('sql params bind positional arrays to postgres placeholders while preservin
   ).toMatchObject({
     sql: `select $tag$?$tag$ as literal, $1 as first, '?' as quoted, $2 as second`,
     args: ['alpha', 'beta'],
+  });
+});
+
+test('sql params preserve postgres json question operators', () => {
+  expect(
+    bindSqlParamsToPositional(
+      [
+        `select *`,
+        `from posts`,
+        `where payload ? 'published'`,
+        `and tags ?| array['sql', 'typescript']`,
+        `and flags ?& array[?]`,
+        `and id = ?`,
+      ].join('\n'),
+      ['visible', 1],
+      'postgres',
+    ),
+  ).toMatchObject({
+    sql: [
+      `select *`,
+      `from posts`,
+      `where payload ? 'published'`,
+      `and tags ?| array['sql', 'typescript']`,
+      `and flags ?& array[$1]`,
+      `and id = $2`,
+    ].join('\n'),
+    args: ['visible', 1],
+  });
+});
+
+test('sql params bind named right operands after postgres json question operators', () => {
+  expect(bindSqlParamsToPositional(`select * from posts where payload ? :key and id = :id`, {key: 'slug', id: 1}, 'postgres')).toMatchObject({
+    sql: `select * from posts where payload ? $1 and id = $2`,
+    args: ['slug', 1],
   });
 });
 
