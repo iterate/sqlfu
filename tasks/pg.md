@@ -7,7 +7,7 @@ pgkit supported postgres. it has basically the same core features. we should be 
 
 ## Status summary
 
-Follow-up docs cleanup in progress on `bedtime/2026-05-15-pg-docs-followup`: the scope is small and docs-only. The main target is stale README/docs/blog wording that still implies no Postgres runtime adapter exists; the missing piece after this cleanup is the broader `@sqlfu/pg` dialect/toolchain story and its dedicated examples.
+Follow-up docs cleanup is implemented on `bedtime/2026-05-15-pg-docs-followup`: stale README/docs/blog wording now distinguishes the existing Postgres runtime adapter from the broader `@sqlfu/pg` dialect/toolchain story. The remaining gap is fuller `@sqlfu/pg` docs and examples, not this review cleanup.
 
 Step one (ready-for-review on branch `extract-dialect-interface`, PR #87): extracted the `Dialect` interface from the main package and re-implemented the existing sqlite-only behavior as the default `sqliteDialect`. New `src/dialect.ts` is a thin aggregator over existing implementations (no file moves). All existing tests pass untouched (1428 sqlfu + 67 ui). Public surface is unchanged for users (sqlite is still the default); core code routes through `config.dialect` for schemadiff, identifier quoting, migration table DDL, and migration locking. Formatter and typegen routing deferred to step two (formatter call sites all lack a config in scope today; typegen materialization is tangled with sqlite-specific private helpers in `typegen/index.ts` and is best refactored when the pg side drives the requirement).
 
@@ -71,7 +71,7 @@ Design decisions (sign-off received in chat before this commit):
 
 ### Docs follow-up from PR #121 review
 
-- [ ] Clean up stale README/docs/blog claims about Postgres support. _target: distinguish the runtime adapter that exists today from the unfinished broader `@sqlfu/pg` dialect/toolchain story._
+- [x] Clean up stale README/docs/blog claims about Postgres support. _updated `packages/sqlfu/README.md`, `packages/sqlfu/docs/errors.md`, `packages/sqlfu/docs/adapters.md`, and the intro blog to distinguish the runtime adapter from the unfinished broader `@sqlfu/pg` dialect/toolchain docs._
 
 ## Implementation notes
 
