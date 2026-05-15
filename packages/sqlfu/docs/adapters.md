@@ -235,6 +235,24 @@ await db.push();
 await db.pull();
 ```
 
+## Postgres runtime
+
+### `pg`
+
+`createNodePostgresClient()` adapts a `pg` pool for application queries. This
+is runtime-only: migration drafting, schema diff, and type generation are still
+SQLite-first until the broader `@sqlfu/pg` dialect/toolchain work lands.
+
+```ts
+import {Pool} from 'pg';
+import {createNodePostgresClient} from 'sqlfu';
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+const client = createNodePostgresClient(pool);
+```
+
 ### Cloudflare D1
 
 ```ts
