@@ -5,21 +5,21 @@ Remotion 4.x compositions for the landing page.
 The default landing page ships no animation. Animations are opt-in via
 `?animation=<name>`:
 
-- `?animation=sequential` — the main animated treatment. A single
+- `?animation=sequential`: main animated treatment. A single
   1280x720 stage that plays all three beats (schema, generate, draft)
   end-to-end over 28s. Composition: `anim-sequential`.
-- `?animation=a|b|c|d` — the original three-panel alternatives.
+- `?animation=a|b|c|d`: original three-panel alternatives.
   Each card in the value-panel grid gets a dedicated video:
-  - `alt-a-*` — single-card showreel (all three beats in one panel)
-  - `alt-b-*` — terminal-first: everything through the CLI transcript
-  - `alt-c-*` — diff-centric: the animation is the diff between two files
-  - `alt-d-*` — playful: heavy spring animations, bouncy energy
+  - `alt-a-*`: single-card showreel (all three beats in one panel)
+  - `alt-b-*`: terminal-first: everything through the CLI transcript
+  - `alt-c-*`: diff-centric: the animation is the diff between two files
+  - `alt-d-*`: playful: heavy spring animations, bouncy energy
 
 Also available in the studio as reference material:
 
-- `anim-1-schema` — schema refactor in `definitions.sql` (10s, beat 1 only)
-- `anim-2-generate` — `.sql` to generated `.sql.ts` (10s, beat 2 only)
-- `anim-3-draft` — edit schema, `sqlfu draft`, migration lands (10s, beat 3 only)
+- `anim-1-schema`: schema refactor in `definitions.sql` (10s, beat 1 only)
+- `anim-2-generate`: `.sql` to generated `.sql.ts` (10s, beat 2 only)
+- `anim-3-draft`: edit schema, `sqlfu draft`, migration lands (10s, beat 3 only)
 
 ## Commands
 
