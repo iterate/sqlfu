@@ -240,8 +240,9 @@ await db.pull();
 ### `pg`
 
 `createNodePostgresClient()` adapts a `pg` pool for application queries. This
-is runtime-only: migration drafting, schema diff, and type generation are still
-SQLite-first until the broader `@sqlfu/pg` dialect/toolchain work lands.
+adapter is runtime-only and lives in the main `sqlfu` package. The broader
+Postgres dialect/toolchain work lives in `@sqlfu/pg`; fuller docs and examples
+for that package are still in progress.
 
 ```ts
 import {Pool} from 'pg';

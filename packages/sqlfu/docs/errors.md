@@ -35,7 +35,7 @@ Primary-key violations collapse into `unique_violation`. From a product perspect
 class SqlfuError extends Error {
   kind: SqlfuErrorKind;
   query: SqlQuery;    // the query that failed; includes `.name` if named
-  system: string;     // 'sqlite' (OTel db.system value)
+  system: string;     // OTel db.system value, e.g. 'sqlite' or 'postgresql'
   cause: unknown;     // the original driver error, byte-identical
 }
 ```
