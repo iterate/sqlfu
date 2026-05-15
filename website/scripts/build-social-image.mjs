@@ -2,6 +2,7 @@
 // Generates the root social preview image used by Open Graph and Twitter cards.
 
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import sharp from 'sharp';
@@ -14,9 +15,13 @@ const outputPath = path.join(websiteRoot, 'public', 'social-card.png');
 const logo = await fs.readFile(logoPath);
 const logoDataUrl = `data:image/png;base64,${logo.toString('base64')}`;
 
-const serif = `'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif`;
 const mono = `'SF Mono', Menlo, Consolas, 'Roboto Mono', monospace`;
-const sans = `Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif`;
+
+const ubuntuFontUrls = {
+  italic: 'https://fonts.gstatic.com/s/ubuntu/v21/4iCu6KVjbNBYlgoKeg7z.ttf',
+  medium: 'https://fonts.gstatic.com/s/ubuntu/v21/4iCv6KVjbNBYlgoCjC3Ttw.ttf',
+  bold: 'https://fonts.gstatic.com/s/ubuntu/v21/4iCv6KVjbNBYlgoCxCvTtw.ttf',
+};
 
 const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
@@ -38,43 +43,153 @@ const svg = `<?xml version="1.0" encoding="UTF-8"?>
   <!-- Brand row: logo + wordmark on the left, site URL on the right -->
   <g transform="translate(72 60)">
     <image x="0" y="0" width="56" height="56" href="${logoDataUrl}" preserveAspectRatio="xMidYMid meet"/>
-    <text x="74" y="42" font-family="${serif}" font-size="40" font-weight="700" fill="#201710" letter-spacing="-1">sqlfu</text>
   </g>
-  <text x="1128" y="100" text-anchor="end" font-family="${mono}" font-size="20" fill="#6f5947">sqlfu.dev</text>
 
   <line x1="72" y1="148" x2="1128" y2="148" stroke="#553418" stroke-opacity="0.18" stroke-width="1"/>
 
-  <!-- Eyebrow -->
-  <text x="72" y="222" font-family="${sans}" font-size="20" font-weight="700" fill="#9d4d12" letter-spacing="4">SQL FIRST · TYPESCRIPT SECOND</text>
-
-  <!-- Headline -->
-  <text x="68" y="346" font-family="${serif}" font-size="116" font-weight="700" fill="#201710" letter-spacing="-3">all you need is sql.</text>
-
-  <!-- Subtitle -->
-  <text x="72" y="418" font-family="${serif}" font-size="32" font-weight="400" font-style="italic" fill="#3a2c1f">schema, migrations, and typed queries from plain SQL files.</text>
-
   <line x1="72" y1="498" x2="1128" y2="498" stroke="#553418" stroke-opacity="0.18" stroke-width="1"/>
 
-  <!-- File manifest: the canonical sqlfu project layout, the project's signature -->
-  <g transform="translate(72 562)" font-family="${mono}" font-size="22" fill="#201710">
+  <!-- File manifest dividers: the canonical sqlfu project layout, the project's signature -->
+  <g transform="translate(72 562)">
     <g>
       <rect x="0" y="-22" width="4" height="32" rx="2" fill="#9d4d12"/>
-      <text x="18" y="0">definitions.sql</text>
-      <text x="18" y="26" font-family="${sans}" font-size="14" font-weight="500" fill="#6f5947" letter-spacing="1.5">SCHEMA</text>
     </g>
     <g transform="translate(360 0)">
       <rect x="0" y="-22" width="4" height="32" rx="2" fill="#9d4d12"/>
-      <text x="18" y="0">migrations/*.sql</text>
-      <text x="18" y="26" font-family="${sans}" font-size="14" font-weight="500" fill="#6f5947" letter-spacing="1.5">HISTORY</text>
     </g>
     <g transform="translate(740 0)">
       <rect x="0" y="-22" width="4" height="32" rx="2" fill="#9d4d12"/>
-      <text x="18" y="0">sql/*.sql</text>
-      <text x="18" y="26" font-family="${sans}" font-size="14" font-weight="500" fill="#6f5947" letter-spacing="1.5">QUERIES → TYPED CODE</text>
     </g>
   </g>
 </svg>`;
 
 await fs.mkdir(path.dirname(outputPath), {recursive: true});
-await sharp(Buffer.from(svg)).png().toFile(outputPath);
+const fontDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-social-fonts-'));
+
+try {
+  const fonts = await downloadUbuntuFonts(fontDirectory);
+  await configureFontconfig(fontDirectory);
+  const layers = await Promise.all([
+    textLayer({text: 'sqlfu', left: 146, top: 64, fontSize: 42, fontFile: fonts.bold, color: '#201710'}),
+    textLayer({text: 'sqlfu.dev', right: 1128, top: 82, fontSize: 20, fontFamily: mono, color: '#6f5947'}),
+    textLayer({
+      text: 'SQL FIRST · TYPESCRIPT SECOND',
+      left: 72,
+      top: 199,
+      fontSize: 20,
+      fontFile: fonts.bold,
+      color: '#9d4d12',
+      letterSpacing: 4096,
+    }),
+    textLayer({
+      text: 'all you need is sql.',
+      left: 68,
+      top: 248,
+      fontSize: 124,
+      fontFile: fonts.bold,
+      color: '#201710',
+    }),
+    textLayer({
+      text: 'schema, migrations, and typed queries from plain SQL files.',
+      left: 72,
+      top: 388,
+      fontSize: 34,
+      fontFile: fonts.italic,
+      fontFamily: 'Ubuntu Italic',
+      color: '#3a2c1f',
+    }),
+    textLayer({text: 'definitions.sql', left: 90, top: 538, fontSize: 22, fontFamily: mono, color: '#201710'}),
+    textLayer({
+      text: 'SCHEMA',
+      left: 90,
+      top: 573,
+      fontSize: 14,
+      fontFile: fonts.medium,
+      color: '#6f5947',
+      letterSpacing: 1536,
+    }),
+    textLayer({text: 'migrations/*.sql', left: 450, top: 538, fontSize: 22, fontFamily: mono, color: '#201710'}),
+    textLayer({
+      text: 'HISTORY',
+      left: 450,
+      top: 573,
+      fontSize: 14,
+      fontFile: fonts.medium,
+      color: '#6f5947',
+      letterSpacing: 1536,
+    }),
+    textLayer({text: 'sql/*.sql', left: 830, top: 538, fontSize: 22, fontFamily: mono, color: '#201710'}),
+    textLayer({
+      text: 'QUERIES → TYPED CODE',
+      left: 830,
+      top: 573,
+      fontSize: 14,
+      fontFile: fonts.medium,
+      color: '#6f5947',
+      letterSpacing: 1536,
+    }),
+  ]);
+
+  await sharp(Buffer.from(svg)).composite(layers).png().toFile(outputPath);
+} finally {
+  await fs.rm(fontDirectory, {recursive: true, force: true});
+}
+
 console.log(`wrote ${path.relative(websiteRoot, outputPath)} (1200x630)`);
+
+async function downloadUbuntuFonts(fontDirectory) {
+  const entries = await Promise.all(
+    Object.entries(ubuntuFontUrls).map(async ([name, url]) => {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to download Ubuntu ${name} font: ${response.status} ${response.statusText}`);
+      }
+
+      const fontPath = path.join(fontDirectory, `${name}.ttf`);
+      await fs.writeFile(fontPath, Buffer.from(await response.arrayBuffer()));
+      return [name, fontPath];
+    }),
+  );
+
+  return Object.fromEntries(entries);
+}
+
+async function configureFontconfig(fontDirectory) {
+  const fontConfigPath = path.join(fontDirectory, 'fonts.conf');
+  const escapedDirectory = fontDirectory.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  await fs.writeFile(
+    fontConfigPath,
+    `<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <dir>${escapedDirectory}</dir>
+</fontconfig>
+`,
+  );
+  process.env.FONTCONFIG_FILE = fontConfigPath;
+}
+
+async function textLayer(options) {
+  const fontFamily = options.fontFamily || 'Ubuntu';
+  const font = `${fontFamily} ${options.fontSize}`;
+  const text = `<span foreground="${options.color}" letter_spacing="${options.letterSpacing || 0}">${escapePango(options.text)}</span>`;
+  const textOptions = {text, font, rgba: true};
+  if (options.fontFile) {
+    textOptions.fontfile = options.fontFile;
+  }
+
+  const image = sharp({text: textOptions});
+  const input = await image.png().toBuffer();
+  const metadata = await sharp(input).metadata();
+  const left = 'left' in options ? options.left : options.right - metadata.width;
+
+  return {
+    input,
+    left,
+    top: options.top,
+  };
+}
+
+function escapePango(value) {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
