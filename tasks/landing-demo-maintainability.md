@@ -7,6 +7,25 @@ size: large
 
 Implementation is mostly done. Demo snippets now live in markdown fixtures, a build-time renderer parses annotations and uses Shiki for SQL/TypeScript, terminal transcripts are rendered by a small custom path, and `index.astro` consumes compiled demo artifacts instead of hand-tokenized spans. Batteries now participates in the existing scroll/replay animation flow for the active feature panel. Remaining work: fake trace rendering still needs a real design pass, and Outbox remains intentionally deferred until the product surface is stable enough to advertise.
 
+## 2026-05-15 Fake Trace Pass
+
+Status summary: this branch is scoped to finishing the fake trace rendering item. The first step is this specification commit; implementation is still missing. Outbox remains explicitly deferred.
+
+Assumptions:
+
+- The fake trace should stay a vendor-neutral illustrative UI, not an OpenTelemetry, Honeycomb, Jaeger, Datadog, or Sentry clone.
+- The landing page story should remain the same: sqlfu query identity makes runtime behavior inspectable without burying SQL in application code.
+- The fixture system should remain intact; update the fake-trace markup/styling in place unless the existing structure blocks a credible design pass.
+- Verification should include a production build and desktop/mobile-ish visual checks for overlap or unreadable trace content.
+
+Fake-trace checklist:
+
+- [ ] Find the current fake-trace markup and CSS surface.
+- [ ] Redesign the fake trace as a compact trace-viewer panel with realistic hierarchy, timing, tags, and query/file identity cues.
+- [ ] Keep the rendering intentionally simplified and vendor-neutral.
+- [ ] Verify the landing page build still succeeds.
+- [ ] Capture or save visual verification for desktop and mobile-ish widths, and note the screenshot path in the PR.
+
 ## Scope
 
 - Keep the landing page focused on the existing four beats: schema + migration, type generation, runtime adapters, and Batteries.
