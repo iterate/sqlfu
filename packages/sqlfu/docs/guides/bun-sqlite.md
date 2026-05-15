@@ -8,13 +8,12 @@ runtime adapter changes to `createBunClient()`.
 
 ## Config
 
-The CLI can still use a local SQLite file path:
+The CLI can use the default `.sqlfu/app.db` local SQLite file:
 
 ```ts
 import {defineConfig} from 'sqlfu';
 
 export default defineConfig({
-  db: './db/app.sqlite',
   definitions: './definitions.sql',
   migrations: './migrations',
   queries: './sql',
@@ -63,7 +62,7 @@ import {createBunClient} from 'sqlfu';
 
 import {listJobsByStatus} from './sql/.generated/queries.sql.ts';
 
-const db = new Database('./db/app.sqlite');
+const db = new Database('./.sqlfu/app.db');
 const client = createBunClient(db);
 
 const pendingJobs = listJobsByStatus(client, {status: 'pending'});

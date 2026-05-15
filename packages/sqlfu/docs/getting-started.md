@@ -8,8 +8,8 @@ If you want to see the finished project running in your browser first, [open the
 
 ```
 .
-├── db/
-│   └── app.sqlite
+├── .sqlfu/
+│   └── app.db
 ├── definitions.sql
 ├── migrations/
 │   └── 20260101000000_add_posts_table.sql
@@ -42,17 +42,18 @@ npx sqlfu init
 
 (If you just run `npx sqlfu` with no config, it will prompt you to init first. `sqlfu init` makes it explicit.)
 
-This creates `sqlfu.config.ts`, `definitions.sql`, `migrations/`, `sql/`, and `db/`. The config already points at sensible defaults:
+This creates `sqlfu.config.ts`, `definitions.sql`, `migrations/`, `sql/`, and a `.gitignore` entry for `.sqlfu/`. The config already points at sensible defaults:
 
 ```ts
 // sqlfu.config.ts
 export default {
-  db: './db/app.sqlite',
   migrations: './migrations',
   definitions: './definitions.sql',
   queries: './sql',
 };
 ```
+
+The config deliberately omits `db`: commands that need a local database will use `.sqlfu/app.db` until you point sqlfu at your app's real runtime database.
 
 ## Define your schema
 
@@ -98,7 +99,7 @@ Looks right. Commit it as-is.
 npx sqlfu migrate
 ```
 
-This applies any pending migrations to your dev database (`db/app.sqlite`) and records each one in `sqlfu_migrations`. Run this every time you pull new migrations from the repo.
+This applies any pending migrations to your dev database (`.sqlfu/app.db`) and records each one in `sqlfu_migrations`. Run this every time you pull new migrations from the repo.
 
 ## Add a query
 
@@ -130,7 +131,7 @@ observability hooks.
 
 Because the default `generate.authority` is `desired_schema`, generation does
 not need a live database. This walkthrough still runs `migrate` first so the
-next step can call the wrapper against `db/app.sqlite`.
+next step can call the wrapper against `.sqlfu/app.db`.
 
 ## Call the wrapper
 
@@ -139,7 +140,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {createNodeSqliteClient} from 'sqlfu';
 import {getPosts} from './sql/.generated/queries.sql.ts';
 
-const db = new DatabaseSync('./db/app.sqlite');
+const db = new DatabaseSync('./.sqlfu/app.db');
 const client = createNodeSqliteClient(db);
 
 const posts = await getPosts(client, {limit: 10});

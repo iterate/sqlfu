@@ -123,7 +123,7 @@ Rewrite migration history to an exact target without changing live schema.
 
 ### `npx sqlfu init`
 
-Create a starting `sqlfu.config.ts`.
+Create a starting `sqlfu.config.ts` and ignore `.sqlfu/` local artifacts.
 
 ### `npx sqlfu kill`
 
