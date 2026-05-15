@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: review
 size: medium
 ---
 
@@ -7,7 +7,7 @@ size: medium
 
 ## Status Summary
 
-Implementation complete and locally checked. Named-parameter binding now lives in a driver-neutral Module used by runtime Adapters; the remaining work is to push the PR and create replacement compare branches for the open PR queue.
+Implementation complete, locally checked, and replacement compare branches pushed. Named-parameter binding now lives in a driver-neutral Module used by runtime Adapters; PR #125 is ready for review with one known pre-existing full-suite failure noted below.
 
 ## Goal
 
@@ -27,7 +27,7 @@ Find and land one high-impact architecture improvement after the 2026-05-15 bedt
 - [x] Run the `improve-codebase-architecture` exploration using the project context and ADR. _parallel explorer passes covered adapter/runtime seams, typegen/query identity, and UI host/table seams._
 - [x] Choose one candidate, recording the autonomous bedtime assumption. _selected named-parameter binding because it is a real multi-adapter seam, removes an explicit Postgres wart, and avoids the open docs/init/landing/query-identity PR surfaces._
 - [x] Implement the chosen architecture improvement with focused tests. _added `packages/sqlfu/src/sql-params.ts`, moved positional/Postgres/prefixed-record binding through it, deleted the old sqlite-text named-param helper and Postgres private `$N` scanner, and added parameter plus Postgres adapter tests._
-- [ ] Update this task file and PR body with the net effect, checks, and replacement compare branches for open PRs.
+- [x] Update this task file and PR body with the net effect, checks, and replacement compare branches for open PRs. _replacement branches were pushed for PRs #111, #114, #117, #119, #120, #121, #122, #123, and #124._
 
 ## Chosen Candidate
 
@@ -44,6 +44,20 @@ The intent is to move placeholder knowledge out of the sqlite-named text Module 
 - [guess] The small extra scanner work for SQLite-style Adapters is acceptable; adapter execution is dominated by driver calls, while scanner correctness and Locality matter more.
 - [guess] This should not require a `CONTEXT.md` term because "named-parameter binding" is an implementation Module behind the existing Adapter seam, not a new product/domain concept.
 
+## Replacement Compare Branches
+
+| Existing PR | Replacement compare | Strategy |
+| --- | --- | --- |
+| [#124 `bedtime/2026-05-15-default-db-gitignore`](https://github.com/iterate/sqlfu/pull/124) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-124) | clean merge |
+| [#123 `bedtime/2026-05-15-pg-docs-followup`](https://github.com/iterate/sqlfu/pull/123) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-123) | clean merge |
+| [#122 `bedtime/2026-05-15-db-base-directory`](https://github.com/iterate/sqlfu/pull/122) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-122) | clean merge |
+| [#121 `bedtime/2026-05-15-improve-docs`](https://github.com/iterate/sqlfu/pull/121) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-121) | clean merge |
+| [#120 `bedtime/2026-05-15-landing-trace`](https://github.com/iterate/sqlfu/pull/120) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-120) | clean merge |
+| [#119 `bedtime/2026-05-15-cleanup-tasks`](https://github.com/iterate/sqlfu/pull/119) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-119) | clean merge |
+| [#117 `bedtime/2026-05-14-query-identity-manifest`](https://github.com/iterate/sqlfu/pull/117) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-117) | clean merge |
+| [#114 `bedtime/2026-05-14-generate-preflight`](https://github.com/iterate/sqlfu/pull/114) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-114) | clean merge |
+| [#111 `issue-110-sqlite3-parser-schemadiff`](https://github.com/iterate/sqlfu/pull/111) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-111) | clean merge |
+
 ## Implementation Notes
 
 - 2026-05-16: Main checkout was clean. Bedtime PRs #119, #120, #121, #122, #123, and #124 had passing workflow checks before starting this pass.
@@ -52,3 +66,5 @@ The intent is to move placeholder knowledge out of the sqlite-named text Module 
 - 2026-05-16: Implemented the binding Module and moved D1, Durable Objects, Expo SQLite, Turso serverless, sqlite-wasm, and Postgres to it.
 - 2026-05-16: Checks passed: `pnpm --filter sqlfu exec vitest run test/sql-params.test.ts test/adapters/pg.test.ts test/sqlite-text.test.ts`; `pnpm --filter sqlfu exec vitest run test/adapters/d1.test.ts test/adapters/durable-object.test.ts test/adapters/expo-sqlite.test.ts test/adapters/sqlite-wasm.test.ts`; `pnpm --filter sqlfu exec vitest run test/adapters/turso-remote.test.ts test/adapters/turso-database.test.ts`; `pnpm --filter sqlfu typecheck`; `pnpm --filter @sqlfu/ui build`; `pnpm --filter sqlfu exec vitest run test/resolve-sqlfu-ui.test.ts`; `git diff --check`.
 - 2026-05-16: Full `pnpm --filter sqlfu test` reached 60 passing files but failed `test/import-surface.test.ts` because `sqlfu/analyze`'s existing vendored TypeSQL bundle imports `node:sqlite`; this is outside the named-parameter binding change. The initial full run also failed `resolve-sqlfu-ui` until `@sqlfu/ui` was built, after which that test passed.
+- 2026-05-16: Replacement branches were created with `git merge --no-edit` from the architecture branch. All replacement branches passed `git diff --check`.
+- 2026-05-16: Targeted replacement checks passed: #124 `pnpm --filter sqlfu exec vitest run test/init.test.ts`; #123 `pnpm sync:root-readme:check` and `pnpm --filter sqlfu-website build`; #120 `pnpm --filter sqlfu-website build`; #117 `pnpm --filter sqlfu exec vitest run test/query-identity.test.ts test/lint-plugin.test.ts`; #114 `pnpm --filter sqlfu exec vitest run test/cli-config.test.ts`; #111 `pnpm install` and `pnpm --filter sqlfu exec vitest run test/schemadiff`.
