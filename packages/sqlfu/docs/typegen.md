@@ -20,6 +20,80 @@ import {getPost} from './sql/.generated/get-post.sql.ts';
 const post = await getPost(client, {id: 123});
 ```
 
+## Generated casing
+
+`generate.casing` controls generated SQL-derived property names. It defaults to
+`'camel'`, so query wrappers expose application-shaped `Data` and `Result`
+properties while the generated code shows the boundary explicitly:
+
+```sql
+/** @name listPosts */
+select id, published_at
+from posts
+order by id;
+```
+
+```ts
+function mapResult(row: listPosts.RawResult): listPosts.Result {
+  return {
+    id: row.id,
+    publishedAt: row.published_at,
+  };
+}
+
+export const listPosts = Object.assign(
+  async function listPosts(client: Client): Promise<listPosts.Result[]> {
+    const rows = await client.all<listPosts.RawResult>(listPosts.query);
+    return rows.map(mapResult);
+  },
+  { sql, query, mapResult },
+);
+
+export namespace listPosts {
+  export type RawResult = {
+    id: number;
+    published_at: string;
+  };
+
+  export type Result = {
+    id: number;
+    publishedAt: string;
+  };
+}
+```
+
+`RawResult` describes the database row. `mapResult` is the generated field-by-field
+mapper from raw SQL shape to public TypeScript shape, and is attached so you can
+reuse it with other clients. sqlfu emits that mapper only when there is a real
+result transform, such as camelCasing or JSON logical-type decoding.
+
+Placeholder params are different: they are names you wrote in SQL, so sqlfu
+preserves them exactly. If you want a fully camelCase wrapper API, write
+placeholders in camelCase:
+
+```sql
+select id, published_at
+from posts
+where published_at >= :publishedSince;
+```
+
+For update/insert data inferred from column names, sqlfu treats those properties
+as column-derived and camelCases them:
+
+```sql
+update posts
+set published_at = :published_at
+where id = :post_id;
+```
+
+```ts
+await publishPost(client, {publishedAt: '2026-05-12'}, {post_id: 1});
+```
+
+Use `generate.casing: 'preserve'` when you want generated properties to keep the
+SQL-derived names. If two fields would collide after camelCasing, only the
+clashing fields keep their raw names.
+
 If the rest of your app uses Effect, set `generate.runtime: 'effect-v3'` to emit
 functions that return Effect values and require Effect SQL's
 `SqlClient.SqlClient` from the Effect environment:
@@ -54,7 +128,34 @@ statement in that file must have its own `@name`.
 
 ## Parameter forms
 
-Plain params use sqlfu's normal `:name` placeholder syntax.
+Generated query wrappers use sqlfu's `:name` placeholder syntax. The placeholder
+name becomes the application-facing param name exactly as you wrote it, so write
+`:publishedSince` if you want callers to pass `{publishedSince}`.
+`generate.casing` does not rewrite placeholder names.
+
+Use the SQL shape to describe richer params:
+
+- `where id = :id`: one scalar value.
+- `where id in (:ids)`: one non-empty scalar array.
+- `values (:post.slug, :post.published_at)`: one object named `post`; its
+  generated member fields follow `generate.casing`.
+- `insert into posts (slug, title) values :posts`: one object or a non-empty
+  object array whose generated member fields come from the INSERT column list.
+- `where (slug, published_at) in (:keys)`: a non-empty object array whose
+  generated member fields come from the row-value tuple.
+
+Top-level placeholder names are preserved literally: `:post`, `:posts`, and
+`:keys` become `post`, `posts`, and `keys`. Object member fields are generated
+SQL-derived fields, so the default `generate.casing: 'camel'` boundary applies
+to them. Use `generate.casing: 'preserve'` if callers should pass raw SQL names
+such as `published_at`.
+
+Runtime-expanded forms (`IN (:ids)`, row-value `IN (:keys)`, and
+`values :posts`) rewrite the SQL before execution so the generated wrapper can
+bind the right number of driver args for each call. That is why they reject
+empty arrays and why each expanded param can appear only once in a query.
+
+Plain params are the default form.
 
 ```sql
 /** @name getPost */
@@ -90,43 +191,46 @@ Use dot paths when a query naturally accepts one object.
 
 ```sql
 /** @name insertPost */
-insert into posts (slug, title)
-values (:post.slug, :post.title)
-returning id, slug, title;
+insert into posts (slug, published_at)
+values (:post.slug, :post.published_at)
+returning id, slug, published_at;
 ```
 
 ```ts
 await insertPost(client, {
   post: {
     slug: 'hello-world',
-    title: 'Hello world',
+    publishedAt: '2026-05-14',
   },
 });
 ```
 
-The generated params type is `{post: {slug: string; title: string}}`. One object
-path segment is supported today; nested paths such as `:post.author.id` are
-intentionally rejected until the type shape is designed.
+The generated params type is `{post: {slug: string; publishedAt: string}}`
+under the default camel casing. One object path segment is supported today;
+nested paths such as `:post.author.id` are intentionally rejected until the type
+shape is designed.
 
 Use an object param directly after `values` when an INSERT column list already
-names the object fields. The generated param accepts either one object or a
-non-empty array.
+names the object fields. The placeholder name is still preserved, but the object
+fields are column-derived, so the default `generate.casing: 'camel'` boundary
+applies to them. The generated param accepts either one object or a non-empty
+array.
 
 ```sql
 /** @name insertPosts */
-insert into posts (slug, title)
+insert into posts (slug, published_at)
 values :posts;
 ```
 
 ```ts
 await insertPosts(client, {
-  posts: {slug: 'first', title: 'First'},
+  posts: {slug: 'first', publishedAt: '2026-05-14'},
 });
 
 await insertPosts(client, {
   posts: [
-    {slug: 'second', title: 'Second'},
-    {slug: 'third', title: 'Third'},
+    {slug: 'second', publishedAt: '2026-05-14'},
+    {slug: 'third', publishedAt: '2026-05-15'},
   ],
 });
 ```
