@@ -1,8 +1,8 @@
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
+import {bindSqlParamsToPositional} from '../sql-params.js';
 import {
   rawSqlWithSqlSplittingAsync,
-  rewriteNamedParamsToPositional,
   surroundWithBeginCommitRollbackAsync,
 } from '../sqlite-text.js';
 import type {AsyncClient, PreparedStatement, ResultRow, SqlQuery} from '../types.js';
@@ -56,15 +56,15 @@ export function createTursoServerlessClient<TConnection extends TursoServerlessC
     // @tursodatabase/serverless has no client-side prepared-statement concept;
     // every `execute` is a fresh HTTP call. This shim captures the SQL and
     // re-issues `execute` per call. `connection.execute` only accepts a
-    // positional `args` array, so named-param Records are tokenized to `?`.
+    // positional `args` array, so named-param Records are bound to `?`.
     return {
       async all(params) {
-        const rewritten = rewriteNamedParamsToPositional(sql, params);
+        const rewritten = bindSqlParamsToPositional(sql, params, 'question');
         const result = await connection.execute(rewritten.sql, rewritten.args);
         return result.rows.map((row) => materializeRow<TRow>(row, result.columns));
       },
       async run(params) {
-        const rewritten = rewriteNamedParamsToPositional(sql, params);
+        const rewritten = bindSqlParamsToPositional(sql, params, 'question');
         const result = await connection.execute(rewritten.sql, rewritten.args);
         return {
           rowsAffected: result.rowsAffected,
@@ -72,7 +72,7 @@ export function createTursoServerlessClient<TConnection extends TursoServerlessC
         };
       },
       async *iterate(params) {
-        const rewritten = rewriteNamedParamsToPositional(sql, params);
+        const rewritten = bindSqlParamsToPositional(sql, params, 'question');
         const result = await connection.execute(rewritten.sql, rewritten.args);
         for (const row of result.rows) {
           yield materializeRow<TRow>(row, result.columns);

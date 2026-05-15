@@ -7,7 +7,7 @@ size: medium
 
 ## Status Summary
 
-Started. This branch is the required final bedtime architecture pass. No product code has changed yet; the first commit records the scope so the PR is reviewable before implementation.
+Implementation complete and locally checked. Named-parameter binding now lives in a driver-neutral Module used by runtime Adapters; the remaining work is to push the PR and create replacement compare branches for the open PR queue.
 
 ## Goal
 
@@ -23,12 +23,32 @@ Find and land one high-impact architecture improvement after the 2026-05-15 bedt
 ## Checklist
 
 - [x] Create an isolated worktree and branch from `origin/main`. _worktree is `/Users/mmkal/src/worktrees/sqlfu/bedtime-2026-05-15-architecture` on branch `bedtime/2026-05-15-architecture`._
-- [ ] Commit this task note and open the early architecture PR.
-- [ ] Run the `improve-codebase-architecture` exploration using the project context and ADR.
-- [ ] Choose one candidate, recording the autonomous bedtime assumption.
-- [ ] Implement the chosen architecture improvement with focused tests.
+- [x] Commit this task note and open the early architecture PR. _initial task commit is `4ea86ed`; PR is #125._
+- [x] Run the `improve-codebase-architecture` exploration using the project context and ADR. _parallel explorer passes covered adapter/runtime seams, typegen/query identity, and UI host/table seams._
+- [x] Choose one candidate, recording the autonomous bedtime assumption. _selected named-parameter binding because it is a real multi-adapter seam, removes an explicit Postgres wart, and avoids the open docs/init/landing/query-identity PR surfaces._
+- [x] Implement the chosen architecture improvement with focused tests. _added `packages/sqlfu/src/sql-params.ts`, moved positional/Postgres/prefixed-record binding through it, deleted the old sqlite-text named-param helper and Postgres private `$N` scanner, and added parameter plus Postgres adapter tests._
 - [ ] Update this task file and PR body with the net effect, checks, and replacement compare branches for open PRs.
+
+## Chosen Candidate
+
+Deepen named-parameter binding into a driver-neutral Module behind the Adapter seam. The new Module should parse authored SQL once with a unified scanner and produce the bind shape each Adapter needs:
+
+- positional `?` SQL plus args for D1, Durable Objects, Expo SQLite, and Turso serverless
+- Postgres `$N` SQL plus args for `createNodePostgresClient`
+- prefixed SQLite parameter records for sqlite-wasm
+
+The intent is to move placeholder knowledge out of the sqlite-named text Module and the Postgres Adapter's private scanner, improving Locality for bugs around comments, quoted strings, repeated params, missing params, and dollar-quoted SQL bodies.
+
+## Guesses and Assumptions
+
+- [guess] The small extra scanner work for SQLite-style Adapters is acceptable; adapter execution is dominated by driver calls, while scanner correctness and Locality matter more.
+- [guess] This should not require a `CONTEXT.md` term because "named-parameter binding" is an implementation Module behind the existing Adapter seam, not a new product/domain concept.
 
 ## Implementation Notes
 
 - 2026-05-16: Main checkout was clean. Bedtime PRs #119, #120, #121, #122, #123, and #124 had passing workflow checks before starting this pass.
+- 2026-05-16: Opened early architecture PR #125 before implementation.
+- 2026-05-16: Architecture explorers surfaced candidates in adapter/runtime, typegen/query identity, and UI host/table areas. Chose named-parameter binding after a small `grill-you` pass in `/tmp/grillings/sqlfu/nightly-architecture-2026-05-15/interview.md`.
+- 2026-05-16: Implemented the binding Module and moved D1, Durable Objects, Expo SQLite, Turso serverless, sqlite-wasm, and Postgres to it.
+- 2026-05-16: Checks passed: `pnpm --filter sqlfu exec vitest run test/sql-params.test.ts test/adapters/pg.test.ts test/sqlite-text.test.ts`; `pnpm --filter sqlfu exec vitest run test/adapters/d1.test.ts test/adapters/durable-object.test.ts test/adapters/expo-sqlite.test.ts test/adapters/sqlite-wasm.test.ts`; `pnpm --filter sqlfu exec vitest run test/adapters/turso-remote.test.ts test/adapters/turso-database.test.ts`; `pnpm --filter sqlfu typecheck`; `pnpm --filter @sqlfu/ui build`; `pnpm --filter sqlfu exec vitest run test/resolve-sqlfu-ui.test.ts`; `git diff --check`.
+- 2026-05-16: Full `pnpm --filter sqlfu test` reached 60 passing files but failed `test/import-surface.test.ts` because `sqlfu/analyze`'s existing vendored TypeSQL bundle imports `node:sqlite`; this is outside the named-parameter binding change. The initial full run also failed `resolve-sqlfu-ui` until `@sqlfu/ui` was built, after which that test passed.

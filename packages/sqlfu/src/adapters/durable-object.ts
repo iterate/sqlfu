@@ -1,6 +1,7 @@
 import {wrapSyncClientErrors} from '../adapter-errors.js';
 import {bindSyncSql} from '../sql.js';
-import {rawSqlWithSqlSplittingSync, rewriteNamedParamsToPositional} from '../sqlite-text.js';
+import {bindSqlParamsToPositional} from '../sql-params.js';
+import {rawSqlWithSqlSplittingSync} from '../sqlite-text.js';
 import type {ResultRow, SqlQuery, SyncClient, SyncPreparedStatement} from '../types.js';
 
 // Intentionally non-generic and bindings-typed-as-`any[]` so this interface
@@ -67,20 +68,20 @@ export function createDurableObjectClient<TStorage extends DurableObjectClientIn
       // captures the SQL string and re-issues `storage.exec` on every call.
       // workerd parses the SQL fresh each time — tolerable for DO writes,
       // which the design grills already declared cheap. Named params are
-      // tokenized to positional because `storage.exec` only accepts a
+      // bound to positional because `storage.exec` only accepts a
       // positional `...bindings` spread.
       return {
         all(params) {
-          const rewritten = rewriteNamedParamsToPositional(sql, params);
+          const rewritten = bindSqlParamsToPositional(sql, params, 'question');
           return sqlStorage.exec(rewritten.sql, ...rewritten.args).toArray() as TRow[];
         },
         run(params) {
-          const rewritten = rewriteNamedParamsToPositional(sql, params);
+          const rewritten = bindSqlParamsToPositional(sql, params, 'question');
           const cursor = sqlStorage.exec(rewritten.sql, ...rewritten.args);
           return {rowsAffected: cursor.rowsWritten};
         },
         *iterate(params) {
-          const rewritten = rewriteNamedParamsToPositional(sql, params);
+          const rewritten = bindSqlParamsToPositional(sql, params, 'question');
           yield* sqlStorage.exec(rewritten.sql, ...rewritten.args).toArray() as TRow[];
         },
         [Symbol.dispose]() {},
