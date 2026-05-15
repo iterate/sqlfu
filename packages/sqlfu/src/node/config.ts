@@ -86,7 +86,6 @@ export async function initializeProject(input: {projectRoot: string; configConte
     throw new Error(`sqlfu is already initialized in ${input.projectRoot}`);
   }
 
-  await fs.mkdir(path.join(input.projectRoot, 'db'), {recursive: true});
   await fs.mkdir(path.join(input.projectRoot, 'migrations'), {recursive: true});
   await fs.mkdir(path.join(input.projectRoot, 'sql'), {recursive: true});
   await fs.mkdir(path.dirname(preview.configPath), {recursive: true});

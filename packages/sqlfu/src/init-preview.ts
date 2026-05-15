@@ -8,7 +8,6 @@ export function createDefaultInitPreview(projectRoot: string, input: {configPath
     configPath: input.configPath || joinPath(projectRoot, defaultSqlfuConfigFileName),
     configContents: [
       'export default {',
-      `  db: './db/app.sqlite',`,
       `  migrations: './migrations',`,
       `  definitions: './definitions.sql',`,
       `  queries: './sql',`,

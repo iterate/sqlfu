@@ -19,7 +19,7 @@ import {defineConfig, createLibsqlClient} from 'sqlfu';
 export default defineConfig({
   db: () => {
     const raw = createClient({
-      url: process.env.TURSO_DATABASE_URL || 'file:./db/app.sqlite',
+      url: process.env.TURSO_DATABASE_URL || 'file:./.sqlfu/app.db',
       authToken: process.env.TURSO_AUTH_TOKEN,
     });
 
