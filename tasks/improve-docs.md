@@ -6,7 +6,7 @@ I want you to think holistically about the docs, as mentioned in your agent inst
 
 ## 2026-05-15 pass
 
-Status: in progress for this bedtime pass. The first commit is limited to this task note so the PR can show the scope before implementation. The intended docs work is a bounded source-docs prose sweep: scan recent source docs and website prose for em-dashes, stale wording, and writing-well smells, then make small high-signal edits only where the reader benefit is clear.
+Status: done for this bedtime pass. The first commit recorded the scope and PR #121 was opened before implementation. The source-docs em-dash scan is clean, a few stale "today/currently/for now" lines in the recent Type generation docs were tightened, the docs banner now matches the landing pre-alpha notice, and website/docs checks passed. No missing work remains inside this bounded pass.
 
 Assumptions:
 
@@ -25,11 +25,17 @@ Scope:
 Checklist:
 
 - [x] Create the requested isolated worktree and branch from `origin/main`. _worktree is `/Users/mmkal/src/worktrees/sqlfu/bedtime-2026-05-15-improve-docs` on branch `bedtime/2026-05-15-improve-docs`._
-- [ ] Commit this 2026-05-15 status note by itself, push, and open the early PR.
-- [ ] Run the source-docs em-dash and stale-wording scan while excluding generated website sync output and historical task logs.
-- [ ] Make the smallest useful docs/website prose edits found by the scan.
-- [ ] Run the relevant docs checks and update the PR body with reviewer-facing before/after context if snapshot-like output changes.
-- [ ] Update this section with brief italic breadcrumbs as items land.
+- [x] Commit this 2026-05-15 status note by itself, push, and open the early PR. _task-only commit `19ba794` was pushed before implementation; PR #121 opened against `main`._
+- [x] Run the source-docs em-dash and stale-wording scan while excluding generated website sync output and historical task logs. _scanned package docs, hand-authored website prose, and animation docs; generated docs output and old task logs stayed out of the edit set._
+- [x] Make the smallest useful docs/website prose edits found by the scan. _cleaned the remaining source-doc em-dashes, matched the docs banner to the landing banner, and removed stale "today/currently/for now" wording from the recent Type generation parameter docs._
+- [x] Run the relevant docs checks and update the PR body with reviewer-facing before/after context if snapshot-like output changes. _`pnpm sync:root-readme:check`, `pnpm --filter @sqlfu/ui build`, and `pnpm --filter sqlfu-website build` passed; no snapshot-like output changed._
+- [x] Update this section with brief italic breadcrumbs as items land. _this implementation update._
+
+Implementation notes:
+
+- 2026-05-15: Read the `writing-well` checklist before editing and used it as a final-pass filter for inflated phrasing, stale temporality, and em-dash punctuation.
+- 2026-05-15: Deliberately avoided `tasks/db-base-directory.md`, init/default-db docs, and landing fake-trace rendering because those areas were reserved for other workers tonight.
+- 2026-05-15: The remaining `showcase` hits are CSS/data attribute names for the landing feature showcase, not prose. No follow-up task was split out because the remaining broader stale-wording candidates are either product-state facts or out of scope for this bounded pass.
 
 ## 2026-05-14 pass
 

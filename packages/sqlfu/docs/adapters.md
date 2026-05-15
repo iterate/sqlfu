@@ -5,7 +5,7 @@ SQLite-compatible client you already use (local file, embedded engine, edge
 runtime, or a real remote database) and gives you the same typed client surface
 on top.
 
-This page lists every adapter that ships in `sqlfu` today, with a copy-paste snippet for each.
+This page lists every adapter that ships in `sqlfu`, with a copy-paste snippet for each.
 
 For an end-to-end setup, use the matching guide:
 
@@ -41,7 +41,7 @@ async is a real application change, and sqlfu leaves that visible in the types.
 
 ## Prepared statements
 
-Generated wrappers are still the main application path: put stable queries in `.sql` files, run `sqlfu generate`, and call the generated function. `client.prepare(sql)` is the lower-level client API for SQL that needs to stay dynamic or ad-hoc without reaching through to `client.driver`.
+Generated wrappers are the main application path: put stable queries in `.sql` files, run `sqlfu generate`, and call the generated function. `client.prepare(sql)` is the lower-level client API for SQL that needs to stay dynamic or ad-hoc without reaching through to `client.driver`.
 
 Use it when you want to reuse one statement handle, bind named parameters directly, or call `.all()` and `.run()` against the same SQL string. The handle follows the same sync/async split as the client:
 

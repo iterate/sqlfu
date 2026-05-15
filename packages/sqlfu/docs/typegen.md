@@ -206,9 +206,8 @@ await insertPost(client, {
 ```
 
 The generated params type is `{post: {slug: string; publishedAt: string}}`
-under the default camel casing. One object path segment is supported today;
-nested paths such as `:post.author.id` are intentionally rejected until the type
-shape is designed.
+under the default camel casing. sqlfu supports one object path segment and
+rejects nested paths such as `:post.author.id`.
 
 Use an object param directly after `values` when an INSERT column list already
 names the object fields. The placeholder name is still preserved, but the object
@@ -237,7 +236,7 @@ await insertPosts(client, {
 
 At runtime sqlfu executes `values (?, ?)` for one object or `values (?, ?), (?, ?)`
 for an array, and flattens values in the INSERT column-list order. Empty arrays
-throw. This inferred INSERT shorthand does not support `RETURNING` yet; use
+throw. This inferred INSERT shorthand does not support `RETURNING`; use
 explicit dot-path values such as `values (:post.slug, :post.title)` for returning
 single-row inserts.
 
@@ -301,16 +300,15 @@ The generated wrapper accepts the TypeScript `definition`, serializes inputs as
 pretty-printed JSON text, and parses selected result columns before returning them.
 The `definition` value is not a validator schema and sqlfu does not resolve
 imports, aliases, or references from it. The `encoding` column controls how the
-logical type is encoded for SQLite; this first experimental slice only supports
-`json`. The `format` column says what language the definition uses; this first
-experimental slice only supports `typescript`.
+logical type is encoded for SQLite; supported value: `json`. The `format`
+column says what language the definition uses; supported value: `typescript`.
 
 ## Limits
 
-- Runtime-expanded params, currently inferred scalar `IN` lists, row-value `IN`
-  lists, and INSERT `values :param` objects, can appear only
-  once in a query. Reusing the same expanded array in two places would require
-  duplicating the driver arguments, so sqlfu rejects that shape for now.
+- Runtime-expanded params (`IN (:ids)`, row-value `IN` lists, and INSERT
+  `values :param` objects) can appear only once in a query. Reusing the same
+  expanded array in two places would require duplicating the driver arguments,
+  so sqlfu rejects that shape.
 - Set `generate.experimentalJsonTypes: true` to opt into experimental JSON
   logical-type handling. This includes columns declared with the SQLite type
   name `json` and any matching rows in the reserved `sqlfu_types` view.
