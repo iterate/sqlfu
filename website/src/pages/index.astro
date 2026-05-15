@@ -1,5 +1,6 @@
 ---
 import '../styles/landing.css';
+import FontLab from '../components/FontLab.astro';
 import SocialMeta from '../components/SocialMeta.astro';
 import { renderDemo } from '../landing-demos/render';
 
@@ -46,6 +47,9 @@ const demo = {
     <title>{title}</title>
     <meta name="description" content={description} />
     <SocialMeta title={title} description={description} pathname="/" type="website" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;700&display=swap" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
@@ -65,6 +69,7 @@ const demo = {
     </script>
   </head>
   <body>
+    <FontLab />
     <div class="prealpha-notice">
       <strong>pre-alpha.</strong> The TypeScript API may still shift. The SQL won't.
     </div>

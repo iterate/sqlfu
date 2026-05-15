@@ -10,8 +10,8 @@
  */
 
 :root {
-  --sl-font: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
-  --sl-font-system: ui-sans-serif, system-ui, sans-serif;
+  --sl-font: Ubuntu, ui-sans-serif, system-ui, sans-serif;
+  --sl-font-system: Ubuntu, ui-sans-serif, system-ui, sans-serif;
   --sl-font-system-mono: ui-monospace, 'SFMono-Regular', monospace;
   --sl-color-bg: transparent;
   --sl-color-bg-nav: transparent;

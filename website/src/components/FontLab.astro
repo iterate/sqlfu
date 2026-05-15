@@ -1,0 +1,365 @@
+<div class="font-lab" data-font-lab data-pagefind-ignore hidden>
+  <button class="font-lab-toggle" type="button" aria-haspopup="dialog">Aa</button>
+  <form class="font-lab-panel" data-font-lab-panel>
+    <label for="font-lab-input">Font link</label>
+    <input id="font-lab-input" name="font" placeholder="https://fonts.google.com/specimen/Ubuntu" />
+    <div class="font-lab-actions">
+      <button type="submit">Apply</button>
+      <button type="button" data-font-lab-reset>Reset</button>
+    </div>
+    <div class="font-lab-list" data-font-lab-list aria-label="Google font shortlist"></div>
+    <p data-font-lab-status></p>
+  </form>
+</div>
+
+<style>
+  .font-lab {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 10000;
+    font-family: var(--sl-font-system, var(--landing-font-system, ui-sans-serif, system-ui, sans-serif));
+  }
+
+  .font-lab-toggle,
+  .font-lab button {
+    border: 1px solid var(--sl-color-hairline, var(--line));
+    border-radius: 0.45rem;
+    background: var(--sqlfu-header-bg, var(--surface));
+    color: var(--sl-color-white, var(--text));
+    font: inherit;
+    font-size: 0.82rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .font-lab-toggle {
+    width: 2.35rem;
+    height: 2.35rem;
+    box-shadow: 0 0.6rem 1.5rem rgba(0, 0, 0, 0.16);
+    font-weight: 700;
+  }
+
+  .font-lab-panel {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 0.55rem);
+    display: grid;
+    width: min(24rem, calc(100vw - 2rem));
+    gap: 0.55rem;
+    padding: 0.8rem;
+    border: 1px solid var(--sl-color-hairline, var(--line));
+    border-radius: 0.65rem;
+    background: var(--sl-color-black, var(--surface-strong));
+    color: var(--sl-color-white, var(--text));
+    box-shadow: 0 1rem 2.6rem rgba(0, 0, 0, 0.22);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(0.35rem);
+    transition:
+      opacity 140ms ease,
+      transform 140ms ease,
+      visibility 140ms ease;
+    visibility: hidden;
+  }
+
+  .font-lab:hover .font-lab-panel,
+  .font-lab:focus-within .font-lab-panel {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+    visibility: visible;
+  }
+
+  .font-lab label {
+    color: var(--sl-color-gray-2, var(--muted));
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  .font-lab input {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--sl-color-hairline, var(--line));
+    border-radius: 0.45rem;
+    background: var(--sl-color-bg-inline-code, var(--code-bg));
+    color: var(--sl-color-white, var(--text));
+    font: inherit;
+    font-size: 0.86rem;
+    padding: 0.55rem 0.65rem;
+  }
+
+  .font-lab-actions {
+    display: flex;
+    gap: 0.45rem;
+  }
+
+  .font-lab-list {
+    display: grid;
+    max-height: min(22rem, calc(100vh - 15rem));
+    gap: 0.35rem;
+    overflow: auto;
+    padding: 0.15rem 0.1rem 0.15rem 0;
+  }
+
+  .font-lab-list button {
+    width: 100%;
+    min-height: 2.3rem;
+    justify-content: flex-start;
+    text-align: left;
+    font-size: 1.08rem;
+    line-height: 1.2;
+  }
+
+  .font-lab button {
+    padding: 0.5rem 0.65rem;
+  }
+
+  .font-lab p {
+    min-height: 1rem;
+    margin: 0;
+    color: var(--sl-color-gray-3, var(--muted));
+    font-size: 0.76rem;
+    line-height: 1.35;
+  }
+</style>
+
+<script>
+  const lab = document.querySelector('[data-font-lab]');
+
+  if (lab) {
+    const input = lab.querySelector('input');
+    const form = lab.querySelector('form');
+    const reset = lab.querySelector('[data-font-lab-reset]');
+    const status = lab.querySelector('[data-font-lab-status]');
+    const fontList = lab.querySelector('[data-font-lab-list]');
+    const storageKey = 'sqlfu.docsFontLab';
+    const linkId = 'sqlfu-font-lab-link';
+    const fontListLinkPrefix = 'sqlfu-font-lab-list-link-';
+    const fontFamilies = [
+      'Abril Fatface',
+      'Alegreya',
+      'Alegreya Sans',
+      'Anton',
+      'Archivo',
+      'Archivo Narrow',
+      'Arimo',
+      'Arvo',
+      'Asap',
+      'Barlow',
+      'Barlow Condensed',
+      'Bebas Neue',
+      'Bitter',
+      'Bodoni Moda',
+      'Bree Serif',
+      'Cabin',
+      'Cardo',
+      'Chivo',
+      'Cormorant Garamond',
+      'Crimson Pro',
+      'DM Sans',
+      'DM Serif Display',
+      'Domine',
+      'EB Garamond',
+      'Exo 2',
+      'Figtree',
+      'Fira Sans',
+      'Fraunces',
+      'IBM Plex Sans',
+      'IBM Plex Serif',
+      'Inconsolata',
+      'Inter',
+      'Josefin Sans',
+      'Jost',
+      'Karla',
+      'Lato',
+      'Libre Baskerville',
+      'Libre Franklin',
+      'Literata',
+      'Lora',
+      'Manrope',
+      'Merriweather',
+      'Merriweather Sans',
+      'Montserrat',
+      'Mulish',
+      'Newsreader',
+      'Nunito',
+      'Nunito Sans',
+      'Open Sans',
+      'Oswald',
+      'Outfit',
+      'Overpass',
+      'Playfair Display',
+      'Plus Jakarta Sans',
+      'Poppins',
+      'Prata',
+      'PT Sans',
+      'PT Serif',
+      'Public Sans',
+      'Quattrocento',
+      'Quicksand',
+      'Raleway',
+      'Roboto',
+      'Roboto Condensed',
+      'Roboto Serif',
+      'Rubik',
+      'Schibsted Grotesk',
+      'Source Sans 3',
+      'Source Serif 4',
+      'Space Grotesk',
+      'Spectral',
+      'Titillium Web',
+      'Ubuntu',
+      'Vollkorn',
+      'Work Sans',
+      'Zilla Slab',
+    ];
+    let hasRenderedFontList = false;
+
+    document.body.append(lab);
+    updateVisibility();
+    window.addEventListener('hashchange', updateVisibility);
+
+    const stored = window.localStorage.getItem(storageKey);
+    if (stored) {
+      const font = JSON.parse(stored);
+      input.value = font.source;
+      applyFont(font);
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      try {
+        useFont(parseFontInput(input.value));
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+
+    reset.addEventListener('click', () => {
+      window.localStorage.removeItem(storageKey);
+      const link = document.getElementById(linkId);
+      if (link) link.remove();
+      document.documentElement.style.removeProperty('--sl-font');
+      document.documentElement.style.removeProperty('--sl-font-system');
+      document.documentElement.style.removeProperty('--landing-font');
+      document.documentElement.style.removeProperty('--landing-font-system');
+      input.value = '';
+      setStatus('Back to the default site font');
+    });
+
+    function updateVisibility() {
+      const shouldShowFontLab = window.location.hash.toLowerCase().includes('font');
+      lab.hidden = !shouldShowFontLab;
+      if (!shouldShowFontLab || hasRenderedFontList) return;
+      hasRenderedFontList = true;
+      loadFontListCss();
+      renderFontList();
+    }
+
+    function useFont(font) {
+      window.localStorage.setItem(storageKey, JSON.stringify(font));
+      input.value = font.source;
+      applyFont(font);
+      setStatus(`Using ${font.family}`);
+    }
+
+    function renderFontList() {
+      for (const family of fontFamilies) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = family;
+        button.style.fontFamily = `"${family}", ui-sans-serif, system-ui, sans-serif`;
+        button.addEventListener('click', () => {
+          useFont({
+            source: `https://fonts.google.com/specimen/${family.replaceAll(' ', '+')}`,
+            family,
+            href: googleCssHref(family),
+          });
+        });
+        fontList.append(button);
+      }
+    }
+
+    function loadFontListCss() {
+      const fontGroups = [];
+      for (let index = 0; index < fontFamilies.length; index += 12) {
+        fontGroups.push(fontFamilies.slice(index, index + 12));
+      }
+
+      for (const [index, group] of fontGroups.entries()) {
+        const id = `${fontListLinkPrefix}${index}`;
+        if (document.getElementById(id)) continue;
+        const link = document.createElement('link');
+        link.id = id;
+        link.rel = 'stylesheet';
+        link.href = googleCssHrefForFamilies(group);
+        document.head.append(link);
+      }
+    }
+
+    function applyFont(font) {
+      let link = document.getElementById(linkId);
+      if (!link) {
+        link = document.createElement('link');
+        link.id = linkId;
+        link.rel = 'stylesheet';
+        document.head.append(link);
+      }
+
+      link.href = font.href;
+      const family = `"${font.family.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
+      const stack = `${family}, ui-sans-serif, system-ui, sans-serif`;
+      document.documentElement.style.setProperty('--sl-font', stack);
+      document.documentElement.style.setProperty('--sl-font-system', stack);
+      document.documentElement.style.setProperty('--landing-font', stack);
+      document.documentElement.style.setProperty('--landing-font-system', stack);
+    }
+
+    function parseFontInput(value) {
+      const source = value.trim();
+      if (!source) throw new Error('Paste a Google Fonts specimen or CSS link');
+
+      const pastedLink = source.match(/href=["']([^"']+)["']/i);
+      const rawUrl = pastedLink ? pastedLink[1].replaceAll('&amp;', '&') : source;
+
+      try {
+        const url = new URL(rawUrl);
+        if (url.hostname === 'fonts.google.com' && url.pathname.startsWith('/specimen/')) {
+          const family = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop()).replaceAll('+', ' ');
+          return {source, family, href: googleCssHref(family)};
+        }
+
+        if (url.hostname === 'fonts.googleapis.com') {
+          const family = parseGoogleCssFamily(url);
+          return {source, family, href: url.href};
+        }
+      } catch {
+        return {source, family: source, href: googleCssHref(source)};
+      }
+
+      throw new Error('Use a Google Fonts specimen URL, CSS URL, link tag, or family name');
+    }
+
+    function parseGoogleCssFamily(url) {
+      const family = url.searchParams.get('family');
+      if (!family) throw new Error('That Google Fonts CSS URL is missing family=');
+      return family.split(':')[0].replaceAll('+', ' ');
+    }
+
+    function googleCssHref(family) {
+      return googleCssHrefForFamilies([family]);
+    }
+
+    function googleCssHrefForFamilies(families) {
+      return `https://fonts.googleapis.com/css2?${families
+        .map((family) => `family=${encodeURIComponent(family).replaceAll('%20', '+')}`)
+        .join('&')}&display=swap`;
+    }
+
+    function setStatus(message) {
+      status.textContent = message;
+    }
+  }
+</script>

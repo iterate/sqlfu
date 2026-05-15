@@ -2,11 +2,14 @@
 // Global pre-alpha notice. Shown on every docs page; intentionally subtler than
 // Starlight's default banner (no accent fill, no shadow) so it reads as a note,
 // not a warning.
+import FontLab from '../components/FontLab.astro';
 ---
 
 <div class="prealpha-banner" data-pagefind-ignore>
   <strong>pre-alpha</strong> — the TypeScript API may still shift. The SQL won't.
 </div>
+
+<FontLab />
 
 <style>
   @layer starlight.core {
