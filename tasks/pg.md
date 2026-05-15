@@ -7,6 +7,8 @@ pgkit supported postgres. it has basically the same core features. we should be 
 
 ## Status summary
 
+Follow-up docs cleanup in progress on `bedtime/2026-05-15-pg-docs-followup`: the scope is small and docs-only. The main target is stale README/docs/blog wording that still implies no Postgres runtime adapter exists; the missing piece after this cleanup is the broader `@sqlfu/pg` dialect/toolchain story and its dedicated examples.
+
 Step one (ready-for-review on branch `extract-dialect-interface`, PR #87): extracted the `Dialect` interface from the main package and re-implemented the existing sqlite-only behavior as the default `sqliteDialect`. New `src/dialect.ts` is a thin aggregator over existing implementations (no file moves). All existing tests pass untouched (1428 sqlfu + 67 ui). Public surface is unchanged for users (sqlite is still the default); core code routes through `config.dialect` for schemadiff, identifier quoting, migration table DDL, and migration locking. Formatter and typegen routing deferred to step two (formatter call sites all lack a config in scope today; typegen materialization is tangled with sqlite-specific private helpers in `typegen/index.ts` and is best refactored when the pg side drives the requirement).
 
 Step two (later, separate branch): create `packages/pg` (`@sqlfu/pg`) that exports a `pgDialect` object satisfying the same interface, lifting schemainspect+migra from pgkit and using `sql-formatter` directly for postgres formatting. Typegen via typesql (or pgkit's own typegen if typesql doesn't fit).
@@ -66,6 +68,10 @@ Design decisions (sign-off received in chat before this commit):
 - [ ] `pgDialect.quoteIdentifier` (double-quote escaping is already pg-compatible — likely zero changes from sqlite)
 - [ ] Postgres runtime adapter(s) in `packages/sqlfu/src/adapters/` (separate concern, not the dialect package)
 - [ ] Examples / docs / `dev-project` smoke test against postgres
+
+### Docs follow-up from PR #121 review
+
+- [ ] Clean up stale README/docs/blog claims about Postgres support. _target: distinguish the runtime adapter that exists today from the unfinished broader `@sqlfu/pg` dialect/toolchain story._
 
 ## Implementation notes
 
