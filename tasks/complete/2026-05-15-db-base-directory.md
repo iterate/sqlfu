@@ -23,7 +23,7 @@ The Getting Started walkthrough currently points new users at `./db/app.sqlite`,
 - [x] Inspect init/config code to confirm where the omitted database path is resolved. _Confirmed `openConfigDb` already falls back to `.sqlfu/app.db` when `db` is omitted._
 - [x] Add or update focused test coverage for generated init output before changing product behavior if output changes. _Updated `packages/sqlfu/test/init.test.ts` to require no `db:` field and no `db/` scaffold._
 - [x] Update init preview/CLI output so the generated config aligns with the omitted-db default. _Removed `db: './db/app.sqlite'` from `createDefaultInitPreview` and stopped `initializeProject` from creating `db/`._
-- [x] Update Getting Started and overview docs to avoid visible `./db/app.sqlite` defaults. _Updated README config snippets, Getting Started, local SQLite guides, Turso local fallback, and runtime validation config examples._
+- [x] Update Getting Started and overview docs to avoid visible `./db/app.sqlite` defaults. _Updated README config snippets, Getting Started, local SQLite guides, Turso local fallback, and runtime validation config examples. The Turso guide creates `.sqlfu/` explicitly because its custom `@libsql/client` factory bypasses sqlfu's local-file opener._
 - [x] Run focused tests/checks and record the results. _Ran the focused init test, the omitted-db CLI test, and `pnpm --filter sqlfu typecheck`._
 
 ## Implementation Notes

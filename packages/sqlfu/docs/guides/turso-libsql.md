@@ -13,11 +13,14 @@ client packages are asynchronous, so the default generated wrappers already use
 For a local `file:` database or Turso Cloud URL:
 
 ```ts
+import {mkdirSync} from 'node:fs';
 import {createClient} from '@libsql/client';
 import {defineConfig, createLibsqlClient} from 'sqlfu';
 
 export default defineConfig({
   db: () => {
+    mkdirSync('.sqlfu', {recursive: true});
+
     const raw = createClient({
       url: process.env.TURSO_DATABASE_URL || 'file:./.sqlfu/app.db',
       authToken: process.env.TURSO_AUTH_TOKEN,
