@@ -4,6 +4,33 @@ Go through all of the docs and improve them. Look for inconsistencies, informati
 
 I want you to think holistically about the docs, as mentioned in your agent instructions for this repo. From time to time that will mean re-thinking docs entirely. Sometimes it will mean creating a separate task in the branch you create for *changing the product* instead. Docs are most useful when not thought of as something entirely downstream from the product code - if there's no clear way to write about a concept, the concept might be poorly thought through. You are free to flag that as an alternative to documenting weirdness.
 
+## 2026-05-15 pass
+
+Status: in progress for this bedtime pass. The first commit is limited to this task note so the PR can show the scope before implementation. The intended docs work is a bounded source-docs prose sweep: scan recent source docs and website prose for em-dashes, stale wording, and writing-well smells, then make small high-signal edits only where the reader benefit is clear.
+
+Assumptions:
+
+- Other bedtime workers own task cleanup, database base-directory docs, init/default-db docs, and landing fake-trace rendering tonight. This pass will not touch `tasks/db-base-directory.md`, init/default-db docs, or fake-trace rendering.
+- Generated website sync output and historical task logs are evidence for orientation, not edit targets.
+- Overview docs changes, if needed, start in `packages/sqlfu/README.md`; root `README.md` is regenerated or checked through the repo sync path.
+- This evergreen task stays open and will not move to `tasks/complete/`.
+
+Scope:
+
+- Scan `packages/sqlfu/README.md`, `packages/sqlfu/docs/*.md`, `packages/sqlfu/docs/*.mdx`, and hand-authored website prose for rough em-dash usage and stale wording introduced by recent main commits.
+- Prefer deletion, tightening, and terminology alignment over adding new sections.
+- Avoid broad information architecture changes unless a tiny local move clearly fixes a reader problem.
+- Verify the changed docs with the relevant README sync and website/docs checks.
+
+Checklist:
+
+- [x] Create the requested isolated worktree and branch from `origin/main`. _worktree is `/Users/mmkal/src/worktrees/sqlfu/bedtime-2026-05-15-improve-docs` on branch `bedtime/2026-05-15-improve-docs`._
+- [ ] Commit this 2026-05-15 status note by itself, push, and open the early PR.
+- [ ] Run the source-docs em-dash and stale-wording scan while excluding generated website sync output and historical task logs.
+- [ ] Make the smallest useful docs/website prose edits found by the scan.
+- [ ] Run the relevant docs checks and update the PR body with reviewer-facing before/after context if snapshot-like output changes.
+- [ ] Update this section with brief italic breadcrumbs as items land.
+
 ## 2026-05-14 pass
 
 Status: done for this bedtime pass. The first decision was to keep the pass small and focused on generated query docs after recent merges: #113 extracted parameter expansion internals, #108 clarified the generated casing boundary, and #101 fixed sqlite-wasm named-parameter binding. The docs now clarify generated wrapper parameter forms in `packages/sqlfu/docs/typegen.md` and prepared-statement named binding in `packages/sqlfu/docs/adapters.md`; checks are green for the focused docs path and PR #115 has the reviewer-facing summary.
