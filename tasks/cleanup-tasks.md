@@ -7,11 +7,36 @@ size: small
 
 ## Status summary
 
-2026-05-14 pass is done. PRs #113, #108, and #101 were already represented in `tasks/complete/`; the stale merged `intro-blog` task was filed, and eight clean local worktrees for merged PR branches were removed. Remaining worktrees are open work, closed-unmerged/dirty work, no-PR compare branches, or checkouts outside this pass's safe cleanup scope.
+2026-05-15 pass is in progress. The survey target is recent main work after the 2026-05-14 cleanup: merged PRs #115 and #116, currently open bedtime PRs #114 and #117, draft PR #111, and local worktrees left behind by merged/closed branches. No task files have been moved yet in this pass.
 
 Sometimes agents forget to move their task files to "done". Look at recent commits and see if that's happened. If it has, open a housekeeping PR to do just that. While you're there, you can also add to Implementation Notes if there's anything you spot in the change that wasn't tidied up properly that also wasn't documented in the task file.
 
 Make sure local worktrees are cleaned up too.
+
+## 2026-05-15 pass
+
+Branch: `bedtime/2026-05-15-cleanup-tasks`.
+
+Scope:
+
+- Inspect PRs #115 and #116, merged on 2026-05-15, against the active and complete task tree.
+- Confirm open PR worktrees for #111, #114, and #117 stay in place.
+- Remove only clean local worktrees whose branch work is merged or intentionally closed and no longer useful for review.
+- Leave evergreen tasks open and record this pass here.
+
+Checklist:
+
+- [x] Create an isolated worktree from `origin/main` and commit this status note first. _worktree is `/Users/mmkal/src/worktrees/sqlfu/bedtime-2026-05-15-cleanup-tasks` on branch `bedtime/2026-05-15-cleanup-tasks`._
+- [ ] Open the early PR after the task-only commit.
+- [ ] Inspect recent merged/closed PRs and active task files.
+- [ ] File completed active task files into `tasks/complete/` only when the matching work is clearly done on `origin/main`.
+- [ ] Remove safe clean local worktrees, or record why any candidate was left alone.
+- [ ] Verify the final task tree, worktree list, and git status.
+
+Implementation notes:
+
+- 2026-05-15: The main checkout was clean at the start of this pass. Open PRs were #117 (`bedtime/2026-05-14-query-identity-manifest`), #114 (`bedtime/2026-05-14-generate-preflight`), and draft #111 (`issue-110-sqlite3-parser-schemadiff`).
+- 2026-05-15: PRs #115 and #116 merged into `main` after the prior cleanup pass. Their task files are evergreen logs, so they should remain active, but their local worktrees are cleanup candidates if clean.
 
 ## 2026-05-14 pass
 
