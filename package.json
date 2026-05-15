@@ -35,7 +35,7 @@
     "format:check": "oxfmt --check ."
   },
   "devDependencies": {
-    "alchemy": "^0.91.2",
+    "alchemy": "^0.93.7",
     "eslint": "^9.39.4",
     "oxfmt": "^0.45.0",
     "simple-git-hooks": "^2.13.1",

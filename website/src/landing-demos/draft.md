@@ -29,5 +29,5 @@ $ npx sqlfu draft {speed=command run-command}
 │  ○ Edit with code {terminal-output=prompt dismiss-before-next}
 │  ○ Edit with vi {terminal-output=prompt dismiss-before-next}
 │  ○ Edit with nano {terminal-output=prompt dismiss-before-next}
-Wrote migrations/20260501090000_add_published_to_posts.sql {terminal-output=wrote output-pause=0}
+Wrote migrations/00002_add_published_to_posts.sql {terminal-output=wrote output-pause=0}
 ```
