@@ -5,7 +5,7 @@ SQLite-compatible client you already use (local file, embedded engine, edge
 runtime, or a real remote database) and gives you the same typed client surface
 on top.
 
-This page lists every adapter that ships in `sqlfu`, with a copy-paste snippet for each.
+This page lists the SQLite-compatible adapters that ship in `sqlfu`, with a copy-paste snippet for each.
 
 For an end-to-end setup, use the matching guide:
 
