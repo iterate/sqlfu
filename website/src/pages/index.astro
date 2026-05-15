@@ -274,27 +274,54 @@ const demo = {
                   </figure>
                   <div class="trace-shot" aria-label="Example trace view">
                     <div class="trace-shot-header">
-                      <span>GET /posts</span>
-                      <strong>42 ms</strong>
+                      <div class="trace-title">
+                        <span class="trace-kicker">trace</span>
+                        <strong>GET /posts</strong>
+                      </div>
+                      <div class="trace-duration">
+                        <span>duration</span>
+                        <strong>42 ms</strong>
+                      </div>
                     </div>
-                    <div class="trace-row trace-row-root">
-                      <span class="trace-label">GET /posts</span>
-                      <span class="trace-bar"></span>
-                      <span class="trace-time">42 ms</span>
+                    <div class="trace-summary">
+                      <span class="trace-status" aria-label="trace completed successfully"></span>
+                      <div>
+                        <span class="trace-summary-title">named query span</span>
+                        <code>sql/queries.sql#getPosts</code>
+                      </div>
                     </div>
-                    <div class="trace-row trace-row-child">
-                      <span class="trace-label">getPosts</span>
-                      <span class="trace-bar"></span>
-                      <span class="trace-time">8 ms</span>
+                    <div class="trace-waterfall" aria-label="Trace spans">
+                      <div class="trace-scale" aria-hidden="true">
+                        <span>0 ms</span>
+                        <span>20</span>
+                        <span>40</span>
+                      </div>
+                      <div class="trace-row trace-row-root" style="--trace-start: 0%; --trace-width: 100%;">
+                        <span class="trace-label"><strong>GET /posts</strong><small>http.server</small></span>
+                        <span class="trace-track"><span class="trace-bar"></span></span>
+                        <span class="trace-time">42 ms</span>
+                      </div>
+                      <div class="trace-row trace-row-child trace-row-query" style="--trace-start: 12%; --trace-width: 28%;">
+                        <span class="trace-label"><strong>getPosts</strong><small>sqlfu.query</small></span>
+                        <span class="trace-track"><span class="trace-bar"></span></span>
+                        <span class="trace-time">8 ms</span>
+                      </div>
+                      <div class="trace-row trace-row-child trace-row-db" style="--trace-start: 20%; --trace-width: 18%;">
+                        <span class="trace-label"><strong>select posts</strong><small>sqlite all</small></span>
+                        <span class="trace-track"><span class="trace-bar"></span></span>
+                        <span class="trace-time">5 ms</span>
+                      </div>
+                      <div class="trace-row trace-row-child trace-row-app" style="--trace-start: 46%; --trace-width: 41%;">
+                        <span class="trace-label"><strong>serialize response</strong><small>application</small></span>
+                        <span class="trace-track"><span class="trace-bar"></span></span>
+                        <span class="trace-time">17 ms</span>
+                      </div>
                     </div>
-                    <div class="trace-row trace-row-child trace-row-short">
-                      <span class="trace-label">sqlite all</span>
-                      <span class="trace-bar"></span>
-                      <span class="trace-time">5 ms</span>
-                    </div>
-                    <dl>
-                      <div><dt>db.query.summary</dt><dd>getPosts</dd></div>
-                      <div><dt>db.system.name</dt><dd>sqlite</dd></div>
+                    <dl class="trace-tags" aria-label="Trace attributes">
+                      <div><dt>sqlfu.query</dt><dd>getPosts</dd></div>
+                      <div><dt>sqlfu.file</dt><dd>sql/queries.sql</dd></div>
+                      <div><dt>db.system</dt><dd>sqlite</dd></div>
+                      <div><dt>params</dt><dd>limit: 10</dd></div>
                     </dl>
                   </div>
                 </div>
