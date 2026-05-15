@@ -51,3 +51,27 @@ test('sqlfu init does not duplicate the local sqlfu artifacts gitignore entry', 
 
   await expect(fs.readFile(path.join(root, '.gitignore'), 'utf8')).resolves.toBe('node_modules/\n.sqlfu/\n');
 });
+
+test('sqlfu init preserves gitignore line endings when appending local artifacts', async () => {
+  const root = await createTempFixtureRoot('init-command-gitignore-crlf');
+  await writeFixtureFiles(root, {
+    '.gitignore': 'node_modules/\r\ndist/\r\n',
+  });
+  const host = await createNodeHost();
+
+  await createSqlfuApi({projectRoot: root, host}).init({confirm: async (params) => params.body});
+
+  await expect(fs.readFile(path.join(root, '.gitignore'), 'utf8')).resolves.toBe(
+    'node_modules/\r\ndist/\r\n.sqlfu/\r\n',
+  );
+});
+
+test('sqlfu init writes the local artifacts entry without a leading blank line in an empty gitignore', async () => {
+  const root = await createTempFixtureRoot('init-command-gitignore-empty');
+  await fs.writeFile(path.join(root, '.gitignore'), '');
+  const host = await createNodeHost();
+
+  await createSqlfuApi({projectRoot: root, host}).init({confirm: async (params) => params.body});
+
+  await expect(fs.readFile(path.join(root, '.gitignore'), 'utf8')).resolves.toBe('.sqlfu/\n');
+});

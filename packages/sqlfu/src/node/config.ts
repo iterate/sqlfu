@@ -117,7 +117,9 @@ async function ensureGitignoreEntry(gitignorePath: string, entry: string) {
     return;
   }
 
-  await fs.writeFile(gitignorePath, `${withTrailingNewline(contents)}${entry}\n`);
+  const newline = contents.includes('\r\n') ? '\r\n' : '\n';
+  const prefix = contents.trim() ? contents.endsWith('\n') ? contents : `${contents}${newline}` : '';
+  await fs.writeFile(gitignorePath, `${prefix}${entry}${newline}`);
 }
 
 async function resolveConfigPath(cwd: string): Promise<string | undefined> {
