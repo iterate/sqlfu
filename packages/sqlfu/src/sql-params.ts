@@ -32,7 +32,7 @@ export function bindSqlParamsToPositional(
   }
 
   const named = params as Record<string, unknown>;
-  const parameters = scanSqlParameters(sql);
+  const parameters = scanSqlParameters(sql, placeholderStyle);
   let out = '';
   let cursor = 0;
   let placeholderIndex = 0;
@@ -79,7 +79,7 @@ export function bindSqlParamsToPrefixedRecord(
 
 export function scanSqlNamedParameters(sql: string): SqlNamedParameter[] {
   const out: SqlNamedParameter[] = [];
-  for (const parameter of scanSqlParameters(sql)) {
+  for (const parameter of scanSqlParameters(sql, 'question')) {
     if (parameter.kind === 'named') out.push(parameter);
   }
   return out;
@@ -91,7 +91,7 @@ function rewriteQuestionMarkPlaceholders(sql: string, placeholderStyle: SqlPlace
   let out = '';
   let cursor = 0;
   let placeholderIndex = 0;
-  for (const parameter of scanSqlParameters(sql)) {
+  for (const parameter of scanSqlParameters(sql, placeholderStyle)) {
     if (parameter.kind !== 'positional') continue;
     out += sql.slice(cursor, parameter.start);
     out += positionalPlaceholder(placeholderStyle, ++placeholderIndex);
@@ -101,12 +101,12 @@ function rewriteQuestionMarkPlaceholders(sql: string, placeholderStyle: SqlPlace
   return out;
 }
 
-function scanSqlParameters(sql: string): SqlParameter[] {
+function scanSqlParameters(sql: string, placeholderStyle: SqlPlaceholderStyle): SqlParameter[] {
   const out: SqlParameter[] = [];
   let index = 0;
 
   while (index < sql.length) {
-    const skippedEnd = scanSqlIgnoredRange(sql, index);
+    const skippedEnd = scanSqlIgnoredRange(sql, index, placeholderStyle);
     if (skippedEnd !== null) {
       index = skippedEnd;
       continue;
@@ -114,12 +114,16 @@ function scanSqlParameters(sql: string): SqlParameter[] {
 
     const code = sql.charCodeAt(index);
     if (code === 0x3f /* ? */) {
+      if (placeholderStyle === 'postgres' && isPostgresQuestionOperator(sql, index)) {
+        index += 1;
+        continue;
+      }
       out.push({kind: 'positional', parameter: '?', start: index, end: index + 1});
       index += 1;
       continue;
     }
 
-    if (isNamedParameterPrefix(code) && isIdentStart(sql.charCodeAt(index + 1))) {
+    if (isNamedParameterPrefix(code) && isNamedParameterStart(sql, index)) {
       const start = index;
       index += 2;
       while (index < sql.length && isIdentCont(sql.charCodeAt(index))) index += 1;
@@ -134,12 +138,12 @@ function scanSqlParameters(sql: string): SqlParameter[] {
   return out;
 }
 
-function scanSqlIgnoredRange(sql: string, start: number): number | null {
+function scanSqlIgnoredRange(sql: string, start: number, placeholderStyle: SqlPlaceholderStyle): number | null {
   const code = sql.charCodeAt(start);
   if (code === 0x27 /* ' */) return scanQuotedSql(sql, start, 0x27);
   if (code === 0x22 /* " */) return scanQuotedSql(sql, start, 0x22);
   if (code === 0x60 /* ` */) return scanQuotedSql(sql, start, 0x60);
-  if (code === 0x5b /* [ */) return scanBracketedSqlIdentifier(sql, start);
+  if (code === 0x5b /* [ */ && placeholderStyle !== 'postgres') return scanBracketedSqlIdentifier(sql, start);
   if (code === 0x2d /* - */ && sql.charCodeAt(start + 1) === 0x2d /* - */) {
     return scanSqlLineComment(sql, start + 2);
   }
@@ -210,6 +214,16 @@ function positionalPlaceholder(placeholderStyle: SqlPlaceholderStyle, index: num
   return placeholderStyle === 'postgres' ? `$${index}` : '?';
 }
 
+function isPostgresQuestionOperator(sql: string, index: number): boolean {
+  const next = sql.charCodeAt(index + 1);
+  if (next === 0x7c /* | */ || next === 0x26 /* & */) return true;
+
+  const previousIndex = previousNonWhitespaceIndex(sql, index - 1);
+  const nextIndex = nextNonWhitespaceIndex(sql, index + 1);
+  if (previousIndex === -1 || nextIndex === -1) return false;
+  return isExpressionTokenEnd(sql, previousIndex) && isExpressionTokenStart(sql, nextIndex);
+}
+
 function sqlBindKey(key: string, namedParameters: Map<string, string>): string {
   if (hasBindPrefix(key)) return key;
   return namedParameters.get(key) || `:${key}`;
@@ -230,3 +244,96 @@ function isIdentCont(code: number): boolean {
 function isNamedParameterPrefix(code: number): boolean {
   return code === 0x3a /* : */ || code === 0x40 /* @ */ || code === 0x24 /* $ */;
 }
+
+function isNamedParameterStart(sql: string, index: number): boolean {
+  if (sql.charCodeAt(index) === 0x3a /* : */) {
+    if (sql.charCodeAt(index - 1) === 0x3a /* : */ || sql.charCodeAt(index + 1) === 0x3a /* : */) {
+      return false;
+    }
+  }
+  return isIdentStart(sql.charCodeAt(index + 1));
+}
+
+function previousNonWhitespaceIndex(sql: string, start: number): number {
+  for (let index = start; index >= 0; index -= 1) {
+    if (!/\s/u.test(sql[index]!)) return index;
+  }
+  return -1;
+}
+
+function nextNonWhitespaceIndex(sql: string, start: number): number {
+  for (let index = start; index < sql.length; index += 1) {
+    if (!/\s/u.test(sql[index]!)) return index;
+  }
+  return -1;
+}
+
+function isExpressionTokenEnd(sql: string, index: number): boolean {
+  const code = sql.charCodeAt(index);
+  if (isIdentCont(code)) return !previousWordIsNonExpression(sql, index);
+  return code === 0x27 /* ' */ || code === 0x22 /* " */ || code === 0x5d /* ] */ || code === 0x29 /* ) */;
+}
+
+function isExpressionTokenStart(sql: string, index: number): boolean {
+  const code = sql.charCodeAt(index);
+  return (
+    isIdentStart(code) ||
+    (code >= 0x30 && code <= 0x39) ||
+    code === 0x27 /* ' */ ||
+    code === 0x22 /* " */ ||
+    code === 0x28 /* ( */ ||
+    code === 0x5b /* [ */ ||
+    code === 0x3a /* : */ ||
+    code === 0x40 /* @ */ ||
+    code === 0x24 /* $ */ ||
+    code === 0x3f /* ? */ ||
+    code === 0x2d /* - */
+  );
+}
+
+function previousWordIsNonExpression(sql: string, end: number): boolean {
+  let start = end;
+  while (start > 0 && isIdentCont(sql.charCodeAt(start - 1))) start -= 1;
+  const word = sql.slice(start, end + 1).toLowerCase();
+  return NON_EXPRESSION_PREVIOUS_WORDS.has(word);
+}
+
+const NON_EXPRESSION_PREVIOUS_WORDS = new Set([
+  'all',
+  'and',
+  'as',
+  'between',
+  'by',
+  'case',
+  'delete',
+  'distinct',
+  'else',
+  'end',
+  'except',
+  'from',
+  'group',
+  'having',
+  'in',
+  'insert',
+  'intersect',
+  'is',
+  'join',
+  'like',
+  'limit',
+  'not',
+  'offset',
+  'on',
+  'or',
+  'order',
+  'returning',
+  'select',
+  'set',
+  'then',
+  'union',
+  'update',
+  'using',
+  'values',
+  'when',
+  'where',
+  'with',
+]);

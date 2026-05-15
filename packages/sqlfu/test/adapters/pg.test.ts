@@ -43,6 +43,24 @@ test('createNodePostgresClient binds positional query args while preserving doll
   ]);
 });
 
+test('createNodePostgresClient preserves postgres casts and json question operators while binding params', async () => {
+  const calls: QueryCall[] = [];
+  const client = createNodePostgresClient(createPool(calls));
+
+  await using stmt = client.prepare<{id: number}>(
+    `select * from posts where id = :id::int and payload ? :key and tags ?| array[:tag]`,
+  );
+
+  await stmt.all({id: 1, key: 'published', tag: 'sql'});
+
+  expect(calls).toMatchObject([
+    {
+      text: `select * from posts where id = $1::int and payload ? $2 and tags ?| array[$3]`,
+      values: [1, 'published', 'sql'],
+    },
+  ]);
+});
+
 type QueryCall = {
   text: string;
   values: unknown[] | undefined;
