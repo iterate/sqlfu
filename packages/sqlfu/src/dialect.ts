@@ -102,6 +102,12 @@ export type RelationInfo = {
   sql?: string;
 };
 
+export type DialectForeignKey = {
+  columns: string[];
+  referencedRelation: string;
+  referencedColumns: string[];
+};
+
 /**
  * Opaque handle representing a materialized schema ready for typegen lookups +
  * analysis. Each dialect knows its own concrete shape; the value MUST only be
@@ -216,6 +222,13 @@ export type Dialect = {
     client: Client,
     relationName: string,
   ): Promise<Array<{name: string; type: string; notNull: boolean; primaryKey: boolean}>>;
+
+  /**
+   * Foreign keys declared by one relation. Used by the studio to build
+   * forward and reverse row-navigation affordances. Views normally return
+   * an empty list.
+   */
+  getRelationForeignKeys(client: Client, relationName: string): Promise<DialectForeignKey[]>;
 
   /**
    * Apply pre-read schema source SQL to a fresh dialect-specific scratch
@@ -346,12 +359,60 @@ export function sqliteDialect(): Dialect {
         }));
     },
 
+    getRelationForeignKeys: async (client, relationName) => {
+      const rows = await client.all<Record<string, unknown>>({
+        sql: `PRAGMA foreign_key_list(${sqliteQuoteIdentifier(relationName)})`,
+        args: [],
+      });
+      return groupSqliteForeignKeys(rows);
+    },
+
     materializeTypegenSchema:
       sqliteTypegenImpls?.materializeTypegenSchema ?? (() => typegenStub('materializeTypegenSchema')),
     loadSchemaForTypegen:
       sqliteTypegenImpls?.loadSchemaForTypegen ?? (() => typegenStub('loadSchemaForTypegen')),
     analyzeQueries: sqliteTypegenImpls?.analyzeQueries ?? (() => typegenStub('analyzeQueries')),
   };
+}
+
+function groupSqliteForeignKeys(rows: Record<string, unknown>[]): DialectForeignKey[] {
+  const grouped = new Map<number, DialectForeignKey & {seq: number[]}>();
+  for (const row of rows) {
+    const id = Number(row.id);
+    const seq = Number(row.seq);
+    const referencedRelation = String(row.table);
+    const column = String(row.from);
+    const referencedColumn = typeof row.to === 'string' ? row.to : '';
+    const existing = grouped.get(id);
+    if (!existing) {
+      grouped.set(id, {
+        columns: [column],
+        referencedRelation,
+        referencedColumns: referencedColumn ? [referencedColumn] : [],
+        seq: [seq],
+      });
+      continue;
+    }
+    existing.columns.push(column);
+    if (referencedColumn) {
+      existing.referencedColumns.push(referencedColumn);
+    }
+    existing.seq.push(seq);
+  }
+  return Array.from(grouped.values()).map((foreignKey) => {
+    const ordered = foreignKey.seq
+      .map((seq, index) => ({
+        seq,
+        column: foreignKey.columns[index]!,
+        referencedColumn: foreignKey.referencedColumns[index],
+      }))
+      .sort((left, right) => left.seq - right.seq);
+    return {
+      columns: ordered.map((entry) => entry.column),
+      referencedRelation: foreignKey.referencedRelation,
+      referencedColumns: ordered.flatMap((entry) => (entry.referencedColumn ? [entry.referencedColumn] : [])),
+    };
+  });
 }
 
 /**
