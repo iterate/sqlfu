@@ -284,7 +284,7 @@ Optional fields:
 - `generate.casing` -- generated SQL-derived property casing, either `'camel'` or `'preserve'`. Default `'camel'`.
 - `generate.experimentalJsonTypes` -- opt into experimental JSON logical-type handling. Today this covers SQLite columns declared exactly as `json`; the same flag is reserved for typed JSON metadata/schema support.
 
-`sqlfu` manages its own temporary files under `.sqlfu/`, including scratch databases used for schema diffing. These are generally safe to delete at any time.
+`sqlfu` manages its own temporary files under `.sqlfu/`, including scratch databases used for schema diffing. These are generally safe to delete at any time. `sqlfu init` adds `.sqlfu/` to `.gitignore`.
 
 If a repo has more than one sqlfu project, pass the config file explicitly:
 

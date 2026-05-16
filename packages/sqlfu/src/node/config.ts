@@ -14,6 +14,7 @@ import {resolveCliConfigPath} from './cli-config.js';
 
 const defaultConfigFileNames = ['sqlfu.config.ts', 'sqlfu.config.mjs', 'sqlfu.config.js', 'sqlfu.config.cjs'] as const;
 const defaultSqlfuConfigFileName = 'sqlfu.config.ts';
+const defaultLocalArtifactsGitignoreEntry = '.sqlfu/';
 
 export async function loadProjectConfig(input: {configPath?: string} = {}): Promise<SqlfuProjectConfig> {
   const cwd = path.resolve(process.cwd());
@@ -94,8 +95,31 @@ export async function initializeProject(input: {projectRoot: string; configConte
     path.join(input.projectRoot, 'definitions.sql'),
     '-- create table yourtable(id int, body text);\n',
   );
+  await ensureGitignoreEntry(path.join(input.projectRoot, '.gitignore'), defaultLocalArtifactsGitignoreEntry);
   await fs.writeFile(path.join(input.projectRoot, 'migrations', '.gitkeep'), '');
   await fs.writeFile(path.join(input.projectRoot, 'sql', '.gitkeep'), '');
+}
+
+async function ensureGitignoreEntry(gitignorePath: string, entry: string) {
+  let contents: string;
+  try {
+    contents = await fs.readFile(gitignorePath, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error;
+    }
+    await fs.writeFile(gitignorePath, `${entry}\n`);
+    return;
+  }
+
+  const existingEntries = contents.split(/\r?\n/g).map((line) => line.trim());
+  if (existingEntries.includes(entry)) {
+    return;
+  }
+
+  const newline = contents.includes('\r\n') ? '\r\n' : '\n';
+  const prefix = contents.trim() ? contents.endsWith('\n') ? contents : `${contents}${newline}` : '';
+  await fs.writeFile(gitignorePath, `${prefix}${entry}${newline}`);
 }
 
 async function resolveConfigPath(cwd: string): Promise<string | undefined> {

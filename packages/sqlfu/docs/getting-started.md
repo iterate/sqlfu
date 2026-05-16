@@ -42,7 +42,7 @@ npx sqlfu init
 
 (If you just run `npx sqlfu` with no config, it will prompt you to init first. `sqlfu init` makes it explicit.)
 
-This creates `sqlfu.config.ts`, `definitions.sql`, `migrations/`, and `sql/`. The config already points at sensible defaults:
+This creates `sqlfu.config.ts`, `definitions.sql`, `migrations/`, `sql/`, and a `.gitignore` entry for `.sqlfu/`. The config already points at sensible defaults:
 
 ```ts
 // sqlfu.config.ts
