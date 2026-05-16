@@ -5,7 +5,7 @@
  * Inspired by dependency handling in @pgkit/migra / @pgkit/schemainspect (TypeScript ports of djrobstep's Python originals).
  * See ../CLAUDE.md for the broader inspiration notes.
  */
-import {splitTopLevelCommaList, sqlIdentifierTokens, sqlMentionsIdentifier} from './sqltext.js';
+import {createTableCheckReferencesDroppedColumns, triggerReferenceFacts, viewReferenceFacts} from './references.js';
 import type {
   SqliteColumnDropDependencyAnalysis,
   SqliteDependencyFact,
@@ -19,26 +19,7 @@ export function tableHasCheckConstraintReferencingColumns(
   createSql: string,
   columnNames: ReadonlySet<string>,
 ): boolean {
-  const match = createSql.match(/\(([\s\S]*)\)$/u);
-  if (!match) {
-    return false;
-  }
-
-  for (const definition of splitTopLevelCommaList(match[1]!)) {
-    const normalizedDefinition = definition.trim();
-    if (!/\bcheck\s*\(/iu.test(normalizedDefinition)) {
-      continue;
-    }
-
-    const referencedIdentifiers = sqlIdentifierTokens(normalizedDefinition);
-    for (const columnName of columnNames) {
-      if (referencedIdentifiers.has(columnName.toLowerCase())) {
-        return true;
-      }
-    }
-  }
-
-  return false;
+  return createTableCheckReferencesDroppedColumns(createSql, columnNames);
 }
 
 export function analyzeColumnDropDependencies(input: {
@@ -106,9 +87,10 @@ export function analyzeViewDependencies(
   const candidateNames = [...Object.keys(schema.tables), ...Object.keys(schema.views)];
 
   return Object.values(schema.views).map((view) => {
+    const references = viewReferenceFacts(view.createSql);
     const dependsOnNames = candidateNames
       .filter((name) => name !== view.name)
-      .filter((name) => sqlMentionsIdentifier(view.createSql, name))
+      .filter((name) => references.referencedTables.includes(name.toLowerCase()))
       .sort((left, right) => left.localeCompare(right));
 
     return {
@@ -116,7 +98,7 @@ export function analyzeViewDependencies(
       ownerId: `view:${view.name}`,
       ownerName: view.name,
       dependsOnNames,
-      referencedColumnNames: referencedColumnNames(view.createSql),
+      referencedColumnNames: references.referencedColumns,
     };
   });
 }
@@ -127,13 +109,16 @@ export function analyzeTriggerDependencies(
 ): (SqliteDependencyFact & {referencedColumnNames: string[]})[] {
   const candidateNames = [...Object.keys(schema.tables), ...viewDependencyFacts.map((fact) => fact.ownerName)];
 
-  return Object.values(schema.triggers).map((trigger) => ({
-    kind: 'trigger-dependency' as const,
-    ownerId: `trigger:${trigger.name}`,
-    ownerName: trigger.name,
-    dependsOnNames: triggerDependencyNames(trigger, candidateNames),
-    referencedColumnNames: referencedColumnNames(trigger.createSql),
-  }));
+  return Object.values(schema.triggers).map((trigger) => {
+    const references = triggerReferenceFacts(trigger.createSql, trigger.onName);
+    return {
+      kind: 'trigger-dependency' as const,
+      ownerId: `trigger:${trigger.name}`,
+      ownerName: trigger.name,
+      dependsOnNames: triggerDependencyNames(trigger, candidateNames, references.referencedTables),
+      referencedColumnNames: references.referencedColumns,
+    };
+  });
 }
 
 export function directViewDependencies(viewName: string, facts: SqliteDependencyFact[]): string[] {
@@ -197,54 +182,20 @@ function expandAffectedViewNames(
   return [...visited].sort((left, right) => left.localeCompare(right));
 }
 
-function triggerDependencyNames(trigger: SqliteInspectedTrigger, candidateNames: string[]): string[] {
+function triggerDependencyNames(
+  trigger: SqliteInspectedTrigger,
+  candidateNames: string[],
+  referencedTables: string[],
+): string[] {
   const names = new Set<string>();
   names.add(trigger.onName);
+  const referencedTableNames = new Set(referencedTables);
 
   for (const candidateName of candidateNames) {
-    if (candidateName !== trigger.onName && sqlMentionsIdentifier(trigger.createSql, candidateName)) {
+    if (candidateName !== trigger.onName && referencedTableNames.has(candidateName.toLowerCase())) {
       names.add(candidateName);
     }
   }
 
   return [...names].sort((left, right) => left.localeCompare(right));
 }
-
-function referencedColumnNames(sql: string): string[] {
-  const identifiers = sqlIdentifierTokens(stripAliasIdentifiers(sql));
-  return [...identifiers]
-    .filter((name) => !RESERVED_REFERENCE_NAMES.has(name))
-    .sort((left, right) => left.localeCompare(right));
-}
-
-function stripAliasIdentifiers(sql: string): string {
-  return sql.replace(/\bas\s+("(?:(?:[^"]|"")*)"|`[^`]+`|\[[^\]]+\]|[a-z_][a-z0-9_]*)/giu, ' ');
-}
-
-const RESERVED_REFERENCE_NAMES = new Set([
-  'after',
-  'as',
-  'before',
-  'begin',
-  'by',
-  'count',
-  'create',
-  'end',
-  'from',
-  'group',
-  'insert',
-  'instead',
-  'into',
-  'join',
-  'new',
-  'of',
-  'on',
-  'or',
-  'select',
-  'table',
-  'trigger',
-  'update',
-  'values',
-  'view',
-  'where',
-]);
