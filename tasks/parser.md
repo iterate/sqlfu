@@ -14,6 +14,30 @@ size: medium
 - Main caution:
   - this should start as a targeted capability decision, not as a blanket rewrite of every SQL feature around a parser
 
+## 2026-05-17 SQLite built-ins spike
+
+Status summary: in progress. This branch is only resolving the first parser-task decision: whether SQLite built-ins can narrow or replace parser adoption for dependency analysis. The intended output is a reviewable technical conclusion backed by a focused executable artifact if the current Node/TypeScript SQLite bindings can exercise the relevant APIs.
+
+Assumptions:
+
+- Parser adoption should stay out of scope unless the SQLite built-in investigation produces concrete gaps that need AST-level analysis.
+- `schemadiff` should not be rewritten wholesale in this branch.
+- Primary-source SQLite documentation is enough for API capability claims, but repo-local tests/prototypes should decide what is feasible from the bindings sqlfu actually uses.
+
+Scope:
+
+- Check `sqlite3_set_authorizer()`, `sqlite3_column_origin_name()`, `explain` / `explain query plan`, and `sqlite3_stmt_scanstatus()` for dependency-analysis usefulness.
+- Inspect sqlfu's existing SQLite runtime/bindings path to see which of those capabilities are exposed to TypeScript today.
+- Land the smallest durable artifact from the finding: a focused spec/prototype if feasible, otherwise a concise internal note plus this task update.
+
+Checklist:
+
+- [ ] Read primary SQLite docs for the candidate built-in APIs.
+- [ ] Identify the SQLite binding(s) used by sqlfu and whether they expose those APIs.
+- [ ] Add executable evidence for the practical conclusion where feasible.
+- [ ] Update this task with the conclusion, remaining parser scope, and next steps.
+- [ ] Push the branch and update the PR body with evidence and checks.
+
 ## Goal
 
 Evaluate and, if justified, introduce a real SQL parser capability to support higher-precision analysis in parts of `sqlfu` such as:
