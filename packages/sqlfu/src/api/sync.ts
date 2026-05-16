@@ -142,10 +142,11 @@ function prefixCreateTriggerStatement(statement: string): string {
 function replaceMatchedIdentifier(statement: string, pattern: RegExp, groupName: string): string {
   const match = pattern.exec(statement);
   const rawIdentifier = match?.groups?.[groupName];
-  if (!match || !rawIdentifier) {
+  const beforeIdentifier = match?.[1];
+  if (!match || !rawIdentifier || !beforeIdentifier) {
     throw new Error(`runtime sync could not parse schema definition statement: ${statement}`);
   }
-  const start = match.index + match[0].lastIndexOf(rawIdentifier);
+  const start = match.index + beforeIdentifier.length;
   return `${statement.slice(0, start)}${quoteIdentifier(`${syncObjectPrefix}${parseIdentifierName(rawIdentifier)}`)}${statement.slice(start + rawIdentifier.length)}`;
 }
 
@@ -236,12 +237,11 @@ function cleanupPrefixedObjects(client: SyncClient): void {
       select type, name
       from main.sqlite_schema
       where type in ('index', 'table', 'trigger', 'view')
-        and name not like 'sqlite_%'
-        and name like '${syncObjectPrefix}%'
+        and name not like 'sqlite\\_%' escape '\\'
       order by type, name
     `,
     args: [],
-  });
+  }).filter((row) => row.name.startsWith(syncObjectPrefix));
   const typeOrder = ['trigger', 'view', 'index', 'table'] as const;
   for (const type of typeOrder) {
     for (const row of rows.filter((candidate) => candidate.type === type)) {

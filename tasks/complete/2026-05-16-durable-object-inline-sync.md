@@ -8,7 +8,7 @@ branch: do-inline-sync-tests
 
 ## Status
 
-Implementation is complete on the branch. `sync(client, {definitions})` now lives on the dedicated `sqlfu/api/sync` subpath instead of the root export; Durable Object tests cover constructor initialization and redeploy-style migration of already-initialized object storage. Remaining review note: the broader import-surface test still has an unrelated `sqlfu/analyze`/`node:sqlite` failure.
+Implementation is complete on the branch. `sync(client, {definitions})` now lives on the dedicated `sqlfu/api/sync` subpath instead of the root export; Durable Object tests cover constructor initialization and redeploy-style migration of already-initialized object storage. Bugbot-reported scratch-prefix edge cases now have direct regression coverage. Remaining review note: the broader import-surface test still has an unrelated `sqlfu/analyze`/`node:sqlite` failure.
 
 ## Assumptions
 
@@ -26,6 +26,8 @@ Implementation is complete on the branch. `sync(client, {definitions})` now live
 - [x] Implement the minimal runtime sync surface needed by the test. _Added `packages/sqlfu/src/api/sync.ts` and exported it through the `sqlfu/api/sync` package subpath._
 - [x] Verify the targeted Durable Object tests pass. _Ran `pnpm --filter sqlfu exec vitest run test/adapters/durable-object.test.ts`._
 - [x] Update the pull request body with the externally-visible behavior and before/after output once implementation is complete. _PR body updated after implementation with behavior, strategy, and verification._
+- [x] Address follow-up review on the sync subpath and flat redeploy test. _Moved runtime sync to `sqlfu/api/sync`, removed the root export, and changed the redeploy spec to deploy V1 then V2 without extra scope blocks._
+- [x] Address Bugbot scratch-prefix review comments. _Added `packages/sqlfu/test/api-sync.test.ts` for index-name substring replacement and literal scratch-prefix cleanup behavior._
 
 ## Implementation Notes
 
@@ -35,3 +37,4 @@ Implementation is complete on the branch. `sync(client, {definitions})` now live
 - Miniflare rejects `temp.sqlite_schema` in Durable Objects with `SQLITE_AUTH`, so the implementation uses prefixed main-schema objects (`__sqlfu_sync_*`) as the desired-schema materialization, inspects them, unprefixes the inspected model, plans the diff, then cleans the prefixed objects.
 - While exercising an added column plus a new unique index, the SQLite planner skipped explicit index changes for tables classified as `add-columns`. The implementation fixes that by collecting explicit index changes in that branch too.
 - Follow-up review moved the inline runtime sync out of the root export and flattened the redeploy test through `createDORedeployFixture()`.
+- Bugbot caught two valid edge cases: `lastIndexOf` could replace a table-name substring when prefixing an index name, and SQLite `LIKE` underscores could broaden scratch cleanup. The fix now uses the leading regex capture length for replacement and filters scratch object names with `startsWith(syncObjectPrefix)`.
