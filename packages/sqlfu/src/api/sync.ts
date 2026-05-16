@@ -1,9 +1,9 @@
-import {quoteIdentifier} from './schemadiff/sqlite/identifiers.js';
-import {inspectSqliteSchema} from './schemadiff/sqlite/inspect.js';
-import {planSchemaDiff} from './schemadiff/sqlite/plan.js';
-import type {SqliteInspectedDatabase} from './schemadiff/sqlite/types.js';
-import {splitSqlStatements} from './sqlite-text.js';
-import type {SyncClient} from './types.js';
+import {quoteIdentifier} from '../schemadiff/sqlite/identifiers.js';
+import {inspectSqliteSchema} from '../schemadiff/sqlite/inspect.js';
+import {planSchemaDiff} from '../schemadiff/sqlite/plan.js';
+import type {SqliteInspectedDatabase} from '../schemadiff/sqlite/types.js';
+import {splitSqlStatements} from '../sqlite-text.js';
+import type {SyncClient} from '../types.js';
 
 export interface RuntimeSyncOptions {
   definitions: string;

@@ -10,8 +10,6 @@ export * from './naming.js';
 export * from './util.js';
 export * from './errors.js';
 export * from './instrument.js';
-export {sync} from './sync.js';
-export type {RuntimeSyncOptions} from './sync.js';
 export type {
   AsyncQueryExecutionHook,
   AsyncQueryExecutionHookArgs,

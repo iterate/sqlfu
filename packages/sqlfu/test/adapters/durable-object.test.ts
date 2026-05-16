@@ -12,7 +12,7 @@ import {createDurableObjectClient as createLocalDurableObjectClient} from '../..
 
 declare const createDurableObjectClient: typeof import('../../src/index.ts').createDurableObjectClient;
 declare const sql: typeof import('../../src/index.ts').sql;
-declare const sync: typeof import('../../src/index.ts').sync;
+declare const sync: typeof import('../../src/api/sync.ts').sync;
 type DurableObjectClient = ReturnType<typeof createDurableObjectClient>;
 declare const migrate: (client: DurableObjectClient) => void;
 declare const migrateMissingInitialMigration: (client: DurableObjectClient) => void;
@@ -153,106 +153,97 @@ test('runtime sync applies inline definitions in a durable object constructor', 
 });
 
 test('runtime sync migrates existing durable object storage on redeploy', async () => {
-  const persistPath = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-do-persist-'));
-  try {
-    {
-      await using fixture = await createDOFixture(
-        class InlineSyncRedeployV1Test {
-          client: DurableObjectClient;
+  await using redeploy = await createDORedeployFixture();
 
-          constructor(state: any) {
-            this.client = createDurableObjectClient(state.storage);
-            sync(this.client, {
-              definitions: `
-                create table posts (
-                  id integer primary key,
-                  slug text not null
-                );
-              `,
-            });
-          }
+  const initial = await redeploy.deploy(
+    class InlineSyncRedeployV1Test {
+      client: DurableObjectClient;
 
-          async insertPost(id: number, slug: string) {
-            this.client.run(sql`
-              insert into posts (id, slug) values (${id}, ${slug})
-            `);
-          }
+      constructor(state: any) {
+        this.client = createDurableObjectClient(state.storage);
+        sync(this.client, {
+          definitions: `
+            create table posts (
+              id integer primary key,
+              slug text not null
+            );
+          `,
+        });
+      }
 
-          async getColumns() {
-            return this.client.all<{name: string}>(sql`
-              select name from pragma_table_info('posts') order by cid
-            `);
-          }
-        },
-        {persistPath},
-      );
+      async insertPost(id: number, slug: string) {
+        this.client.run(sql`
+          insert into posts (id, slug) values (${id}, ${slug})
+        `);
+      }
 
-      await fixture.stub.insertPost(1, 'hello-world');
-      expect(await fixture.stub.getColumns()).toMatchObject([{name: 'id'}, {name: 'slug'}]);
-    }
+      async getColumns() {
+        return this.client.all<{name: string}>(sql`
+          select name from pragma_table_info('posts') order by cid
+        `);
+      }
+    },
+  );
 
-    {
-      await using fixture = await createDOFixture(
-        class InlineSyncRedeployV2Test {
-          client: DurableObjectClient;
+  await initial.stub.insertPost(1, 'hello-world');
+  expect(await initial.stub.getColumns()).toMatchObject([{name: 'id'}, {name: 'slug'}]);
 
-          constructor(state: any) {
-            this.client = createDurableObjectClient(state.storage);
-            sync(this.client, {
-              definitions: `
-                create table posts (
-                  id integer primary key,
-                  slug text not null,
-                  body text
-                );
+  const upgraded = await redeploy.deploy(
+    class InlineSyncRedeployV2Test {
+      client: DurableObjectClient;
 
-                create unique index posts_slug_key on posts (slug);
-              `,
-            });
-          }
+      constructor(state: any) {
+        this.client = createDurableObjectClient(state.storage);
+        sync(this.client, {
+          definitions: `
+            create table posts (
+              id integer primary key,
+              slug text not null,
+              body text
+            );
 
-          async getColumns() {
-            return this.client.all<{name: string}>(sql`
-              select name from pragma_table_info('posts') order by cid
-            `);
-          }
+            create unique index posts_slug_key on posts (slug);
+          `,
+        });
+      }
 
-          async listPosts() {
-            return this.client.all<{id: number; slug: string; body: string | null}>(sql`
-              select id, slug, body
-              from posts
-              order by id
-            `);
-          }
+      async getColumns() {
+        return this.client.all<{name: string}>(sql`
+          select name from pragma_table_info('posts') order by cid
+        `);
+      }
 
-          async getIndexes() {
-            return this.client.all<{name: string; unique: number}>(sql`
-              select name, "unique"
-              from pragma_index_list('posts')
-              where name = 'posts_slug_key'
-            `);
-          }
+      async listPosts() {
+        return this.client.all<{id: number; slug: string; body: string | null}>(sql`
+          select id, slug, body
+          from posts
+          order by id
+        `);
+      }
 
-          async getSyncScratchObjects() {
-            return this.client.all<{name: string}>(sql`
-              select name
-              from sqlite_schema
-              where name like '__sqlfu_sync_%'
-              order by name
-            `);
-          }
-        },
-        {persistPath},
-      );
+      async getIndexes() {
+        return this.client.all<{name: string; unique: number}>(sql`
+          select name, "unique"
+          from pragma_index_list('posts')
+          where name = 'posts_slug_key'
+        `);
+      }
 
-      expect(await fixture.stub.getColumns()).toMatchObject([{name: 'id'}, {name: 'slug'}, {name: 'body'}]);
-      expect(await fixture.stub.listPosts()).toMatchObject([{id: 1, slug: 'hello-world', body: null}]);
-      expect(await fixture.stub.getIndexes()).toMatchObject([{name: 'posts_slug_key', unique: 1}]);
-      expect(await fixture.stub.getSyncScratchObjects()).toMatchObject([]);
-    }
-  } finally {
-    await fs.rm(persistPath, {recursive: true, force: true});
-  }
+      async getSyncScratchObjects() {
+        return this.client.all<{name: string}>(sql`
+          select name
+          from sqlite_schema
+          where name like '__sqlfu_sync_%'
+          order by name
+        `);
+      }
+    },
+  );
+
+  expect(await upgraded.stub.getColumns()).toMatchObject([{name: 'id'}, {name: 'slug'}, {name: 'body'}]);
+  expect(await upgraded.stub.listPosts()).toMatchObject([{id: 1, slug: 'hello-world', body: null}]);
+  expect(await upgraded.stub.getIndexes()).toMatchObject([{name: 'posts_slug_key', unique: 1}]);
+  expect(await upgraded.stub.getSyncScratchObjects()).toMatchObject([]);
 });
 
 test('createDurableObjectClient uses transactionSync when given durable object storage', async () => {
@@ -435,6 +426,34 @@ test('createDurableObjectClient rejects a bare durable object sql handle', () =>
   );
 });
 
+async function createDORedeployFixture() {
+  const persistPath = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-do-persist-'));
+  let current: DOFixture<object> | null = null;
+
+  return {
+    async deploy<TInstance extends object>(classDef: new (...args: any[]) => TInstance) {
+      await disposeCurrentDeployment();
+      current = await createDOFixture(classDef, {persistPath});
+      return current as DOFixture<TInstance>;
+    },
+    async [Symbol.asyncDispose]() {
+      await disposeCurrentDeployment();
+      await fs.rm(persistPath, {recursive: true, force: true});
+    },
+  };
+
+  async function disposeCurrentDeployment() {
+    const fixture = current;
+    current = null;
+    await fixture?.[Symbol.asyncDispose]();
+  }
+}
+
+type DOFixture<TInstance extends object> = {
+  stub: TInstance;
+  [Symbol.asyncDispose](): Promise<void>;
+};
+
 async function createDOFixture<TInstance extends object>(
   classDef: new (...args: any[]) => TInstance,
   options: {
@@ -465,7 +484,8 @@ async function createDOFixture<TInstance extends object>(
   await fs.writeFile(
     workerSourcePath,
     dedent`
-      import {createDurableObjectClient, sql, sync} from './runtime/index.js';
+      import {createDurableObjectClient, sql} from './runtime/index.js';
+      import {sync} from './runtime/api/sync.js';
       import {migrate} from './migrations/.generated/migrations.ts';
       import {migrate as migrateMissingInitialMigration} from './migrations-missing-initial/.generated/migrations.ts';
 
