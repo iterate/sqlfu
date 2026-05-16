@@ -16,7 +16,7 @@ size: medium
 
 ## 2026-05-17 SQLite built-ins spike
 
-Status summary: spike complete, implementation intentionally deferred. SQLite built-ins can narrow parser adoption for schema-body dependency analysis: `node:sqlite` exposes `sqlite3_set_authorizer()` as `DatabaseSync.setAuthorizer()` and `sqlite3_column_origin_name()` through `StatementSync.columns()`, and a focused spec now demonstrates what those APIs can and cannot cover. The main missing piece is product integration design across all supported SQLite adapters, because not every adapter exposes authorizer callbacks.
+Status summary: spike complete, implementation intentionally deferred. SQLite built-ins can narrow parser adoption for schema-body dependency analysis: `node:sqlite` exposes `sqlite3_set_authorizer()` as `DatabaseSync.setAuthorizer()` in Node v24.10.0+, `sqlite3_column_origin_name()` through `StatementSync.columns()`, and a focused spec now demonstrates what those APIs can and cannot cover. The main missing piece is product integration design across all supported SQLite adapters, because not every adapter exposes authorizer callbacks.
 
 Assumptions:
 
@@ -41,11 +41,12 @@ Checklist:
 Conclusion:
 
 - `sqlite3_set_authorizer()` is the only candidate built-in that can materially narrow parser adoption for dependency analysis. It reports semantic table/column reads and writes while SQLite compiles statements.
-- In `node:sqlite`, the authorizer can report:
+- In `node:sqlite` on Node v24.10.0+, the authorizer can report:
   - `check (...)` column reads while compiling `create table`
   - partial-index indexed and `where` column reads while compiling `create index`
   - base-table column reads for view bodies when preparing a query against the view, with the view name in the callback source argument
   - trigger-body reads and writes when preparing a DML statement that can fire the trigger, with the trigger name in the callback source argument
+  - table-only reads where SQLite reports an empty column name, such as `count(*)` views and `exists(select 1 from posts)` trigger bodies
 - `sqlite3_column_origin_name()` / `StatementSync.columns()` is useful supporting metadata for result columns only. It does not report non-output dependencies such as `where` columns.
 - `explain` / `explain query plan` should not be used as a dependency-analysis API. SQLite documents the output as troubleshooting-oriented and unstable, and the spike spec shows it reports table scan shape without column-level dependencies.
 - `sqlite3_stmt_scanstatus()` is not a fit for this problem. SQLite documents it as predicted/measured performance data, and it requires a compile-time SQLite option.
@@ -54,6 +55,7 @@ Next steps:
 
 - Decide whether schema diff should introduce a `node:sqlite`-backed internal dependency probe for SQLite schema bodies, separate from the public adapter abstraction.
 - If yes, prototype a tiny internal function that materializes schema SQL into a scratch `DatabaseSync`, installs an authorizer, compiles targeted probe statements, and returns `referenced tables/views`, `referenced columns`, and `trigger/view source` facts.
+- Account for Node support explicitly. `DatabaseSync.setAuthorizer()` is not available in the repo's declared Node 22 floor, so product integration either needs a feature check and fallback, a dev-tool-only path, or a deliberate engine bump.
 - Keep parser adoption scoped to the cases the authorizer cannot cover cleanly: adapter-independent analysis, incomplete SQL fragments without a materialized schema, and AST-level transformations beyond dependency facts.
 
 ## Goal

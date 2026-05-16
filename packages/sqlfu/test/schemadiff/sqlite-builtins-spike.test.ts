@@ -1,10 +1,15 @@
 import {DatabaseSync, constants} from 'node:sqlite';
 import {expect, test} from 'vitest';
 
-test('sqlite authorizer reports column references from check constraints and partial indexes at compile time', () => {
-  using fixture = createAuthorizerFixture();
+const hasSetAuthorizer = typeof DatabaseSync.prototype.setAuthorizer === 'function';
+const authorizerTest = test.skipIf(!hasSetAuthorizer);
 
-  fixture.database.exec(`
+authorizerTest(
+  'sqlite authorizer reports column references from check constraints and partial indexes at compile time',
+  () => {
+    using fixture = createAuthorizerFixture();
+
+    fixture.database.exec(`
     create table users (
       id integer primary key,
       name text not null,
@@ -20,16 +25,17 @@ test('sqlite authorizer reports column references from check constraints and par
     create index posts_title_active on posts(title) where user_id is not null;
   `);
 
-  expect(fixture.references()).toEqual(
-    expect.arrayContaining([
-      {action: 'read', relation: 'users', column: 'name', source: null},
-      {action: 'read', relation: 'posts', column: 'title', source: null},
-      {action: 'read', relation: 'posts', column: 'user_id', source: null},
-    ]),
-  );
-});
+    expect(fixture.references()).toEqual(
+      expect.arrayContaining([
+        {action: 'read', relation: 'users', column: 'name', source: null},
+        {action: 'read', relation: 'posts', column: 'title', source: null},
+        {action: 'read', relation: 'posts', column: 'user_id', source: null},
+      ]),
+    );
+  },
+);
 
-test('sqlite authorizer reports view and trigger body references when statements are prepared', () => {
+authorizerTest('sqlite authorizer reports view and trigger body references when statements are prepared', () => {
   using fixture = createAuthorizerFixture();
 
   fixture.database.exec(`
@@ -75,6 +81,36 @@ test('sqlite authorizer reports view and trigger body references when statements
   ]);
 });
 
+authorizerTest('sqlite authorizer reports table-only reads even when no column is named', () => {
+  using fixture = createAuthorizerFixture();
+
+  fixture.database.exec(`
+    create table posts (
+      id integer primary key,
+      title text not null
+    );
+
+    create view post_count as
+    select count(*) as count from posts;
+
+    create trigger posts_ai after insert on posts
+    begin
+      select exists(select 1 from posts);
+    end;
+  `);
+
+  fixture.clear();
+  fixture.database.prepare(`select * from post_count`);
+  fixture.database.prepare(`insert into posts(title) values ('hello')`);
+
+  expect(fixture.references()).toEqual(
+    expect.arrayContaining([
+      {action: 'read', relation: 'posts', column: null, source: 'post_count'},
+      {action: 'read', relation: 'posts', column: null, source: 'posts_ai'},
+    ]),
+  );
+});
+
 test('column origin and explain query plan do not replace dependency analysis', () => {
   using fixture = createAuthorizerFixture();
 
@@ -102,7 +138,7 @@ test('column origin and explain query plan do not replace dependency analysis', 
 type Reference = {
   action: 'read' | 'update';
   relation: string;
-  column: string;
+  column: string | null;
   source: string | null;
 };
 
@@ -114,14 +150,13 @@ function createAuthorizerFixture() {
     if (
       databaseName === 'main' &&
       relation &&
-      column &&
       !relation.startsWith('sqlite_') &&
       (actionCode === constants.SQLITE_READ || actionCode === constants.SQLITE_UPDATE)
     ) {
       references.push({
         action: actionCode === constants.SQLITE_READ ? 'read' : 'update',
         relation,
-        column,
+        column: column || null,
         source,
       });
     }
@@ -145,6 +180,10 @@ function createAuthorizerFixture() {
       database.close();
     },
   };
+}
+
+if (!hasSetAuthorizer) {
+  test.skip('DatabaseSync.setAuthorizer requires Node v24.10.0 or newer', () => {});
 }
 
 function uniqueReferences(references: Reference[]) {
