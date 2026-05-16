@@ -350,7 +350,7 @@ export default defineConfig({
 });
 ```
 
-`findMiniflareD1Path()` walks up from `process.cwd()` until it finds a supported Miniflare v3 persist root. Today that means Alchemy's `.alchemy/miniflare/v3` layout. It then derives the same D1 object sqlite filename Miniflare uses for the slug. Pass `{miniflareV3Root}` as the second argument if your config runs outside that project tree.
+`findMiniflareD1Path()` walks up from `process.cwd()` until it finds a supported Miniflare v3 persist root. It recognizes Alchemy's `.alchemy/miniflare/v3` layout and derives the same D1 object sqlite filename Miniflare uses for the slug. Pass `{miniflareV3Root}` as the second argument if your config runs outside that project tree.
 
 For deployed cloud D1, including [Alchemy v2](https://alchemy.run), which connects `alchemy dev` directly to real D1 instead of a local Miniflare sqlite, point sqlfu at the cloud database over HTTP using `sqlfu/cloudflare`:
 
@@ -373,7 +373,7 @@ export default defineConfig({
 - `'desired_schema'` (default) -- read `definitions.sql` directly. No DB required. Fastest, most deterministic. Drift between `definitions.sql` and migrations is surfaced by `sqlfu check`, not silently hidden here.
 - `'migrations'` -- replay `migrations/*.sql` into a scratch DB and extract the resulting schema. No DB required. Types follow what the migrator would actually produce.
 - `'migration_history'` -- read `sqlfu_migrations` from `config.db`, then replay the matching migration files. Requires `db`. Throws if a recorded migration is missing from `migrations/`. Use when types should match what's actually deployed.
-- `'live_schema'` -- extract schema directly from `config.db`. Requires `db` to be populated up-front. This was the default before the factory form of `db` landed; now opt-in.
+- `'live_schema'` -- extract schema directly from `config.db`. Requires `db` to be populated up-front. Use this only when type generation should follow the database instead of source files or migration history.
 
 ```ts
 export default defineConfig({
@@ -462,13 +462,13 @@ Those are not accidents. The project is trying to keep schema history explicit, 
 Current limits also matter:
 
 - `sqlfu` is SQLite-first in important parts of the toolchain
-- Postgres has a runtime adapter today, but the broader `@sqlfu/pg` dialect/toolchain docs and examples are still in progress
+- Postgres support is runtime-only in the main package; broader `@sqlfu/pg` dialect/toolchain docs and examples are still in progress
 - result-type inference is imperfect on some SQLite expressions and views; the sqlfu post-pass that fills gaps in the vendored TypeSQL output is still evolving
 - the formatter is opinionated and still evolving
 
 ## Prior Art and Acknowledgements
 
-`sqlfu` is not built in a vacuum. Several existing projects directly shape what it looks like today, either as vendored code or as ideas we lean on.
+`sqlfu` is not built in a vacuum. Several existing projects shape the current codebase, either as vendored code or as ideas we lean on.
 
 - [TypeSQL](https://github.com/wsporto/typesql) by Wanderson Camargo (MIT). TypeSQL is vendored under [`src/vendor/typesql`](./src/vendor/typesql) and powers SQL-to-TypeScript analysis for `sqlfu generate`. sqlfu adds a small post-pass for SQLite result typing but otherwise relies on TypeSQL's query analyzer, its ANTLR4-based parser ([`typesql-parser`](https://github.com/wsporto/typesql-parser), vendored under [`src/vendor/typesql-parser`](./src/vendor/typesql-parser)), and its code generator.
 - [sql-formatter](https://github.com/sql-formatter-org/sql-formatter) (MIT). The formatter is essentially vendored whole under [`src/vendor/sql-formatter`](./src/vendor/sql-formatter) and then wrapped by [`src/formatter.ts`](./src/formatter.ts) with sqlfu-specific defaults (SQLite-first, lowercase by default, biased toward keeping simple clause bodies inline).

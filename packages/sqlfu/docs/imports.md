@@ -21,8 +21,8 @@ client.run(sql`
 `);
 ```
 
-This entrypoint is our precious baby, and because it's a precious baby, it is *small* and *fiercely protected*. There will never be any `node:*` imports and no heavy commands tooling.
-It's what you should use for your app code, to pass into generated query wrappers, workers, and even browser-safe bundles. It will very rarely have breaking changes.
+This is the entrypoint for application code, generated query wrappers, workers,
+and browser-safe bundles. It stays free of `node:*` imports and command tooling.
 
 ## `sqlfu/api`
 
@@ -39,11 +39,17 @@ const formatted = format('SELECT * FROM users WHERE id=1;');
 
 Note: Mutating commands require a `confirm` callback anywhere the CLI would ask the
 user to review SQL or generated file contents. Returning the body (or a modified body) accepts it;
-returning `null` or empty string cancels. For "yolo" mode just return `params.body`, or you can insert your own approval/modification workflow.
+returning `null` or empty string cancels. For unattended scripts, return
+`params.body`; otherwise insert your own approval or modification workflow.
 
 `format('select foo from bar')` is slightly different to the `npx sqlfu format` command: instead of modifying files in place, it just formats the sql you pass to it.
 
-`sqlfu/api` *does* import from some `node:*` modules. It uses simple filesystem and path functions, so can be used from Bun too. Right now, because of the filesystem access, it should not be used from the browser, or from Cloudflare Workers, even with nodejs_compat. See `sqlfu/api/core` below for that. Aside from `format()`, it loads project config from the current process, creates the default Node host, and may import command, server, typegen, and file system code.
+`sqlfu/api` *does* import from some `node:*` modules. It uses simple filesystem
+and path functions, so it can be used from Bun too. Because of that filesystem
+access, do not use it from the browser or from Cloudflare Workers, even with
+nodejs_compat. See `sqlfu/api/core` below for that. Aside from `format()`, it
+loads project config from the current process, creates the default Node host,
+and may import command, server, typegen, and file system code.
 
 ## `sqlfu/api/core`
 
@@ -64,9 +70,9 @@ the `SqlfuHost` and config/project loading context yourself.
 ## `sqlfu/cloudflare`
 
 Use `sqlfu/cloudflare` for config-time helpers that point sqlfu at a
-Cloudflare D1 database: local sqlite for `wrangler dev` / alchemy v1's
-Miniflare, or HTTP for deployed cloud D1 (alchemy v2, wrangler, Terraform,
-manual provisioning).
+Cloudflare D1 database: local sqlite for `wrangler dev` / Alchemy v1's
+Miniflare, or HTTP for deployed cloud D1 (Alchemy v2, Wrangler, Terraform,
+or manual provisioning).
 
 ```ts
 import {defineConfig} from 'sqlfu';
@@ -81,8 +87,8 @@ export default defineConfig({
 ```
 
 `findMiniflareD1Path()` walks up from `process.cwd()` until it finds a supported
-Miniflare v3 persist root. Today that means Alchemy's
-`.alchemy/miniflare/v3` layout. It then derives the D1 sqlite filename from the
+Miniflare v3 persist root. It recognizes Alchemy's `.alchemy/miniflare/v3`
+layout and then derives the D1 sqlite filename from the
 Alchemy app slug. If the config is evaluated from somewhere else, pass
 `{miniflareV3Root: '/absolute/path/to/.alchemy/miniflare/v3'}`.
 

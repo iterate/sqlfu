@@ -4,7 +4,11 @@
 database client you already use and gives you the same typed client surface on
 top.
 
-This page lists the runtime adapters that ship in `sqlfu`, with a copy-paste snippet for each. The SQLite-compatible adapters have end-to-end guides today. `createNodePostgresClient()` is runtime-only: it adapts a `pg`-compatible pool for application queries, while the broader `@sqlfu/pg` dialect/toolchain docs are still in progress.
+This page lists the runtime adapters that ship in `sqlfu`, with a copy-paste
+snippet for each. SQLite-compatible adapters have end-to-end guides.
+`createNodePostgresClient()` is runtime-only: it adapts a `pg`-compatible pool
+for application queries, while the broader `@sqlfu/pg` dialect/toolchain docs
+are still in progress.
 
 For an end-to-end setup, use the matching guide:
 

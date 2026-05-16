@@ -395,7 +395,9 @@ If `generate.validator` is unset, `null`, or `undefined`, the generator emits th
 
 ## Extending the generated shape
 
-The generated file is readable and small. If you want a _specific_ validator refinement (e.g. `.url()`, `.email()`, custom refinements) for a column, the honest answer today is to wrap the generated function in your application code:
+The generated file is readable and small. If you want a _specific_ validator
+refinement (e.g. `.url()`, `.email()`, custom refinements) for a column, wrap
+the generated function in your application code:
 
 ```ts
 import {findPostBySlug as rawFindPostBySlug} from './sql/.generated/find-post-by-slug.sql.ts';
@@ -410,4 +412,7 @@ export async function findPostBySlug(client: Client, params: z.infer<typeof Rich
 }
 ```
 
-The generated schemas will never be richer than what a SQL type system can tell us. Column-level refinement is an application concern today. Pluggable validators and per-column overrides are [planned](https://github.com/mmkal/sqlfu/blob/main/tasks/typegen-extensibility.md) but not in scope yet.
+The generated schemas will never be richer than what a SQL type system can tell
+us. Column-level refinement is an application concern. Pluggable validators and
+per-column overrides are tracked in
+[`tasks/typegen-extensibility.md`](https://github.com/iterate/sqlfu/blob/main/tasks/typegen-extensibility.md).
