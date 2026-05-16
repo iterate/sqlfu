@@ -1,5 +1,5 @@
 ---
-status: implemented
+status: complete
 size: medium
 branch: do-inline-sync-tests
 ---
