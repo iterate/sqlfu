@@ -79,7 +79,7 @@ select id from posts;
 <details>
 <summary>error</summary>
 
-"generate\.runtime" must be one of 'sqlfu', 'effect-v3', 'effect-v4-unstable', or undefined
+"generate\.runtime" must be one of 'sqlfu', 'effect-v3', 'effect-v4-unstable', 'node:sqlite', 'better-sqlite3', 'bun:sqlite', 'libsql', '@libsql/client', or undefined
 
 </details>
 

@@ -6,6 +6,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {ts} from 'ts-morph';
 import {expect, test} from 'vitest';
+import {createClient as createLibsqlClient} from '@libsql/client';
 import {SqliteClient} from '@effect/sql-sqlite-node';
 
 import {createNodeSqliteClient} from '../../src/index.js';
@@ -73,7 +74,9 @@ test('generate defaults SQL-derived query results to an explicit camelCase bound
 
   const mod = await project.importTranspiledModule<{
     listPosts: {
-      (client: ReturnType<typeof createNodeSqliteClient>): Promise<Array<{id: number; slug: string; publishedAt: string}>>;
+      (
+        client: ReturnType<typeof createNodeSqliteClient>,
+      ): Promise<Array<{id: number; slug: string; publishedAt: string}>>;
       mapResult(row: {id: number; slug: string; published_at: string}): {id: number; slug: string; publishedAt: string};
     };
   }>('sql/.generated/list-posts.sql.ts');
@@ -151,8 +154,106 @@ test('generate defaults column-derived update data to camelCase while preserving
   using database = project.openDatabase();
   const client = createNodeSqliteClient(database.database);
   await mod.publishPost(client, {publishedAt: '2026-05-12'}, {post_id: 1});
-  expect(await client.all<{published_at: string}>({name: 'readPost', sql: `select published_at from posts`, args: []}))
-    .toMatchObject([{published_at: '2026-05-12'}]);
+  expect(
+    await client.all<{published_at: string}>({name: 'readPost', sql: `select published_at from posts`, args: []}),
+  ).toMatchObject([{published_at: '2026-05-12'}]);
+});
+
+test('generate with runtime: node:sqlite emits wrappers that call DatabaseSync directly', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create table posts (
+        id integer primary key,
+        slug text not null,
+        payload json not null,
+        published_at text
+      );
+    `,
+    files: {
+      'sql/queries.sql': dedent`
+        /** @name createScratch */
+        create table if not exists scratch (id integer primary key);
+
+        /** @name insertPosts */
+        insert into posts (slug, payload) values :posts;
+
+        /** @name publishPost */
+        update posts set published_at = :published_at where id = :id;
+
+        /** @name listPostsByIds */
+        select id, slug, payload, published_at from posts where id in (:ids) order by id;
+      `,
+    },
+    config: {generate: {experimentalJsonTypes: true, runtime: 'node:sqlite'}},
+  });
+
+  await project.generate();
+
+  const generated = await project.readText('sql/.generated/queries.sql.ts');
+  expect(generated).not.toContain(`from 'sqlfu'`);
+  expect(generated).toContain(`from 'node:sqlite'`);
+
+  const mod = await project.importTranspiledModule<{
+    createScratch(database: DatabaseSync): unknown;
+    insertPosts(database: DatabaseSync, params: {posts: {slug: string; payload: unknown}}): unknown;
+    publishPost(database: DatabaseSync, data: {publishedAt: string | null}, params: {id: number}): unknown;
+    listPostsByIds(
+      database: DatabaseSync,
+      params: {ids: number[]},
+    ): Array<{id: number; slug: string; payload: unknown; publishedAt: string | null}>;
+  }>('sql/.generated/queries.sql.ts');
+
+  using database = project.openDatabase();
+  mod.createScratch(database.database);
+  const insertResult = mod.insertPosts(database.database, {posts: {slug: 'hello', payload: {tags: ['sql']}}});
+  expect(insertResult).toMatchObject({rowsAffected: 1});
+  mod.publishPost(database.database, {publishedAt: '2026-05-16'}, {id: 1});
+
+  const rows = mod.listPostsByIds(database.database, {ids: [1]});
+  expect(rows).toMatchObject([
+    {
+      id: 1,
+      slug: 'hello',
+      payload: {tags: ['sql']},
+      publishedAt: '2026-05-16',
+    },
+  ]);
+});
+
+test('generate with runtime: @libsql/client emits wrappers that call the async client directly', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: `create table posts (id integer primary key, slug text not null);`,
+    files: {
+      'sql/queries.sql': dedent`
+        /** @name insertPost */
+        insert into posts (slug) values (:slug);
+
+        /** @name listPosts */
+        select id, slug from posts order by id;
+      `,
+    },
+    config: {generate: {runtime: '@libsql/client'}},
+  });
+
+  await project.generate();
+
+  const generated = await project.readText('sql/.generated/queries.sql.ts');
+  expect(generated).not.toContain(`from 'sqlfu'`);
+  expect(generated).toContain(`from '@libsql/client'`);
+  expect(generated).toContain(`await client.execute`);
+
+  const mod = await project.importTranspiledModule<{
+    insertPost(client: ReturnType<typeof createLibsqlClient>, params: {slug: string}): Promise<unknown>;
+    listPosts(client: ReturnType<typeof createLibsqlClient>): Promise<Array<{id: number; slug: string}>>;
+  }>('sql/.generated/queries.sql.ts');
+
+  const client = createLibsqlClient({url: `file:${project.databasePath}`});
+  try {
+    await expect(mod.insertPost(client, {slug: 'hello'})).resolves.toMatchObject({rowsAffected: 1});
+    await expect(mod.listPosts(client)).resolves.toMatchObject([{id: 1, slug: 'hello'}]);
+  } finally {
+    client.close();
+  }
 });
 
 test('generate defaults inferred object-input fields to camelCase while preserving the placeholder name', async () => {
@@ -166,7 +267,9 @@ test('generate defaults inferred object-input fields to camelCase while preservi
   await project.generate();
 
   const generated = await project.readText('sql/.generated/insert-posts.sql.ts');
-  expect(generated).toContain(`posts: { authorId: number; publishedAt: string } | Array<{ authorId: number; publishedAt: string }>;`);
+  expect(generated).toContain(
+    `posts: { authorId: number; publishedAt: string } | Array<{ authorId: number; publishedAt: string }>;`,
+  );
   expect(generated).toContain(`item.authorId`);
   expect(generated).toContain(`item.publishedAt`);
 
@@ -180,11 +283,13 @@ test('generate defaults inferred object-input fields to camelCase while preservi
   using database = project.openDatabase();
   const client = createNodeSqliteClient(database.database);
   await mod.insertPosts(client, {posts: {authorId: 42, publishedAt: '2026-05-12'}});
-  expect(await client.all<{author_id: number; published_at: string}>({
-    name: 'readPost',
-    sql: `select author_id, published_at from posts`,
-    args: [],
-  })).toMatchObject([{author_id: 42, published_at: '2026-05-12'}]);
+  expect(
+    await client.all<{author_id: number; published_at: string}>({
+      name: 'readPost',
+      sql: `select author_id, published_at from posts`,
+      args: [],
+    }),
+  ).toMatchObject([{author_id: 42, published_at: '2026-05-12'}]);
 });
 
 test('generate.casing preserve keeps raw result fields without no-op mapper surface', async () => {
@@ -1073,7 +1178,15 @@ async function createRuntimeFixture(input: {
       sync?: boolean;
       experimentalJsonTypes?: boolean;
       casing?: 'camel' | 'preserve';
-      runtime?: 'sqlfu' | 'effect-v3' | 'effect-v4-unstable';
+      runtime?:
+        | 'sqlfu'
+        | 'effect-v3'
+        | 'effect-v4-unstable'
+        | 'node:sqlite'
+        | 'better-sqlite3'
+        | 'bun:sqlite'
+        | 'libsql'
+        | '@libsql/client';
       importExtension?: '.js' | '.ts';
     };
   };

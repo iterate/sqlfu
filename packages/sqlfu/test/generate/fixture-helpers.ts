@@ -152,7 +152,10 @@ async function ensureTypecheckProject(): Promise<Project> {
       allowImportingTsExtensions: true,
       paths: {
         sqlfu: [path.join(packageRoot, 'src', 'index.ts')],
-        'better-sqlite3': [path.join(packageRoot, 'node_modules', 'better-sqlite3')],
+        'bun:sqlite': [path.join(packageRoot, 'test', 'generate', 'bun-sqlite.d.ts')],
+        'better-sqlite3': [path.join(packageRoot, 'test', 'better-sqlite3.d.ts')],
+        libsql: [path.join(packageRoot, 'node_modules', 'libsql')],
+        '@libsql/client': [path.join(packageRoot, 'node_modules', '@libsql', 'client')],
         zod: [path.join(packageRoot, 'node_modules', 'zod')],
         'zod/mini': [path.join(packageRoot, 'node_modules', 'zod', 'mini')],
         valibot: [path.join(packageRoot, 'node_modules', 'valibot')],
