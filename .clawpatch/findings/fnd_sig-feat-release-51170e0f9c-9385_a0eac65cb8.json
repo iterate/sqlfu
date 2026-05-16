@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-release-51170e0f9c-9385_a0eac65cb8",
+  "featureId": "feat_release_51170e0f9c",
+  "title": "Root test script skips the pg package that the release build now includes",
+  "category": "test-gap",
+  "severity": "low",
+  "confidence": "high",
+  "triage": "test-gap",
+  "evidence": [
+    {
+      "path": "package.json",
+      "startLine": 26,
+      "endLine": 29,
+      "symbol": "scripts",
+      "quote": "\"build\": \"pnpm --filter sqlfu build && pnpm --filter @sqlfu/pg build && pnpm --filter @sqlfu/ui build && pnpm --filter sqlfu-website build\""
+    },
+    {
+      "path": "packages/pg/test/diff-schema.test.ts",
+      "startLine": 5,
+      "endLine": 17,
+      "symbol": null,
+      "quote": "import {pgDialect} from '../src/index.js';"
+    },
+    {
+      "path": "packages/pg/test/migration-lock.test.ts",
+      "startLine": 1,
+      "endLine": 8,
+      "symbol": null,
+      "quote": "Real concurrency test for `pgDialect.withMigrationLock`"
+    }
+  ],
+  "reasoning": "The root build script treats @sqlfu/pg as part of the release build, but the root test script only runs sqlfu and @sqlfu/ui. The included pg tests exercise real schema diffing/materialization and migration-lock behavior for the package being built, so `pnpm test` can pass while the release-included pg package has failing behavior tests.",
+  "reproduction": "Run `pnpm test` from the workspace root and observe that it expands to `pnpm --filter sqlfu test && pnpm --filter @sqlfu/ui test`, with no `pnpm --filter @sqlfu/pg test`.",
+  "recommendation": "Add `pnpm --filter @sqlfu/pg test` to the root `test` script, or introduce an explicit release/CI test script that covers every package included by the root build script.",
+  "whyTestsDoNotAlreadyCoverThis": "The pg tests exist, but the root command declared for this feature does not invoke them.",
+  "suggestedRegressionTest": "A lightweight script assertion could verify that packages included in the root `build` script are also represented in the root release test command, or CI can simply run the corrected root `pnpm test`.",
+  "minimumFixScope": "Update the root `package.json` test script to include @sqlfu/pg tests, accounting for the Postgres fixture requirement in CI.",
+  "status": "fixed",
+  "history": [
+    {
+      "runId": "20260516T231401-b352aa",
+      "kind": "revalidate",
+      "status": "fixed",
+      "note": null,
+      "reasoning": "The original package.json evidence still exists at lines 26-28, but the root test script now includes `pnpm --filter @sqlfu/pg test` between the sqlfu and UI test runs. The root build script still includes `@sqlfu/pg`, so the release-built pg package is now represented by the root test command. The cited pg behavior tests also still exist: `packages/pg/test/diff-schema.test.ts` still imports `pgDialect` at line 5 and defines diffSchema tests, and `packages/pg/test/migration-lock.test.ts` still contains the real concurrency migration-lock test at lines 1-8. `packages/pg/package.json` confirms `@sqlfu/pg test` runs `vitest`. This directly addresses the reported gap; the finding is fixed.",
+      "commands": [
+        "pwd && sed -n '1,80p' package.json",
+        "sed -n '1,80p' packages/pg/test/diff-schema.test.ts",
+        "sed -n '1,80p' packages/pg/test/migration-lock.test.ts",
+        "nl -ba package.json | sed -n '20,34p'",
+        "nl -ba packages/pg/test/diff-schema.test.ts | sed -n '1,24p'",
+        "nl -ba packages/pg/test/migration-lock.test.ts | sed -n '1,18p'",
+        "node -e \"const p=require('./package.json'); console.log(p.scripts.test); console.log(p.scripts.build)\"",
+        "sed -n '1,80p' packages/pg/package.json"
+      ],
+      "createdAt": "2026-05-16T23:14:31.738Z"
+    }
+  ],
+  "signature": "sig_feat-release-51170e0f9c_938524e698",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260516T231103-8805e6",
+  "createdAt": "2026-05-16T23:11:25.624Z",
+  "updatedAt": "2026-05-16T23:14:31.738Z"
+}

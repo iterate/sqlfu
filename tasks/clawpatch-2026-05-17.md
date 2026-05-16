@@ -7,9 +7,12 @@ size: small
 
 ## Status summary
 
-Just started. This replaces the normal bedtime architecture-improvement pass for
-2026-05-17. The branch will install/use Clawpatch, persist its review report,
-and either fix a bounded finding or record why findings were left for later.
+Done for this bounded pass. Clawpatch reviewed three feature records and found
+one true test-gap duplicated across two findings: root `pnpm test` skipped the
+`@sqlfu/pg` suite even though root build/typecheck include the package. The root
+test script now includes `pnpm --filter @sqlfu/pg test`, the pg segment passes
+locally, and Clawpatch revalidated both findings as fixed. Full root `pnpm test`
+still hits pre-existing `sqlfu` package failures before reaching the pg segment.
 
 ## Scope
 
@@ -21,16 +24,27 @@ and either fix a bounded finding or record why findings were left for later.
 
 ## Checklist
 
-- [ ] Read the Clawpatch docs and confirm local prerequisites.
-- [ ] Create this branch and commit the task note first.
-- [ ] Run `clawpatch doctor`, `clawpatch init`, `clawpatch map`, a bounded `clawpatch review`, and `clawpatch report`.
-- [ ] Review findings for true positives.
-- [ ] Fix a small high-confidence finding if one is clearly worth taking tonight, or record why no fix was made.
-- [ ] Run relevant validation and update this task with breadcrumbs.
-- [ ] Update the PR body with the report location, findings summary, and checks.
+- [x] Read the Clawpatch docs and confirm local prerequisites. _Clawpatch docs require Node.js 22+, Git 2.x, and local Codex CLI; this machine has Node v26, Git, and `codex-cli 0.130.0`._
+- [x] Create this branch and commit the task note first. _branch `bedtime/2026-05-17-clawpatch`, worktree `/Users/mmkal/src/worktrees/sqlfu/bedtime-2026-05-17-clawpatch`, first commit `10cda5b`, PR #131._
+- [x] Run `clawpatch doctor`, `clawpatch init`, `clawpatch map`, a bounded `clawpatch review`, and `clawpatch report`. _`clawpatch review --limit 3` produced run `20260516T231103-8805e6` with report `.clawpatch/reports/20260516T231103-8805e6.md`._
+- [x] Review findings for true positives. _both findings described the same root test coverage gap for `@sqlfu/pg`; confirmed `pnpm --filter @sqlfu/pg test -- --run` passes locally after installing workspace dependencies._
+- [x] Fix a small high-confidence finding if one is clearly worth taking tonight, or record why no fix was made. _root `package.json` now runs `pnpm --filter @sqlfu/pg test` between `sqlfu` and `@sqlfu/ui`._
+- [x] Run relevant validation and update this task with breadcrumbs. _`pnpm --filter @sqlfu/pg test -- --run` passed with 95 passing and 7 skipped; full `pnpm test` failed before reaching pg because existing `sqlfu` tests fail in `resolve-sqlfu-ui` and `strict-tier entries import no node:*`._
+- [x] Update the PR body with the report location, findings summary, and checks. _PR #131 body updated after pushing the fix._
 
 ## Implementation notes
 
 - 2026-05-17: Clawpatch docs at <https://clawpatch.ai/> say the tool needs
   Node.js 22+, Git 2.x, and a local Codex CLI, and recommend `npm install -g
   clawpatch` followed by `init`, `map`, `review`, and `report`.
+- 2026-05-17: Clawpatch version installed globally via npm is `0.1.0`.
+- 2026-05-17: `clawpatch map` detected six feature records. This pass reviewed
+  three (`package.json` config, root lint script, root build script) to keep the
+  bedtime replacement bounded.
+- 2026-05-17: `clawpatch revalidate` marked both duplicate findings fixed after
+  the root `test` script started invoking `@sqlfu/pg`.
+- 2026-05-17: The full root test command still fails in the first package:
+  `test/resolve-sqlfu-ui.test.ts` cannot find `#serialized-assets`, and
+  `test/import-surface.test.ts` rejects a `node:sqlite` import path through
+  `sqlfu/analyze`. Those failures pre-date this script fix and prevent the
+  updated root command from reaching `@sqlfu/pg` in this worktree.
