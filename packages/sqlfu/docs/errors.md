@@ -25,7 +25,7 @@ type SqlfuErrorKind =
   | 'unknown'                 // mapper didn't recognize; inspect `.cause`
 ```
 
-Names are SQLSTATE-aligned (matching the [PostgreSQL error codes](https://www.postgresql.org/docs/current/errcodes-appendix.html) convention) so that when a postgres adapter lands, mapping from `SQLSTATE` becomes a direct lookup rather than a second vocabulary. `missing_table` and `missing_column` are the two deliberate deviations: SQLSTATE's `undefined_table` and `undefined_column` collide with TypeScript's `undefined` at reading time.
+Names are SQLSTATE-aligned (matching the [PostgreSQL error codes](https://www.postgresql.org/docs/current/errcodes-appendix.html) convention). The Node Postgres runtime adapter already exists in `sqlfu`; SQLSTATE-specific classification is part of the broader Postgres hardening work, and the shared vocabulary keeps that path from introducing a second error language. `missing_table` and `missing_column` are the two deliberate deviations: SQLSTATE's `undefined_table` and `undefined_column` collide with TypeScript's `undefined` at reading time.
 
 Primary-key violations collapse into `unique_violation`. From a product perspective both are "that row already exists"; code that needs to distinguish them can still read `.cause.code`.
 
@@ -35,7 +35,7 @@ Primary-key violations collapse into `unique_violation`. From a product perspect
 class SqlfuError extends Error {
   kind: SqlfuErrorKind;
   query: SqlQuery;    // the query that failed; includes `.name` if named
-  system: string;     // 'sqlite' (OTel db.system value)
+  system: string;     // OTel db.system value, e.g. 'sqlite' or 'postgresql'
   cause: unknown;     // the original driver error, byte-identical
 }
 ```

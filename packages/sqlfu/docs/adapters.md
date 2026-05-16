@@ -1,11 +1,10 @@
 # Adapters
 
 `sqlfu` doesn't ship its own database driver. It sits on top of whichever
-SQLite-compatible client you already use (local file, embedded engine, edge
-runtime, or a real remote database) and gives you the same typed client surface
-on top.
+database client you already use and gives you the same typed client surface on
+top.
 
-This page lists the SQLite-compatible adapters that ship in `sqlfu`, with a copy-paste snippet for each.
+This page lists the runtime adapters that ship in `sqlfu`, with a copy-paste snippet for each. The SQLite-compatible adapters have end-to-end guides today. `createNodePostgresClient()` is runtime-only: it adapts a `pg`-compatible pool for application queries, while the broader `@sqlfu/pg` dialect/toolchain docs are still in progress.
 
 For an end-to-end setup, use the matching guide:
 
@@ -98,6 +97,7 @@ placeholders, pass an array.
 | Durable Object `SqlStorage`         | Cloudflare Durable Objects    | Per-DO embedded SQLite                 | Sync       | `createDurableObjectClient`  |
 | `expo-sqlite`                       | Expo (React Native)           | On-device SQLite                       | Async      | `createExpoSqliteClient`        |
 | `@sqlite.org/sqlite-wasm`           | Browsers                      | OPFS / in-memory                       | Async      | `createSqliteWasmClient`        |
+| `pg`                                | Node                          | PostgreSQL                             | Async      | `createNodePostgresClient`      |
 
 Every factory takes the underlying driver's database/connection object as its single argument and returns a `sqlfu` client. None of these drivers are peer dependencies: install only the one you actually use.
 
@@ -233,6 +233,25 @@ const client = createTursoDatabaseClient(db);
 // sync at your own cadence; sqlfu doesn't own this
 await db.push();
 await db.pull();
+```
+
+## Postgres runtime
+
+### `pg`
+
+`createNodePostgresClient()` adapts a `pg` pool for application queries. This
+adapter is runtime-only and lives in the main `sqlfu` package. The broader
+Postgres dialect/toolchain work lives in `@sqlfu/pg`; fuller docs and examples
+for that package are still in progress.
+
+```ts
+import {Pool} from 'pg';
+import {createNodePostgresClient} from 'sqlfu';
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+const client = createNodePostgresClient(pool);
 ```
 
 ### Cloudflare D1
