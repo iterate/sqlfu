@@ -27,8 +27,8 @@ export type RunResult = QueryMetadata;
  * (`QueryArg[]`) or named (`Record<string, unknown>` keyed by the bare param
  * name — `:slug` matches `{slug: ...}`). Each adapter translates this to its
  * driver's binding shape; positional-only drivers (D1, DO, turso-serverless,
- * expo) route named params through the shared `rewriteNamedParamsToPositional`
- * helper in `sqlite-text.ts`.
+ * expo) route named params through the shared binding helpers in
+ * `sql-params.ts`.
  */
 export type PreparedStatementParams = Record<string, unknown> | QueryArg[];
 

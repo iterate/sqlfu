@@ -1,6 +1,7 @@
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
-import {rawSqlWithSqlSplittingAsync, rewriteNamedParamsToPositional} from '../sqlite-text.js';
+import {bindSqlParamsToPositional} from '../sql-params.js';
+import {rawSqlWithSqlSplittingAsync} from '../sqlite-text.js';
 import type {AsyncClient, PreparedStatement, ResultRow, SqlQuery} from '../types.js';
 
 export interface D1PreparedStatement {
@@ -59,8 +60,8 @@ export function createD1Client(database: D1DatabaseLike): AsyncClient<D1Database
     // D1's `prepare` returns a `D1PreparedStatement` that's reusable across
     // multiple `.bind(...).all/.run/.first` calls — but `.bind` only accepts
     // positional values. Named-param Records are routed through the shared
-    // tokenizer; if the caller passes a `Record`, we re-prepare against the
-    // rewritten SQL on first use and cache the rewritten statement so the
+    // parameter binder; if the caller passes a `Record`, we re-prepare against
+    // the rewritten SQL on first use and cache the rewritten statement so the
     // reuse contract still holds for repeat calls with the same shape.
     let positionalStatement: D1PreparedStatement | null = null;
     let positionalSql: string | null = null;
@@ -76,7 +77,7 @@ export function createD1Client(database: D1DatabaseLike): AsyncClient<D1Database
       }
       // Named-param Record — tokenize and (re)prepare against the rewritten SQL.
       // If the rewrite produces the same SQL we already prepared, reuse it.
-      const rewritten = rewriteNamedParamsToPositional(sql, params);
+      const rewritten = bindSqlParamsToPositional(sql, params, 'question');
       if (positionalSql !== rewritten.sql) {
         positionalStatement = database.prepare(rewritten.sql);
         positionalSql = rewritten.sql;

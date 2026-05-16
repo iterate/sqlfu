@@ -8,8 +8,9 @@
 // sqlite adapters.
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
-import {rewriteNamedParamsToPositional, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
-import type {AsyncClient, PreparedStatement, ResultRow, SqlQuery} from '../types.js';
+import {bindSqlParamsToPositional} from '../sql-params.js';
+import {surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
+import type {AsyncClient, PreparedStatement, PreparedStatementParams, ResultRow, SqlQuery} from '../types.js';
 
 /**
  * Structural type matching `pg.Pool` (or a `pg.PoolClient` from `pool.connect()`).
@@ -100,7 +101,7 @@ export function createNodePostgresClient(pool: NodePostgresLike): AsyncClient<No
     // when set; we don't currently use that — sqlfu's prepared-statement
     // contract is a re-usable handle, and pg's pool will plan-cache the same
     // text on its own. Named-param Record support routes through the shared
-    // tokenizer (positional `$1, $2, …` rewrite happens inside).
+    // parameter binder (positional `$1, $2, ...` rewrite happens inside).
     return {
       async all(params) {
         const {sql: rewrittenSql, args} = rewriteForPg(sql, params);
@@ -180,108 +181,13 @@ export function createNodePostgresClient(pool: NodePostgresLike): AsyncClient<No
 export const createNodePostgresDatabase = createNodePostgresClient;
 
 /**
- * Translate sqlfu's prepared-statement params into pg's positional `$1, $2, …`
- * shape. Reuses the sqlite-side rewriter — it's actually dialect-neutral, just
- * named after the codebase that first needed it.
- *
- * Wart: the rewriter outputs `?` placeholders which we then map to `$N`. A
- * cleaner refactor would parameterize the rewriter on the placeholder style.
- * Tracked under a follow-up; for now the swap below works correctly because
- * the rewriter only emits `?` for parameter positions (everything else is
- * preserved verbatim).
+ * Translate sqlfu's prepared-statement params into pg's positional `$1, $2, ...`
+ * shape. The shared binder owns SQL scanning, including dollar-quoted strings,
+ * so named params and positional placeholders are rewritten in one pass.
  */
 function rewriteForPg(
   sql: string,
-  params: unknown,
+  params: PreparedStatementParams | null | undefined,
 ): {sql: string; args: unknown[]} {
-  if (params == null || Array.isArray(params)) {
-    return {sql: convertQuestionMarksToDollarN(sql), args: (params as unknown[]) ?? []};
-  }
-  const rewritten = rewriteNamedParamsToPositional(sql, params as Record<string, unknown>);
-  return {sql: convertQuestionMarksToDollarN(rewritten.sql), args: rewritten.args};
-}
-
-function convertQuestionMarksToDollarN(sql: string): string {
-  let n = 0;
-  let result = '';
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-  let inDollarQuote: string | null = null;
-  let inLineComment = false;
-  let inBlockComment = false;
-  for (let i = 0; i < sql.length; i++) {
-    const ch = sql[i];
-    if (inLineComment) {
-      result += ch;
-      if (ch === '\n') inLineComment = false;
-      continue;
-    }
-    if (inBlockComment) {
-      result += ch;
-      if (ch === '*' && sql[i + 1] === '/') {
-        result += '/';
-        i++;
-        inBlockComment = false;
-      }
-      continue;
-    }
-    if (inDollarQuote != null) {
-      result += ch;
-      if (ch === '$') {
-        const tag = sql.slice(i, i + inDollarQuote.length);
-        if (tag === inDollarQuote) {
-          result += sql.slice(i + 1, i + inDollarQuote.length);
-          i += inDollarQuote.length - 1;
-          inDollarQuote = null;
-        }
-      }
-      continue;
-    }
-    if (inSingleQuote) {
-      result += ch;
-      if (ch === "'") inSingleQuote = false;
-      continue;
-    }
-    if (inDoubleQuote) {
-      result += ch;
-      if (ch === '"') inDoubleQuote = false;
-      continue;
-    }
-    if (ch === "'") {
-      inSingleQuote = true;
-      result += ch;
-      continue;
-    }
-    if (ch === '"') {
-      inDoubleQuote = true;
-      result += ch;
-      continue;
-    }
-    if (ch === '-' && sql[i + 1] === '-') {
-      inLineComment = true;
-      result += ch;
-      continue;
-    }
-    if (ch === '/' && sql[i + 1] === '*') {
-      inBlockComment = true;
-      result += ch;
-      continue;
-    }
-    if (ch === '$') {
-      const tagMatch = /^\$([A-Za-z_]\w*)?\$/u.exec(sql.slice(i));
-      if (tagMatch) {
-        inDollarQuote = tagMatch[0];
-        result += inDollarQuote;
-        i += inDollarQuote.length - 1;
-        continue;
-      }
-    }
-    if (ch === '?') {
-      n += 1;
-      result += `$${n}`;
-      continue;
-    }
-    result += ch;
-  }
-  return result;
+  return bindSqlParamsToPositional(sql, params, 'postgres');
 }

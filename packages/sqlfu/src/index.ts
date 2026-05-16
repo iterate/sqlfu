@@ -60,7 +60,6 @@ export {
   extractSchema,
   rawSqlWithSqlSplittingAsync,
   rawSqlWithSqlSplittingSync,
-  rewriteNamedParamsToPositional,
   splitSqlStatements,
   sqlReturnsRows,
   surroundWithBeginCommitRollbackAsync,

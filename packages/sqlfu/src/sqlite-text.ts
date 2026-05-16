@@ -1,4 +1,4 @@
-import type {AsyncClient, Client, PreparedStatementParams, QueryArg, SyncClient} from './types.js';
+import type {AsyncClient, Client, QueryArg, SyncClient} from './types.js';
 import {normalizeSchemaSqlForExtraction} from './schemadiff/sqlite/sqltext.js';
 
 /**
@@ -25,77 +25,6 @@ export function sqlReturnsRows(sql: string): boolean {
   const stripped = sql.replace(/^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)+/u, '');
   if (/^(select|with|pragma|explain|values|show|table|fetch)\b/iu.test(stripped)) return true;
   return /\breturning\b/iu.test(sql);
-}
-
-/**
- * Adapter-internal compatibility shim for drivers whose binding API is
- * strictly positional (D1, Durable Objects, turso-serverless, expo-sqlite).
- * Rewrites `:name` / `$name` / `@name` to `?` and returns the args in
- * appearance order so the strictly-positional driver can bind them. A minimal
- * tokenizer skips string literals and comments so colons/dollars inside
- * quoted strings aren't mistaken for placeholders.
- *
- * Adapters whose driver natively accepts bare-key `Record` bindings
- * (better-sqlite3, node:sqlite, libsql) skip this helper and pass the params
- * straight through. sqlite-wasm accepts prefixed keys, so its adapter maps
- * sqlfu's bare keys to the SQL placeholder prefix before binding.
- */
-export function rewriteNamedParamsToPositional(
-  sql: string,
-  params: PreparedStatementParams | undefined,
-): {sql: string; args: QueryArg[]} {
-  if (params == null) return {sql, args: []};
-  if (Array.isArray(params)) return {sql, args: params as QueryArg[]};
-
-  const named = params as Record<string, unknown>;
-  const parameters = scanSqliteNamedParameters(sql);
-  let out = '';
-  let cursor = 0;
-  for (const parameter of parameters) {
-    out += sql.slice(cursor, parameter.start);
-    out += '?';
-    cursor = parameter.end;
-  }
-  out += sql.slice(cursor);
-
-  const args = parameters.map((parameter) => {
-    if (!Object.prototype.hasOwnProperty.call(named, parameter.name)) {
-      throw new Error(`SQL: missing value for named parameter "${parameter.name}".`);
-    }
-    return named[parameter.name] as QueryArg;
-  });
-  return {sql: out, args};
-}
-
-export type SqliteNamedParameter = {
-  parameter: string;
-  name: string;
-  start: number;
-  end: number;
-};
-
-export function scanSqliteNamedParameters(sql: string): SqliteNamedParameter[] {
-  const out: SqliteNamedParameter[] = [];
-  let index = 0;
-  while (index < sql.length) {
-    const skippedEnd = scanSqlIgnoredRange(sql, index);
-    if (skippedEnd !== null) {
-      index = skippedEnd;
-      continue;
-    }
-
-    const code = sql.charCodeAt(index);
-    if (isNamedParameterPrefix(code) && isIdentStart(sql.charCodeAt(index + 1))) {
-      const start = index;
-      index += 2;
-      while (index < sql.length && isIdentCont(sql.charCodeAt(index))) index += 1;
-      const parameter = sql.slice(start, index);
-      out.push({parameter, name: parameter.slice(1), start, end: index});
-      continue;
-    }
-    index += 1;
-  }
-  return out;
 }
 
 function scanSqlIgnoredRange(sql: string, start: number): number | null {
@@ -152,18 +81,6 @@ function scanSqlBlockComment(sql: string, start: number): number {
     index += 1;
   }
   return sql.length;
-}
-
-function isIdentStart(code: number): boolean {
-  return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a) || code === 0x5f;
-}
-
-function isIdentCont(code: number): boolean {
-  return isIdentStart(code) || (code >= 0x30 && code <= 0x39);
-}
-
-function isNamedParameterPrefix(code: number): boolean {
-  return code === 0x3a /* : */ || code === 0x40 /* @ */ || code === 0x24 /* $ */;
 }
 
 /**

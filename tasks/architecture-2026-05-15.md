@@ -1,0 +1,72 @@
+---
+status: review
+size: medium
+---
+
+# Nightly Architecture Improvement 2026-05-15
+
+## Status Summary
+
+Implementation complete, locally checked, and replacement compare branches pushed. Named-parameter binding now lives in a driver-neutral Module used by runtime Adapters; PR #125 is ready for review with one known pre-existing full-suite failure noted below.
+
+## Goal
+
+Find and land one high-impact architecture improvement after the 2026-05-15 bedtime task PRs are open, checked, and reviewed. Optimize for locality and leverage: the change should make a real concept easier to understand, test, or extend without broad product churn.
+
+## Assumptions
+
+- Base branch is `main`; there is no shared nightly base branch for this bedtime run.
+- Existing task PRs stay as they are. After the architecture PR lands on its branch, replacement compare branches will be created for the open PR queue instead of rebasing or rewriting those branches.
+- The project context in `CONTEXT.md` and ADR `docs/adr/0001-generated-query-casing-boundary.md` are authoritative for generated query boundary and query identity language.
+- If candidate selection would normally need the user, make the best bedtime choice and record the guess here and in the PR body.
+
+## Checklist
+
+- [x] Create an isolated worktree and branch from `origin/main`. _worktree is `/Users/mmkal/src/worktrees/sqlfu/bedtime-2026-05-15-architecture` on branch `bedtime/2026-05-15-architecture`._
+- [x] Commit this task note and open the early architecture PR. _initial task commit is `4ea86ed`; PR is #125._
+- [x] Run the `improve-codebase-architecture` exploration using the project context and ADR. _parallel explorer passes covered adapter/runtime seams, typegen/query identity, and UI host/table seams._
+- [x] Choose one candidate, recording the autonomous bedtime assumption. _selected named-parameter binding because it is a real multi-adapter seam, removes an explicit Postgres wart, and avoids the open docs/init/landing/query-identity PR surfaces._
+- [x] Implement the chosen architecture improvement with focused tests. _added `packages/sqlfu/src/sql-params.ts`, moved positional/Postgres/prefixed-record binding through it, deleted the old sqlite-text named-param helper and Postgres private `$N` scanner, and added parameter plus Postgres adapter tests._
+- [x] Update this task file and PR body with the net effect, checks, and replacement compare branches for open PRs. _replacement branches were pushed for PRs #111, #114, #117, #119, #120, #121, #122, #123, and #124._
+
+## Chosen Candidate
+
+Deepen named-parameter binding into a driver-neutral Module behind the Adapter seam. The new Module should parse authored SQL once with a unified scanner and produce the bind shape each Adapter needs:
+
+- positional `?` SQL plus args for D1, Durable Objects, Expo SQLite, and Turso serverless
+- Postgres `$N` SQL plus args for `createNodePostgresClient`
+- prefixed SQLite parameter records for sqlite-wasm
+
+The intent is to move placeholder knowledge out of the sqlite-named text Module and the Postgres Adapter's private scanner, improving Locality for bugs around comments, quoted strings, repeated params, missing params, and dollar-quoted SQL bodies.
+
+## Guesses and Assumptions
+
+- [guess] The small extra scanner work for SQLite-style Adapters is acceptable; adapter execution is dominated by driver calls, while scanner correctness and Locality matter more.
+- [guess] This should not require a `CONTEXT.md` term because "named-parameter binding" is an implementation Module behind the existing Adapter seam, not a new product/domain concept.
+
+## Replacement Compare Branches
+
+| Existing PR | Replacement compare | Strategy |
+| --- | --- | --- |
+| [#124 `bedtime/2026-05-15-default-db-gitignore`](https://github.com/iterate/sqlfu/pull/124) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-124) | clean merge |
+| [#123 `bedtime/2026-05-15-pg-docs-followup`](https://github.com/iterate/sqlfu/pull/123) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-123) | clean merge |
+| [#122 `bedtime/2026-05-15-db-base-directory`](https://github.com/iterate/sqlfu/pull/122) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-122) | clean merge |
+| [#121 `bedtime/2026-05-15-improve-docs`](https://github.com/iterate/sqlfu/pull/121) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-121) | clean merge |
+| [#120 `bedtime/2026-05-15-landing-trace`](https://github.com/iterate/sqlfu/pull/120) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-120) | clean merge |
+| [#119 `bedtime/2026-05-15-cleanup-tasks`](https://github.com/iterate/sqlfu/pull/119) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-119) | clean merge |
+| [#117 `bedtime/2026-05-14-query-identity-manifest`](https://github.com/iterate/sqlfu/pull/117) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-117) | clean merge |
+| [#114 `bedtime/2026-05-14-generate-preflight`](https://github.com/iterate/sqlfu/pull/114) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-114) | clean merge |
+| [#111 `issue-110-sqlite3-parser-schemadiff`](https://github.com/iterate/sqlfu/pull/111) | [comparison](https://github.com/iterate/sqlfu/compare/bedtime%2F2026-05-15-architecture...bedtime%2F2026-05-15-architecture-pr-111) | clean merge |
+
+## Implementation Notes
+
+- 2026-05-16: Main checkout was clean. Bedtime PRs #119, #120, #121, #122, #123, and #124 had passing workflow checks before starting this pass.
+- 2026-05-16: Opened early architecture PR #125 before implementation.
+- 2026-05-16: Architecture explorers surfaced candidates in adapter/runtime, typegen/query identity, and UI host/table areas. Chose named-parameter binding after a small `grill-you` pass in `/tmp/grillings/sqlfu/nightly-architecture-2026-05-15/interview.md`.
+- 2026-05-16: Implemented the binding Module and moved D1, Durable Objects, Expo SQLite, Turso serverless, sqlite-wasm, and Postgres to it.
+- 2026-05-16: Checks passed: `pnpm --filter sqlfu exec vitest run test/sql-params.test.ts test/adapters/pg.test.ts test/sqlite-text.test.ts`; `pnpm --filter sqlfu exec vitest run test/adapters/d1.test.ts test/adapters/durable-object.test.ts test/adapters/expo-sqlite.test.ts test/adapters/sqlite-wasm.test.ts`; `pnpm --filter sqlfu exec vitest run test/adapters/turso-remote.test.ts test/adapters/turso-database.test.ts`; `pnpm --filter sqlfu typecheck`; `pnpm --filter @sqlfu/ui build`; `pnpm --filter sqlfu exec vitest run test/resolve-sqlfu-ui.test.ts`; `git diff --check`.
+- 2026-05-16: Full `pnpm --filter sqlfu test` reached 60 passing files but failed `test/import-surface.test.ts` because `sqlfu/analyze`'s existing vendored TypeSQL bundle imports `node:sqlite`; this is outside the named-parameter binding change. The initial full run also failed `resolve-sqlfu-ui` until `@sqlfu/ui` was built, after which that test passed.
+- 2026-05-16: Replacement branches were created with `git merge --no-edit` from the architecture branch. All replacement branches passed `git diff --check`.
+- 2026-05-16: Targeted replacement checks passed: #124 `pnpm --filter sqlfu exec vitest run test/init.test.ts`; #123 `pnpm sync:root-readme:check` and `pnpm --filter sqlfu-website build`; #120 `pnpm --filter sqlfu-website build`; #117 `pnpm --filter sqlfu exec vitest run test/query-identity.test.ts test/lint-plugin.test.ts`; #114 `pnpm --filter sqlfu exec vitest run test/cli-config.test.ts`; #111 `pnpm install` and `pnpm --filter sqlfu exec vitest run test/schemadiff`.
+- 2026-05-16: Independent PR review found Postgres scanner gaps for `:param::type` casts and JSONB `?` / `?|` / `?&` operators. Fixed both in `sql-params.ts` and added regression tests.
+- 2026-05-16: Follow-up checks passed after the review fix: `pnpm --filter sqlfu exec vitest run test/sql-params.test.ts test/adapters/pg.test.ts`; `pnpm --filter sqlfu typecheck`; `pnpm --filter sqlfu exec vitest run test/adapters/d1.test.ts test/adapters/durable-object.test.ts test/adapters/expo-sqlite.test.ts test/adapters/sqlite-wasm.test.ts`; `pnpm --filter sqlfu exec vitest run test/adapters/turso-remote.test.ts test/adapters/turso-database.test.ts`; `git diff --check`.

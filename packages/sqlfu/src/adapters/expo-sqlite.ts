@@ -1,8 +1,8 @@
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
+import {bindSqlParamsToPositional} from '../sql-params.js';
 import {
   rawSqlWithSqlSplittingAsync,
-  rewriteNamedParamsToPositional,
   surroundWithBeginCommitRollbackAsync,
 } from '../sqlite-text.js';
 import type {AsyncClient, PreparedStatement, ResultRow, SqlQuery} from '../types.js';
@@ -52,17 +52,17 @@ export function createExpoSqliteClient(database: ExpoSqliteDatabaseLike): AsyncC
   ): PreparedStatement<TRow> => {
     // expo-sqlite's `getAllAsync` / `runAsync` / `getEachAsync` only accept a
     // positional `params` array. This shim captures the SQL string and rewrites
-    // any named-param Records to positional via the shared tokenizer before
+    // any named-param Records to positional via the shared parameter binder before
     // dispatching to the driver. expo-sqlite caches prepared statements
     // internally per SQL string, so re-issuing the same SQL is not a fresh
     // prepare at the C level.
     return {
       async all(params) {
-        const rewritten = rewriteNamedParamsToPositional(sql, params);
+        const rewritten = bindSqlParamsToPositional(sql, params, 'question');
         return database.getAllAsync<TRow>(rewritten.sql, rewritten.args);
       },
       async run(params) {
-        const rewritten = rewriteNamedParamsToPositional(sql, params);
+        const rewritten = bindSqlParamsToPositional(sql, params, 'question');
         const result = await database.runAsync(rewritten.sql, rewritten.args);
         return {
           rowsAffected: result.changes,
@@ -70,7 +70,7 @@ export function createExpoSqliteClient(database: ExpoSqliteDatabaseLike): AsyncC
         };
       },
       async *iterate(params) {
-        const rewritten = rewriteNamedParamsToPositional(sql, params);
+        const rewritten = bindSqlParamsToPositional(sql, params, 'question');
         for await (const row of database.getEachAsync<TRow>(rewritten.sql, rewritten.args)) {
           yield row;
         }

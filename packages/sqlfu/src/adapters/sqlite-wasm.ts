@@ -1,8 +1,8 @@
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
+import {bindSqlParamsToPrefixedRecord} from '../sql-params.js';
 import {
   rawSqlWithSqlSplittingAsync,
-  scanSqliteNamedParameters,
   surroundWithBeginCommitRollbackAsync,
 } from '../sqlite-text.js';
 import type {AsyncClient, PreparedStatement, PreparedStatementParams, QueryArg, ResultRow, SqlQuery} from '../types.js';
@@ -133,26 +133,15 @@ function toBind(
   sql: string,
   params: PreparedStatementParams | undefined,
 ): SqliteWasmBindValue[] | Record<string, SqliteWasmBindValue> | undefined {
-  if (params == null) return undefined;
-  if (Array.isArray(params)) return toPositionalBind(params as QueryArg[]);
-  const namedParameters = new Map<string, string>();
-  for (const parameter of scanSqliteNamedParameters(sql)) {
-    if (!namedParameters.has(parameter.name)) namedParameters.set(parameter.name, parameter.parameter);
-  }
+  const bound = bindSqlParamsToPrefixedRecord(sql, params);
+  if (!bound) return undefined;
+  if (Array.isArray(bound)) return toPositionalBind(bound);
+
   const out: Record<string, SqliteWasmBindValue> = {};
-  for (const [key, value] of Object.entries(params)) {
-    out[sqliteWasmBindKey(key, namedParameters)] = coerceBindValue(value as QueryArg);
+  for (const [key, value] of Object.entries(bound)) {
+    out[key] = coerceBindValue(value);
   }
   return out;
-}
-
-function sqliteWasmBindKey(key: string, namedParameters: Map<string, string>): string {
-  if (hasBindPrefix(key)) return key;
-  return namedParameters.get(key) || `:${key}`;
-}
-
-function hasBindPrefix(key: string): boolean {
-  return key.startsWith(':') || key.startsWith('$') || key.startsWith('@');
 }
 
 function coerceBindValue(value: QueryArg): SqliteWasmBindValue {
