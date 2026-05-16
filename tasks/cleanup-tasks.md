@@ -7,11 +7,38 @@ size: small
 
 ## Status summary
 
+2026-05-17 pass is in progress. The task note has been opened on an isolated bedtime branch; PR/task/worktree inspection and any safe completed-file moves or local worktree removals are still pending.
+
 2026-05-15 pass is done. PRs #115 and #116 were evergreen logs that stay active, so no task files moved. Eight clean local worktrees for merged, closed, or stale compare branches were removed; open, dirty, and ambiguous worktrees were left in place.
 
 Sometimes agents forget to move their task files to "done". Look at recent commits and see if that's happened. If it has, open a housekeeping PR to do just that. While you're there, you can also add to Implementation Notes if there's anything you spot in the change that wasn't tidied up properly that also wasn't documented in the task file.
 
 Make sure local worktrees are cleaned up too.
+
+## 2026-05-17 pass
+
+Branch: `bedtime/2026-05-17-cleanup-tasks`.
+
+Scope:
+
+- Inspect recent merged, closed, and open PRs against active task files.
+- Move active task files to `tasks/complete/` only when the matching work is clearly merged or otherwise done on `origin/main`.
+- Keep evergreen tasks open.
+- Remove only clean, clearly stale local worktrees; preserve dirty, ambiguous, active review, local, and remote branches.
+- Record skipped candidates with enough context for the next cleanup pass.
+
+Checklist:
+
+- [x] Create the requested isolated worktree from `origin/main` and commit this status note first. _worktree is `/Users/mmkal/src/worktrees/sqlfu/bedtime-2026-05-17-cleanup-tasks` on branch `bedtime/2026-05-17-cleanup-tasks`._
+- [ ] Open the early PR after the task-only commit.
+- [ ] Inspect recent merged, closed, and open PRs, active task files, and local worktrees.
+- [ ] File completed active task files into `tasks/complete/` only when the matching work is clearly done on `origin/main`.
+- [ ] Remove safe clean local worktrees, or record why each candidate was left alone.
+- [ ] Verify the final task tree, worktree list, and git status.
+
+Implementation notes:
+
+- 2026-05-17: This pass starts from `origin/main` at `27c0875` and intentionally does not touch the main checkout.
 
 ## 2026-05-15 pass
 
