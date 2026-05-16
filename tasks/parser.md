@@ -36,7 +36,7 @@ Checklist:
 - [x] Identify the SQLite binding(s) used by sqlfu and whether they expose those APIs. *`node:sqlite` exposes `setAuthorizer()` and `StatementSync.columns()`; `better-sqlite3`/`libsql` expose `columns()`-style origin metadata but not an authorizer callback on sqlfu's current surfaces; `bun:sqlite` documents column names/types/declared types but not origin/authorizer.*
 - [x] Add executable evidence for the practical conclusion where feasible. *Added `packages/sqlfu/test/schemadiff/sqlite-builtins-spike.test.ts`.*
 - [x] Update this task with the conclusion, remaining parser scope, and next steps. *Recorded below: authorizer is promising for SQLite-only schema-body dependencies, but parser work remains relevant for adapter portability and raw SQL bodies without a compiled SQLite context.*
-- [ ] Push the branch and update the PR body with evidence and checks.
+- [x] Push the branch and update the PR body with evidence and checks. *Opened and updated PR #132 with the authorizer conclusion, before/after, and targeted check results.*
 
 Conclusion:
 
