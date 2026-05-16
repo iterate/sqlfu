@@ -157,6 +157,36 @@ test('demo mode default 100/page table view actually fetches 100 rows', async ({
   await expect(page.locator('.reactgrid').getByText('Wolski  Zajazd')).toBeVisible();
 });
 
+test('demo mode opens the referenced parent row from a foreign-key cell', async ({page}) => {
+  await page.setViewportSize({width: 1180, height: 720});
+  await page.goto('/?demo=1#table/order_details');
+
+  await expect(page.locator('.reactgrid').getByText('10,248').first()).toBeVisible();
+
+  const productIdCell = page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="2"]');
+  await productIdCell.hover();
+  await productIdCell.getByRole('button', {name: 'Open products row for product_id 11'}).click();
+
+  await expect(page.getByRole('heading', {name: 'products where product_id = 11'})).toBeVisible();
+  await expect(page.getByText('Queso Cabrales')).toBeVisible();
+  await expect(page.getByText('select * from "products" where "product_id" = ?')).toBeVisible();
+});
+
+test('demo mode opens child rows from a referenced primary-key cell', async ({page}) => {
+  await page.setViewportSize({width: 1180, height: 720});
+  await page.goto('/?demo=1#table/products');
+
+  await expect(page.locator('.reactgrid').getByText('Chai')).toBeVisible();
+
+  const productIdCell = page.locator('.reactgrid [data-cell-rowidx="1"][data-cell-colidx="1"]');
+  await productIdCell.hover();
+  await productIdCell.getByRole('button', {name: 'Open related order_details rows for product_id 1'}).click();
+
+  await expect(page.getByRole('heading', {name: 'order_details where product_id = 1'})).toBeVisible();
+  await expect(page.getByText('select * from "order_details" where "product_id" = ?')).toBeVisible();
+  await expect(page.getByText('10285').first()).toBeVisible();
+});
+
 test('demo mode: clicking the same sort column 3 times (asc → desc → off) does not freeze', async ({page}) => {
   await page.goto('http://127.0.0.1:3218/?demo=1#table/products');
   await expect(page.locator('.reactgrid').getByText('Chai')).toBeVisible();
