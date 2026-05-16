@@ -206,7 +206,7 @@ try {
 }
 ```
 
-The driver error is preserved byte-identical on `.cause`; `.query` and `.system` come along so error reporters can tag events without a parallel `QueryExecutionContext`. Kind names are SQLSTATE-aligned, so the day a postgres adapter lands the mapping is a direct lookup rather than a second vocabulary to remember. Full kind list, handler recipes, Sentry-tagging example: [Errors](https://sqlfu.dev/docs/errors).
+The driver error is preserved byte-identical on `.cause`; `.query` and `.system` come along so error reporters can tag events without a parallel `QueryExecutionContext`. Kind names are SQLSTATE-aligned so the existing Postgres runtime adapter and the broader `@sqlfu/pg` work can share one error vocabulary as SQLSTATE-specific classification fills in. Full kind list, handler recipes, Sentry-tagging example: [Errors](https://sqlfu.dev/docs/errors).
 
 ### Outbox (experimental)
 
@@ -456,6 +456,7 @@ Those are not accidents. The project is trying to keep schema history explicit, 
 Current limits also matter:
 
 - `sqlfu` is SQLite-first in important parts of the toolchain
+- Postgres has a runtime adapter today, but the broader `@sqlfu/pg` dialect/toolchain docs and examples are still in progress
 - result-type inference is imperfect on some SQLite expressions and views; the sqlfu post-pass that fills gaps in the vendored TypeSQL output is still evolving
 - the formatter is opinionated and still evolving
 
@@ -471,6 +472,6 @@ Current limits also matter:
 - [Drizzle](https://orm.drizzle.team/). The [`local.drizzle.studio`](https://local.drizzle.studio/) product model -- hosted UI shell talking to a local backend via a permissioned localhost API -- is the direct inspiration for `sqlfu.dev/ui` and the shape of the sqlfu UI package.
 - [`@pgkit/schemainspect`](https://github.com/mmkal/pgkit/tree/main/packages/schemainspect) and [`@pgkit/migra`](https://github.com/mmkal/pgkit/tree/main/packages/migra). The sqlfu schemadiff engine under [`src/schemadiff`](./src/schemadiff) is structurally inspired by these libraries: materialize both schemas into scratch databases, inspect them into a typed model, diff the inspected models, and emit an ordered statement plan. The SQLite-specific implementation does not copy their code, but the shape is taken from them. See [`src/schemadiff/CLAUDE.md`](./src/schemadiff/CLAUDE.md) for more detail.
 - [`djrobstep/schemainspect`](https://github.com/djrobstep/schemainspect) and [`djrobstep/migra`](https://github.com/djrobstep/migra) by Robert Lechte. These are the Python originals that the `@pgkit/*` packages ported to TypeScript, and therefore the upstream lineage of the sqlfu diff engine.
-- [pgkit](https://github.com/mmkal/pgkit) (same author). pgkit is sqlfu's Postgres-focused prior art. A lot of the mental model for sqlfu -- "SQL as the authored source, generated types next to queries, schema-diff-driven migrations, a web UI that sits on the real client" -- comes from trying that approach in pgkit first. sqlfu is the SQLite-first version of that idea, with the goal of eventually growing back to Postgres.
+- [pgkit](https://github.com/mmkal/pgkit) (same author). pgkit is sqlfu's Postgres-focused prior art. A lot of the mental model for sqlfu -- "SQL as the authored source, generated types next to queries, schema-diff-driven migrations, a web UI that sits on the real client" -- comes from trying that approach in pgkit first. sqlfu is growing back to Postgres in stages: the runtime adapter lives in `sqlfu`, while the broader dialect/toolchain story belongs to `@sqlfu/pg`.
 
 Vendored directories each carry a short `CLAUDE.md` that pins the upstream commit or version and lists the local modifications, so future updates from upstream can be applied intelligently.

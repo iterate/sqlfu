@@ -39,6 +39,7 @@ import {createBunClient, createNodeSqliteClient} from '../index.js';
 import {migrationName, readMigrationHistory, type Migration} from '../migrations/index.js';
 import {presetTableName} from '../migrations/preset-queries.js';
 import {materializeDefinitionsSchemaFor, readMigrationFiles} from '../materialize.js';
+import {queryIdentityFromPath, querySourceManifestEntry, renderQuerySourceManifest} from '../query-identity.js';
 
 export type {
   AdHocQueryAnalysis,
@@ -475,7 +476,7 @@ export async function readSchemaForAuthority(config: SqlfuProjectConfig, host: S
     case 'migration_history':
       return replayMigrationHistoryAsSchemaSql(config, host);
     case 'live_schema':
-      return readLiveSchema(config);
+      return readLiveSchema(config, host);
     default: {
       const never: never = authority;
       throw new Error(`Invalid generate.authority: ${JSON.stringify(never)}`);
@@ -543,14 +544,72 @@ async function replayMigrationHistoryAsSchemaSql(config: SqlfuProjectConfig, hos
   });
 }
 
-async function readLiveSchema(config: SqlfuProjectConfig): Promise<string> {
+async function readLiveSchema(config: SqlfuProjectConfig, host: SqlfuHost): Promise<string> {
   await using source = await openLiveDb(config.db, 'live_schema');
   // Exclude the preset's bookkeeping table from the live schema — it's noise, not something
   // the user wrote. The other authorities replay raw SQL into an empty scratch DB so no
   // bookkeeping is created in the first place. Without a `migrations` block there's no
   // bookkeeping in play; default to sqlfu's table name so we still strip it if present.
-  const excludedTable = presetTableName(config.migrations?.preset ?? 'sqlfu');
-  return config.dialect.extractSchemaFromClient(source.client, {excludedTables: [excludedTable]});
+  const excludedTable = presetTableName(config.migrations ? config.migrations.preset : 'sqlfu');
+  const liveSchema = await config.dialect.extractSchemaFromClient(source.client, {excludedTables: [excludedTable]});
+  if (liveSchema.trim()) return liveSchema;
+
+  const expectedSources = await findExpectedLiveSchemaSources(config, host);
+  if (!expectedSources.schemaDefinitions && !expectedSources.migrationFiles) return liveSchema;
+
+  throw new Error(formatEmptyLiveSchemaGenerateError(expectedSources));
+}
+
+type ExpectedLiveSchemaSources = {
+  schemaDefinitions: boolean;
+  migrationFiles: boolean;
+};
+
+async function findExpectedLiveSchemaSources(
+  config: SqlfuProjectConfig,
+  host: SqlfuHost,
+): Promise<ExpectedLiveSchemaSources> {
+  const definitionsSql = await readDefinitionsFileIfPresent(config, host);
+  const migrations = await readMigrationFiles(host, config);
+  return {
+    schemaDefinitions: definitionsSql.trim().length > 0,
+    migrationFiles: migrations.length > 0,
+  };
+}
+
+async function readDefinitionsFileIfPresent(config: SqlfuProjectConfig, host: SqlfuHost): Promise<string> {
+  try {
+    return await host.fs.readFile(config.definitions);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return '';
+    }
+    throw error;
+  }
+}
+
+function formatEmptyLiveSchemaGenerateError(expectedSources: ExpectedLiveSchemaSources): string {
+  const sourceLabels: string[] = [];
+  if (expectedSources.schemaDefinitions) sourceLabels.push('schema definitions');
+  if (expectedSources.migrationFiles) sourceLabels.push('pending migrations');
+  const sourceLabel = sourceLabels.length === 1 ? sourceLabels[0]! : `${sourceLabels[0]} and ${sourceLabels[1]}`;
+
+  const nextStep = expectedSources.migrationFiles
+    ? 'Run sqlfu migrate first, then run sqlfu generate again.'
+    : 'Run sqlfu sync first, or otherwise apply your schema to the live database, then run sqlfu generate again.';
+  const fallbackAuthorities: string[] = [];
+  if (expectedSources.schemaDefinitions) fallbackAuthorities.push("'desired_schema'");
+  if (expectedSources.migrationFiles) fallbackAuthorities.push("'migrations'");
+  const fallbackAuthorityLabel =
+    fallbackAuthorities.length === 1
+      ? fallbackAuthorities[0]!
+      : `${fallbackAuthorities[0]} or ${fallbackAuthorities[1]}`;
+  return [
+    'sqlfu generate cannot read your schema from an empty live database.',
+    `Your project has ${sourceLabel}, but the configured database has no user tables or views.`,
+    nextStep,
+    `If this database is intentionally empty, switch \`generate.authority\` to ${fallbackAuthorityLabel}.`,
+  ].join('\n');
 }
 
 async function openLiveDb(
@@ -650,7 +709,7 @@ function splitQueryDocument(queryFile: QueryFile): QuerySource[] {
         sqlPath: queryFile.sqlPath,
         sourceSqlPath: queryFile.sqlPath,
         id: queryFile.relativePath,
-        functionName: toCamelCase(queryFile.relativePath),
+        functionName: queryIdentityFromPath(queryFile.relativePath),
         sqlContent: queryFile.sqlContent,
         sqlFileContent: queryFile.sqlContent,
         analysisSqlContent: prepareSqlForAnalysis(queryFile.sqlContent, parameterExpansions),
@@ -722,7 +781,7 @@ function parseQueryAnnotations(sqlContent: string): QueryAnnotation[] {
 }
 
 function functionNameFromAnnotation(rawName: string): string {
-  const candidate = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(rawName) ? rawName : toCamelCase(rawName);
+  const candidate = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(rawName) ? rawName : queryIdentityFromPath(rawName);
   if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(candidate)) {
     throw new Error(`Query annotation @name ${rawName} does not produce a valid TypeScript identifier`);
   }
@@ -753,21 +812,14 @@ async function writeGeneratedQueriesFile(
   queryFiles: QueryFile[],
   importExtension: '.js' | '.ts',
 ): Promise<string> {
-  const sortedQueryFiles = [...queryFiles].sort((left, right) => left.relativePath.localeCompare(right.relativePath));
-  const lines = [
-    `// Generated by \`sqlfu generate\`. Do not edit.`,
-    ``,
-    ...sortedQueryFiles.map((queryFile) => `export * from "./${queryFile.relativePath}.sql${importExtension}";`),
-    ...(sortedQueryFiles.length === 0 ? [] : [``]),
-    `export const sqlfuQuerySources = [`,
-    ...sortedQueryFiles.map(
-      (queryFile) =>
-        `\t{ sqlFile: ${JSON.stringify(`${queryFile.relativePath}.sql`)}, generatedFile: ${JSON.stringify(`${queryFile.relativePath}.sql.ts`)}, sourceSql: ${JSON.stringify(queryFile.sqlContent)} },`,
-    ),
-    `];`,
-  ];
   const filePath = path.join(generatedDir, 'queries.ts');
-  await fs.writeFile(filePath, lines.join('\n') + '\n');
+  await fs.writeFile(
+    filePath,
+    renderQuerySourceManifest({
+      entries: queryFiles.map((queryFile) => querySourceManifestEntry(queryFile)),
+      importExtension,
+    }),
+  );
   return projectRelativePath(config, filePath);
 }
 
@@ -2792,23 +2844,6 @@ function refineFieldFromColumn<T extends GeneratedField>(field: T, column: TsCol
     logicalType: column.logicalType || field.logicalType,
     plainTsType: column.plainTsType || field.plainTsType,
   };
-}
-
-function toCamelCase(value: string): string {
-  const parts = value
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
-    .map((part) => part.toLowerCase());
-  if (parts.length === 0) {
-    return '';
-  }
-  return (
-    parts[0]! +
-    parts
-      .slice(1)
-      .map((part) => part[0]!.toUpperCase() + part.slice(1))
-      .join('')
-  );
 }
 
 function mapColumnDerivedFields<TField extends GeneratedField>(

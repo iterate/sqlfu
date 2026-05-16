@@ -2,6 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {formatSql, formatSqlFileContents} from './formatter.js';
+import {
+  generatedWrapperFileForSqlFile,
+  parseQuerySourceManifest,
+  queryIdentityFromPath,
+  type QuerySourceManifestEntry,
+} from './query-identity.js';
 
 import type {ESLint, Linter, Rule} from 'eslint';
 import type * as ESTree from 'estree';
@@ -81,7 +87,7 @@ function loadQueriesForFile(fromFile: string, options: LoadQueriesOptions): Load
     return {
       absolutePath,
       relativePath: relative,
-      functionName: toCamelCase(name),
+      functionName: queryIdentityFromPath(name),
       normalized: normalizeSqlForMatch(fs.readFileSync(absolutePath, 'utf8')),
     };
   });
@@ -151,14 +157,6 @@ function directoryMtime(dir: string): number {
     }
   }
   return latest;
-}
-
-function toCamelCase(value: string): string {
-  return value
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
-    .map((part, index) => (index === 0 ? part.toLowerCase() : part[0].toUpperCase() + part.slice(1).toLowerCase()))
-    .join('');
 }
 
 /**
@@ -451,14 +449,6 @@ function unescapeWrappedSql(raw: string): string {
 const SQL_FILE_TAG = '__sqlfuSqlFile';
 const SQL_FILE_WRAPPER_PREFIX = SQL_FILE_TAG + '`';
 const SQL_FILE_WRAPPER_SUFFIX = '`;\n';
-const QUERY_SOURCE_ENTRY_PATTERN =
-  /\{\s*sqlFile:\s*("(?:(?:\\.)|[^"\\])*")\s*,\s*generatedFile:\s*("(?:(?:\\.)|[^"\\])*")\s*,\s*sourceSql:\s*("(?:(?:\\.)|[^"\\])*")\s*,?\s*\}/g;
-
-type QuerySourceManifestEntry = {
-  sqlFile: string;
-  generatedFile: string;
-  sourceSql: string;
-};
 
 const generatedQueryFreshness: Rule.RuleModule = {
   meta: {
@@ -546,7 +536,7 @@ function reportSourceQueryFreshnessProblem(
     return;
   }
 
-  const expectedGeneratedFile = generatedFileForSqlFile(relativePath);
+  const expectedGeneratedFile = generatedWrapperFileForSqlFile(relativePath);
   if (entry.generatedFile !== expectedGeneratedFile) {
     context.report({
       node,
@@ -612,7 +602,7 @@ function reportGeneratedQueriesManifestProblems(
       continue;
     }
 
-    const expectedGeneratedFile = generatedFileForSqlFile(file.relativePath);
+    const expectedGeneratedFile = generatedWrapperFileForSqlFile(file.relativePath);
     if (entry.generatedFile !== expectedGeneratedFile) {
       context.report({
         node,
@@ -682,27 +672,11 @@ function runGenerateInstruction(generateCommand: string): string {
   return `run ${generateCommand}.`;
 }
 
-function generatedFileForSqlFile(relativeSqlFile: string): string {
-  return `${relativeSqlFile.slice(0, -'.sql'.length)}.sql.ts`;
-}
-
 function readQuerySourceManifest(generatedDir: string): QuerySourceManifestEntry[] | null {
   const manifestPath = path.join(generatedDir, 'queries.ts');
   if (!fs.existsSync(manifestPath)) return null;
   const text = fs.readFileSync(manifestPath, 'utf8');
-  const entries: QuerySourceManifestEntry[] = [];
-  for (const match of text.matchAll(QUERY_SOURCE_ENTRY_PATTERN)) {
-    const entry = {
-      sqlFile: JSON.parse(match[1]!),
-      generatedFile: JSON.parse(match[2]!),
-      sourceSql: JSON.parse(match[3]!),
-    };
-    if (typeof entry.sqlFile !== 'string') continue;
-    if (typeof entry.generatedFile !== 'string') continue;
-    if (typeof entry.sourceSql !== 'string') continue;
-    entries.push(entry);
-  }
-  return entries;
+  return parseQuerySourceManifest(text);
 }
 
 function generatedQueriesFileFromFilename(filename: string): string | null {

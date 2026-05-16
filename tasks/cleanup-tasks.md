@@ -7,11 +7,39 @@ size: small
 
 ## Status summary
 
-2026-05-14 pass is done. PRs #113, #108, and #101 were already represented in `tasks/complete/`; the stale merged `intro-blog` task was filed, and eight clean local worktrees for merged PR branches were removed. Remaining worktrees are open work, closed-unmerged/dirty work, no-PR compare branches, or checkouts outside this pass's safe cleanup scope.
+2026-05-15 pass is done. PRs #115 and #116 were evergreen logs that stay active, so no task files moved. Eight clean local worktrees for merged, closed, or stale compare branches were removed; open, dirty, and ambiguous worktrees were left in place.
 
 Sometimes agents forget to move their task files to "done". Look at recent commits and see if that's happened. If it has, open a housekeeping PR to do just that. While you're there, you can also add to Implementation Notes if there's anything you spot in the change that wasn't tidied up properly that also wasn't documented in the task file.
 
 Make sure local worktrees are cleaned up too.
+
+## 2026-05-15 pass
+
+Branch: `bedtime/2026-05-15-cleanup-tasks`.
+
+Scope:
+
+- Inspect PRs #115 and #116, merged on 2026-05-15, against the active and complete task tree.
+- Confirm open PR worktrees for #111, #114, and #117 stay in place.
+- Remove only clean local worktrees whose branch work is merged or intentionally closed and no longer useful for review.
+- Leave evergreen tasks open and record this pass here.
+
+Checklist:
+
+- [x] Create an isolated worktree from `origin/main` and commit this status note first. _worktree is `/Users/mmkal/src/worktrees/sqlfu/bedtime-2026-05-15-cleanup-tasks` on branch `bedtime/2026-05-15-cleanup-tasks`._
+- [x] Open the early PR after the task-only commit. _PR #119 opened from first commit `95b3b31`._
+- [x] Inspect recent merged/closed PRs and active task files. _#115 and #116 are merged; #111, #114, #117, and this PR #119 are open; active root task files still represent open work or evergreen logs._
+- [x] File completed active task files into `tasks/complete/` only when the matching work is clearly done on `origin/main`. _none moved: #115 and #116 update `tasks/improve-docs.md` and `tasks/cleanup-tasks.md`, which stay evergreen._
+- [x] Remove safe clean local worktrees, or record why any candidate was left alone. _removed the clean merged worktrees for #115/#116, the clean closed worktrees for #102/#109, and stale clean compare worktrees for merged #101/#108/#115/#116._
+- [x] Verify the final task tree, worktree list, and git status. _checked `find tasks -maxdepth 1`, `git worktree list --porcelain`, and `git status --short`; only this cleanup log remains before the final commit._
+
+Implementation notes:
+
+- 2026-05-15: The main checkout was clean at the start of this pass. Open PRs were #117 (`bedtime/2026-05-14-query-identity-manifest`), #114 (`bedtime/2026-05-14-generate-preflight`), and draft #111 (`issue-110-sqlite3-parser-schemadiff`).
+- 2026-05-15: PRs #115 and #116 merged into `main` after the prior cleanup pass. Their task files are evergreen logs, so they should remain active, but their local worktrees are cleanup candidates if clean.
+- 2026-05-15: Removed local worktree checkouts only; local and remote branches were preserved. Removed: `bedtime-2026-05-14-cleanup-tasks`, `bedtime-2026-05-14-improve-docs`, `bedtime-evergreen-2026-05-12`, `typebox-validator`, `query-identity-refresh-pr-115`, `query-identity-refresh-pr-116`, `improve-codebase-architecture-2026-05-14-pr-101`, and `improve-codebase-architecture-2026-05-14-pr-108`.
+- 2026-05-15: Left open PR worktrees in place: `issue-110-sqlite3-parser-schemadiff` (#111), `bedtime-2026-05-14-generate-preflight` (#114), `bedtime-2026-05-14-query-identity-manifest` (#117), this cleanup worktree (#119), and tonight's in-flight docs/default-db/landing worktrees. Also left `query-identity-refresh-pr-111`, `query-identity-refresh-pr-114`, and the older `improve-codebase-architecture-2026-05-14-pr-111` compare worktree because their associated PRs are still open.
+- 2026-05-15: Left ambiguous or user-edit worktrees alone: `api-extractor` and `detect-spurious-definitions` still have active root task files despite closed PRs; `drizzle-benchmark-sqlfu` is ahead of its remote; `effect-client-interop` and `typesql-ddl-support` are dirty; `sqlfu-vendor-sqlite3def` is outside the usual `../worktrees/sqlfu/` cleanup set.
 
 ## 2026-05-14 pass
 

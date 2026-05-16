@@ -148,7 +148,7 @@ The runtime client deliberately stays thin. sqlfu does not ship a database drive
 
 sqlfu is pre-alpha. The runtime surface is intentionally small, but the toolchain will still change.
 
-It is also SQLite-first. There is active Postgres work in this repo and [pgkit](https://github.com/mmkal/pgkit) is the Postgres-shaped predecessor, but the public sqlfu toolchain is currently built around SQLite.
+It is also SQLite-first. There is a thin Node Postgres runtime adapter now, and [pgkit](https://github.com/mmkal/pgkit) is the Postgres-shaped predecessor, but the broader `@sqlfu/pg` dialect/toolchain story still needs fuller docs and examples before this stops being a SQLite-first project.
 
 You should not adopt it to avoid learning SQL. That is the opposite of the point. sqlfu is for projects where SQL is welcome, reviewable, and central.
 
