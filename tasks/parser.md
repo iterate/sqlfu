@@ -16,7 +16,7 @@ size: medium
 
 ## 2026-05-17 SQLite built-ins spike
 
-Status summary: in progress. This branch is only resolving the first parser-task decision: whether SQLite built-ins can narrow or replace parser adoption for dependency analysis. The intended output is a reviewable technical conclusion backed by a focused executable artifact if the current Node/TypeScript SQLite bindings can exercise the relevant APIs.
+Status summary: spike complete, implementation intentionally deferred. SQLite built-ins can narrow parser adoption for schema-body dependency analysis: `node:sqlite` exposes `sqlite3_set_authorizer()` as `DatabaseSync.setAuthorizer()` and `sqlite3_column_origin_name()` through `StatementSync.columns()`, and a focused spec now demonstrates what those APIs can and cannot cover. The main missing piece is product integration design across all supported SQLite adapters, because not every adapter exposes authorizer callbacks.
 
 Assumptions:
 
@@ -32,11 +32,29 @@ Scope:
 
 Checklist:
 
-- [ ] Read primary SQLite docs for the candidate built-in APIs.
-- [ ] Identify the SQLite binding(s) used by sqlfu and whether they expose those APIs.
-- [ ] Add executable evidence for the practical conclusion where feasible.
-- [ ] Update this task with the conclusion, remaining parser scope, and next steps.
+- [x] Read primary SQLite docs for the candidate built-in APIs. *Checked SQLite C API docs for authorizer, column-origin, scanstatus, and explain/query-plan behavior; links are in the implementation log below.*
+- [x] Identify the SQLite binding(s) used by sqlfu and whether they expose those APIs. *`node:sqlite` exposes `setAuthorizer()` and `StatementSync.columns()`; `better-sqlite3`/`libsql` expose `columns()`-style origin metadata but not an authorizer callback on sqlfu's current surfaces; `bun:sqlite` documents column names/types/declared types but not origin/authorizer.*
+- [x] Add executable evidence for the practical conclusion where feasible. *Added `packages/sqlfu/test/schemadiff/sqlite-builtins-spike.test.ts`.*
+- [x] Update this task with the conclusion, remaining parser scope, and next steps. *Recorded below: authorizer is promising for SQLite-only schema-body dependencies, but parser work remains relevant for adapter portability and raw SQL bodies without a compiled SQLite context.*
 - [ ] Push the branch and update the PR body with evidence and checks.
+
+Conclusion:
+
+- `sqlite3_set_authorizer()` is the only candidate built-in that can materially narrow parser adoption for dependency analysis. It reports semantic table/column reads and writes while SQLite compiles statements.
+- In `node:sqlite`, the authorizer can report:
+  - `check (...)` column reads while compiling `create table`
+  - partial-index indexed and `where` column reads while compiling `create index`
+  - base-table column reads for view bodies when preparing a query against the view, with the view name in the callback source argument
+  - trigger-body reads and writes when preparing a DML statement that can fire the trigger, with the trigger name in the callback source argument
+- `sqlite3_column_origin_name()` / `StatementSync.columns()` is useful supporting metadata for result columns only. It does not report non-output dependencies such as `where` columns.
+- `explain` / `explain query plan` should not be used as a dependency-analysis API. SQLite documents the output as troubleshooting-oriented and unstable, and the spike spec shows it reports table scan shape without column-level dependencies.
+- `sqlite3_stmt_scanstatus()` is not a fit for this problem. SQLite documents it as predicted/measured performance data, and it requires a compile-time SQLite option.
+
+Next steps:
+
+- Decide whether schema diff should introduce a `node:sqlite`-backed internal dependency probe for SQLite schema bodies, separate from the public adapter abstraction.
+- If yes, prototype a tiny internal function that materializes schema SQL into a scratch `DatabaseSync`, installs an authorizer, compiles targeted probe statements, and returns `referenced tables/views`, `referenced columns`, and `trigger/view source` facts.
+- Keep parser adoption scoped to the cases the authorizer cannot cover cleanly: adapter-independent analysis, incomplete SQL fragments without a materialized schema, and AST-level transformations beyond dependency facts.
 
 ## Goal
 
@@ -162,3 +180,20 @@ So a good first step in this task is:
   - we closed the obvious correctness gaps with token-aware structured analysis and fixtures
   - the main remaining caveat is parser-grade precision for more exotic SQL
 - This is a “someday if justified by real cases” task, not an emergency follow-up.
+
+## Implementation Log
+
+### 2026-05-17 SQLite built-ins spike
+
+- Primary-source SQLite references:
+  - `sqlite3_set_authorizer()` is invoked while SQL is compiled by `sqlite3_prepare*()`, and reports reads/writes with a trigger-or-view source argument: https://www.sqlite.org/c3ref/set_authorizer.html
+  - `sqlite3_column_origin_name()` reports the origin of result columns in a `select` statement: https://sqlite.org/c3ref/column_database_name.html
+  - `explain` / `explain query plan` output is intended for interactive troubleshooting and may change between SQLite releases: https://www.sqlite.org/lang_explain.html and https://sqlite.org/eqp.html
+  - `sqlite3_stmt_scanstatus()` is performance/plan telemetry and is only available when SQLite is compiled with `SQLITE_ENABLE_STMT_SCANSTATUS`: https://www.sqlite.org/c3ref/stmt_scanstatus.html
+- Binding notes:
+  - Node v26 exposes `DatabaseSync.setAuthorizer()` and `StatementSync.columns()` in `node:sqlite`.
+  - `better-sqlite3` and `libsql` expose statement `columns()` metadata similar to origin metadata, but sqlfu's current adapter surfaces do not expose a compile-time authorizer hook there.
+  - Bun documents `columnNames`, `columnTypes`, and `declaredTypes`, but not origin table/column metadata or authorizer callbacks in `bun:sqlite`.
+- Executable artifact:
+  - `packages/sqlfu/test/schemadiff/sqlite-builtins-spike.test.ts` demonstrates the authorizer can report dependency facts for `check (...)`, partial indexes, view bodies, and trigger bodies.
+  - The same spec demonstrates that origin metadata and `explain query plan` do not report non-result-column dependencies like `where user_id = 1`.
