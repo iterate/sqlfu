@@ -1,9 +1,6 @@
 {
   "name": "sqlfu-workspace",
   "private": true,
-  "engines": {
-    "node": ">=22"
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/iterate/sqlfu"
@@ -44,6 +41,9 @@
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm sync:root-readme:pre-commit"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "packageManager": "pnpm@10.30.1"
 }
