@@ -9,6 +9,9 @@
 import {createTempDatabase, createTempDatabasePair} from '../src/impl/scratch-database.js';
 
 export const TEST_ADMIN_URL = process.env.SQLFU_PG_TEST_URL ?? 'postgresql://postgres:postgres@127.0.0.1:5544/postgres';
+export const MISSING_PG_MESSAGE =
+  `Test postgres not reachable at ${TEST_ADMIN_URL}. ` +
+  `Run 'docker compose -f packages/pg/test/docker-compose.yml up -d' first.`;
 
 export async function isPgReachable(): Promise<boolean> {
   // Cheap reachability probe — open + close. If postgres isn't running we

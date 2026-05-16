@@ -1,4 +1,4 @@
-import {beforeAll, expect, test} from 'vitest';
+import {expect, test} from 'vitest';
 import {mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -6,16 +6,10 @@ import {join} from 'node:path';
 import type {Dialect, SqlfuHost, SqlfuProjectConfig} from 'sqlfu';
 
 import {pgDialect} from '../src/index.js';
-import {isPgReachable, TEST_ADMIN_URL} from './pg-fixture.js';
+import {isPgReachable, MISSING_PG_MESSAGE, TEST_ADMIN_URL} from './pg-fixture.js';
 
-beforeAll(async () => {
-  if (!(await isPgReachable())) {
-    throw new Error(
-      `Test postgres not reachable at ${TEST_ADMIN_URL}. ` +
-        `Run 'docker compose -f packages/pg/test/docker-compose.yml up -d' first.`,
-    );
-  }
-});
+const pgReachable = await isPgReachable();
+const pgTest = test.skipIf(!pgReachable);
 
 async function withProject<T>(
   definitionsSql: string,
@@ -94,41 +88,45 @@ function createMinimalHost(): SqlfuHost {
     catalog: {
       load: async () => ({queries: {}, queryDocuments: {}}) as never,
       refresh: async () => {},
-      analyzeSql: async () => ({} as never),
+      analyzeSql: async () => ({}) as never,
     },
   };
 }
 
-test('pgDialect.materializeTypegenSchema + loadSchemaForTypegen returns the relations', {timeout: 30_000}, async () => {
-  const sql = `
+pgTest(
+  'pgDialect.materializeTypegenSchema + loadSchemaForTypegen returns the relations',
+  {timeout: 30_000},
+  async () => {
+    const sql = `
     create table users (id integer primary key, name text not null, bio text);
     create view active_users as select id, name from users where bio is not null;
   `;
-  await withProject(sql, async (config, host, dialect) => {
-    await using materialized = await dialect.materializeTypegenSchema(host, {
-      projectRoot: config.projectRoot,
-      sourceSql: sql,
-      experimentalJsonTypes: false,
+    await withProject(sql, async (config, host, dialect) => {
+      await using materialized = await dialect.materializeTypegenSchema(host, {
+        projectRoot: config.projectRoot,
+        sourceSql: sql,
+        experimentalJsonTypes: false,
+      });
+      const relations = await dialect.loadSchemaForTypegen(materialized);
+
+      expect(relations.has('users')).toBe(true);
+      expect(relations.has('active_users')).toBe(true);
+
+      const users = relations.get('users')!;
+      expect(users.kind).toBe('table');
+      expect(users.columns.get('id')).toMatchObject({tsType: 'number', notNull: true});
+      expect(users.columns.get('name')).toMatchObject({tsType: 'string', notNull: true});
+      expect(users.columns.get('bio')).toMatchObject({tsType: 'string', notNull: false});
+
+      const view = relations.get('active_users')!;
+      expect(view.kind).toBe('view');
+      expect(view.columns.has('id')).toBe(true);
+      expect(view.columns.has('name')).toBe(true);
     });
-    const relations = await dialect.loadSchemaForTypegen(materialized);
+  },
+);
 
-    expect(relations.has('users')).toBe(true);
-    expect(relations.has('active_users')).toBe(true);
-
-    const users = relations.get('users')!;
-    expect(users.kind).toBe('table');
-    expect(users.columns.get('id')).toMatchObject({tsType: 'number', notNull: true});
-    expect(users.columns.get('name')).toMatchObject({tsType: 'string', notNull: true});
-    expect(users.columns.get('bio')).toMatchObject({tsType: 'string', notNull: false});
-
-    const view = relations.get('active_users')!;
-    expect(view.kind).toBe('view');
-    expect(view.columns.has('id')).toBe(true);
-    expect(view.columns.has('name')).toBe(true);
-  });
-});
-
-test(
+pgTest(
   'pgDialect.analyzeQueries infers parameter + result types AND nullability via the AST pipeline',
   {timeout: 30_000},
   async () => {
@@ -160,7 +158,7 @@ test(
   },
 );
 
-test('pgDialect.analyzeQueries accepts sqlfu named parameters', {timeout: 30_000}, async () => {
+pgTest('pgDialect.analyzeQueries accepts sqlfu named parameters', {timeout: 30_000}, async () => {
   const sql = `create table posts (id integer primary key, slug text not null, title text not null);`;
   await withProject(sql, async (config, host, dialect) => {
     await using materialized = await dialect.materializeTypegenSchema(host, {
@@ -185,81 +183,73 @@ test('pgDialect.analyzeQueries accepts sqlfu named parameters', {timeout: 30_000
   });
 });
 
-test(
-  'pgDialect.analyzeQueries handles LEFT JOIN queries end-to-end',
-  {timeout: 30_000},
-  async () => {
-    // Smoke-test: a LEFT JOIN query goes through the AST pipeline without
-    // erroring. Specific nullability semantics are pgkit/typegen's domain
-    // — we inherit them as-is and the pgkit fixture lift (Phase C6) will
-    // pin those down.
-    const sql = `
+pgTest('pgDialect.analyzeQueries handles LEFT JOIN queries end-to-end', {timeout: 30_000}, async () => {
+  // Smoke-test: a LEFT JOIN query goes through the AST pipeline without
+  // erroring. Specific nullability semantics are pgkit/typegen's domain
+  // — we inherit them as-is and the pgkit fixture lift (Phase C6) will
+  // pin those down.
+  const sql = `
       create table users (id integer primary key, name text not null);
       create table profiles (user_id integer primary key references users(id), bio text not null);
     `;
-    await withProject(sql, async (config, host, dialect) => {
-      await using materialized = await dialect.materializeTypegenSchema(host, {
-        projectRoot: config.projectRoot,
-        sourceSql: sql,
-        experimentalJsonTypes: false,
-      });
-      const analyses = await dialect.analyzeQueries(materialized, [
-        {
-          sqlPath: 'users-with-bios.sql',
-          sqlContent: `
+  await withProject(sql, async (config, host, dialect) => {
+    await using materialized = await dialect.materializeTypegenSchema(host, {
+      projectRoot: config.projectRoot,
+      sourceSql: sql,
+      experimentalJsonTypes: false,
+    });
+    const analyses = await dialect.analyzeQueries(materialized, [
+      {
+        sqlPath: 'users-with-bios.sql',
+        sqlContent: `
             select u.id, u.name, p.bio
             from users u
             left join profiles p on p.user_id = u.id
           `,
-        },
-      ]);
-      const [analysis] = analyses;
-      if (!analysis.ok) {
-        throw new Error(`expected ok analysis, got error: ${analysis.error.description}`);
-      }
-      const cols = analysis.descriptor.columns;
-      expect(cols.map((c) => c.name)).toEqual(['id', 'name', 'bio']);
-      expect(cols.map((c) => c.tsType)).toEqual(['number', 'string', 'string']);
-    });
-  },
-);
+      },
+    ]);
+    const [analysis] = analyses;
+    if (!analysis.ok) {
+      throw new Error(`expected ok analysis, got error: ${analysis.error.description}`);
+    }
+    const cols = analysis.descriptor.columns;
+    expect(cols.map((c) => c.name)).toEqual(['id', 'name', 'bio']);
+    expect(cols.map((c) => c.tsType)).toEqual(['number', 'string', 'string']);
+  });
+});
 
-test(
-  'pgDialect.analyzeQueries handles INSERT...RETURNING via DML→SELECT rewrite',
-  {timeout: 30_000},
-  async () => {
-    const sql = `create table posts (id integer primary key, title text not null, draft boolean);`;
-    await withProject(sql, async (config, host, dialect) => {
-      await using materialized = await dialect.materializeTypegenSchema(host, {
-        projectRoot: config.projectRoot,
-        sourceSql: sql,
-        experimentalJsonTypes: false,
-      });
-      const analyses = await dialect.analyzeQueries(materialized, [
-        {sqlPath: 'create-post.sql', sqlContent: 'insert into posts (title) values ($1) returning id, title, draft'},
-      ]);
-      const [analysis] = analyses;
-      if (!analysis.ok) {
-        throw new Error(`expected ok analysis, got error: ${analysis.error.description}`);
-      }
-      expect(analysis.descriptor.queryType).toBe('Insert');
-      expect(analysis.descriptor.parameters).toHaveLength(1);
-      expect(analysis.descriptor.parameters[0]).toMatchObject({tsType: 'string'});
-      // Result columns for DML+RETURNING come from the AST rewrite (the
-      // vendored pipeline turns INSERT...RETURNING into a SELECT-shaped
-      // analysis target).
-      const colNames = analysis.descriptor.columns.map((c) => c.name);
-      expect(colNames).toEqual(['id', 'title', 'draft']);
-      // id (PRIMARY KEY) and title (NOT NULL) → not_null. draft is nullable.
-      const cols = analysis.descriptor.columns;
-      expect(cols.find((c) => c.name === 'id')?.notNull).toBe(true);
-      expect(cols.find((c) => c.name === 'title')?.notNull).toBe(true);
-      expect(cols.find((c) => c.name === 'draft')?.notNull).toBe(false);
+pgTest('pgDialect.analyzeQueries handles INSERT...RETURNING via DML→SELECT rewrite', {timeout: 30_000}, async () => {
+  const sql = `create table posts (id integer primary key, title text not null, draft boolean);`;
+  await withProject(sql, async (config, host, dialect) => {
+    await using materialized = await dialect.materializeTypegenSchema(host, {
+      projectRoot: config.projectRoot,
+      sourceSql: sql,
+      experimentalJsonTypes: false,
     });
-  },
-);
+    const analyses = await dialect.analyzeQueries(materialized, [
+      {sqlPath: 'create-post.sql', sqlContent: 'insert into posts (title) values ($1) returning id, title, draft'},
+    ]);
+    const [analysis] = analyses;
+    if (!analysis.ok) {
+      throw new Error(`expected ok analysis, got error: ${analysis.error.description}`);
+    }
+    expect(analysis.descriptor.queryType).toBe('Insert');
+    expect(analysis.descriptor.parameters).toHaveLength(1);
+    expect(analysis.descriptor.parameters[0]).toMatchObject({tsType: 'string'});
+    // Result columns for DML+RETURNING come from the AST rewrite (the
+    // vendored pipeline turns INSERT...RETURNING into a SELECT-shaped
+    // analysis target).
+    const colNames = analysis.descriptor.columns.map((c) => c.name);
+    expect(colNames).toEqual(['id', 'title', 'draft']);
+    // id (PRIMARY KEY) and title (NOT NULL) → not_null. draft is nullable.
+    const cols = analysis.descriptor.columns;
+    expect(cols.find((c) => c.name === 'id')?.notNull).toBe(true);
+    expect(cols.find((c) => c.name === 'title')?.notNull).toBe(true);
+    expect(cols.find((c) => c.name === 'draft')?.notNull).toBe(false);
+  });
+});
 
-test('pgDialect.analyzeQueries reports prepare-time errors as ok:false', {timeout: 30_000}, async () => {
+pgTest('pgDialect.analyzeQueries reports prepare-time errors as ok:false', {timeout: 30_000}, async () => {
   const sql = `create table users (id integer primary key);`;
   await withProject(sql, async (config, host, dialect) => {
     await using materialized = await dialect.materializeTypegenSchema(host, {
@@ -286,7 +276,7 @@ test('pgDialect.analyzeQueries reports prepare-time errors as ok:false', {timeou
 // This test exercises that new shape directly, with arbitrary SQL the
 // caller might have produced via any authority. If pg ever regresses
 // to peeking at `config.generate.authority`, this test fails fast.
-test('pgDialect.materializeTypegenSchema is authority-agnostic', {timeout: 30_000}, async () => {
+pgTest('pgDialect.materializeTypegenSchema is authority-agnostic', {timeout: 30_000}, async () => {
   const sourceSql = `
     create table products (id int primary key, name text not null);
     create table orders (id int primary key, product_id int references products(id));
@@ -301,3 +291,7 @@ test('pgDialect.materializeTypegenSchema is authority-agnostic', {timeout: 30_00
   expect(relations.has('products')).toBe(true);
   expect(relations.has('orders')).toBe(true);
 });
+
+if (!pgReachable) {
+  test.skip(MISSING_PG_MESSAGE, () => {});
+}
