@@ -4,6 +4,38 @@ Go through all of the docs and improve them. Look for inconsistencies, informati
 
 I want you to think holistically about the docs, as mentioned in your agent instructions for this repo. From time to time that will mean re-thinking docs entirely. Sometimes it will mean creating a separate task in the branch you create for *changing the product* instead. Docs are most useful when not thought of as something entirely downstream from the product code - if there's no clear way to write about a concept, the concept might be poorly thought through. You are free to flag that as an alternative to documenting weirdness.
 
+## 2026-05-17 pass
+
+Status: scoped and ready for a bounded bedtime pass. This run will keep the evergreen task open, scan hand-authored docs/prose for rough wording and stale claims, then make small edits only where the reader gets a clearer page immediately. Main missing pieces before implementation are the focused scan, the docs edits it uncovers, and the relevant checks.
+
+Assumptions:
+
+- This worker owns only `tasks/improve-docs.md` plus a small set of docs/website prose files chosen during the pass.
+- Other workers may own task cleanup, parser work, and unrelated feature docs; this pass will avoid those areas.
+- Generated docs output, synced root README output, and historical task logs are evidence for orientation, not primary edit targets.
+- `packages/sqlfu/README.md` is the source for overview docs; root `README.md` should not be edited directly.
+- The evergreen task stays open and will not move to `tasks/complete/`.
+
+Scope:
+
+- Start from source docs/prose: `packages/sqlfu/README.md`, `packages/sqlfu/docs/*`, hand-authored website content, and landing-demo prose.
+- Look for em-dashes, stale temporal language, duplicated claims, and wording made misleading by recent work.
+- Prefer deletion, tightening, and terminology alignment over adding new sections.
+- Avoid task cleanup and parser implementation work.
+
+Checklist:
+
+- [x] Create the requested isolated worktree and branch from `origin/main`. _worktree is `/Users/mmkal/src/worktrees/sqlfu/bedtime-2026-05-17-improve-docs` on branch `bedtime/2026-05-17-improve-docs`._
+- [ ] Commit this 2026-05-17 status note by itself, push, and open the early PR.
+- [ ] Run the focused source-docs/prose scan using the `writing-well` checklist.
+- [ ] Make the smallest useful docs/website prose edits found by the scan.
+- [ ] Run relevant checks for the touched docs.
+- [ ] Update this section with brief italic breadcrumbs and implementation notes.
+
+Implementation notes:
+
+- 2026-05-17: Read the `writing-well` skill before editing. The pass will use it as a filter for inflated framing, stale temporality, em-dash overuse, and templated phrasing.
+
 ## 2026-05-15 pass
 
 Status: done for this bedtime pass. The first commit recorded the scope and PR #121 was opened before implementation. The source-docs em-dash scan is clean, a few stale "today/currently/for now" lines in the recent Type generation docs were tightened, the docs banner now matches the landing pre-alpha notice, and website/docs checks passed. No missing work remains inside this bounded pass.
