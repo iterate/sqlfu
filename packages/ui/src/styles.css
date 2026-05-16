@@ -802,6 +802,63 @@ h3 {
   border-color: var(--accent-border-mid);
 }
 
+.cell-relation-button {
+  color: var(--accent);
+}
+
+.relation-preview-popover {
+  width: min(44rem, calc(100vw - 2rem));
+}
+
+.relation-preview-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.relation-preview-body {
+  gap: 0.75rem;
+}
+
+.relation-preview-sql {
+  display: block;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+  background: var(--panel-tint-faint);
+  color: var(--muted);
+  white-space: normal;
+}
+
+.relation-preview-table-wrap {
+  overflow: auto;
+  max-height: 18rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+}
+
+.relation-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', 'Menlo', monospace;
+  font-size: 0.8rem;
+}
+
+.relation-preview-table th,
+.relation-preview-table td {
+  padding: 0.45rem 0.55rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.relation-preview-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-tint-mid);
+  color: var(--muted);
+}
+
 .cm-host {
   position: relative;
 }

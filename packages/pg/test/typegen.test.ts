@@ -34,6 +34,7 @@ async function withProject<T>(
         prettyErrors: true,
         sync: false,
         experimentalJsonTypes: false,
+        casing: 'camel',
         runtime: 'sqlfu',
         importExtension: '.js',
         authority: 'desired_schema',
