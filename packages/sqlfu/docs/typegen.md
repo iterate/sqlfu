@@ -105,6 +105,28 @@ const post = yield* getPost({id: 123});
 See [Effect SQL runtime](./effect-sql.md) for the experimental native
 Effect SQL generation modes, including Effect v4 beta's `effect-v4-unstable` target.
 
+If you want generated production query modules to call your database driver
+directly, set `generate.runtime` to that runtime:
+
+```ts
+export default {
+  db: './app.db',
+  definitions: './definitions.sql',
+  migrations: './migrations',
+  queries: './sql',
+  generate: {
+    runtime: 'node:sqlite',
+  },
+};
+```
+
+Native SQLite targets are `node:sqlite`, `better-sqlite3`, `bun:sqlite`,
+`libsql`, and `@libsql/client`. The sync drivers produce sync wrappers;
+`@libsql/client` produces async wrappers. The generated modules keep the same
+`sql`, `query`, `Params`, `Data`, `Result`, and `mapResult` surface, but import
+only the selected driver type instead of importing `sqlfu`. Native runtime
+targets are experimental and cannot be combined with `generate.validator` yet.
+
 ## Multiple queries in one file
 
 Put `@name` in a block comment before each query when one `.sql` file contains more

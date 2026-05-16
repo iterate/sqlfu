@@ -235,6 +235,38 @@ function effectSqlImportSpecifier(runtime: 'effect-v3' | 'effect-v4-unstable'): 
   return runtime === 'effect-v4-unstable' ? 'effect/unstable/sql' : '@effect/sql';
 }
 
+type NativeSqliteRuntime = 'node:sqlite' | 'better-sqlite3' | 'bun:sqlite' | 'libsql' | '@libsql/client';
+
+function isNativeSqliteRuntime(runtime: SqlfuGenerateRuntime): runtime is NativeSqliteRuntime {
+  return (
+    runtime === 'node:sqlite' ||
+    runtime === 'better-sqlite3' ||
+    runtime === 'bun:sqlite' ||
+    runtime === 'libsql' ||
+    runtime === '@libsql/client'
+  );
+}
+
+function isAsyncNativeSqliteRuntime(runtime: NativeSqliteRuntime): runtime is '@libsql/client' {
+  return runtime === '@libsql/client';
+}
+
+function nativeSqliteImportLine(runtime: NativeSqliteRuntime): string {
+  if (runtime === 'node:sqlite') return `import type {DatabaseSync as Database} from 'node:sqlite';`;
+  if (runtime === 'better-sqlite3') return `import type Database from 'better-sqlite3';`;
+  if (runtime === 'bun:sqlite') return `import type {Database} from 'bun:sqlite';`;
+  if (runtime === 'libsql') return `import type {Database} from 'libsql';`;
+  return `import type {Client} from '@libsql/client';`;
+}
+
+function nativeSqliteDriverType(runtime: NativeSqliteRuntime): string {
+  return isAsyncNativeSqliteRuntime(runtime) ? 'Client' : 'Database';
+}
+
+function nativeSqliteDriverVariable(runtime: NativeSqliteRuntime): string {
+  return isAsyncNativeSqliteRuntime(runtime) ? 'client' : 'database';
+}
+
 function renderDdlWrapper(input: {
   functionName: string;
   sql: string;
@@ -265,6 +297,36 @@ function renderDdlWrapper(input: {
       `\t\t\tconst sqlClient = yield* SqlClient.SqlClient;`,
       `\t\t\treturn yield* sqlClient.unsafe(${queryName}.sql, ${queryName}.args).raw;`,
       `\t\t});`,
+      `\t},`,
+      `\t{ ${objectProperty('sql', sqlName)}, ${objectProperty('query', queryName)} },`,
+      `);`,
+      ``,
+    ].join('\n');
+  }
+
+  if (isNativeSqliteRuntime(input.runtime)) {
+    const driverVariable = nativeSqliteDriverVariable(input.runtime);
+    const maybeAsync = isAsyncNativeSqliteRuntime(input.runtime) ? 'async ' : '';
+    return [
+      nativeSqliteImportLine(input.runtime),
+      ``,
+      ...renderSqlConstant(input.sql, sqlName),
+      renderConstQueryObjectDeclaration({
+        queryVariableName: queryName,
+        queryName: functionName,
+        sqlExpression: sqlName,
+        argsExpression: '[]',
+      }),
+      ``,
+      `export const ${functionName} = Object.assign(`,
+      `\t${maybeAsync}function ${functionName}(${driverVariable}: ${nativeSqliteDriverType(input.runtime)}) {`,
+      ...buildNativeSqliteMetadataImplementation({
+        runtime: input.runtime,
+        driverVariable,
+        resultFields: [],
+        queryReference: queryName,
+        indent: '\t\t',
+      }),
       `\t},`,
       `\t{ ${objectProperty('sql', sqlName)}, ${objectProperty('query', queryName)} },`,
       `);`,
@@ -1067,6 +1129,21 @@ function renderQueryWrapper(input: {
     });
   }
 
+  if (isNativeSqliteRuntime(input.runtime)) {
+    if (input.validator !== null) {
+      throw new Error(`generate.runtime: '${input.runtime}' cannot be combined with generate.validator yet.`);
+    }
+    return renderNativeSqliteQueryWrapper({
+      functionName: input.functionName,
+      sourceSql: input.sourceSql,
+      descriptor: input.descriptor,
+      parameterExpansions: input.parameterExpansions,
+      casing: input.casing,
+      runtime: input.runtime,
+      localNames: input.localNames,
+    });
+  }
+
   if (input.validator !== null) {
     return renderValidatorQueryWrapper({
       functionName: input.functionName,
@@ -1292,6 +1369,132 @@ function renderEffectSqlQueryWrapper(input: {
       queryReference,
       indent: '\t\t',
     }),
+    `\t},`,
+    `\t{ ${[
+      objectProperty('sql', sqlName),
+      objectProperty('query', queryName),
+      ...(resultMapperName ? [objectProperty('mapResult', resultMapperName)] : []),
+    ].join(', ')} },`,
+    `);`,
+    ``,
+    ...(namespaceLines.length === 0 ? [] : [`export namespace ${functionName} {`, ...namespaceLines, `}`, ``]),
+  ].join('\n');
+}
+
+function renderNativeSqliteQueryWrapper(input: {
+  functionName: string;
+  sourceSql: string;
+  descriptor: GeneratedQueryDescriptor;
+  parameterExpansions: ParameterExpansion[];
+  casing: SqlfuGenerateCasing;
+  runtime: NativeSqliteRuntime;
+  localNames?: LocalNames;
+}): string {
+  const functionName = input.functionName;
+  const sqlName = input.localNames?.sql || 'sql';
+  const queryName = input.localNames?.query || 'query';
+  const driverVariable = nativeSqliteDriverVariable(input.runtime);
+  const {descriptor} = applyGeneratedInputCasing(input.descriptor, input.casing);
+  const hasData = (descriptor.data?.length ?? 0) > 0;
+  const hasParams = descriptor.parameters.length > 0;
+  const resultMode = getResultMode(descriptor);
+  const emitResultType = resultMode !== 'metadata';
+  const dataTypeRef = `${functionName}.Data`;
+  const paramsTypeRef = `${functionName}.Params`;
+  const resultTypeRef = `${functionName}.Result`;
+  const resultMapping = mapColumnDerivedFields(getResultFields(descriptor), input.casing);
+  const resultFields = resultMapping.publicFields;
+  const resultMapperName =
+    resultMapping.hasNameChanges || hasJsonFields(resultFields) ? input.localNames?.resultMapper || 'mapResult' : null;
+  const resultRawFields = resultMapperName ? resultMapping.mappings.map((mapping) => rawResultField(mapping.raw)) : [];
+  const decodeJsonResults = hasJsonFields(resultFields) && !resultMapperName;
+
+  const queryArgs = buildQueryArgs(descriptor);
+
+  const functionSignatureArgs: string[] = [`${driverVariable}: ${nativeSqliteDriverType(input.runtime)}`];
+  if (hasData) functionSignatureArgs.push(`data: ${dataTypeRef}`);
+  if (hasParams) functionSignatureArgs.push(`params: ${paramsTypeRef}`);
+
+  const factoryArgs: string[] = [];
+  if (hasData) factoryArgs.push(`data: ${dataTypeRef}`);
+  if (hasParams) factoryArgs.push(`params: ${paramsTypeRef}`);
+  const queryReference = buildQueryReference(hasData, hasParams, 'data', 'params', queryName);
+  const queryDeclaration = !hasRuntimeParameterExpansions(input.parameterExpansions)
+    ? renderQueryDeclaration({
+        factoryArgs,
+        queryArgs,
+        queryName: functionName,
+        sqlName,
+        queryVariableName: queryName,
+      })
+    : renderExpandedQueryDeclaration({
+        sourceSql: input.sourceSql,
+        descriptor,
+        parameterExpansions: input.parameterExpansions,
+        factoryArgs,
+        queryArgs,
+        queryName: functionName,
+        sqlName,
+        queryVariableName: queryName,
+      });
+
+  const namespaceLines: string[] = [];
+  if (hasData) {
+    namespaceLines.push(`\texport type Data = ${renderObjectTypeBody(descriptor.data!, 'parameter')};`);
+  }
+  if (hasParams) {
+    namespaceLines.push(`\texport type Params = ${renderObjectTypeBody(descriptor.parameters, 'parameter')};`);
+  }
+  if (emitResultType) {
+    if (resultMapperName) {
+      namespaceLines.push(`\texport type RawResult = ${renderObjectTypeBody(resultRawFields, 'result')};`);
+    }
+    namespaceLines.push(`\texport type Result = ${renderObjectTypeBody(resultFields, 'result')};`);
+  }
+
+  const resultMapperLines =
+    emitResultType && resultMapperName
+      ? ['', ...renderResultMapper(resultMapperName, functionName, resultMapping.mappings, resultTypeRef)]
+      : [];
+  const isAsync = isAsyncNativeSqliteRuntime(input.runtime);
+  const signatureReturnAnnotation = emitResultType
+    ? isAsync
+      ? `: Promise<${getReturnType(input.descriptor, resultTypeRef)}>`
+      : `: ${getReturnType(input.descriptor, resultTypeRef)}`
+    : '';
+  const maybeAsync = isAsync ? 'async ' : '';
+
+  const implementationLines = emitResultType
+    ? buildNativeSqliteSelectImplementation({
+        runtime: input.runtime,
+        driverVariable,
+        resultMode,
+        resultType: resultTypeRef,
+        rawResultType: resultMapperName ? `${functionName}.RawResult` : undefined,
+        resultFields,
+        decodeJsonResults,
+        resultMapperName,
+        queryReference,
+        indent: '\t\t',
+      })
+    : buildNativeSqliteMetadataImplementation({
+        runtime: input.runtime,
+        driverVariable,
+        resultFields,
+        queryReference,
+        indent: '\t\t',
+      });
+
+  return [
+    nativeSqliteImportLine(input.runtime),
+    ``,
+    ...renderSqlConstant(input.descriptor.sql, sqlName),
+    queryDeclaration,
+    ...resultMapperLines,
+    ``,
+    `export const ${functionName} = Object.assign(`,
+    `\t${maybeAsync}function ${functionName}(${functionSignatureArgs.join(', ')})${signatureReturnAnnotation} {`,
+    ...implementationLines,
     `\t},`,
     `\t{ ${[
       objectProperty('sql', sqlName),
@@ -2985,6 +3188,121 @@ function toPropertyCamelCase(value: string): string {
  * SELECT-like bodies only (`many` / `nullableOne` / `one` — i.e. every mode except `metadata`).
  * Metadata mode is rendered as a plain `return client.run(query);` pass-through at the call site.
  */
+function buildNativeSqliteSelectImplementation(input: {
+  runtime: NativeSqliteRuntime;
+  driverVariable: string;
+  resultMode: 'many' | 'nullableOne' | 'one' | 'metadata';
+  resultType: string;
+  rawResultType?: string;
+  resultFields: GeneratedField[];
+  decodeJsonResults: boolean;
+  resultMapperName: string | null;
+  queryReference: string;
+  indent: string;
+}): string[] {
+  const i = input.indent;
+  const rowType = input.resultMapperName ? input.rawResultType! : input.decodeJsonResults ? 'any' : input.resultType;
+  const lines = [
+    `${i}const generatedQuery = ${input.queryReference};`,
+    ...nativeSqliteRowsLines(input.runtime, input.driverVariable, rowType, i),
+  ];
+  const rowExpression = (row: string) => jsonDecodedRowExpression(row, input.resultFields, input.resultType);
+
+  if (input.resultMode === 'many') {
+    if (input.resultMapperName) return [...lines, `${i}return rows.map(${input.resultMapperName});`];
+    if (input.decodeJsonResults) {
+      return [...lines, `${i}return rows.map((row): ${input.resultType} => ${rowExpression('row')});`];
+    }
+    return [...lines, `${i}return rows;`];
+  }
+
+  if (input.resultMode === 'nullableOne') {
+    if (input.resultMapperName) {
+      return [...lines, `${i}return rows.length > 0 ? ${input.resultMapperName}(rows[0]!) : null;`];
+    }
+    if (input.decodeJsonResults) {
+      return [...lines, `${i}return rows.length > 0 ? (${rowExpression('rows[0]')} as ${input.resultType}) : null;`];
+    }
+    return [...lines, `${i}return rows.length > 0 ? rows[0]! : null;`];
+  }
+
+  if (input.resultMapperName) return [...lines, `${i}return ${input.resultMapperName}(rows[0]!);`];
+  if (input.decodeJsonResults) {
+    return [...lines, `${i}return (${rowExpression('rows[0]')} as ${input.resultType});`];
+  }
+  return [...lines, `${i}return rows[0]!;`];
+}
+
+function nativeSqliteRowsLines(
+  runtime: NativeSqliteRuntime,
+  driverVariable: string,
+  rowType: string,
+  indent: string,
+): string[] {
+  if (runtime === '@libsql/client') {
+    return [
+      `${indent}const result = await ${driverVariable}.execute({sql: generatedQuery.sql, args: [...generatedQuery.args]});`,
+      `${indent}const rows = result.rows.map((row) => ({...row})) as unknown as ${rowType}[];`,
+    ];
+  }
+  if (runtime === 'bun:sqlite') {
+    return [
+      `${indent}const rows = ${driverVariable}.query(generatedQuery.sql).all(...generatedQuery.args) as ${rowType}[];`,
+    ];
+  }
+  return [
+    `${indent}const rows = ${driverVariable}.prepare(generatedQuery.sql).all(...generatedQuery.args) as ${rowType}[];`,
+  ];
+}
+
+function buildNativeSqliteMetadataImplementation(input: {
+  runtime: NativeSqliteRuntime;
+  driverVariable: string;
+  resultFields: GeneratedField[];
+  queryReference: string;
+  indent: string;
+}): string[] {
+  const i = input.indent;
+  return [
+    `${i}const generatedQuery = ${input.queryReference};`,
+    ...nativeSqliteRunLines(input.runtime, input.driverVariable, i),
+    `${i}return ${nativeSqliteMetadataExpression(input.runtime, input.resultFields)};`,
+  ];
+}
+
+function nativeSqliteRunLines(runtime: NativeSqliteRuntime, driverVariable: string, indent: string): string[] {
+  if (runtime === '@libsql/client') {
+    return [
+      `${indent}const result = await ${driverVariable}.execute({sql: generatedQuery.sql, args: [...generatedQuery.args]});`,
+    ];
+  }
+  if (runtime === 'bun:sqlite') {
+    return [`${indent}const result = ${driverVariable}.run(generatedQuery.sql, [...generatedQuery.args]);`];
+  }
+  return [`${indent}const result = ${driverVariable}.prepare(generatedQuery.sql).run(...generatedQuery.args);`];
+}
+
+function nativeSqliteMetadataExpression(runtime: NativeSqliteRuntime, resultFields: GeneratedField[]): string {
+  const fieldNames = new Set(resultFields.map((field) => field.name));
+  const rowsAffectedExpression =
+    runtime === '@libsql/client'
+      ? 'result.rowsAffected'
+      : 'result.changes == null ? undefined : Number(result.changes)';
+  const lastInsertRowidExpression =
+    'result.lastInsertRowid == null ? result.lastInsertRowid : Number(result.lastInsertRowid)';
+  if (fieldNames.size === 0) {
+    return `{rowsAffected: ${rowsAffectedExpression}, lastInsertRowid: ${lastInsertRowidExpression}}`;
+  }
+  const properties = [];
+  if (fieldNames.has('rowsAffected')) {
+    properties.push(`rowsAffected: ${rowsAffectedExpression}`);
+  }
+  if (fieldNames.has('lastInsertRowid')) {
+    properties.push(`lastInsertRowid: ${lastInsertRowidExpression}`);
+  }
+  return `{${properties.join(', ')}}`;
+}
+
 function buildGeneratedImplementation(input: {
   resultMode: 'many' | 'nullableOne' | 'one';
   resultType: string;

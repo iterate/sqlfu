@@ -111,7 +111,15 @@ export interface SqlRowsPromise<TRow extends ResultRow = ResultRow> extends Prom
 export type SqlValue = QueryArg | SqlFragment;
 
 export type SqlfuValidator = 'arktype' | 'valibot' | 'zod' | 'zod-mini';
-export type SqlfuGenerateRuntime = 'sqlfu' | 'effect-v3' | 'effect-v4-unstable';
+export type SqlfuGenerateRuntime =
+  | 'sqlfu'
+  | 'effect-v3'
+  | 'effect-v4-unstable'
+  | 'node:sqlite'
+  | 'better-sqlite3'
+  | 'bun:sqlite'
+  | 'libsql'
+  | '@libsql/client';
 export type SqlfuGenerateCasing = 'camel' | 'preserve';
 
 /**
@@ -200,8 +208,11 @@ export interface SqlfuGenerateConfig {
    * - `'effect-v4-unstable'` = generated functions return Effect values and
    *   require Effect v4 beta's `effect/unstable/sql` `SqlClient.SqlClient`
    *   from the Effect environment.
+   * - `'node:sqlite'`, `'better-sqlite3'`, `'bun:sqlite'`, `'libsql'`, and
+   *   `'@libsql/client'` = generated functions take that driver directly and
+   *   do not import `sqlfu`.
    *
-   * Effect runtimes are experimental.
+   * Non-`sqlfu` runtimes are experimental.
    */
   runtime?: SqlfuGenerateRuntime;
   /**

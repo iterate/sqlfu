@@ -55,7 +55,16 @@ export function inferImportExtension(tsconfigPreferences: TsconfigPreferences): 
 
 const validValidators: SqlfuValidator[] = ['arktype', 'valibot', 'zod', 'zod-mini'];
 const validGenerateCasings: SqlfuGenerateCasing[] = ['camel', 'preserve'];
-const validGenerateRuntimes: SqlfuGenerateRuntime[] = ['sqlfu', 'effect-v3', 'effect-v4-unstable'];
+const validGenerateRuntimes: SqlfuGenerateRuntime[] = [
+  'sqlfu',
+  'effect-v3',
+  'effect-v4-unstable',
+  'node:sqlite',
+  'better-sqlite3',
+  'bun:sqlite',
+  'libsql',
+  '@libsql/client',
+];
 const validAuthorities: SqlfuAuthority[] = ['desired_schema', 'migrations', 'migration_history', 'live_schema'];
 const validPrefixes: SqlfuMigrationPrefix[] = ['iso', 'four-digit'];
 const validPresets: SqlfuMigrationPreset[] = ['sqlfu', 'd1'];

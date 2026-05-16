@@ -160,6 +160,12 @@ object fields use dot paths like `:post.slug`; and empty runtime-expanded arrays
 
 Opt in to runtime validation by setting `generate.validator` to `'arktype'`, `'valibot'`, `'zod'`, or `'zod-mini'`. Wrappers then validate params on the way in and rows on the way out, and derive types via the validator's native inference. See [Runtime validation](https://sqlfu.dev/docs/runtime-validation).
 
+Set `generate.runtime` when generated wrappers should target an existing runtime
+instead of the sqlfu client. `effect-v3` / `effect-v4-unstable` return Effect
+values, while `node:sqlite`, `better-sqlite3`, `bun:sqlite`, `libsql`, and
+`@libsql/client` call those drivers directly and do not import `sqlfu` from the
+generated query module.
+
 ### Formatter
 
 `sqlfu` includes a SQL formatter. It started from a vendored copy of [`sql-formatter`](https://github.com/sql-formatter-org/sql-formatter), then diverged because upstream formatting is more newline-heavy than we want. The current sqlfu defaults are intentionally opinionated: SQLite-first, lowercase by default, and biased toward keeping simple clause bodies inline when they still read well.

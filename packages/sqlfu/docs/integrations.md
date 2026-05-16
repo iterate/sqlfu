@@ -17,6 +17,8 @@ runtime, framework, service, or SDK?" For database-driver setup only, use
   state, or talk to deployed Cloudflare D1 over HTTP.
 - [Effect SQL runtime](./effect-sql.md): generate query wrappers that return
   Effect values and read `SqlClient.SqlClient` from the Effect environment.
+- [Kysely](./integrations/kysely.md): use sqlfu for schema, migrations, and
+  hand-written SQL wrappers while Kysely remains your query builder.
 - [OpenTelemetry](./integrations/opentelemetry.md): the short path for sending
   generated query names to OTel spans.
 

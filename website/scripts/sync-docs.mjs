@@ -102,6 +102,13 @@ const docs = [
       'Use sqlfu/cloudflare to find Miniflare D1 files, read Alchemy D1 state, or talk to deployed Cloudflare D1 over HTTP.',
   },
   {
+    slug: 'integrations/kysely',
+    title: 'Kysely',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'integrations', 'kysely.md'),
+    description:
+      'Use sqlfu for schema authoring, migrations, and hand-written SQL wrappers while Kysely remains your query builder.',
+  },
+  {
     slug: 'integrations/opentelemetry',
     title: 'OpenTelemetry',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'integrations', 'opentelemetry.md'),
