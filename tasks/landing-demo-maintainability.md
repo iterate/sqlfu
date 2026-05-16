@@ -5,7 +5,26 @@ size: large
 
 ## Status
 
-Implementation is mostly done. Demo snippets now live in markdown fixtures, a build-time renderer parses annotations and uses Shiki for SQL/TypeScript, terminal transcripts are rendered by a small custom path, and `index.astro` consumes compiled demo artifacts instead of hand-tokenized spans. Batteries now participates in the existing scroll/replay animation flow for the active feature panel. Remaining work: fake trace rendering still needs a real design pass, and Outbox remains intentionally deferred until the product surface is stable enough to advertise.
+Implementation is mostly done. Demo snippets now live in markdown fixtures, a build-time renderer parses annotations and uses Shiki for SQL/TypeScript, terminal transcripts are rendered by a small custom path, and `index.astro` consumes compiled demo artifacts instead of hand-tokenized spans. Batteries now participates in the existing scroll/replay animation flow for the active feature panel, and the fake trace rendering now has a compact vendor-neutral trace-viewer design. Remaining work: Outbox remains intentionally deferred until the product surface is stable enough to advertise.
+
+## 2026-05-15 Fake Trace Pass
+
+Status summary: fake trace rendering is implemented in this branch. The landing page now shows a compact vendor-neutral trace viewer with header metadata, named query identity, a waterfall, span timing, and trace attributes. Outbox remains explicitly deferred.
+
+Assumptions:
+
+- The fake trace should stay a vendor-neutral illustrative UI, not an OpenTelemetry, Honeycomb, Jaeger, Datadog, or Sentry clone.
+- The landing page story should remain the same: sqlfu query identity makes runtime behavior inspectable without burying SQL in application code.
+- The fixture system should remain intact; update the fake-trace markup/styling in place unless the existing structure blocks a credible design pass.
+- Verification should include a production build and desktop/mobile-ish visual checks for overlap or unreadable trace content.
+
+Fake-trace checklist:
+
+- [x] Find the current fake-trace markup and CSS surface. _kept the static trace panel beside the Batteries tracing fixture in `website/src/pages/index.astro`, with styling isolated under `.trace-shot` in `website/src/styles/landing.css`_
+- [x] Redesign the fake trace as a compact trace-viewer panel with realistic hierarchy, timing, tags, and query/file identity cues. _added trace header metadata, a named query summary, waterfall rows, span timings, and `sqlfu.query` / `sqlfu.file` attributes_
+- [x] Keep the rendering intentionally simplified and vendor-neutral. _used generic trace/span/attribute language and avoided vendor-specific product chrome_
+- [x] Verify the landing page build still succeeds. _ran `pnpm build:website` after building the UI dist required by `website/scripts/sync-ui.mjs`_
+- [x] Capture or save visual verification for desktop and mobile-ish widths, and note the screenshot path in the PR. _saved ignored screenshots under `tasks/ignoreme-landing-trace-desktop.png` and `tasks/ignoreme-landing-trace-mobile-feature.png`_
 
 ## Scope
 
@@ -30,7 +49,7 @@ Implementation is mostly done. Demo snippets now live in markdown fixtures, a bu
 - [x] Handle SQL quirks explicitly, especially `:limit` not being a parameter token in Shiki's SQL grammar. _renderer masks `:name` parameters before Shiki tokenization and restores them as `tok-param` spans_
 - [x] Replace hand-pre-tokenized Astro snippets in `website/src/pages/index.astro` with calls to the build-time renderer. _landing page frontmatter calls `renderDemo(...)` and inserts compiled artifacts via `set:html`_
 - [x] Animate the Batteries section. Use the same scroll-into-view/replay principles as the first three beats, but avoid making every feature pane auto-run at once. _Batteries now has `data-walkthrough-step`; the IIFE filters typing targets to the active feature panel and reveals only outputs before the next command_
-- [ ] Improve the fake trace rendering. Make it look more like a real trace viewer while staying intentionally simplified and vendor-neutral.
+- [x] Improve the fake trace rendering. Make it look more like a real trace viewer while staying intentionally simplified and vendor-neutral. _implemented as a compact trace viewer in `website/src/pages/index.astro` and `website/src/styles/landing.css`; screenshots saved in ignored `tasks/ignoreme-*` files_
 - [ ] Re-add an Outbox demo to Batteries once the product surface is stable enough to advertise without caveats.
 - [x] Add explicit maintenance hints for future agents. Capture which product facts each demo depends on, where those facts live in the code/docs, and what should be checked before changing landing copy or terminal output. _documented in `website/src/landing-demos/README.md`_
 
