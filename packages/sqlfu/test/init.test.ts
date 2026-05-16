@@ -10,10 +10,15 @@ test('sqlfu init creates the default scaffold in a fresh directory', async () =>
 
   await createSqlfuApi({projectRoot: root, host}).init({confirm: async (params) => params.body});
 
-  expect(await dumpFixtureFs(root)).toContain('sqlfu.config.ts');
-  expect(await dumpFixtureFs(root)).toContain('definitions.sql');
-  expect(await dumpFixtureFs(root)).toContain('migrations/');
-  expect(await dumpFixtureFs(root)).toContain('sql/');
-  expect(await dumpFixtureFs(root)).toContain(`db: './db/app.sqlite'`);
-  expect(await dumpFixtureFs(root)).toContain('.gitkeep');
+  const files = await dumpFixtureFs(root);
+  expect(files).toContain('sqlfu.config.ts');
+  expect(files).toContain('definitions.sql');
+  expect(files).toContain('migrations/');
+  expect(files).toContain('sql/');
+  expect(files).toContain(`migrations: './migrations'`);
+  expect(files).toContain(`definitions: './definitions.sql'`);
+  expect(files).toContain(`queries: './sql'`);
+  expect(files).not.toContain('db/');
+  expect(files).not.toContain('db:');
+  expect(files).toContain('.gitkeep');
 });

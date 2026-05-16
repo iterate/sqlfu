@@ -9,13 +9,12 @@ TypeScript wrappers. The Node-specific part is choosing the runtime adapter.
 
 ## Config
 
-For a local database file, let the CLI open that file directly:
+For a local database file, the CLI can use the default `.sqlfu/app.db` path:
 
 ```ts
 import {defineConfig} from 'sqlfu';
 
 export default defineConfig({
-  db: './db/app.sqlite',
   definitions: './definitions.sql',
   migrations: './migrations',
   queries: './sql',
@@ -68,7 +67,7 @@ import {createNodeSqliteClient} from 'sqlfu';
 
 import {findPostBySlug} from './sql/.generated/queries.sql.ts';
 
-const db = new DatabaseSync('./db/app.sqlite');
+const db = new DatabaseSync('./.sqlfu/app.db');
 const client = createNodeSqliteClient(db);
 
 const post = findPostBySlug(client, {slug: 'hello-world'});
@@ -84,7 +83,7 @@ import {createBetterSqlite3Client} from 'sqlfu';
 
 import {findPostBySlug} from './sql/.generated/queries.sql.ts';
 
-const db = new Database('./db/app.sqlite');
+const db = new Database('./.sqlfu/app.db');
 const client = createBetterSqlite3Client(db);
 
 const post = findPostBySlug(client, {slug: 'hello-world'});
@@ -100,7 +99,7 @@ import {createLibsqlSyncClient} from 'sqlfu';
 
 import {findPostBySlug} from './sql/.generated/queries.sql.ts';
 
-const db = new Database('./db/app.sqlite');
+const db = new Database('./.sqlfu/app.db');
 const client = createLibsqlSyncClient(db);
 
 const post = findPostBySlug(client, {slug: 'hello-world'});

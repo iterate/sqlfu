@@ -265,7 +265,6 @@ Create `sqlfu.config.ts` in your project root:
 
 ```ts
 export default {
-  db: './db/app.sqlite',
   migrations: './migrations',
   definitions: './definitions.sql',
   queries: './sql',
