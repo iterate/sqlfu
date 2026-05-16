@@ -12,8 +12,8 @@ For Durable Object storage, use [Durable Objects](../guides/durable-objects.md).
 `sqlfu/cloudflare` exports helpers for D1 lookup, state discovery, and remote
 access:
 
-- `findMiniflareD1Path()` finds a local Miniflare v3 D1 SQLite file, currently
-  for Alchemy v1-style local development layouts.
+- `findMiniflareD1Path()` finds a local Miniflare v3 D1 SQLite file for
+  Alchemy v1-style local development layouts.
 - `readAlchemyD1State()` reads Alchemy v2 state for a `Cloudflare.D1Database`
   resource and returns `accountId`, `databaseId`, and the database name.
 - `createD1HttpClient()` talks to deployed Cloudflare D1 through the Cloudflare

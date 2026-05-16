@@ -92,7 +92,7 @@ If you call `outbox.emit(...)` from outside a handler (e.g. in response to a
 user action) the event is still emitted, just without a `causedBy` entry.
 That's the right behaviour: it wasn't caused by another job.
 
-## Out of scope for now
+## Out of scope
 
 - oRPC / HTTP-server integration. Wire-up is straightforward: the consumer objects are plain data, and `outbox.tick()` returns quickly; wrap it in whatever scheduler you like.
 - Opentelemetry spans per job. Use the existing `instrument()` hook on the sqlfu client; handlers run against the same client.

@@ -4,6 +4,41 @@ Go through all of the docs and improve them. Look for inconsistencies, informati
 
 I want you to think holistically about the docs, as mentioned in your agent instructions for this repo. From time to time that will mean re-thinking docs entirely. Sometimes it will mean creating a separate task in the branch you create for *changing the product* instead. Docs are most useful when not thought of as something entirely downstream from the product code - if there's no clear way to write about a concept, the concept might be poorly thought through. You are free to flag that as an alternative to documenting weirdness.
 
+## 2026-05-17 pass
+
+Status: done for this bounded bedtime pass. The first commit recorded the scope and PR #129 was opened before implementation. The source-doc em-dash scan is clean, import-surface wording is less internal, stale temporal wording was tightened across runtime/Cloudflare/schema-diff docs, the root README was regenerated from the package README, and website/docs checks passed. No missing work remains inside this pass.
+
+Assumptions:
+
+- This worker owns only `tasks/improve-docs.md` plus a small set of docs/website prose files chosen during the pass.
+- Other workers may own task cleanup, parser work, and unrelated feature docs; this pass will avoid those areas.
+- Generated docs output, synced root README output, and historical task logs are evidence for orientation, not primary edit targets.
+- `packages/sqlfu/README.md` is the source for overview docs; root `README.md` should not be edited directly.
+- The evergreen task stays open and will not move to `tasks/complete/`.
+
+Scope:
+
+- Start from source docs/prose: `packages/sqlfu/README.md`, `packages/sqlfu/docs/*`, hand-authored website content, and landing-demo prose.
+- Look for em-dashes, stale temporal language, duplicated claims, and wording made misleading by recent work.
+- Prefer deletion, tightening, and terminology alignment over adding new sections.
+- Avoid task cleanup and parser implementation work.
+
+Checklist:
+
+- [x] Create the requested isolated worktree and branch from `origin/main`. _worktree is `/Users/mmkal/src/worktrees/sqlfu/bedtime-2026-05-17-improve-docs` on branch `bedtime/2026-05-17-improve-docs`._
+- [x] Commit this 2026-05-17 status note by itself, push, and open the early PR. _task-only commit `9bfddec` was pushed before implementation; PR #129 opened against `main`._
+- [x] Run the focused source-docs/prose scan using the `writing-well` checklist. _scanned package docs, package README, hand-authored website content, landing-demo prose, ADRs, and skills for em-dashes, stale temporal wording, and writing-smell terms; generated docs and old task logs stayed out of the edit set._
+- [x] Make the smallest useful docs/website prose edits found by the scan. _tightened the import-surface page, Cloudflare helper wording, runtime limits, schema-diff internals wording, outbox scope heading, and runtime-validation follow-up link._
+- [x] Run relevant checks for the touched docs. _`pnpm sync:root-readme:check` failed before regeneration as expected; `pnpm sync:root-readme`, `pnpm sync:root-readme:check`, `pnpm --filter @sqlfu/ui build`, and `pnpm --filter sqlfu-website build` passed after `pnpm install`._
+- [x] Update this section with brief italic breadcrumbs and implementation notes. _this implementation update._
+
+Implementation notes:
+
+- 2026-05-17: Read the `writing-well` skill before editing. The pass will use it as a filter for inflated framing, stale temporality, em-dash overuse, and templated phrasing.
+- 2026-05-17: Source-doc em-dash scan returned clean; no punctuation-only sweep was needed.
+- 2026-05-17: Remaining stale-wording scan hits are either code/data attribute names (`feature-showcase`), historical/vendor skill instructions, or wording that genuinely describes current state in the migration model and landing-demo maintainer notes.
+- 2026-05-17: `pnpm install` was needed because this fresh worktree had no `node_modules`; the install reused the lockfile and local pnpm store.
+
 ## 2026-05-15 pass
 
 Status: done for this bedtime pass. The first commit recorded the scope and PR #121 was opened before implementation. The source-docs em-dash scan is clean, a few stale "today/currently/for now" lines in the recent Type generation docs were tightened, the docs banner now matches the landing pre-alpha notice, and website/docs checks passed. No missing work remains inside this bounded pass.

@@ -98,10 +98,10 @@ listPosts.sql;
 listPosts.query({limit: 10});
 ```
 
-## Current Limits
+## Limits
 
 - `generate.runtime: 'effect-v3' | 'effect-v4-unstable'` cannot be combined with
-  `generate.validator` yet. Use plain generated TypeScript types for now.
+  `generate.validator`. Use plain generated TypeScript types with these runtimes.
 - Non-returning DML and DDL run through Effect SQL's `.raw` statement result.
   sqlfu does not synthesize its normal `RunResult` metadata in this mode.
 - This mode depends on Effect SQL's runtime semantics. Transaction handling,

@@ -1,6 +1,6 @@
 # Schema diff internals
 
-This document describes what `diffSchemaSql` does today for SQLite, and how the native implementation is put together.
+This document describes what `diffSchemaSql` does for SQLite, and how the native implementation is put together.
 
 It is intentionally narrower than the migration model doc. The migration model explains which authorities exist and which commands mutate them. This document explains the mechanism `sqlfu` uses when it needs to answer "what SQL would move schema A to schema B?".
 
@@ -53,9 +53,9 @@ That means the comparison is based on normalized SQLite schema state, not on for
 
 This is why quoted and unquoted simple identifiers can compare equal, and why semantic changes like `text` to `text not null unique` are detected correctly even when the old `sqlite3def` path missed them.
 
-## The Current Object Model
+## Object Model
 
-The inspected schema currently models:
+The inspected schema models:
 
 - tables
 - columns
@@ -116,7 +116,9 @@ This is how the native engine handles changes such as:
 - generated-column changes
 - column-collation changes
 
-If a rebuild would require inventing data, the engine fails explicitly instead of silently generating nonsense. The current example is introducing a new primary key on existing rows when there is no honest value source to copy from.
+If a rebuild would require inventing data, the engine fails explicitly instead
+of silently generating nonsense. One example is introducing a new primary key on
+existing rows when there is no honest value source to copy from.
 
 ## Dependency Ordering
 
@@ -154,13 +156,13 @@ The `src/schemadiff/sqlite/` folder is the core engine, but it leans on shared S
 
 ## Supported And Unsupported Scope
 
-Supported today:
+Supported:
 
 - semantic equality of inspected SQLite schemas for the modeled object types
 - fixture-driven diffing for constraints, generated columns, multi-column indexes, dependency ordering, triggers, and column collations
 - explicit failure for unsupported virtual tables
 
-Intentionally not supported today:
+Intentionally not supported:
 
 - SQLite virtual tables / FTS tables
 - a broader "all possible SQLite objects" promise
@@ -172,7 +174,9 @@ Column `collate ...` clauses are supported as part of table diffing. Separate SQ
 
 The shape of this engine - inspect both schemas into a typed model, diff the inspected models, emit an ordered plan - is taken from [`@pgkit/schemainspect`](https://github.com/mmkal/pgkit/tree/main/packages/schemainspect) and [`@pgkit/migra`](https://github.com/mmkal/pgkit/tree/main/packages/migra), which are themselves TypeScript ports of [`djrobstep/schemainspect`](https://github.com/djrobstep/schemainspect) and [`djrobstep/migra`](https://github.com/djrobstep/migra) by Robert Lechte.
 
-Those projects are PostgreSQL-only. The sqlfu implementation is SQLite-only today and does not copy their code. See [`src/schemadiff/CLAUDE.md`](../src/schemadiff/CLAUDE.md) for more detail on what is borrowed versus sqlfu-specific.
+Those projects are PostgreSQL-only. The sqlfu implementation is SQLite-only and
+does not copy their code. See [`src/schemadiff/CLAUDE.md`](../src/schemadiff/CLAUDE.md)
+for more detail on what is borrowed versus sqlfu-specific.
 
 ## Why This Replaced `sqlite3def`
 
