@@ -28,9 +28,8 @@ Evidence summary:
 Fix summary:
 
 - root `test` now includes `pnpm --filter @sqlfu/pg test`
-- pg tests now skip with an explicit message when the local Postgres fixture is
-  not reachable, so the root test command does not silently acquire a service
-  prerequisite
+- pg tests still fail loudly when the local Postgres fixture is not reachable;
+  that is intentional so CI and local runs catch missing setup
 - `packages/sqlfu/test/workspace-scripts.test.ts` pins the release-built
   package coverage shape so this drift is harder to reintroduce
 

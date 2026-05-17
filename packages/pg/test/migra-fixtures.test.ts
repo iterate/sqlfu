@@ -15,17 +15,20 @@ import type {SqlfuHost} from 'sqlfu';
 
 import {pgDialect} from '../src/index.js';
 import {listFixtureFiles, parseFixtureMd} from './fixture-md.js';
-import {ensureFixtureRoles, isPgReachable, MISSING_PG_MESSAGE, TEST_ADMIN_URL} from './pg-fixture.js';
+import {ensureFixtureRoles, isPgReachable, TEST_ADMIN_URL} from './pg-fixture.js';
 
 const FIXTURES_DIR = new URL('./fixtures/migra/', import.meta.url).pathname;
 const stubHost = {} as unknown as SqlfuHost;
 const dialect = pgDialect({adminUrl: TEST_ADMIN_URL});
 
-const pgReachable = await isPgReachable();
-const pgTest = test.skipIf(!pgReachable);
-
 beforeAll(async () => {
-  if (pgReachable) await ensureFixtureRoles();
+  if (!(await isPgReachable())) {
+    throw new Error(
+      `Test postgres not reachable at ${TEST_ADMIN_URL}. ` +
+        `Run 'docker compose -f packages/pg/test/docker-compose.yml up -d' first.`,
+    );
+  }
+  await ensureFixtureRoles();
 });
 
 describe('migra fixtures (lifted from pgkit)', () => {
@@ -41,7 +44,7 @@ describe('migra fixtures (lifted from pgkit)', () => {
         continue;
       }
 
-      pgTest(label, {timeout: 30_000}, async () => {
+      test(label, {timeout: 30_000}, async () => {
         const aSql = fixtureCase.inputFiles.find((f) => f.path === 'a.sql')?.content;
         const bSql = fixtureCase.inputFiles.find((f) => f.path === 'b.sql')?.content;
         const expectedSql = fixtureCase.outputFiles.find((f) => f.path === 'expected.sql')?.content;
@@ -70,10 +73,6 @@ describe('migra fixtures (lifted from pgkit)', () => {
     }
   }
 });
-
-if (!pgReachable) {
-  test.skip(MISSING_PG_MESSAGE, () => {});
-}
 
 function normalize(sql: string): string {
   return sql

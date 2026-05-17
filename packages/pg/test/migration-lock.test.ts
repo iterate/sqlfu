@@ -12,14 +12,18 @@ import {Pool} from 'pg';
 import {createNodePostgresClient} from 'sqlfu';
 
 import {pgDialect} from '../src/index.js';
-import {isPgReachable, MISSING_PG_MESSAGE, TEST_ADMIN_URL} from './pg-fixture.js';
+import {isPgReachable, TEST_ADMIN_URL} from './pg-fixture.js';
 
-const pgReachable = await isPgReachable();
-const pgTest = test.skipIf(!pgReachable);
+if (!(await isPgReachable())) {
+  throw new Error(
+    `Test postgres not reachable at ${TEST_ADMIN_URL}. ` +
+      `Run 'docker compose -f packages/pg/test/docker-compose.yml up -d' first.`,
+  );
+}
 
 const dialect = pgDialect({adminUrl: TEST_ADMIN_URL});
 
-pgTest('withMigrationLock serializes concurrent callers via pg_advisory_xact_lock', {timeout: 15_000}, async () => {
+test('withMigrationLock serializes concurrent callers via pg_advisory_xact_lock', {timeout: 15_000}, async () => {
   // A single Pool with capacity for both connections so each
   // withMigrationLock call gets its own session (the advisory lock is
   // _xact_-scoped, so it needs distinct connections to actually contend).
@@ -74,7 +78,3 @@ pgTest('withMigrationLock serializes concurrent callers via pg_advisory_xact_loc
     await pool.end();
   }
 });
-
-if (!pgReachable) {
-  test.skip(MISSING_PG_MESSAGE, () => {});
-}

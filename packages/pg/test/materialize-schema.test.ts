@@ -1,17 +1,23 @@
-import {expect, test} from 'vitest';
+import {beforeAll, expect, test} from 'vitest';
 
 import type {SqlfuHost} from 'sqlfu';
 
 import {pgDialect} from '../src/index.js';
-import {isPgReachable, MISSING_PG_MESSAGE, TEST_ADMIN_URL} from './pg-fixture.js';
+import {isPgReachable, TEST_ADMIN_URL} from './pg-fixture.js';
 
-const pgReachable = await isPgReachable();
-const pgTest = test.skipIf(!pgReachable);
+beforeAll(async () => {
+  if (!(await isPgReachable())) {
+    throw new Error(
+      `Test postgres not reachable at ${TEST_ADMIN_URL}. ` +
+        `Run 'docker compose -f packages/pg/test/docker-compose.yml up -d' first.`,
+    );
+  }
+});
 
 const dialect = pgDialect({adminUrl: TEST_ADMIN_URL});
 const stubHost = {} as unknown as SqlfuHost;
 
-pgTest('pgDialect.materializeSchemaSql applies DDL and extracts canonical schema', {timeout: 30_000}, async () => {
+test('pgDialect.materializeSchemaSql applies DDL and extracts canonical schema', {timeout: 30_000}, async () => {
   const result = await dialect.materializeSchemaSql(stubHost, {
     sourceSql: `
         create table users (id integer primary key, name text not null, email text);
@@ -27,7 +33,7 @@ pgTest('pgDialect.materializeSchemaSql applies DDL and extracts canonical schema
   expect(lower).toContain('users_email_idx');
 });
 
-pgTest('pgDialect.materializeSchemaSql honors excludedTables', {timeout: 30_000}, async () => {
+test('pgDialect.materializeSchemaSql honors excludedTables', {timeout: 30_000}, async () => {
   const result = await dialect.materializeSchemaSql(stubHost, {
     sourceSql: `
         create table sqlfu_migrations (name text primary key);
@@ -39,7 +45,3 @@ pgTest('pgDialect.materializeSchemaSql honors excludedTables', {timeout: 30_000}
   expect(lower).toContain('app_data');
   expect(lower).not.toContain('sqlfu_migrations');
 });
-
-if (!pgReachable) {
-  test.skip(MISSING_PG_MESSAGE, () => {});
-}

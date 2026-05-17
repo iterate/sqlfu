@@ -10,7 +10,7 @@ size: small
 Done for this bounded pass. Clawpatch reviewed three feature records and found
 one true test-gap duplicated across two findings: root `pnpm test` skipped the
 `@sqlfu/pg` suite even though root build/typecheck include the package. The root
-test script now includes `pnpm --filter @sqlfu/pg test`, pg tests skip cleanly
+test script now includes `pnpm --filter @sqlfu/pg test`, pg tests fail loudly
 when the local Postgres fixture is absent, and Clawpatch revalidated both
 findings as fixed. Full root `pnpm test` still hits pre-existing `sqlfu` package
 failures before reaching the pg segment.
@@ -29,8 +29,8 @@ failures before reaching the pg segment.
 - [x] Create this branch and commit the task note first. _branch `bedtime/2026-05-17-clawpatch`, worktree `/Users/mmkal/src/worktrees/sqlfu/bedtime-2026-05-17-clawpatch`, first commit `10cda5b`, PR #131._
 - [x] Run `clawpatch doctor`, `clawpatch init`, `clawpatch map`, a bounded `clawpatch review`, and `clawpatch report`. _`clawpatch review --limit 3` produced run `20260516T231103-8805e6`; the sanitized report is committed at `tasks/clawpatch-2026-05-17-report.md`._
 - [x] Review findings for true positives. _both findings described the same root test coverage gap for `@sqlfu/pg`; confirmed `pnpm --filter @sqlfu/pg test -- --run` passes locally after installing workspace dependencies._
-- [x] Fix a small high-confidence finding if one is clearly worth taking tonight, or record why no fix was made. _root `package.json` now runs `pnpm --filter @sqlfu/pg test` between `sqlfu` and `@sqlfu/ui`, and pg service-backed tests use explicit Vitest skips when Postgres is not reachable._
-- [x] Run relevant validation and update this task with breadcrumbs. _`pnpm --filter @sqlfu/pg test -- --run` passed with Postgres reachable and skipped cleanly with Postgres stopped; `pnpm --dir packages/sqlfu exec vitest run test/workspace-scripts.test.ts` passed. Full `pnpm test` still failed before reaching pg because existing `sqlfu` tests fail in `resolve-sqlfu-ui` and `strict-tier entries import no node:*`._
+- [x] Fix a small high-confidence finding if one is clearly worth taking tonight, or record why no fix was made. _root `package.json` now runs `pnpm --filter @sqlfu/pg test` between `sqlfu` and `@sqlfu/ui`; pg service-backed tests intentionally fail if the Postgres fixture is not reachable._
+- [x] Run relevant validation and update this task with breadcrumbs. _`pnpm --filter @sqlfu/pg test -- --run` passed with Postgres reachable; `pnpm --dir packages/sqlfu exec vitest run test/workspace-scripts.test.ts` passed. Full `pnpm test` still failed before reaching pg because existing `sqlfu` tests fail in `resolve-sqlfu-ui` and `strict-tier entries import no node:*`._
 - [x] Update the PR body with the report location, findings summary, and checks. _PR #131 body updated after pushing the fix._
 
 ## Implementation notes
