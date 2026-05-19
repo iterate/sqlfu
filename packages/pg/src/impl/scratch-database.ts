@@ -22,9 +22,9 @@ import {Client as PgClient} from 'pg';
 
 export interface TempDatabaseHandle extends AsyncDisposable {
   /** Connection URL pointing at the freshly-created database. */
-  readonly url: string;
+  url: string;
   /** The chosen database name (random suffix for collision-safety). */
-  readonly databaseName: string;
+  databaseName: string;
 }
 
 /**

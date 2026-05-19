@@ -7,9 +7,9 @@ base_pr: 133
 
 # Make the root lint script pass
 
-Status summary: Not implemented yet. This stacked task starts from the root test
-gate fix in PR 133 and targets the Clawpatch finding that `pnpm lint` exits
-nonzero on a clean checkout.
+Status summary: Implementation is in place and locally validated. `pnpm lint`
+passes after narrowing lint ignores for vendored/fixture surfaces and fixing
+small maintained-source lint/typecheck issues. Clawpatch revalidation remains.
 
 ## Assumptions
 
@@ -23,12 +23,20 @@ nonzero on a clean checkout.
 
 ## Checklist
 
-- [ ] Reproduce the current root lint failure on this stacked branch.
-- [ ] Decide which failures are maintained source issues versus scope/ignore issues.
-- [ ] Update lint config or source files so `pnpm lint` passes.
-- [ ] Validate `pnpm lint` and any focused checks exposed by the fix.
+- [x] Reproduce the current root lint failure on this stacked branch. _`pnpm lint` failed with pg vendored rule-disable errors, maintained-source `readonly` violations, stale UI `eslint-disable` comments, and fixture/demo SQL freshness/format findings._
+- [x] Decide which failures are maintained source issues versus scope/ignore issues. _Ignored pg vendor and copied/demo SQL fixture paths; fixed maintained TypeScript violations directly._
+- [x] Update lint config or source files so `pnpm lint` passes. _Updated `eslint.config.js`, removed `readonly` from maintained source types, dropped stale disable comments, and added missing `generate.casing` to a pg typegen test fixture._
+- [x] Validate `pnpm lint` and any focused checks exposed by the fix. _`pnpm lint`, `pnpm typecheck`, and focused `oxfmt --check` on touched files pass._
 - [ ] Revalidate the clawpatch finding with the shared state directory.
 
 ## Implementation Notes
 
 - Source finding: `Root lint script fails on the current workspace`.
+- Red check: `pnpm lint` failed with 41 errors and 18 warnings before the fix.
+- Green checks:
+  - `pnpm lint`
+  - `pnpm typecheck`
+  - `pnpm exec oxfmt --check eslint.config.js packages/pg/src/impl/scratch-database.ts packages/pg/src/impl/typegen.ts packages/pg/test/typegen.test.ts packages/sqlfu/src/dialect.ts packages/ui/src/client.tsx tasks/clawpatch-root-lint-scope.md`
+- While validating, `pnpm typecheck` exposed a small stale pg test fixture
+  missing `generate.casing`; this branch includes that fix because it blocked
+  the quality gate and was a one-line config correction.

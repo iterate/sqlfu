@@ -111,7 +111,7 @@ export type RelationInfo = {
  */
 export interface MaterializedTypegenSchema extends AsyncDisposable {
   /** Identifies the producing dialect. Used as a runtime sanity check. */
-  readonly dialect: string;
+  dialect: string;
 }
 
 export type Dialect = {
@@ -156,10 +156,7 @@ export type Dialect = {
    * uses its own connection (closed-over from the dialect's factory config)
    * to `CREATE DATABASE sqlfu_<random>` and drop on completion.
    */
-  materializeSchemaSql(
-    host: SqlfuHost,
-    input: {sourceSql: string; excludedTables?: string[]},
-  ): Promise<string>;
+  materializeSchemaSql(host: SqlfuHost, input: {sourceSql: string; excludedTables?: string[]}): Promise<string>;
 
   /**
    * Extract the canonical schema from a live client. Used by the
@@ -196,10 +193,7 @@ export type Dialect = {
    * Distinct from `listLiveRelations` so callers don't have to filter
    * a possibly-large list to find one entry.
    */
-  getRelationInfo(
-    client: Client,
-    relationName: string,
-  ): Promise<{name: string; kind: 'table' | 'view'; sql?: string}>;
+  getRelationInfo(client: Client, relationName: string): Promise<{name: string; kind: 'table' | 'view'; sql?: string}>;
 
   /**
    * Per-relation column metadata for the studio's row editor and schema
@@ -241,10 +235,7 @@ export type Dialect = {
    * Analyze a batch of queries against the materialized schema, producing
    * column/parameter type info for each one.
    */
-  analyzeQueries(
-    materialized: MaterializedTypegenSchema,
-    queries: QueryAnalysisInput[],
-  ): Promise<QueryAnalysis[]>;
+  analyzeQueries(materialized: MaterializedTypegenSchema, queries: QueryAnalysisInput[]): Promise<QueryAnalysis[]>;
 };
 
 const sqliteSqlfuMigrationTableDdl = (tableName: string) =>
@@ -348,8 +339,7 @@ export function sqliteDialect(): Dialect {
 
     materializeTypegenSchema:
       sqliteTypegenImpls?.materializeTypegenSchema ?? (() => typegenStub('materializeTypegenSchema')),
-    loadSchemaForTypegen:
-      sqliteTypegenImpls?.loadSchemaForTypegen ?? (() => typegenStub('loadSchemaForTypegen')),
+    loadSchemaForTypegen: sqliteTypegenImpls?.loadSchemaForTypegen ?? (() => typegenStub('loadSchemaForTypegen')),
     analyzeQueries: sqliteTypegenImpls?.analyzeQueries ?? (() => typegenStub('analyzeQueries')),
   };
 }

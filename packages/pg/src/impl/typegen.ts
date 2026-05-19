@@ -16,7 +16,14 @@
 // (Phase C2/C3) will adapt to the same interface.
 import {Pool} from 'pg';
 import {createNodePostgresClient} from 'sqlfu';
-import type {AsyncClient, Dialect, MaterializedTypegenSchema, QueryAnalysis, QueryAnalysisInput, RelationInfo} from 'sqlfu';
+import type {
+  AsyncClient,
+  Dialect,
+  MaterializedTypegenSchema,
+  QueryAnalysis,
+  QueryAnalysisInput,
+  RelationInfo,
+} from 'sqlfu';
 
 import {adaptAsyncClient} from '../vendor/schemainspect/pgkit-compat.js';
 import {getColumnInfo, type DescribedQuery} from '../vendor/typegen/index.js';
@@ -24,9 +31,9 @@ import {neutralizeStringLiterals} from './neutralize-string-literals.js';
 import {createTempDatabase, type TempDatabaseHandle} from './scratch-database.js';
 
 type PgMaterializedHandle = MaterializedTypegenSchema & {
-  readonly dialect: 'postgresql';
-  readonly databaseName: string;
-  readonly client: AsyncClient;
+  dialect: 'postgresql';
+  databaseName: string;
+  client: AsyncClient;
 };
 
 function assertPgHandle(materialized: MaterializedTypegenSchema): PgMaterializedHandle {
@@ -203,9 +210,7 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
 
       // Pass 1: column baseline via temp view (Select-like queries only).
       const baselineColumns =
-        queryType === 'Select'
-          ? await captureColumnBaseline(client, neutralizedSql, paramTypes, viewName)
-          : null;
+        queryType === 'Select' ? await captureColumnBaseline(client, neutralizedSql, paramTypes, viewName) : null;
 
       // Pass 2: vendored AST pipeline. The same neutralized SQL flows
       // through here — the AST sees real `string` literal nodes for
@@ -242,7 +247,6 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
         analysedFields = analysed.fields ?? [];
       } catch (astError) {
         if (process.env.SQLFU_PG_DEBUG) {
-          // eslint-disable-next-line no-console
           console.warn('vendored AST pipeline threw, falling back to baseline:', astError);
         }
       }
@@ -479,10 +483,7 @@ function mergeColumns(
   // produces; the vendored pipeline contributes `notNull` for columns
   // it could trace back to a source.
   const nullabilityByName = new Map(
-    analysed.map((field) => [
-      field.name,
-      field.nullability === 'not_null' || field.nullability === 'assumed_not_null',
-    ]),
+    analysed.map((field) => [field.name, field.nullability === 'not_null' || field.nullability === 'assumed_not_null']),
   );
   return baseline.map((column) => ({
     name: column.name,
@@ -527,7 +528,10 @@ function classifyQuery(sql: string): 'Select' | 'Insert' | 'Update' | 'Delete' |
 // Map a postgres `format_type` output to a TypeScript type. Conservative for
 // step one — covers the common types and falls back to `unknown`.
 function pgTypeToTs(typeName: string): string {
-  const normalized = typeName.toLowerCase().replace(/\(.*\)/u, '').trim();
+  const normalized = typeName
+    .toLowerCase()
+    .replace(/\(.*\)/u, '')
+    .trim();
   if (
     normalized === 'text' ||
     normalized === 'varchar' ||

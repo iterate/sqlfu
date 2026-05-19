@@ -28,10 +28,15 @@ export default [
       '**/.typesql/**',
       '**/node_modules/**',
       'packages/sqlfu/src/vendor/**',
+      'packages/pg/src/vendor/**',
       // Fixture files contain intentionally-unformatted SQL (before/after
       // blocks, malformed input) — linting them would fight the fixtures.
       'packages/sqlfu/test/formatter/**',
       'packages/sqlfu/test/schemadiff/fixtures/**',
+      // Demo seed data and pg template-project SQL are copied fixtures, not
+      // generated query sources with manifests in this checkout.
+      'packages/ui/src/demo/northwind/data.sql',
+      'packages/ui/test/template-project-pg/sql/**',
       // ID helper recipes keep copy-paste-oriented SQL layout and header
       // comments; formatter output makes them harder to read as standalone
       // recipes.
