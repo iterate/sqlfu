@@ -1,5 +1,6 @@
 import type {AsyncClient, Client, QueryArg, SyncClient} from './types.js';
 import {normalizeSchemaSqlForExtraction} from './schemadiff/sqlite/sqltext.js';
+import {containsSqliteKeyword, firstSqliteKeyword} from './sqlite-parser.js';
 
 /**
  * Returns true for statements that produce a result set. Heuristic by design;
@@ -22,10 +23,12 @@ import {normalizeSchemaSqlForExtraction} from './schemadiff/sqlite/sqltext.js';
  * Keyword classification sidesteps both.
  */
 export function sqlReturnsRows(sql: string): boolean {
-  const stripped = sql.replace(/^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)+/u, '');
-  if (/^(select|with|pragma|explain|values|show|table|fetch)\b/iu.test(stripped)) return true;
-  return /\breturning\b/iu.test(sql);
+  const firstKeyword = firstSqliteKeyword(sql);
+  if (firstKeyword && rowReturningFirstKeywords.has(firstKeyword)) return true;
+  return containsSqliteKeyword(sql, 'returning');
 }
+
+const rowReturningFirstKeywords = new Set(['select', 'with', 'pragma', 'explain', 'values', 'show', 'table', 'fetch']);
 
 function scanSqlIgnoredRange(sql: string, start: number): number | null {
   const code = sql.charCodeAt(start);

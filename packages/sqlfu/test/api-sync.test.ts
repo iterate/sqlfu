@@ -161,6 +161,34 @@ test('runtime sync cleanup only drops literal scratch-prefixed objects', () => {
   ).toMatchObject([{id: 1}]);
 });
 
+test('runtime sync orders commented quoted create definitions by statement kind', () => {
+  using fixture = createRuntimeSyncFixture();
+
+  sync(fixture.client, {
+    definitions: `
+      /* index intentionally appears before its table */
+      create index "select_slug" on "select" (slug);
+
+      -- quoted keyword identifier
+      create table "select" (
+        slug text not null
+      );
+    `,
+  });
+
+  expect(
+    fixture.client.all<{type: string; name: string; tbl_name: string}>(sql`
+      select type, name, tbl_name
+      from sqlite_schema
+      where name in ('select', 'select_slug')
+      order by type, name
+    `),
+  ).toMatchObject([
+    {type: 'index', name: 'select_slug', tbl_name: 'select'},
+    {type: 'table', name: 'select', tbl_name: 'select'},
+  ]);
+});
+
 function createRuntimeSyncFixture() {
   const db = new BetterSqlite3(':memory:');
   return {

@@ -2,6 +2,7 @@ import {quoteIdentifier} from '../schemadiff/sqlite/identifiers.js';
 import {inspectSqliteSchema} from '../schemadiff/sqlite/inspect.js';
 import {planSchemaDiff} from '../schemadiff/sqlite/plan.js';
 import type {SqliteInspectedDatabase} from '../schemadiff/sqlite/types.js';
+import {classifySqliteCreateStatement, type SqliteCreateStatement} from '../sqlite-parser.js';
 import {splitSqlStatements} from '../sqlite-text.js';
 import type {SyncClient} from '../types.js';
 
@@ -92,78 +93,68 @@ function applyDefinitionsToPrefixedSchema(client: SyncClient, definitions: strin
 }
 
 function orderedSchemaStatements(sql: string): string[] {
-  const statements = splitSqlStatements(sql);
+  const statements = splitSqlStatements(sql).map((statement) => ({
+    statement,
+    createStatement: classifySqliteCreateStatement(statement),
+  }));
   return [
-    ...statements.filter((statement) => isCreateTableStatement(statement)),
-    ...statements.filter((statement) => isCreateIndexStatement(statement)),
-    ...statements.filter((statement) => isCreateViewStatement(statement)),
+    ...statements.filter((entry) => hasCreateKind(entry.createStatement, 'table')),
+    ...statements.filter((entry) => hasCreateKind(entry.createStatement, 'index')),
+    ...statements.filter((entry) => hasCreateKind(entry.createStatement, 'view')),
     ...statements.filter(
-      (statement) =>
-        !isCreateTableStatement(statement) && !isCreateIndexStatement(statement) && !isCreateViewStatement(statement),
+      (entry) =>
+        !hasCreateKind(entry.createStatement, 'table') &&
+        !hasCreateKind(entry.createStatement, 'index') &&
+        !hasCreateKind(entry.createStatement, 'view'),
     ),
-  ];
+  ].map((entry) => entry.statement);
 }
 
 function toPrefixedSchemaStatement(statement: string): string {
-  if (/^create\s+virtual\s+table\b/iu.test(stripLeadingComments(statement))) {
+  const createStatement = classifySqliteCreateStatement(statement);
+  if (hasCreateKind(createStatement, 'virtual-table')) {
     throw new Error('runtime sync does not support sqlite virtual tables yet');
   }
-  if (isCreateTableStatement(statement)) {
+  if (hasCreateKind(createStatement, 'table')) {
     return prefixCreateObjectName(statement, 'table');
   }
-  if (isCreateIndexStatement(statement)) {
+  if (hasCreateKind(createStatement, 'index')) {
     return prefixCreateIndexStatement(statement);
   }
-  if (isCreateViewStatement(statement)) {
+  if (hasCreateKind(createStatement, 'view')) {
     return prefixCreateObjectName(statement, 'view');
   }
-  if (isCreateTriggerStatement(statement)) {
+  if (hasCreateKind(createStatement, 'trigger')) {
     return prefixCreateTriggerStatement(statement);
   }
   throw new Error('runtime sync definitions only support create table, create index, create view, and create trigger');
 }
 
 function toAttachedSchemaStatement(statement: string, schemaName: string): string {
-  const stripped = stripLeadingComments(statement);
-  if (/^create\s+virtual\s+table\b/iu.test(stripped)) {
+  const createStatement = classifySqliteCreateStatement(statement);
+  if (hasCreateKind(createStatement, 'virtual-table')) {
     throw new Error('runtime sync does not support sqlite virtual tables yet');
   }
-  if (/^create\s+(?:temp|temporary)\s+/iu.test(stripped)) {
+  if (createStatement && createStatement.temporary) {
     throw new Error('runtime sync scratch-db definitions do not support temp schema objects');
   }
-  if (isCreateTableStatement(statement)) {
+  if (hasCreateKind(createStatement, 'table')) {
     return qualifyCreateObjectName(statement, 'table', schemaName);
   }
-  if (isCreateIndexStatement(statement)) {
+  if (hasCreateKind(createStatement, 'index')) {
     return qualifyCreateIndexStatement(statement, schemaName);
   }
-  if (isCreateViewStatement(statement)) {
+  if (hasCreateKind(createStatement, 'view')) {
     return qualifyCreateObjectName(statement, 'view', schemaName);
   }
-  if (isCreateTriggerStatement(statement)) {
+  if (hasCreateKind(createStatement, 'trigger')) {
     return qualifyCreateTriggerStatement(statement, schemaName);
   }
   throw new Error('runtime sync definitions only support create table, create index, create view, and create trigger');
 }
 
-function isCreateTableStatement(statement: string): boolean {
-  return /^create\s+(?:(?:temp|temporary)\s+)?table\b/iu.test(stripLeadingComments(statement));
-}
-
-function isCreateIndexStatement(statement: string): boolean {
-  return /^create\s+(?:unique\s+)?index\b/iu.test(stripLeadingComments(statement));
-}
-
-function isCreateViewStatement(statement: string): boolean {
-  return /^create\s+(?:(?:temp|temporary)\s+)?view\b/iu.test(stripLeadingComments(statement));
-}
-
-function isCreateTriggerStatement(statement: string): boolean {
-  return /^create\s+(?:(?:temp|temporary)\s+)?trigger\b/iu.test(stripLeadingComments(statement));
-}
-
-function stripLeadingComments(statement: string): string {
-  return statement.replace(/^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)+/u, '');
+function hasCreateKind(createStatement: SqliteCreateStatement | null, kind: SqliteCreateStatement['kind']): boolean {
+  return !!createStatement && createStatement.kind === kind;
 }
 
 function prefixCreateObjectName(statement: string, kind: 'table' | 'view'): string {
@@ -352,16 +343,18 @@ function removeSyncPrefixes(value: string): string {
 }
 
 function cleanupPrefixedObjects(client: SyncClient): void {
-  const rows = client.all<{type: 'index' | 'table' | 'trigger' | 'view'; name: string}>({
-    sql: `
+  const rows = client
+    .all<{type: 'index' | 'table' | 'trigger' | 'view'; name: string}>({
+      sql: `
       select type, name
       from main.sqlite_schema
       where type in ('index', 'table', 'trigger', 'view')
         and name not like 'sqlite\\_%' escape '\\'
       order by type, name
     `,
-    args: [],
-  }).filter((row) => row.name.startsWith(syncObjectPrefix));
+      args: [],
+    })
+    .filter((row) => row.name.startsWith(syncObjectPrefix));
   const typeOrder = ['trigger', 'view', 'index', 'table'] as const;
   for (const type of typeOrder) {
     for (const row of rows.filter((candidate) => candidate.type === type)) {
@@ -373,9 +366,7 @@ function cleanupPrefixedObjects(client: SyncClient): void {
 function excludeRuntimeSyncTables(schema: SqliteInspectedDatabase): SqliteInspectedDatabase {
   return {
     ...schema,
-    tables: Object.fromEntries(
-      Object.entries(schema.tables).filter(([name]) => !runtimeSyncExcludedTables.has(name)),
-    ),
+    tables: Object.fromEntries(Object.entries(schema.tables).filter(([name]) => !runtimeSyncExcludedTables.has(name))),
     triggers: Object.fromEntries(
       Object.entries(schema.triggers).filter(([, trigger]) => !runtimeSyncExcludedTables.has(trigger.onName)),
     ),
