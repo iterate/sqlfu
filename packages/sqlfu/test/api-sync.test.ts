@@ -40,6 +40,7 @@ test('runtime sync cleanup only drops literal scratch-prefixed objects', () => {
   `);
 
   sync(fixture.client, {
+    scratchSchema: 'prefix',
     definitions: `
       create table xxsqlfuxsyncxkeep (
         id integer primary key

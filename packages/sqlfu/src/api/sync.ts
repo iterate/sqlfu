@@ -8,9 +8,52 @@ import type {SyncClient} from '../types.js';
 export interface RuntimeSyncOptions {
   definitions: string;
   allowDestructive?: boolean;
+  scratchSchema?: RuntimeSyncScratchSchema;
 }
 
+export type RuntimeSyncScratchSchema = 'scratch-db' | 'prefix';
+
 export function sync(client: SyncClient, input: RuntimeSyncOptions): void {
+  const scratchSchema = input.scratchSchema || defaultScratchSchema(client);
+  if (scratchSchema === 'prefix') {
+    syncWithPrefix(client, input);
+    return;
+  }
+
+  syncWithScratchDb(client, input);
+}
+
+function syncWithScratchDb(client: SyncClient, input: RuntimeSyncOptions): void {
+  const schemaName = createScratchSchemaName();
+  let attached = false;
+  try {
+    client.raw(`attach database ':memory:' as ${quoteIdentifier(schemaName)}`);
+    attached = true;
+
+    const baseline = inspectSqliteSchema(client);
+    applyDefinitionsToAttachedSchema(client, input.definitions, schemaName);
+    const desired = inspectSqliteSchema(client, schemaName);
+    const diffLines = planSchemaDiff({
+      baseline,
+      desired,
+      allowDestructive: input.allowDestructive !== false,
+    });
+
+    if (diffLines.length === 0) {
+      return;
+    }
+
+    client.transaction((tx) => {
+      tx.raw(diffLines.join('\n'));
+    });
+  } finally {
+    if (attached) {
+      client.raw(`detach database ${quoteIdentifier(schemaName)}`);
+    }
+  }
+}
+
+function syncWithPrefix(client: SyncClient, input: RuntimeSyncOptions): void {
   cleanupPrefixedObjects(client);
   try {
     const baseline = inspectSqliteSchema(client);
@@ -31,6 +74,14 @@ export function sync(client: SyncClient, input: RuntimeSyncOptions): void {
     });
   } finally {
     cleanupPrefixedObjects(client);
+  }
+}
+
+function applyDefinitionsToAttachedSchema(client: SyncClient, definitions: string, schemaName: string): void {
+  for (const statement of orderedSchemaStatements(definitions).map((value) =>
+    toAttachedSchemaStatement(value, schemaName),
+  )) {
+    client.raw(statement);
   }
 }
 
@@ -72,6 +123,29 @@ function toPrefixedSchemaStatement(statement: string): string {
   throw new Error('runtime sync definitions only support create table, create index, create view, and create trigger');
 }
 
+function toAttachedSchemaStatement(statement: string, schemaName: string): string {
+  const stripped = stripLeadingComments(statement);
+  if (/^create\s+virtual\s+table\b/iu.test(stripped)) {
+    throw new Error('runtime sync does not support sqlite virtual tables yet');
+  }
+  if (/^create\s+(?:temp|temporary)\s+/iu.test(stripped)) {
+    throw new Error('runtime sync scratch-db definitions do not support temp schema objects');
+  }
+  if (isCreateTableStatement(statement)) {
+    return qualifyCreateObjectName(statement, 'table', schemaName);
+  }
+  if (isCreateIndexStatement(statement)) {
+    return qualifyCreateIndexStatement(statement, schemaName);
+  }
+  if (isCreateViewStatement(statement)) {
+    return qualifyCreateObjectName(statement, 'view', schemaName);
+  }
+  if (isCreateTriggerStatement(statement)) {
+    return qualifyCreateTriggerStatement(statement, schemaName);
+  }
+  throw new Error('runtime sync definitions only support create table, create index, create view, and create trigger');
+}
+
 function isCreateTableStatement(statement: string): boolean {
   return /^create\s+(?:(?:temp|temporary)\s+)?table\b/iu.test(stripLeadingComments(statement));
 }
@@ -100,6 +174,7 @@ function prefixCreateObjectName(statement: string, kind: 'table' | 'view'): stri
       'iu',
     ),
     'name',
+    (name) => quoteIdentifier(`${syncObjectPrefix}${name}`),
   );
 }
 
@@ -112,12 +187,14 @@ function prefixCreateIndexStatement(statement: string): string {
         'iu',
       ),
       'name',
+      (name) => quoteIdentifier(`${syncObjectPrefix}${name}`),
     ),
     new RegExp(
       `^(${leadingCommentPattern}create\\s+(?:unique\\s+)?index\\s+(?:if\\s+not\\s+exists\\s+)?${identifierPattern}\\s+on\\s+)(?<table>${identifierPattern})`,
       'iu',
     ),
     'table',
+    (name) => quoteIdentifier(`${syncObjectPrefix}${name}`),
   );
 }
 
@@ -130,16 +207,59 @@ function prefixCreateTriggerStatement(statement: string): string {
         'iu',
       ),
       'name',
+      (name) => quoteIdentifier(`${syncObjectPrefix}${name}`),
     ),
     new RegExp(
       `^(${leadingCommentPattern}create\\s+(?:(?:temp|temporary)\\s+)?trigger\\s+(?:if\\s+not\\s+exists\\s+)?${identifierPattern}[\\s\\S]*?\\bon\\s+)(?<table>${identifierPattern})`,
       'iu',
     ),
     'table',
+    (name) => quoteIdentifier(`${syncObjectPrefix}${name}`),
   );
 }
 
-function replaceMatchedIdentifier(statement: string, pattern: RegExp, groupName: string): string {
+function qualifyCreateObjectName(statement: string, kind: 'table' | 'view', schemaName: string): string {
+  return replaceMatchedIdentifier(
+    statement,
+    new RegExp(
+      `^(${leadingCommentPattern}create\\s+${kind}\\s+(?:if\\s+not\\s+exists\\s+)?)(?<name>${identifierPattern})`,
+      'iu',
+    ),
+    'name',
+    (name) => `${quoteIdentifier(schemaName)}.${quoteIdentifier(name)}`,
+  );
+}
+
+function qualifyCreateIndexStatement(statement: string, schemaName: string): string {
+  return replaceMatchedIdentifier(
+    statement,
+    new RegExp(
+      `^(${leadingCommentPattern}create\\s+(?:unique\\s+)?index\\s+(?:if\\s+not\\s+exists\\s+)?)(?<name>${identifierPattern})`,
+      'iu',
+    ),
+    'name',
+    (name) => `${quoteIdentifier(schemaName)}.${quoteIdentifier(name)}`,
+  );
+}
+
+function qualifyCreateTriggerStatement(statement: string, schemaName: string): string {
+  return replaceMatchedIdentifier(
+    statement,
+    new RegExp(
+      `^(${leadingCommentPattern}create\\s+trigger\\s+(?:if\\s+not\\s+exists\\s+)?)(?<name>${identifierPattern})`,
+      'iu',
+    ),
+    'name',
+    (name) => `${quoteIdentifier(schemaName)}.${quoteIdentifier(name)}`,
+  );
+}
+
+function replaceMatchedIdentifier(
+  statement: string,
+  pattern: RegExp,
+  groupName: string,
+  replacement: (name: string) => string,
+): string {
   const match = pattern.exec(statement);
   const rawIdentifier = match?.groups?.[groupName];
   const beforeIdentifier = match?.[1];
@@ -147,7 +267,7 @@ function replaceMatchedIdentifier(statement: string, pattern: RegExp, groupName:
     throw new Error(`runtime sync could not parse schema definition statement: ${statement}`);
   }
   const start = match.index + beforeIdentifier.length;
-  return `${statement.slice(0, start)}${quoteIdentifier(`${syncObjectPrefix}${parseIdentifierName(rawIdentifier)}`)}${statement.slice(start + rawIdentifier.length)}`;
+  return `${statement.slice(0, start)}${replacement(parseIdentifierName(rawIdentifier))}${statement.slice(start + rawIdentifier.length)}`;
 }
 
 function parseIdentifierName(rawIdentifier: string): string {
@@ -248,6 +368,30 @@ function cleanupPrefixedObjects(client: SyncClient): void {
       client.run({sql: `drop ${type} if exists main.${quoteIdentifier(row.name)}`, args: []});
     }
   }
+}
+
+function defaultScratchSchema(client: SyncClient): RuntimeSyncScratchSchema {
+  return isDurableObjectClient(client) ? 'prefix' : 'scratch-db';
+}
+
+function isDurableObjectClient(client: SyncClient): boolean {
+  const driver = client.driver;
+  if (!isObject(driver) || !('sql' in driver)) {
+    return false;
+  }
+  const sqlStorage = driver.sql;
+  return isObject(sqlStorage) && typeof sqlStorage.exec === 'function';
+}
+
+let scratchSchemaSequence = 0;
+
+function createScratchSchemaName(): string {
+  scratchSchemaSequence += 1;
+  return `sqlfu_sync_${scratchSchemaSequence}`;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 const syncObjectPrefix = '__sqlfu_sync_';

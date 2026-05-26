@@ -7,6 +7,7 @@ dist
 packages/sqlfu/.typesql
 *.tsbuildinfo
 tmp
+.clawpatch/
 .claude/*.lock
 .claude/*.local.*
 .env

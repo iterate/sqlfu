@@ -10,7 +10,7 @@
 import {excludeReservedSqliteObjects} from '../../sqlite-text.js';
 import {awaited, driveAsync, driveSync, type DualGenerator} from '../../dual-dispatch.js';
 import type {AsyncClient, Client, SyncClient} from '../../types.js';
-import {quoteSqlString} from './identifiers.js';
+import {quoteIdentifier, quoteSqlString} from './identifiers.js';
 import {
   extractWhereClause,
   normalizeComparableSql,
@@ -44,6 +44,8 @@ export function inspectSqliteSchema(
 
 function* inspectSqliteSchemaGen(client: Client, schemaName: string): DualGenerator<SqliteInspectedDatabase> {
   yield* assertNoUnsupportedSchemaFeatures(client, schemaName);
+  const schemaIdentifier = quoteIdentifier(schemaName);
+  const schemaNameLiteral = quoteSqlString(schemaName);
 
   const objects = yield* awaited(
     client.all<{
@@ -53,7 +55,7 @@ function* inspectSqliteSchemaGen(client: Client, schemaName: string): DualGenera
     }>({
       sql: `
       select type, name, sql
-      from ${schemaName}.sqlite_schema
+      from ${schemaIdentifier}.sqlite_schema
       where type in ('table', 'view')
         and ${excludeReservedSqliteObjects}
       order by type, name
@@ -87,7 +89,7 @@ function* inspectSqliteSchemaGen(client: Client, schemaName: string): DualGenera
         pk: number;
         hidden: number;
       }>({
-        sql: `select name, type, "notnull", dflt_value, pk, hidden from pragma_table_xinfo(${tableNameLiteral}) order by cid`,
+        sql: `select name, type, "notnull", dflt_value, pk, hidden from pragma_table_xinfo(${tableNameLiteral}, ${schemaNameLiteral}) order by cid`,
         args: [],
       }),
     );
@@ -98,7 +100,7 @@ function* inspectSqliteSchemaGen(client: Client, schemaName: string): DualGenera
         origin: string;
         partial: number;
       }>({
-        sql: `select name, "unique", origin, partial from pragma_index_list(${tableNameLiteral}) order by name`,
+        sql: `select name, "unique", origin, partial from pragma_index_list(${tableNameLiteral}, ${schemaNameLiteral}) order by name`,
         args: [],
       }),
     );
@@ -113,7 +115,7 @@ function* inspectSqliteSchemaGen(client: Client, schemaName: string): DualGenera
         on_delete: string;
         match: string;
       }>({
-        sql: `select id, seq, "table", "from", "to", on_update, on_delete, match from pragma_foreign_key_list(${tableNameLiteral}) order by id, seq`,
+        sql: `select id, seq, "table", "from", "to", on_update, on_delete, match from pragma_foreign_key_list(${tableNameLiteral}, ${schemaNameLiteral}) order by id, seq`,
         args: [],
       }),
     );
@@ -134,13 +136,13 @@ function* inspectSqliteSchemaGen(client: Client, schemaName: string): DualGenera
           name: string | null;
           key: number;
         }>({
-          sql: `select seqno, cid, name, key from pragma_index_xinfo(${indexNameLiteral}) where key = 1 order by seqno`,
+          sql: `select seqno, cid, name, key from pragma_index_xinfo(${indexNameLiteral}, ${schemaNameLiteral}) where key = 1 order by seqno`,
           args: [],
         }),
       );
       const createSqlRow = yield* awaited(
         client.all<{sql: string | null}>({
-          sql: `select sql from ${schemaName}.sqlite_schema where type = 'index' and name = ${indexNameLiteral}`,
+          sql: `select sql from ${schemaIdentifier}.sqlite_schema where type = 'index' and name = ${indexNameLiteral}`,
           args: [],
         }),
       );
@@ -198,7 +200,7 @@ function* inspectSqliteSchemaGen(client: Client, schemaName: string): DualGenera
     }>({
       sql: `
       select name, tbl_name, sql
-      from ${schemaName}.sqlite_schema
+      from ${schemaIdentifier}.sqlite_schema
       where type = 'trigger'
         and name not like 'sqlite_%'
       order by name
@@ -221,6 +223,7 @@ function* inspectSqliteSchemaGen(client: Client, schemaName: string): DualGenera
 }
 
 function* assertNoUnsupportedSchemaFeatures(client: Client, schemaName: string): DualGenerator<void> {
+  const schemaIdentifier = quoteIdentifier(schemaName);
   const unsupportedSqlRows = yield* awaited(
     client.all<{
       type: string;
@@ -229,7 +232,7 @@ function* assertNoUnsupportedSchemaFeatures(client: Client, schemaName: string):
     }>({
       sql: `
       select type, name, sql
-      from ${schemaName}.sqlite_schema
+      from ${schemaIdentifier}.sqlite_schema
       where sql is not null
         and name not like 'sqlite_%'
       order by type, name
