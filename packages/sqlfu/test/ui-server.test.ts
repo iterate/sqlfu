@@ -119,8 +119,14 @@ test('schema.get exposes forward and reverse foreign-key relations for the studi
       };
     `,
     'definitions.sql': `
+      create table categories (
+        category_id integer primary key,
+        category_name text not null
+      );
+
       create table products (
         product_id integer primary key,
+        category_id integer not null references categories,
         product_name text not null
       );
 
@@ -128,6 +134,19 @@ test('schema.get exposes forward and reverse foreign-key relations for the studi
         order_id integer not null,
         product_id integer not null references products(product_id),
         quantity integer not null
+      );
+
+      create table shipment_batches (
+        order_id integer not null,
+        product_id integer not null,
+        primary key (order_id, product_id)
+      );
+
+      create table shipment_events (
+        order_id integer not null,
+        product_id integer not null,
+        event_name text not null,
+        foreign key (order_id, product_id) references shipment_batches
       );
     `,
     'sql/.gitkeep': '',
@@ -137,8 +156,14 @@ test('schema.get exposes forward and reverse foreign-key relations for the studi
   const database = new DatabaseSync(path.join(root, 'app.db'));
   try {
     database.exec(`
+      create table categories (
+        category_id integer primary key,
+        category_name text not null
+      );
+
       create table products (
         product_id integer primary key,
+        category_id integer not null references categories,
         product_name text not null
       );
 
@@ -146,6 +171,19 @@ test('schema.get exposes forward and reverse foreign-key relations for the studi
         order_id integer not null,
         product_id integer not null references products(product_id),
         quantity integer not null
+      );
+
+      create table shipment_batches (
+        order_id integer not null,
+        product_id integer not null,
+        primary key (order_id, product_id)
+      );
+
+      create table shipment_events (
+        order_id integer not null,
+        product_id integer not null,
+        event_name text not null,
+        foreign key (order_id, product_id) references shipment_batches
       );
     `);
   } finally {
@@ -156,6 +194,17 @@ test('schema.get exposes forward and reverse foreign-key relations for the studi
 
   await expect(fixture.client.schema.get()).resolves.toMatchObject({
     relations: expect.arrayContaining([
+      expect.objectContaining({
+        name: 'categories',
+        foreignKeys: [],
+        referencedBy: [
+          {
+            relation: 'products',
+            columns: ['category_id'],
+            referencedColumns: ['category_id'],
+          },
+        ],
+      }),
       expect.objectContaining({
         name: 'order_details',
         foreignKeys: [
@@ -169,7 +218,13 @@ test('schema.get exposes forward and reverse foreign-key relations for the studi
       }),
       expect.objectContaining({
         name: 'products',
-        foreignKeys: [],
+        foreignKeys: [
+          {
+            columns: ['category_id'],
+            referencedRelation: 'categories',
+            referencedColumns: ['category_id'],
+          },
+        ],
         referencedBy: [
           {
             relation: 'order_details',
@@ -177,6 +232,28 @@ test('schema.get exposes forward and reverse foreign-key relations for the studi
             referencedColumns: ['product_id'],
           },
         ],
+      }),
+      expect.objectContaining({
+        name: 'shipment_batches',
+        foreignKeys: [],
+        referencedBy: [
+          {
+            relation: 'shipment_events',
+            columns: ['order_id', 'product_id'],
+            referencedColumns: ['order_id', 'product_id'],
+          },
+        ],
+      }),
+      expect.objectContaining({
+        name: 'shipment_events',
+        foreignKeys: [
+          {
+            columns: ['order_id', 'product_id'],
+            referencedRelation: 'shipment_batches',
+            referencedColumns: ['order_id', 'product_id'],
+          },
+        ],
+        referencedBy: [],
       }),
     ]),
   });

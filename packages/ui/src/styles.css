@@ -808,15 +808,21 @@ h3 {
 
 .relation-preview-popover {
   width: min(44rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: hidden;
 }
 
 .relation-preview-stack {
   display: grid;
   gap: 1rem;
+  max-height: calc(100vh - 3.4rem);
+  overflow: auto;
+  min-width: 0;
 }
 
 .relation-preview-body {
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .relation-preview-sql {
@@ -826,7 +832,10 @@ h3 {
   border-radius: 0.35rem;
   background: var(--panel-tint-faint);
   color: var(--muted);
-  white-space: normal;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 8rem;
+  overflow: auto;
 }
 
 .relation-preview-table-wrap {
@@ -849,6 +858,9 @@ h3 {
   border-bottom: 1px solid var(--line);
   text-align: left;
   white-space: nowrap;
+  max-width: 24rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .relation-preview-table th {
