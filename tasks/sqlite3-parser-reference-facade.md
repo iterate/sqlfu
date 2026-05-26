@@ -39,7 +39,7 @@ Build on draft PR #111 by tightening the `sqlite3-parser` integration into a sma
 - [x] Add focused tests for partial-index `where` reference extraction. _Extended `packages/sqlfu/test/schemadiff/fixtures/drop-column.sql` with false positives for `lower(x)`/`collate nocase` and a true positive for `where y > 0`._
 - [x] Run targeted tests. _Ran `pnpm --filter sqlfu exec vitest run test/schemadiff/fixtures.test.ts`, `pnpm --filter sqlfu typecheck`, and targeted `oxfmt --check`._
 - [x] Update this task with implementation notes. _Recorded the implementation and verification notes below._
-- [ ] Push the branch and keep the PR body clear that it is stacked on PR #111.
+- [x] Push the branch and keep the PR body clear that it is stacked on PR #111. _Pushed `bedtime/2026-05-27-pr111-parser-facade` and updated PR #138 with base PR #111 plus before/after fixture behavior._
 
 ## Implementation Notes
 
@@ -47,3 +47,4 @@ Build on draft PR #111 by tightening the `sqlite3-parser` integration into a sma
 - 2026-05-27: Extended the parser-backed reference facade to parse `CreateIndexStmt.whereClause` and return sqlfu-owned referenced-column facts. The fallback path still uses sqlfu tokenization when the parser cannot recognize the index SQL.
 - 2026-05-27: `plan.ts` no longer imports `sqlMentionsIdentifier`; direct drop-column eligibility asks the facade whether any partial-index `where` expression references removed columns.
 - 2026-05-27: Added fixtures for dropping columns named `lower` and `nocase` without treating function/collation names as column references, plus a rebuild case for a real dropped-column reference in `where y > 0`.
+- 2026-05-27: Pushed implementation commit `9cd6352` and updated PR #138 as a stacked follow-up to PR #111.
