@@ -30,9 +30,9 @@ function syncWithScratchDb(client: SyncClient, input: RuntimeSyncOptions): void 
     client.raw(`attach database ':memory:' as ${quoteIdentifier(schemaName)}`);
     attached = true;
 
-    const baseline = inspectSqliteSchema(client);
+    const baseline = excludeRuntimeSyncTables(inspectSqliteSchema(client));
     applyDefinitionsToAttachedSchema(client, input.definitions, schemaName);
-    const desired = inspectSqliteSchema(client, schemaName);
+    const desired = excludeRuntimeSyncTables(inspectSqliteSchema(client, schemaName));
     const diffLines = planSchemaDiff({
       baseline,
       desired,
@@ -56,9 +56,9 @@ function syncWithScratchDb(client: SyncClient, input: RuntimeSyncOptions): void 
 function syncWithPrefix(client: SyncClient, input: RuntimeSyncOptions): void {
   cleanupPrefixedObjects(client);
   try {
-    const baseline = inspectSqliteSchema(client);
+    const baseline = excludeRuntimeSyncTables(inspectSqliteSchema(client));
     applyDefinitionsToPrefixedSchema(client, input.definitions);
-    const desired = unprefixInspectedSchema(inspectSqliteSchema(client));
+    const desired = excludeRuntimeSyncTables(unprefixInspectedSchema(inspectSqliteSchema(client)));
     const diffLines = planSchemaDiff({
       baseline,
       desired,
@@ -370,6 +370,18 @@ function cleanupPrefixedObjects(client: SyncClient): void {
   }
 }
 
+function excludeRuntimeSyncTables(schema: SqliteInspectedDatabase): SqliteInspectedDatabase {
+  return {
+    ...schema,
+    tables: Object.fromEntries(
+      Object.entries(schema.tables).filter(([name]) => !runtimeSyncExcludedTables.has(name)),
+    ),
+    triggers: Object.fromEntries(
+      Object.entries(schema.triggers).filter(([, trigger]) => !runtimeSyncExcludedTables.has(trigger.onName)),
+    ),
+  };
+}
+
 function defaultScratchSchema(client: SyncClient): RuntimeSyncScratchSchema {
   return isDurableObjectClient(client) ? 'prefix' : 'scratch-db';
 }
@@ -395,6 +407,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 const syncObjectPrefix = '__sqlfu_sync_';
+const runtimeSyncExcludedTables = new Set(['sqlfu_migrations', 'd1_migrations']);
 const leadingCommentPattern = String.raw`(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*`;
 const identifierPattern =
   String.raw`(?:"(?:[^"]|"")+"|` + '`(?:[^`]|``)+`' + String.raw`|\[[^\]]+\]|[a-z_][a-z0-9_$]*)`;
