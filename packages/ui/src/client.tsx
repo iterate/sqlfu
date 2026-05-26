@@ -801,11 +801,7 @@ function SchemaPanel(input: {projectName: string; check: SchemaCheckResponse; au
           <p className="muted">{input.projectName}</p>
         </div>
         {lastCommand && lastCommandStatus ? (
-          <p
-            className={`schema-command-status ${lastCommandStatus}`}
-            role="status"
-            aria-live="polite"
-          >
+          <p className={`schema-command-status ${lastCommandStatus}`} role="status" aria-live="polite">
             {lastCommandStatus === 'running' ? `Running ${lastCommand}…` : null}
             {lastCommandStatus === 'success' ? (
               <>
@@ -1789,7 +1785,6 @@ class DataTextCellTemplate extends reactGrid.TextCellTemplate {
   ): reactGrid.Compatible<DataTextCell> {
     return {...super.update(cell, cellToMerge), meta: cell.meta};
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   render(cell: reactGrid.Compatible<DataTextCell>, isInEditMode: boolean, onCellChanged: any): any {
     const inner = super.render(cell, isInEditMode, onCellChanged);
     if (isInEditMode || !cell.meta) return inner;
@@ -1812,7 +1807,6 @@ class DataNumberCellTemplate extends reactGrid.NumberCellTemplate {
   ): reactGrid.Compatible<DataNumberCell> {
     return {...super.update(cell, cellToMerge), meta: cell.meta};
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   render(cell: reactGrid.Compatible<DataNumberCell>, isInEditMode: boolean, onCellChanged: any): any {
     const inner = super.render(cell, isInEditMode, onCellChanged);
     if (isInEditMode || !cell.meta) return inner;
