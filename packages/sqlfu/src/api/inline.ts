@@ -1,7 +1,6 @@
 import {applyMigrations, migrationName, type Migration} from '../migrations/index.js';
 import {sqlReturnsRows} from '../sqlite-text.js';
 import type {
-  AsyncClient,
   Client,
   PreparedStatementParams,
   QueryMetadata,

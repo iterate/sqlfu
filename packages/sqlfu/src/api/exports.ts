@@ -150,16 +150,6 @@ async function createNodeSqlfuApi(input: NodeApiOptions) {
   });
 }
 
-async function loadNodeSqlfuContext(input: NodeApiOptions) {
-  const {project, host} = await loadInitializedNodeProject(input);
-  if ('inline' in project) {
-    throw new Error(
-      'This command requires a file-backed sqlfu config. inlineSqlfu modules currently support generate and draft.',
-    );
-  }
-  return {config: project.config, host};
-}
-
 async function loadNodeProjectState(input: NodeApiOptions) {
   const projectRoot = input.projectRoot || (await load<typeof import('node:process')>('node:process')).cwd();
   const {loadProjectStateFrom, loadProjectStateFromConfigPath} =

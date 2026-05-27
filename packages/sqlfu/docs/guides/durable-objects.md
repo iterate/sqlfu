@@ -1,7 +1,10 @@
 # Durable Objects
 
-Planning to try sqlfu with Durable Objects? Start with the normal
-[Getting Started](../getting-started.md) workflow, then change two things:
+Planning to try sqlfu with Durable Objects? You can use either the normal
+[Getting Started](../getting-started.md) workflow or a single inline TypeScript
+module when one Durable Object owns one small schema.
+
+The normal file-backed project changes two things:
 
 1. Keep a separate `sqlfu.config.ts`, `definitions.sql`, `migrations/`, and
    `sql/` directory for each Durable Object class that owns its own storage.
@@ -10,6 +13,67 @@ Planning to try sqlfu with Durable Objects? Start with the normal
 
 That is the whole shape. You still author SQL first, draft migration files, and
 generate typed wrappers from `.sql` query files.
+
+## Inline module
+
+For a self-contained Durable Object, keep definitions, migrations, and queries
+in the Worker module and point `--config` at that module:
+
+```ts
+import {DurableObject} from 'cloudflare:workers';
+import {createDurableObjectClient} from 'sqlfu';
+import {inlineSqlfu, sql} from 'sqlfu/api';
+
+const counterDb = inlineSqlfu({
+  definitions: sql`
+    create table counters (
+      name text primary key not null,
+      value integer not null default 0
+    );
+  `,
+  migrations: [
+    {
+      name: '20260506000000_create_counters',
+      content: sql`
+        create table counters (
+          name text primary key not null,
+          value integer not null default 0
+        );
+      `,
+    },
+  ],
+  queries: {
+    incrementCounter: sql`
+      insert into counters (name, value)
+      values (:name, 1)
+      on conflict (name) do update set value = value + 1
+      returning name, value
+    `,
+  },
+});
+
+export class CounterObject extends DurableObject {
+  db: typeof counterDb.$type;
+
+  constructor(ctx: DurableObjectState, env: {}) {
+    super(ctx, env);
+    this.db = counterDb(createDurableObjectClient(ctx.storage));
+    this.db.migrate();
+  }
+}
+```
+
+Then run:
+
+```sh
+npx sqlfu --config src/durable-objects/counter/counter.ts draft
+npx sqlfu --config src/durable-objects/counter/counter.ts generate
+```
+
+`draft` appends new `{name, content: sql\`...\`}` entries to the inline
+`migrations` array. `generate` writes inferred generic types onto each inline
+query `sql` template. The source must keep one parseable `inlineSqlfu({...})`
+object literal with `definitions`, `migrations`, and `queries` properties.
 
 ## Project shape
 
