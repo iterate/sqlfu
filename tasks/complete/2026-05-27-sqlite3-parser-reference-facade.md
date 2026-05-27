@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 size: medium
 branch: bedtime/2026-05-27-pr111-parser-facade
 base: issue-110-sqlite3-parser-schemadiff
@@ -12,7 +12,7 @@ stacked_on_pr: 111
 
 - Done for this slice: partial-index `where` references now go through the parser facade instead of `plan.ts` token scanning.
 - Main completed pieces: facade helper in `references.ts`, planner callsite swap, and drop-column fixtures for `lower(...)`, `collate nocase`, and real `where y > 0` references.
-- Main missing pieces: broader CI beyond the targeted `sqlfu` fixture suite/typecheck.
+- Main missing pieces: none for this slice; PR review and CI are complete.
 
 ## Goal
 
