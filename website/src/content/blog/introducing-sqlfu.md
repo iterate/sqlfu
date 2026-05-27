@@ -68,7 +68,7 @@ import {defineConfig} from 'sqlfu';
 export default defineConfig({
    db: 'app.sqlite',
    definitions: 'db/definitions.sql',
-   queries: 'db/sql',
+   queries: 'db',
    migrations: 'db/migrations',
 });
 ```
@@ -77,7 +77,7 @@ Then you'd write your database schema *by hand* (or let your agent do it, if you
 
 ```sql [filename=db/definitions.sql]
 create table todos(
-   id int primary key,
+   id integer primary key,
    text text not null,
    completed_at int
 );
@@ -102,7 +102,106 @@ You can then run `sqlfu generate` to get strongly-typed query helpers:
 <summary>db/.generated/queries.sql.ts</summary>
 
 ```ts
-// fill this in...
+import type {Client} from 'sqlfu';
+
+const addTodoSql = `insert into todos (text) values (?);`;
+const addTodoQuery = (params: addTodo.Params) => ({
+	name: "addTodo",
+	sql: addTodoSql,
+	args: [params.text],
+});
+
+export const addTodo = Object.assign(
+	async function addTodo(client: Client, params: addTodo.Params) {
+		return client.run(addTodoQuery(params));
+	},
+	{ sql: addTodoSql, query: addTodoQuery },
+);
+
+export namespace addTodo {
+	export type Params = {
+		text: string;
+	};
+}
+
+const listTodosSql = `select * from todos limit ? offset ?;`;
+const listTodosQuery = (params: listTodos.Params) => ({
+	name: "listTodos",
+	sql: listTodosSql,
+	args: [params.limit, params.offset],
+});
+
+function listTodosMapResult(row: listTodos.RawResult): listTodos.Result {
+	return {
+		id: row.id,
+		text: row.text,
+		completedAt: row.completed_at,
+	};
+}
+
+export const listTodos = Object.assign(
+	async function listTodos(client: Client, params: listTodos.Params): Promise<listTodos.Result[]> {
+		const rows = await client.all<listTodos.RawResult>(listTodosQuery(params));
+		return rows.map(listTodosMapResult);
+	},
+	{ sql: listTodosSql, query: listTodosQuery, mapResult: listTodosMapResult },
+);
+
+export namespace listTodos {
+	export type Params = {
+		limit: number;
+		offset: number;
+	};
+	export type RawResult = {
+		id: number;
+		text: string;
+		completed_at?: number;
+	};
+	export type Result = {
+		id: number;
+		text: string;
+		completedAt?: number;
+	};
+}
+
+const findTodosSql = `select * from todos where text like ?;`;
+const findTodosQuery = (params: findTodos.Params) => ({
+	name: "findTodos",
+	sql: findTodosSql,
+	args: [params.value],
+});
+
+function findTodosMapResult(row: findTodos.RawResult): findTodos.Result {
+	return {
+		id: row.id,
+		text: row.text,
+		completedAt: row.completed_at,
+	};
+}
+
+export const findTodos = Object.assign(
+	async function findTodos(client: Client, params: findTodos.Params): Promise<findTodos.Result[]> {
+		const rows = await client.all<findTodos.RawResult>(findTodosQuery(params));
+		return rows.map(findTodosMapResult);
+	},
+	{ sql: findTodosSql, query: findTodosQuery, mapResult: findTodosMapResult },
+);
+
+export namespace findTodos {
+	export type Params = {
+		value: string;
+	};
+	export type RawResult = {
+		id: number;
+		text: string;
+		completed_at?: number;
+	};
+	export type Result = {
+		id: number;
+		text: string;
+		completedAt?: number;
+	};
+}
 ```
 
 </details>
@@ -110,31 +209,33 @@ You can then run `sqlfu generate` to get strongly-typed query helpers:
 Which you can use in your app:
 
 ```ts
-// fix up the pseudocode in this
 import {DatabaseSync} from 'node:sqlite';
+import {Hono} from 'hono';
 import {createNodeSqliteClient} from 'sqlfu';
 
 import * as queries from '../db/.generated/queries.sql.ts';
 
-const db = createNodeSqliteClient(new DatbaseSync('app.sqlite'));
+const app = new Hono();
+const db = createNodeSqliteClient(new DatabaseSync('app.sqlite'));
 
-app.get("/", async () => {
-  const todos = await queries.listTodos(db, { limit: 10 });
-  const bullets = todos.map(t => `- ${escapeHTML(text)}`).join('\n');
-  const html = `
-    <form action="post('/add-todo', m.value)">
-      <input name="m" />
-      <button action="submit">add</button>
+app.get('/', async (c) => {
+  const todos = await queries.listTodos(db, {limit: 10, offset: 0});
+
+  return c.html(`
+    <form method="post" action="/add-todo">
+      <input name="text" required />
+      <button>add</button>
     </form>
-    <pre>${bullets}</pre>
-  `;
-  return c.text(html);
+    <ul>
+      ${todos.map((todo) => `<li>${escapeHTML(todo.text)}</li>`).join('\n')}
+    </ul>
+  `);
 });
 
-app.post("/add-todo", async (c) => {
-   const text = await c.req.raw.text();
-   await queries.addTodo(db, { text });
-   return c.json({ ok: true });
+app.post('/add-todo', async (c) => {
+  const form = await c.req.formData();
+  await queries.addTodo(db, {text: String(form.get('text') || '')});
+  return c.redirect('/');
 });
 ```
 
@@ -142,7 +243,7 @@ To sync your dev database to match `definitions.sql`, you can run `sqlfu sync` t
 
 ```diff
 create table todos(
-   id int primary key,
+   id integer primary key,
    text text not null,
    completed_at int,
 +  completion_note text
@@ -153,7 +254,7 @@ When you run `sqlfu draft` again, a new migration file `00002_alter-table-todos.
 
 ```sql
 alter table todos
-add colummn completion_note text;
+add column completion_note text;
 ```
 
 From then, you just... build your app. If you want to change your schema, update definitions.sql. Write/edit/delete your queries freely. sqlfu will make sure they're correct and give you strong types for them.
