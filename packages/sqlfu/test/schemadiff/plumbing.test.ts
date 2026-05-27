@@ -9,6 +9,7 @@ import {createNodeHost, createAsyncNodeSqliteClient} from '../../src/node/host.j
 import {extractSchema} from '../../src/sqlite-text.js';
 import {sqliteDialect} from '../../src/dialect.js';
 import {applyMigrations} from '../../src/migrations/index.js';
+import {inspectSqliteSchemaSql} from '../../src/schemadiff/sqlite/index.js';
 import {parseSchemadiffFixture, runFixtureCase} from './fixture-helpers.js';
 
 const sharedHost = await createNodeHost();
@@ -100,6 +101,43 @@ test('diffSchemaSql rebuilds a table when sqlite needs semantic constraint chang
     targetDb.close();
     await fs.rm(root, {recursive: true, force: true});
   }
+});
+
+test('schema diff applies create statements ordered by tokenized statement kind', async () => {
+  await expect(
+    inspectSqliteSchemaSql(
+      sharedHost,
+      `
+        create /* before kind */ index posts_slug on posts (slug);
+        create /* before kind */ table posts (slug text not null);
+      `,
+    ),
+  ).resolves.toMatchObject({
+    tables: {
+      posts: {
+        indexes: {
+          posts_slug: {
+            columns: ['slug'],
+          },
+        },
+      },
+    },
+  });
+});
+
+test('schema diff virtual-table guard ignores comments and string literals', async () => {
+  const sql = `
+    -- create virtual table ignored_comment using fts5(body);
+    create table posts (note text default 'create virtual table');
+  `;
+
+  await expect(
+    sqliteDialect().diffSchema(sharedHost, {
+      baselineSql: sql,
+      desiredSql: sql,
+      allowDestructive: true,
+    }),
+  ).resolves.toEqual([]);
 });
 
 const migraEquivalentFixturePath = path.join(import.meta.dirname, 'fixtures', 'migra-equivalents.sql');

@@ -161,6 +161,88 @@ test('runtime sync cleanup only drops literal scratch-prefixed objects', () => {
   ).toMatchObject([{id: 1}]);
 });
 
+test('runtime sync orders commented quoted create definitions by statement kind', () => {
+  using fixture = createRuntimeSyncFixture();
+
+  sync(fixture.client, {
+    definitions: `
+      /* index intentionally appears before its table */
+      create /* before kind */ index "select_slug" on "select" (slug);
+
+      -- quoted keyword identifier
+      create /* before kind */ table "select" (
+        slug text not null
+      );
+    `,
+  });
+
+  expect(
+    fixture.client.all<{type: string; name: string; tbl_name: string}>(sql`
+      select type, name, tbl_name
+      from sqlite_schema
+      where name in ('select', 'select_slug')
+      order by type, name
+    `),
+  ).toMatchObject([
+    {type: 'index', name: 'select_slug', tbl_name: 'select'},
+    {type: 'table', name: 'select', tbl_name: 'select'},
+  ]);
+});
+
+test('runtime sync rewrites bare identifiers that contain dollar signs', () => {
+  using fixture = createRuntimeSyncFixture();
+
+  sync(fixture.client, {
+    definitions: `
+      create table foo$bar (
+        id integer primary key
+      );
+    `,
+  });
+
+  expect(
+    fixture.client.all<{name: string}>(sql`
+      select name
+      from sqlite_schema
+      where type = 'table'
+        and name = 'foo$bar'
+    `),
+  ).toMatchObject([{name: 'foo$bar'}]);
+});
+
+test('scratch-db runtime sync rewrites schema-qualified create object names', () => {
+  using fixture = createRuntimeSyncFixture();
+
+  sync(fixture.client, {
+    scratchSchema: 'scratch-db',
+    definitions: `
+      create table main.posts (
+        id integer primary key,
+        slug text not null
+      );
+
+      create index main.posts_slug on posts (slug);
+
+      create trigger main.posts_ai after insert on posts begin
+        select 1;
+      end;
+    `,
+  });
+
+  expect(
+    fixture.client.all<{type: string; name: string; tbl_name: string}>(sql`
+      select type, name, tbl_name
+      from sqlite_schema
+      where name in ('posts', 'posts_ai', 'posts_slug')
+      order by type, name
+    `),
+  ).toMatchObject([
+    {type: 'index', name: 'posts_slug', tbl_name: 'posts'},
+    {type: 'table', name: 'posts', tbl_name: 'posts'},
+    {type: 'trigger', name: 'posts_ai', tbl_name: 'posts'},
+  ]);
+});
+
 function createRuntimeSyncFixture() {
   const db = new BetterSqlite3(':memory:');
   return {

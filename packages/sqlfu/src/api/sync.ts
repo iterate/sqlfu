@@ -2,6 +2,11 @@ import {quoteIdentifier} from '../schemadiff/sqlite/identifiers.js';
 import {inspectSqliteSchema} from '../schemadiff/sqlite/inspect.js';
 import {planSchemaDiff} from '../schemadiff/sqlite/plan.js';
 import type {SqliteInspectedDatabase} from '../schemadiff/sqlite/types.js';
+import {
+  classifySqliteCreateStatement,
+  replaceSqliteIdentifierSpan,
+  type SqliteIdentifierSpan,
+} from '../sqlite-parser.js';
 import {splitSqlStatements} from '../sqlite-text.js';
 import type {SyncClient} from '../types.js';
 
@@ -92,195 +97,112 @@ function applyDefinitionsToPrefixedSchema(client: SyncClient, definitions: strin
 }
 
 function orderedSchemaStatements(sql: string): string[] {
-  const statements = splitSqlStatements(sql);
+  const statements = splitSqlStatements(sql).map((statement) => ({
+    statement,
+    createStatement: classifySqliteCreateStatement(statement),
+  }));
   return [
-    ...statements.filter((statement) => isCreateTableStatement(statement)),
-    ...statements.filter((statement) => isCreateIndexStatement(statement)),
-    ...statements.filter((statement) => isCreateViewStatement(statement)),
+    ...statements.filter((entry) => entry.createStatement?.kind === 'table'),
+    ...statements.filter((entry) => entry.createStatement?.kind === 'index'),
+    ...statements.filter((entry) => entry.createStatement?.kind === 'view'),
     ...statements.filter(
-      (statement) =>
-        !isCreateTableStatement(statement) && !isCreateIndexStatement(statement) && !isCreateViewStatement(statement),
+      (entry) =>
+        entry.createStatement?.kind !== 'table' &&
+        entry.createStatement?.kind !== 'index' &&
+        entry.createStatement?.kind !== 'view',
     ),
-  ];
+  ].map((entry) => entry.statement);
 }
 
 function toPrefixedSchemaStatement(statement: string): string {
-  if (/^create\s+virtual\s+table\b/iu.test(stripLeadingComments(statement))) {
-    throw new Error('runtime sync does not support sqlite virtual tables yet');
+  const createStatement = classifySqliteCreateStatement(statement);
+  if (!createStatement) {
+    throw new Error(
+      'runtime sync definitions only support create table, create index, create view, and create trigger',
+    );
   }
-  if (isCreateTableStatement(statement)) {
-    return prefixCreateObjectName(statement, 'table');
+  switch (createStatement.kind) {
+    case 'virtual-table':
+      throw new Error('runtime sync does not support sqlite virtual tables yet');
+    case 'table':
+    case 'view':
+      return replaceRequiredIdentifier(statement, createStatement.name, (name) =>
+        quoteIdentifier(`${syncObjectPrefix}${name}`),
+      );
+    case 'index':
+    case 'trigger':
+      return replaceRequiredIdentifiers(statement, [
+        {identifier: createStatement.name, replacement: (name) => quoteIdentifier(`${syncObjectPrefix}${name}`)},
+        {identifier: createStatement.onName, replacement: (name) => quoteIdentifier(`${syncObjectPrefix}${name}`)},
+      ]);
   }
-  if (isCreateIndexStatement(statement)) {
-    return prefixCreateIndexStatement(statement);
-  }
-  if (isCreateViewStatement(statement)) {
-    return prefixCreateObjectName(statement, 'view');
-  }
-  if (isCreateTriggerStatement(statement)) {
-    return prefixCreateTriggerStatement(statement);
-  }
-  throw new Error('runtime sync definitions only support create table, create index, create view, and create trigger');
 }
 
 function toAttachedSchemaStatement(statement: string, schemaName: string): string {
-  const stripped = stripLeadingComments(statement);
-  if (/^create\s+virtual\s+table\b/iu.test(stripped)) {
+  const createStatement = classifySqliteCreateStatement(statement);
+  if (!createStatement) {
+    throw new Error(
+      'runtime sync definitions only support create table, create index, create view, and create trigger',
+    );
+  }
+  if (createStatement.kind === 'virtual-table') {
     throw new Error('runtime sync does not support sqlite virtual tables yet');
   }
-  if (/^create\s+(?:temp|temporary)\s+/iu.test(stripped)) {
+  if (createStatement.temporary) {
     throw new Error('runtime sync scratch-db definitions do not support temp schema objects');
   }
-  if (isCreateTableStatement(statement)) {
-    return qualifyCreateObjectName(statement, 'table', schemaName);
+  switch (createStatement.kind) {
+    case 'table':
+    case 'view':
+      return replaceRequiredIdentifier(
+        statement,
+        createStatement.name,
+        (name) => `${quoteIdentifier(schemaName)}.${quoteIdentifier(name)}`,
+      );
+    case 'index':
+    case 'trigger':
+      return replaceRequiredIdentifiers(statement, [
+        {
+          identifier: createStatement.name,
+          replacement: (name) => `${quoteIdentifier(schemaName)}.${quoteIdentifier(name)}`,
+        },
+        {identifier: createStatement.onName, replacement: (name) => quoteIdentifier(name)},
+      ]);
   }
-  if (isCreateIndexStatement(statement)) {
-    return qualifyCreateIndexStatement(statement, schemaName);
-  }
-  if (isCreateViewStatement(statement)) {
-    return qualifyCreateObjectName(statement, 'view', schemaName);
-  }
-  if (isCreateTriggerStatement(statement)) {
-    return qualifyCreateTriggerStatement(statement, schemaName);
-  }
-  throw new Error('runtime sync definitions only support create table, create index, create view, and create trigger');
 }
 
-function isCreateTableStatement(statement: string): boolean {
-  return /^create\s+(?:(?:temp|temporary)\s+)?table\b/iu.test(stripLeadingComments(statement));
-}
-
-function isCreateIndexStatement(statement: string): boolean {
-  return /^create\s+(?:unique\s+)?index\b/iu.test(stripLeadingComments(statement));
-}
-
-function isCreateViewStatement(statement: string): boolean {
-  return /^create\s+(?:(?:temp|temporary)\s+)?view\b/iu.test(stripLeadingComments(statement));
-}
-
-function isCreateTriggerStatement(statement: string): boolean {
-  return /^create\s+(?:(?:temp|temporary)\s+)?trigger\b/iu.test(stripLeadingComments(statement));
-}
-
-function stripLeadingComments(statement: string): string {
-  return statement.replace(/^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)+/u, '');
-}
-
-function prefixCreateObjectName(statement: string, kind: 'table' | 'view'): string {
-  return replaceMatchedIdentifier(
-    statement,
-    new RegExp(
-      `^(${leadingCommentPattern}create\\s+(?:(?:temp|temporary)\\s+)?${kind}\\s+(?:if\\s+not\\s+exists\\s+)?)(?<name>${identifierPattern})`,
-      'iu',
-    ),
-    'name',
-    (name) => quoteIdentifier(`${syncObjectPrefix}${name}`),
-  );
-}
-
-function prefixCreateIndexStatement(statement: string): string {
-  return replaceMatchedIdentifier(
-    replaceMatchedIdentifier(
-      statement,
-      new RegExp(
-        `^(${leadingCommentPattern}create\\s+(?:unique\\s+)?index\\s+(?:if\\s+not\\s+exists\\s+)?)(?<name>${identifierPattern})(?<tail>\\s+on\\s+)(?<table>${identifierPattern})`,
-        'iu',
-      ),
-      'name',
-      (name) => quoteIdentifier(`${syncObjectPrefix}${name}`),
-    ),
-    new RegExp(
-      `^(${leadingCommentPattern}create\\s+(?:unique\\s+)?index\\s+(?:if\\s+not\\s+exists\\s+)?${identifierPattern}\\s+on\\s+)(?<table>${identifierPattern})`,
-      'iu',
-    ),
-    'table',
-    (name) => quoteIdentifier(`${syncObjectPrefix}${name}`),
-  );
-}
-
-function prefixCreateTriggerStatement(statement: string): string {
-  return replaceMatchedIdentifier(
-    replaceMatchedIdentifier(
-      statement,
-      new RegExp(
-        `^(${leadingCommentPattern}create\\s+(?:(?:temp|temporary)\\s+)?trigger\\s+(?:if\\s+not\\s+exists\\s+)?)(?<name>${identifierPattern})`,
-        'iu',
-      ),
-      'name',
-      (name) => quoteIdentifier(`${syncObjectPrefix}${name}`),
-    ),
-    new RegExp(
-      `^(${leadingCommentPattern}create\\s+(?:(?:temp|temporary)\\s+)?trigger\\s+(?:if\\s+not\\s+exists\\s+)?${identifierPattern}[\\s\\S]*?\\bon\\s+)(?<table>${identifierPattern})`,
-      'iu',
-    ),
-    'table',
-    (name) => quoteIdentifier(`${syncObjectPrefix}${name}`),
-  );
-}
-
-function qualifyCreateObjectName(statement: string, kind: 'table' | 'view', schemaName: string): string {
-  return replaceMatchedIdentifier(
-    statement,
-    new RegExp(
-      `^(${leadingCommentPattern}create\\s+${kind}\\s+(?:if\\s+not\\s+exists\\s+)?)(?<name>${identifierPattern})`,
-      'iu',
-    ),
-    'name',
-    (name) => `${quoteIdentifier(schemaName)}.${quoteIdentifier(name)}`,
-  );
-}
-
-function qualifyCreateIndexStatement(statement: string, schemaName: string): string {
-  return replaceMatchedIdentifier(
-    statement,
-    new RegExp(
-      `^(${leadingCommentPattern}create\\s+(?:unique\\s+)?index\\s+(?:if\\s+not\\s+exists\\s+)?)(?<name>${identifierPattern})`,
-      'iu',
-    ),
-    'name',
-    (name) => `${quoteIdentifier(schemaName)}.${quoteIdentifier(name)}`,
-  );
-}
-
-function qualifyCreateTriggerStatement(statement: string, schemaName: string): string {
-  return replaceMatchedIdentifier(
-    statement,
-    new RegExp(
-      `^(${leadingCommentPattern}create\\s+trigger\\s+(?:if\\s+not\\s+exists\\s+)?)(?<name>${identifierPattern})`,
-      'iu',
-    ),
-    'name',
-    (name) => `${quoteIdentifier(schemaName)}.${quoteIdentifier(name)}`,
-  );
-}
-
-function replaceMatchedIdentifier(
+function replaceRequiredIdentifier(
   statement: string,
-  pattern: RegExp,
-  groupName: string,
+  identifier: SqliteIdentifierSpan | null,
   replacement: (name: string) => string,
 ): string {
-  const match = pattern.exec(statement);
-  const rawIdentifier = match?.groups?.[groupName];
-  const beforeIdentifier = match?.[1];
-  if (!match || !rawIdentifier || !beforeIdentifier) {
+  if (!identifier) {
     throw new Error(`runtime sync could not parse schema definition statement: ${statement}`);
   }
-  const start = match.index + beforeIdentifier.length;
-  return `${statement.slice(0, start)}${replacement(parseIdentifierName(rawIdentifier))}${statement.slice(start + rawIdentifier.length)}`;
+  return replaceSqliteIdentifierSpan(statement, identifier, replacement(identifier.name));
 }
 
-function parseIdentifierName(rawIdentifier: string): string {
-  if (rawIdentifier.startsWith('"') && rawIdentifier.endsWith('"')) {
-    return rawIdentifier.slice(1, -1).replaceAll('""', '"');
+function replaceRequiredIdentifiers(
+  statement: string,
+  replacements: {
+    identifier: SqliteIdentifierSpan | null;
+    replacement: (name: string) => string;
+  }[],
+): string {
+  let output = statement;
+  const sorted = replacements
+    .map((replacement) => {
+      if (!replacement.identifier) {
+        throw new Error(`runtime sync could not parse schema definition statement: ${statement}`);
+      }
+      return {identifier: replacement.identifier, value: replacement.replacement(replacement.identifier.name)};
+    })
+    .sort((left, right) => right.identifier.start - left.identifier.start);
+
+  for (const replacement of sorted) {
+    output = replaceSqliteIdentifierSpan(output, replacement.identifier, replacement.value);
   }
-  if (rawIdentifier.startsWith('`') && rawIdentifier.endsWith('`')) {
-    return rawIdentifier.slice(1, -1).replaceAll('``', '`');
-  }
-  if (rawIdentifier.startsWith('[') && rawIdentifier.endsWith(']')) {
-    return rawIdentifier.slice(1, -1);
-  }
-  return rawIdentifier;
+  return output;
 }
 
 function unprefixInspectedSchema(schema: SqliteInspectedDatabase): SqliteInspectedDatabase {
@@ -352,16 +274,18 @@ function removeSyncPrefixes(value: string): string {
 }
 
 function cleanupPrefixedObjects(client: SyncClient): void {
-  const rows = client.all<{type: 'index' | 'table' | 'trigger' | 'view'; name: string}>({
-    sql: `
+  const rows = client
+    .all<{type: 'index' | 'table' | 'trigger' | 'view'; name: string}>({
+      sql: `
       select type, name
       from main.sqlite_schema
       where type in ('index', 'table', 'trigger', 'view')
         and name not like 'sqlite\\_%' escape '\\'
       order by type, name
     `,
-    args: [],
-  }).filter((row) => row.name.startsWith(syncObjectPrefix));
+      args: [],
+    })
+    .filter((row) => row.name.startsWith(syncObjectPrefix));
   const typeOrder = ['trigger', 'view', 'index', 'table'] as const;
   for (const type of typeOrder) {
     for (const row of rows.filter((candidate) => candidate.type === type)) {
@@ -373,9 +297,7 @@ function cleanupPrefixedObjects(client: SyncClient): void {
 function excludeRuntimeSyncTables(schema: SqliteInspectedDatabase): SqliteInspectedDatabase {
   return {
     ...schema,
-    tables: Object.fromEntries(
-      Object.entries(schema.tables).filter(([name]) => !runtimeSyncExcludedTables.has(name)),
-    ),
+    tables: Object.fromEntries(Object.entries(schema.tables).filter(([name]) => !runtimeSyncExcludedTables.has(name))),
     triggers: Object.fromEntries(
       Object.entries(schema.triggers).filter(([, trigger]) => !runtimeSyncExcludedTables.has(trigger.onName)),
     ),
@@ -408,6 +330,3 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 const syncObjectPrefix = '__sqlfu_sync_';
 const runtimeSyncExcludedTables = new Set(['sqlfu_migrations', 'd1_migrations']);
-const leadingCommentPattern = String.raw`(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*`;
-const identifierPattern =
-  String.raw`(?:"(?:[^"]|"")+"|` + '`(?:[^`]|``)+`' + String.raw`|\[[^\]]+\]|[a-z_][a-z0-9_$]*)`;

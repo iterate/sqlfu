@@ -8,6 +8,7 @@
  * inspected models, emit ordered statements" shape.
  */
 import type {SqlfuHost} from '../../host.js';
+import {classifySqliteCreateStatement} from '../../sqlite-parser.js';
 import {splitSqlStatements} from '../../sqlite-text.js';
 import type {AsyncClient} from '../../types.js';
 import {inspectSqliteSchema} from './inspect.js';
@@ -63,45 +64,35 @@ export function schemasEqual(left: SqliteInspectedDatabase, right: SqliteInspect
 }
 
 function assertNoUnsupportedSqlText(sql: string, source: 'baselineSql' | 'desiredSql'): void {
-  const normalizedSql = sql.toLowerCase();
-  if (/\bcreate\s+virtual\s+table\b/u.test(normalizedSql)) {
-    throw new Error(
-      `sqlite virtual tables are not supported by the native schema diff engine yet: found virtual table sql in ${source}`,
-    );
+  for (const statement of splitSqlStatements(sql)) {
+    if (classifySqliteCreateStatement(statement)?.kind === 'virtual-table') {
+      throw new Error(
+        `sqlite virtual tables are not supported by the native schema diff engine yet: found virtual table sql in ${source}`,
+      );
+    }
   }
 }
 
 async function applySchemaSql(client: AsyncClient, sql: string): Promise<void> {
-  const statements = splitSqlStatements(sql);
+  const statements = splitSqlStatements(sql).map((statement) => ({
+    statement,
+    createStatement: classifySqliteCreateStatement(statement),
+  }));
   const orderedStatements = [
-    ...statements.filter((statement) => isCreateTableStatement(statement)),
-    ...statements.filter((statement) => isCreateIndexStatement(statement)),
-    ...statements.filter((statement) => isCreateViewStatement(statement)),
+    ...statements.filter((entry) => entry.createStatement?.kind === 'table'),
+    ...statements.filter((entry) => entry.createStatement?.kind === 'index'),
+    ...statements.filter((entry) => entry.createStatement?.kind === 'view'),
     ...statements.filter(
-      (statement) =>
-        !isCreateTableStatement(statement) && !isCreateIndexStatement(statement) && !isCreateViewStatement(statement),
+      (entry) =>
+        entry.createStatement?.kind !== 'table' &&
+        entry.createStatement?.kind !== 'index' &&
+        entry.createStatement?.kind !== 'view',
     ),
   ];
 
-  for (const statement of orderedStatements) {
-    await client.raw(statement);
+  for (const entry of orderedStatements) {
+    await client.raw(entry.statement);
   }
-}
-
-function isCreateTableStatement(statement: string): boolean {
-  return /^create\s+table\b/iu.test(stripLeadingComments(statement));
-}
-
-function isCreateIndexStatement(statement: string): boolean {
-  return /^create\s+(?:unique\s+)?index\b/iu.test(stripLeadingComments(statement));
-}
-
-function isCreateViewStatement(statement: string): boolean {
-  return /^create\s+view\b/iu.test(stripLeadingComments(statement));
-}
-
-function stripLeadingComments(statement: string): string {
-  return statement.replace(/^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)+/u, '');
 }
 
 function stableStringify(value: unknown): string {
