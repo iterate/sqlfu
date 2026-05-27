@@ -13,6 +13,7 @@ export interface SqlFragment {
 
 export interface SqlQuery extends SqlFragment {
   name?: string;
+  __sqlfuType?: unknown;
 }
 
 export interface QueryMetadata {

@@ -86,7 +86,10 @@ export function isSqlFragment(value: unknown): value is SqlFragment {
   );
 }
 
-export function sql(strings: TemplateStringsArray, ...values: SqlValue[]): SqlQuery {
+export function sql<TType = unknown>(
+  strings: TemplateStringsArray,
+  ...values: SqlValue[]
+): SqlQuery & {__sqlfuType?: TType} {
   let text = '';
   const args: QueryArg[] = [];
 

@@ -9,6 +9,8 @@ import dedent from 'dedent';
 
 import {ensureBuilt, packageRoot} from './ensure-built.js';
 import {createDurableObjectClient as createLocalDurableObjectClient} from '../../src/index.js';
+import {autoAcceptConfirm} from '../../src/api/core.js';
+import {draft, generate} from '../../src/api/exports.js';
 
 declare const createDurableObjectClient: typeof import('../../src/index.ts').createDurableObjectClient;
 declare const sql: typeof import('../../src/index.ts').sql;
@@ -246,6 +248,50 @@ test('runtime sync migrates existing durable object storage on redeploy', async 
   expect(await upgraded.stub.getSyncScratchObjects()).toMatchObject([]);
 });
 
+test('inlineSqlfu modules generate, draft, and migrate durable object storage across redeploys', async () => {
+  await using fixture = await createInlineSqlfuDORedeployFixture();
+
+  await fixture.writeWorkerSource(workerSourceV1());
+  await fixture.draft('create posts');
+  await fixture.generate();
+
+  const generatedV1 = await fixture.readWorkerSource();
+  expect(generatedV1).toContain('createPost: sql<{ parameters: { slug: string } }>`');
+  expect(generatedV1).toContain('listPosts: sql<{ parameters: { limit: number }; result: { slug: string } }>`');
+  expect(generatedV1).toMatch(
+    /\{ name: '\d{4}-\d{2}-\d{2}T\d{2}\.\d{2}\.\d{2}\.\d{3}Z_create_posts', content: sql`create table posts\(slug text primary key\);` \}/u,
+  );
+
+  const initial = await fixture.deploy();
+  await initial.stub.createPost('hello-world');
+  expect(await initial.stub.listPosts(10)).toMatchObject([{slug: 'hello-world'}]);
+
+  await fixture.writeWorkerSource(toWorkerSourceV2(generatedV1));
+  await fixture.draft('add body');
+  await fixture.generate();
+
+  const generatedV2 = await fixture.readWorkerSource();
+  expect(generatedV2).toContain(
+    'listPosts: sql<{ parameters: { limit: number }; result: { slug: string; body: string } }>`',
+  );
+  expect(generatedV2).toMatch(
+    /\{ name: '\d{4}-\d{2}-\d{2}T\d{2}\.\d{2}\.\d{2}\.\d{3}Z_add_body', content: sql`alter table posts add column body text;` \}/u,
+  );
+
+  const upgraded = await fixture.deploy();
+  expect(await upgraded.stub.listPosts(10)).toMatchObject([{slug: 'hello-world', body: null}]);
+
+  await upgraded.stub.createPost('second-post', 'durable inline sql');
+  expect(await upgraded.stub.listPosts(10)).toMatchObject([
+    {slug: 'hello-world', body: null},
+    {slug: 'second-post', body: 'durable inline sql'},
+  ]);
+  expect(await upgraded.stub.appliedMigrations()).toMatchObject([
+    {name: expect.stringContaining('_create_posts')},
+    {name: expect.stringContaining('_add_body')},
+  ]);
+});
+
 test('createDurableObjectClient uses transactionSync when given durable object storage', async () => {
   await using fixture = await createDOFixture(
     class ClientTransactionSyncTest {
@@ -446,6 +492,200 @@ async function createDORedeployFixture() {
     const fixture = current;
     current = null;
     await fixture?.[Symbol.asyncDispose]();
+  }
+}
+
+async function createInlineSqlfuDORedeployFixture() {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-inline-do-fixture-'));
+  const persistPath = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-inline-do-persist-'));
+  const workerSourcePath = path.join(tempDir, 'worker.ts');
+  const workerPath = path.join(tempDir, 'worker.js');
+  let current: DOFixture<InlineSqlfuFixtureObject> | null = null;
+
+  await ensureBuilt();
+  await installSqlfuPackageForFixture(tempDir);
+
+  return {
+    async writeWorkerSource(source: string) {
+      await fs.writeFile(workerSourcePath, source);
+    },
+    async readWorkerSource() {
+      return fs.readFile(workerSourcePath, 'utf8');
+    },
+    async draft(name: string) {
+      await inWorkingDirectory(tempDir, () =>
+        draft({projectRoot: tempDir, configPath: workerSourcePath, name, confirm: autoAcceptConfirm}),
+      );
+    },
+    async generate() {
+      await inWorkingDirectory(tempDir, () => generate({projectRoot: tempDir, configPath: workerSourcePath}));
+    },
+    async deploy() {
+      await disposeCurrentDeployment();
+      await esbuild.build({
+        entryPoints: [workerSourcePath],
+        outfile: workerPath,
+        bundle: true,
+        format: 'esm',
+        platform: 'neutral',
+        target: 'es2022',
+        absWorkingDir: tempDir,
+        nodePaths: [path.join(packageRoot, 'node_modules')],
+      });
+
+      const miniflare = new Miniflare({
+        rootPath: tempDir,
+        modulesRoot: tempDir,
+        scriptPath: 'worker.js',
+        modules: true,
+        modulesRules: [{type: 'ESModule', include: ['**/*.js']}],
+        durableObjects: {
+          FIXTURE_OBJECT: {
+            className: 'FixtureObject',
+            useSQLite: true,
+          },
+        },
+        durableObjectsPersist: persistPath,
+      });
+
+      await miniflare.ready;
+
+      const bindings = await miniflare.getBindings<{FIXTURE_OBJECT: DurableObjectNamespaceLike}>();
+      const durableObjectStub = bindings.FIXTURE_OBJECT.get(bindings.FIXTURE_OBJECT.idFromName('fixture'));
+      const stub = createRpcStub<InlineSqlfuFixtureObject>(durableObjectStub);
+      current = {
+        stub,
+        async [Symbol.asyncDispose]() {
+          await miniflare.dispose();
+        },
+      };
+      return current;
+    },
+    async [Symbol.asyncDispose]() {
+      await disposeCurrentDeployment();
+      await fs.rm(tempDir, {recursive: true, force: true});
+      await fs.rm(persistPath, {recursive: true, force: true});
+    },
+  };
+
+  async function disposeCurrentDeployment() {
+    const fixture = current;
+    current = null;
+    await fixture?.[Symbol.asyncDispose]();
+  }
+}
+
+type InlineSqlfuFixtureObject = {
+  createPost(slug: string, body?: string | null): Promise<unknown>;
+  listPosts(limit: number): Promise<{slug: string; body?: string | null}[]>;
+  appliedMigrations(): Promise<{name: string}[]>;
+};
+
+async function installSqlfuPackageForFixture(root: string) {
+  const packageDir = path.join(root, 'node_modules', 'sqlfu');
+  await fs.mkdir(packageDir, {recursive: true});
+  await fs.cp(path.join(packageRoot, 'dist'), path.join(packageDir, 'dist'), {recursive: true});
+  await fs.writeFile(
+    path.join(packageDir, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'sqlfu',
+        type: 'module',
+        exports: {
+          '.': './dist/index.js',
+          './api': './dist/api/exports.js',
+        },
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+function workerSourceV1() {
+  return dedent`
+    import {createDurableObjectClient} from 'sqlfu';
+    import {inlineSqlfu, sql} from 'sqlfu/api';
+
+    const app = inlineSqlfu({
+      definitions: sql\`
+        create table posts(slug text primary key);
+      \`,
+      migrations: [],
+      queries: {
+        createPost: sql\`insert into posts(slug) values (:slug)\`,
+        listPosts: sql\`
+          select slug
+          from posts
+          order by slug
+          limit :limit
+        \`,
+      },
+    });
+
+    export class FixtureObject {
+      client: ReturnType<typeof createDurableObjectClient>;
+      db: typeof app.$type;
+
+      constructor(state: any) {
+        this.client = createDurableObjectClient(state.storage);
+        this.db = app(this.client);
+        this.db.migrate();
+      }
+
+      async createPost(slug: string) {
+        return this.db.createPost({slug});
+      }
+
+      async listPosts(limit: number) {
+        return this.db.listPosts({limit});
+      }
+
+      async appliedMigrations() {
+        return this.client.all<{name: string}>(sql\`
+          select name from sqlfu_migrations order by name
+        \`);
+      }
+
+      async fetch(request: Request) {
+        const url = new URL(request.url);
+        if (request.method !== 'POST' || url.pathname !== '/__rpc__') {
+          return new Response('not found', {status: 404});
+        }
+
+        const {method, args} = await request.json() as {method: string; args: unknown[]};
+
+        return (this as any)[method].apply(this, args).then(
+          (value: unknown) => Response.json({ok: true, value}),
+          (error: unknown) => Response.json({ok: false, error: {message: String(error)}}),
+        );
+      }
+    }
+
+    export default {
+      fetch() {
+        return new Response('ok');
+      },
+    };
+  `;
+}
+
+function toWorkerSourceV2(source: string) {
+  return source
+    .replace('create table posts(slug text primary key);', 'create table posts(slug text primary key, body text);')
+    .replace('insert into posts(slug) values (:slug)', 'insert into posts(slug, body) values (:slug, :body)')
+    .replace(/select slug\n(\s+from posts)/u, 'select slug, body\n$1')
+    .replace('async createPost(slug: string) {', 'async createPost(slug: string, body: string | null) {')
+    .replace('return this.db.createPost({slug});', 'return this.db.createPost({slug, body});');
+}
+
+async function inWorkingDirectory<TResult>(cwd: string, fn: () => Promise<TResult>): Promise<TResult> {
+  const previousCwd = process.cwd();
+  process.chdir(cwd);
+  try {
+    return await fn();
+  } finally {
+    process.chdir(previousCwd);
   }
 }
 

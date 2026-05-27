@@ -21,6 +21,7 @@ import {formatSqlFiles} from './format-files.js';
 import {stopProcessesListeningOnPort} from './port-process.js';
 import {generateQueryTypesForConfig} from '../typegen/index.js';
 import {watchGenerateQueryTypesForConfig} from '../typegen/watch.js';
+import {draftInlineSqlfuMigration, generateInlineSqlfuModule} from './inline-commands.js';
 import {startSqlfuServer} from '../ui/server.js';
 import {resolveSqlfuUi} from '../ui/resolve-sqlfu-ui.js';
 import packageJson from '../../package.json' with {type: 'json'};
@@ -134,6 +135,18 @@ export const router = {
         .optional(),
     )
     .handler(async ({context, input}) => {
+      const project = await loadContextProjectState(context);
+      if (project.initialized && 'inline' in project) {
+        if (input?.watch) {
+          throw new Error('sqlfu generate --watch does not support inlineSqlfu modules yet.');
+        }
+        const result = await generateInlineSqlfuModule({
+          modulePath: project.inline.modulePath,
+          projectRoot: project.projectRoot,
+          host: context.host,
+        });
+        return ['Updated generated files:', ...result.writtenFiles.map((filePath) => `  ${filePath}`)].join('\n');
+      }
       const sqlfuContext = await loadContextConfig(context);
       if (input?.watch) {
         await watchGenerateQueryTypesForConfig(sqlfuContext.config, sqlfuContext.host);
@@ -203,6 +216,17 @@ export const router = {
         .optional(),
     )
     .handler(async ({context, input}) => {
+      const project = await loadContextProjectState(context);
+      if (project.initialized && 'inline' in project) {
+        const result = await draftInlineSqlfuMigration({
+          modulePath: project.inline.modulePath,
+          projectRoot: project.projectRoot,
+          host: context.host,
+          name: input?.name,
+          confirm: context.confirm,
+        });
+        return result ? `Wrote ${result.path}` : undefined;
+      }
       const result = await applyDraftSql(await loadContextConfig(context), input, context.confirm);
       return result ? `Wrote ${result.path}` : undefined;
     }),
@@ -345,6 +369,7 @@ async function detectFormatLanguage(context: SqlfuCommandRouterContext): Promise
   try {
     const project = await loadContextProjectState(context);
     if (!project.initialized) return undefined;
+    if ('inline' in project) return 'sqlite';
     return project.config.dialect.name === 'postgresql' ? 'postgresql' : 'sqlite';
   } catch {
     return undefined;

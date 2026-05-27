@@ -1030,6 +1030,11 @@ export async function loadContextConfig(context: SqlfuCommandContext): Promise<S
     }
     throw new Error(`No sqlfu config found in ${project.projectRoot}. Run 'sqlfu init' first.`);
   }
+  if ('inline' in project) {
+    throw new Error(
+      'This command requires a file-backed sqlfu config. inlineSqlfu modules currently support generate and draft.',
+    );
+  }
 
   return {
     config: project.config,

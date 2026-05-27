@@ -11,6 +11,7 @@ import {
   type TsconfigPreferences,
 } from '../config.js';
 import {resolveCliConfigPath} from './cli-config.js';
+import {readInlineSqlfuSource} from './inline-source.js';
 
 const defaultConfigFileNames = ['sqlfu.config.ts', 'sqlfu.config.mjs', 'sqlfu.config.js', 'sqlfu.config.cjs'] as const;
 const defaultSqlfuConfigFileName = 'sqlfu.config.ts';
@@ -24,6 +25,11 @@ export async function loadProjectConfig(input: {configPath?: string} = {}): Prom
       throw new Error(`No sqlfu config found at ${project.configPath}.`);
     }
     throw new Error(`No sqlfu config found in ${cwd}. Create sqlfu.config.ts.`);
+  }
+  if ('inline' in project) {
+    throw new Error(
+      `No file-backed sqlfu config found at ${project.configPath}; inlineSqlfu modules support generate and draft only.`,
+    );
   }
   return project.config;
 }
@@ -42,6 +48,18 @@ export async function loadProjectStateFrom(projectRoot: string): Promise<LoadedS
       initialized: false,
       projectRoot,
       configPath: path.join(projectRoot, defaultSqlfuConfigFileName),
+    };
+  }
+
+  const inline = await readInlineSqlfuSource(configPath);
+  if (inline) {
+    return {
+      initialized: true,
+      projectRoot,
+      configPath,
+      inline: {
+        modulePath: configPath,
+      },
     };
   }
 
@@ -65,6 +83,18 @@ export async function loadProjectStateFromConfigPath(configPath: string, cwd: st
       initialized: false,
       projectRoot,
       configPath: resolvedConfigPath,
+    };
+  }
+
+  const inline = await readInlineSqlfuSource(resolvedConfigPath);
+  if (inline) {
+    return {
+      initialized: true,
+      projectRoot,
+      configPath: resolvedConfigPath,
+      inline: {
+        modulePath: resolvedConfigPath,
+      },
     };
   }
 

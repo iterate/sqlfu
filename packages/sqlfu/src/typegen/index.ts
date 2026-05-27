@@ -16,6 +16,7 @@ import {
 import {
   assertSqliteMaterialized,
   registerSqliteTypegenImpls,
+  sqliteDialect,
   type DialectColumnInfo,
   type LogicalType,
   type RelationInfo,
@@ -40,6 +41,7 @@ import {migrationName, readMigrationHistory, type Migration} from '../migrations
 import {presetTableName} from '../migrations/preset-queries.js';
 import {materializeDefinitionsSchemaFor, readMigrationFiles} from '../materialize.js';
 import {queryIdentityFromPath, querySourceManifestEntry, renderQuerySourceManifest} from '../query-identity.js';
+import {readInlineSqlfuSource, writeInlineQueryTypes} from '../node/inline-source.js';
 
 export type {
   AdHocQueryAnalysis,
@@ -122,7 +124,99 @@ export async function generateQueryTypesForConfig(
   return {writtenFiles: writtenFiles.sort((left, right) => left.localeCompare(right))};
 }
 
-function projectRelativePath(config: SqlfuProjectConfig, filePath: string) {
+export async function generateInlineSqlfuTypes(input: {
+  modulePath: string;
+  projectRoot: string;
+  host: SqlfuHost;
+}): Promise<GenerateQueryTypesResult> {
+  const inline = await readInlineSqlfuSource(input.modulePath);
+  if (!inline) {
+    throw new Error(`No inlineSqlfu(...) call found in ${input.modulePath}.`);
+  }
+
+  const dialect = sqliteDialect();
+  const sourceSql = await materializeDefinitionsSchemaFor(input.host, inline.definitions.sql, {dialect});
+  await using materialized = await dialect.materializeTypegenSchema(input.host, {
+    projectRoot: input.projectRoot,
+    sourceSql,
+    experimentalJsonTypes: false,
+  });
+  const schema = await dialect.loadSchemaForTypegen(materialized);
+  const querySources = inline.queries.map((query) => inlineQuerySource(input.modulePath, query.name, query.content.sql));
+  assertUniqueQueryFunctionNames(querySources);
+
+  const queryAnalyses = await dialect.analyzeQueries(
+    materialized,
+    querySources.map((query) => ({
+      sqlPath: query.sqlPath,
+      sqlContent: query.analysisSqlContent,
+    })),
+  );
+
+  const queryTypes = new Map<string, string>();
+  for (const querySource of querySources) {
+    const analysis = queryAnalyses.find((query) => query.sqlPath === querySource.sqlPath);
+    if (!analysis) {
+      throw new Error(`Missing vendored TypeSQL analysis for ${querySource.sqlPath}`);
+    }
+    if (!analysis.ok) {
+      throw new Error(analysis.error.description);
+    }
+    const prepared = prepareQueryDescriptor({
+      descriptor: refineDescriptor(analysis.descriptor, querySource.analysisSqlContent, schema),
+      explicitParameterExpansions: querySource.parameterExpansions,
+      sourceSql: querySource.sqlContent,
+    });
+    queryTypes.set(querySource.functionName, renderInlineSqlfuQueryType(prepared.descriptor, 'camel'));
+  }
+
+  await writeInlineQueryTypes(input.modulePath, queryTypes);
+
+  return {writtenFiles: [projectRelativePath(input, input.modulePath)]};
+}
+
+function inlineQuerySource(modulePath: string, functionName: string, sqlContent: string): QuerySource {
+  const parameterExpansions = parseInlineParameterExpansions(sqlContent);
+  return {
+    sqlPath: `${modulePath}#${functionName}`,
+    sourceSqlPath: modulePath,
+    id: functionName,
+    functionName,
+    sqlContent,
+    sqlFileContent: sqlContent,
+    analysisSqlContent: prepareSqlForAnalysis(sqlContent, parameterExpansions),
+    parameterExpansions,
+  };
+}
+
+function renderInlineSqlfuQueryType(
+  descriptor: GeneratedQueryDescriptor,
+  casing: SqlfuGenerateCasing,
+): string {
+  const {descriptor: cased} = applyGeneratedInputCasing(descriptor, casing);
+  const parts: string[] = [];
+  if ((cased.data?.length ?? 0) > 0) {
+    parts.push(`data: ${renderInlineTypeLiteral(cased.data!, 'parameter')}`);
+  }
+  if (cased.parameters.length > 0) {
+    parts.push(`parameters: ${renderInlineTypeLiteral(cased.parameters, 'parameter')}`);
+  }
+  if (getResultMode(cased) !== 'metadata') {
+    const resultFields = mapColumnDerivedFields(getResultFields(cased), casing).publicFields;
+    parts.push(`result: ${renderInlineTypeLiteral(resultFields, 'result')}`);
+  }
+  return `{ ${parts.join('; ')} }`;
+}
+
+function renderInlineTypeLiteral(fields: GeneratedField[], fieldKind: 'parameter' | 'result'): string {
+  const properties = fields.map((field) => {
+    const optional = fieldKind === 'parameter' && Boolean(field.optional);
+    return `${field.name}${optional ? '?' : ''}: ${fieldTypeExpression(field, fieldKind)}`;
+  });
+  return `{ ${properties.join('; ')} }`;
+}
+
+function projectRelativePath(config: Pick<SqlfuProjectConfig, 'projectRoot'>, filePath: string) {
   return path.relative(config.projectRoot, filePath).split(path.sep).join('/');
 }
 

@@ -32,6 +32,20 @@ await esbuild.build({
   logLevel: 'warning',
 });
 
+await esbuild.build({
+  entryPoints: [resolve(pkgRoot, 'src/vendor/typesql/sqlfu-with-client.ts')],
+  bundle: true,
+  platform: 'browser',
+  format: 'esm',
+  target: 'es2022',
+  outfile: resolve(distVendor, 'typesql/sqlfu-with-client.js'),
+  treeShaking: true,
+  minify: true,
+  legalComments: 'inline',
+  external: ['node:*'],
+  logLevel: 'warning',
+});
+
 const typesqlToDelete = [
   'code-block-writer',
   'small-utils.js',
@@ -56,9 +70,12 @@ const typesqlToDelete = [
   'typesql/shared-analyzer',
   'typesql/schema-info.js',
   'typesql/schema-info.js.map',
+  'typesql/schema-info-client.js',
+  'typesql/schema-info-client.js.map',
   'typesql/sql-generator.js',
   'typesql/sql-generator.js.map',
   'typesql/sqlfu.js.map',
+  'typesql/sqlfu-with-client.js.map',
   'typesql/sqlite-query-analyzer',
   'typesql/ts-dynamic-query-descriptor.js',
   'typesql/ts-dynamic-query-descriptor.js.map',
@@ -166,6 +183,20 @@ await esbuild.build({
   logLevel: 'warning',
 });
 
+await esbuild.build({
+  entryPoints: [resolve(pkgRoot, 'src/vendor/sql-formatter/languages/postgresql/postgresql.formatter.ts')],
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  target: 'node20',
+  outfile: resolve(distVendor, 'sql-formatter/languages/postgresql/postgresql.formatter.js'),
+  treeShaking: true,
+  minify: true,
+  legalComments: 'inline',
+  external: ['node:*'],
+  logLevel: 'warning',
+});
+
 const sqlFormatterToDelete = [
   'sql-formatter/allDialects.js',
   'sql-formatter/allDialects.js.map',
@@ -193,11 +224,16 @@ for (const p of sqlFormatterToDelete) {
 
 const dialectsDir = resolve(distVendor, 'sql-formatter/languages');
 for (const entry of await readdir(dialectsDir)) {
-  if (entry === 'sqlite') continue;
+  if (entry === 'sqlite' || entry === 'postgresql') continue;
   await rm(resolve(dialectsDir, entry), {recursive: true, force: true});
 }
 const sqliteDir = resolve(dialectsDir, 'sqlite');
 for (const entry of await readdir(sqliteDir)) {
   if (entry === 'sqlite.formatter.js') continue;
   await rm(resolve(sqliteDir, entry), {recursive: true, force: true});
+}
+const postgresqlDir = resolve(dialectsDir, 'postgresql');
+for (const entry of await readdir(postgresqlDir)) {
+  if (entry === 'postgresql.formatter.js') continue;
+  await rm(resolve(postgresqlDir, entry), {recursive: true, force: true});
 }
