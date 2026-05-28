@@ -112,26 +112,28 @@ await cp(
 // vendor/sql-formatter bundle
 // ------------------------------------------------------------------
 // Upstream sql-formatter ships 20 dialects (~1.3 MB of keyword/function data).
-// sqlfu is sqlite-only, so src/formatter.ts calls `formatDialect` directly with
-// the sqlite dialect and imports nothing from `allDialects`. Bundling
-// vendor/sql-formatter/sqlFormatter.ts lets esbuild tree-shake every non-sqlite
-// dialect module.
+// sqlfu exposes sqlite + postgresql formatting, so src/formatter.ts calls
+// `formatDialect` directly with the requested dialect and imports nothing from
+// `allDialects`. Bundling vendor/sql-formatter/sqlFormatter.ts lets esbuild
+// tree-shake every non-exposed dialect module.
 //
 // Nothing outside vendor/sql-formatter imports sub-paths from this subtree
-// (only src/formatter.ts, which imports sqlFormatter.ts and the sqlite dialect
-// module). We preserve those two export paths, then delete the rest of the
-// subtree.
-// Rewrite `allDialects.ts` at bundle time to only export `sqlite`. Upstream's
+// (only src/formatter.ts, which imports sqlFormatter.ts and the exposed dialect
+// modules). We preserve those export paths, then delete the rest of the subtree.
+// Rewrite `allDialects.ts` at bundle time to only export exposed dialects. Upstream's
 // sqlFormatter.ts uses `import * as allDialects` to build a name→dialect lookup
 // for its `format(query, {language})` entry; that namespace import drags every
 // dialect (~1.3 MB of keyword/function data) into the bundle. src/formatter.ts
-// calls `formatDialect` directly with the sqlite dialect, never `format`, so
-// dropping the other dialects from the namespace has no runtime effect.
-const sqliteOnlyDialectsPlugin: esbuild.Plugin = {
-  name: 'sqlite-only-dialects',
+// calls `formatDialect` directly with a dialect, never `format`, so dropping
+// the other dialects from the namespace has no runtime effect.
+const exposedDialectsPlugin: esbuild.Plugin = {
+  name: 'exposed-dialects',
   setup(build) {
     build.onLoad({filter: /vendor\/sql-formatter\/allDialects\.ts$/}, () => ({
-      contents: `export { sqlite } from './languages/sqlite/sqlite.formatter.js';`,
+      contents: [
+        `export { sqlite } from './languages/sqlite/sqlite.formatter.js';`,
+        `export { postgresql } from './languages/postgresql/postgresql.formatter.js';`,
+      ].join('\n'),
       loader: 'ts',
     }));
   },
@@ -157,37 +159,25 @@ await esbuild.build({
   minify: true,
   legalComments: 'inline',
   external: ['node:*'],
-  plugins: [sqliteOnlyDialectsPlugin],
+  plugins: [exposedDialectsPlugin],
   logLevel: 'warning',
 });
 
-await esbuild.build({
-  entryPoints: [resolve(pkgRoot, 'src/vendor/sql-formatter/languages/sqlite/sqlite.formatter.ts')],
-  bundle: true,
-  platform: 'node',
-  format: 'esm',
-  target: 'node20',
-  outfile: resolve(distVendor, 'sql-formatter/languages/sqlite/sqlite.formatter.js'),
-  treeShaking: true,
-  minify: true,
-  legalComments: 'inline',
-  external: ['node:*'],
-  logLevel: 'warning',
-});
-
-await esbuild.build({
-  entryPoints: [resolve(pkgRoot, 'src/vendor/sql-formatter/languages/postgresql/postgresql.formatter.ts')],
-  bundle: true,
-  platform: 'node',
-  format: 'esm',
-  target: 'node20',
-  outfile: resolve(distVendor, 'sql-formatter/languages/postgresql/postgresql.formatter.js'),
-  treeShaking: true,
-  minify: true,
-  legalComments: 'inline',
-  external: ['node:*'],
-  logLevel: 'warning',
-});
+for (const dialect of ['sqlite', 'postgresql']) {
+  await esbuild.build({
+    entryPoints: [resolve(pkgRoot, `src/vendor/sql-formatter/languages/${dialect}/${dialect}.formatter.ts`)],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    target: 'node20',
+    outfile: resolve(distVendor, `sql-formatter/languages/${dialect}/${dialect}.formatter.js`),
+    treeShaking: true,
+    minify: true,
+    legalComments: 'inline',
+    external: ['node:*'],
+    logLevel: 'warning',
+  });
+}
 
 const sqlFormatterToDelete = [
   'sql-formatter/allDialects.js',
@@ -219,13 +209,10 @@ for (const entry of await readdir(dialectsDir)) {
   if (entry === 'sqlite' || entry === 'postgresql') continue;
   await rm(resolve(dialectsDir, entry), {recursive: true, force: true});
 }
-const sqliteDir = resolve(dialectsDir, 'sqlite');
-for (const entry of await readdir(sqliteDir)) {
-  if (entry === 'sqlite.formatter.js') continue;
-  await rm(resolve(sqliteDir, entry), {recursive: true, force: true});
-}
-const postgresqlDir = resolve(dialectsDir, 'postgresql');
-for (const entry of await readdir(postgresqlDir)) {
-  if (entry === 'postgresql.formatter.js') continue;
-  await rm(resolve(postgresqlDir, entry), {recursive: true, force: true});
+for (const dialect of ['sqlite', 'postgresql']) {
+  const dialectDir = resolve(dialectsDir, dialect);
+  for (const entry of await readdir(dialectDir)) {
+    if (entry === `${dialect}.formatter.js`) continue;
+    await rm(resolve(dialectDir, entry), {recursive: true, force: true});
+  }
 }

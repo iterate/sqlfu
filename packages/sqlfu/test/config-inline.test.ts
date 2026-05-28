@@ -9,32 +9,32 @@ test('defineConfig works with a class', () => {
   class PostObject {
     static dbConfig = defineConfig({
       definitions: sql`
-          create table posts (slug text primary key, title text not null);
-        `,
+        create table posts (slug text primary key, title text not null);
+      `,
       migrations: [
         {
           name: '0001_create_posts',
           content: sql`
-              create table posts (slug text primary key, title text not null);
-            `,
+            create table posts (slug text primary key, title text not null);
+          `,
         },
       ],
       queries: {
         listPosts: {
           query: sql`
-              select slug, title
-              from posts
-              order by slug
-              limit :limit
-            `,
+            select slug, title
+            from posts
+            order by slug
+            limit :limit
+          `,
           mode: 'many',
           $type: {} as {parameters: {limit: number}; result: {slug: string; title: string}},
         },
         createPost: {
           query: sql`
-              insert into posts (slug, title)
-              values (:slug, :title)
-            `,
+            insert into posts (slug, title)
+            values (:slug, :title)
+          `,
           mode: 'metadata',
           $type: {} as {parameters: {slug: string; title: string}},
         },
@@ -82,19 +82,19 @@ test('defineConfig works with a class without migrations via sync(...)', async (
       queries: {
         listPosts: {
           query: sql`
-              select slug, title
-              from posts
-              order by slug
-              limit :limit
-            `,
+            select slug, title
+            from posts
+            order by slug
+            limit :limit
+          `,
           mode: 'many',
           $type: {} as {parameters: {limit: number}; result: {slug: string; title: string}},
         },
         createPost: {
           query: sql`
-              insert into posts (slug, title)
-              values (:slug, :title)
-            `,
+            insert into posts (slug, title)
+            values (:slug, :title)
+          `,
           mode: 'metadata',
           $type: {} as {parameters: {slug: string; title: string}},
         },

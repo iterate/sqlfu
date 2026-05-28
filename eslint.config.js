@@ -11,10 +11,12 @@
  *     source. The plugin stays parser-agnostic; configuring one is the user's
  *     choice (typescript-eslint is the overwhelmingly common pick).
  *
- * oxfmt handles formatting; TypeScript handles type errors. No generic lint
- * rules layered on top — lint is scoped to sqlfu-specific checks.
+ * oxfmt handles formatting; TypeScript handles type errors. The only
+ * formatting lint rule layered on top is inline `sql` template indentation,
+ * because oxfmt does not understand that SQL-shaped content.
  */
 
+import unicorn from 'eslint-plugin-unicorn';
 import tseslint from 'typescript-eslint';
 
 import sqlfu from './scripts/dogfood-lint-plugin.js';
@@ -27,8 +29,12 @@ export default [
       '**/.sqlfu/**',
       '**/.typesql/**',
       '**/node_modules/**',
+      '**/*ignoreme*',
+      '**/*ignoreme*/**',
+      'tmp/**',
       'packages/sqlfu/src/vendor/**',
       'packages/pg/src/vendor/**',
+      'packages/ui/test/projects/**',
       // Fixture files contain intentionally-unformatted SQL (before/after
       // blocks, malformed input) — linting them would fight the fixtures.
       'packages/sqlfu/test/formatter/**',
@@ -52,6 +58,7 @@ export default [
   },
   {
     plugins: {
+      unicorn,
       /** @type {import('eslint').ESLint.Plugin} */
       repolocal: {
         rules: {
@@ -107,6 +114,15 @@ export default [
   },
   {
     rules: {
+      'unicorn/template-indent': [
+        'error',
+        {
+          tags: ['sql'],
+          functions: [],
+          selectors: [],
+          comments: [],
+        },
+      ],
       'repolocal/no-readonly': 'error',
       // 'repolocal/no-blunder': 'error', // fine we can leave this for now
     },
