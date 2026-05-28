@@ -11,13 +11,60 @@
  *     source. The plugin stays parser-agnostic; configuring one is the user's
  *     choice (typescript-eslint is the overwhelmingly common pick).
  *
- * oxfmt handles formatting; TypeScript handles type errors. No generic lint
- * rules layered on top — lint is scoped to sqlfu-specific checks.
+ * oxfmt handles formatting; TypeScript handles type errors. The only
+ * formatting lint rule layered on top is inline `sql` template indentation,
+ * because oxfmt does not understand that SQL-shaped content.
  */
 
+import unicorn from 'eslint-plugin-unicorn';
 import tseslint from 'typescript-eslint';
 
 import sqlfu from './scripts/dogfood-lint-plugin.js';
+
+const inlineSnapshotMatchers = new Set(['toMatchInlineSnapshot', 'toThrowErrorMatchingInlineSnapshot']);
+
+// `unicorn/template-indent` always targets inline snapshots in addition to the
+// configured tags. Keep the upstream rule/fixer, but make this repo's
+// `unicorn/template-indent` reports match the `sql`-tag-only configuration.
+const isInlineSnapshotTemplate = (node) => {
+  const parent = node.parent;
+  if (!parent || parent.type !== 'CallExpression' || !parent.arguments.includes(node)) {
+    return false;
+  }
+
+  const {callee} = parent;
+  return (
+    callee.type === 'MemberExpression' &&
+    callee.property.type === 'Identifier' &&
+    inlineSnapshotMatchers.has(callee.property.name)
+  );
+};
+
+const sqlOnlyTemplateIndentRule = {
+  meta: unicorn.rules['template-indent'].meta,
+  create(context) {
+    const sqlScopedContext = Object.create(context);
+    Object.defineProperty(sqlScopedContext, 'report', {
+      value(descriptor) {
+        if (descriptor.node && isInlineSnapshotTemplate(descriptor.node)) {
+          return;
+        }
+
+        return context.report(descriptor);
+      },
+    });
+
+    return unicorn.rules['template-indent'].create(sqlScopedContext);
+  },
+};
+
+const unicornWithSqlScopedTemplateIndent = {
+  ...unicorn,
+  rules: {
+    ...unicorn.rules,
+    'template-indent': sqlOnlyTemplateIndentRule,
+  },
+};
 
 export default [
   {
@@ -52,6 +99,7 @@ export default [
   },
   {
     plugins: {
+      unicorn: unicornWithSqlScopedTemplateIndent,
       /** @type {import('eslint').ESLint.Plugin} */
       repolocal: {
         rules: {
@@ -107,6 +155,15 @@ export default [
   },
   {
     rules: {
+      'unicorn/template-indent': [
+        'error',
+        {
+          tags: ['sql'],
+          functions: [],
+          selectors: [],
+          comments: [],
+        },
+      ],
       'repolocal/no-readonly': 'error',
       // 'repolocal/no-blunder': 'error', // fine we can leave this for now
     },
