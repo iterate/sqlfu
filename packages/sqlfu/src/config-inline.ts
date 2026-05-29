@@ -1,5 +1,6 @@
 import {applyMigrations, type Migration} from './migrations/index.js';
 import type {
+  AsyncClient,
   Client,
   PreparedStatementParams,
   QueryMetadata,
@@ -78,6 +79,8 @@ type InlineConfigBound<TQueries extends Record<string, InlineConfigQuery>, TClie
   migrate(): TClient extends SyncClient ? void : Promise<void>;
 };
 
+type InlineRuntimeQueryResult = RunResult | ResultRow | ResultRow[] | null;
+
 export type InlineConfigFactory<TQueries extends Record<string, InlineConfigQuery>> = {
   <TClient extends Client>(client: TClient): InlineConfigBound<TQueries, TClient>;
   $type: InlineConfigBound<TQueries, Client>;
@@ -121,30 +124,57 @@ function inlineMigrations(migrations: InlineConfigMigration[]): Migration[] {
   });
 }
 
-function runInlineQuery<TClient extends Client>(
-  client: TClient,
+function runInlineQuery(
+  client: Client,
   query: InlineConfigQuery,
   params: PreparedStatementParams | undefined,
-): RunResult | Promise<RunResult> | ResultRow | ResultRow[] | null | Promise<ResultRow | ResultRow[] | null> {
+): InlineRuntimeQueryResult | Promise<InlineRuntimeQueryResult> {
   const mode = readInlineQueryMode(query);
   const sqlQuery = inlineQuerySql(query);
   if (sqlQuery.args.length > 0) {
     throw new Error('Inline queries cannot use template interpolations.');
   }
-  if (client.sync) {
-    using stmt = client.prepare(sqlQuery.sql);
-    if (mode === 'metadata') return stmt.run(params);
-    return inlineRowsResult(stmt.all(params), mode);
+  if (isInlineSyncClient(client)) {
+    return runInlineSyncQuery(client, sqlQuery.sql, mode, params);
   }
+  if (isInlineAsyncClient(client)) {
+    return runInlineAsyncQuery(client, sqlQuery.sql, mode, params);
+  }
+  throw new Error('Inline defineConfig() received an unsupported client.');
+}
 
-  const stmt = client.prepare(sqlQuery.sql);
-  if (mode === 'metadata') {
-    return stmt.run(params).finally(() => stmt[Symbol.asyncDispose]());
+function isInlineSyncClient(client: Client): client is SyncClient {
+  return client.sync;
+}
+
+function isInlineAsyncClient(client: Client): client is AsyncClient {
+  return !client.sync;
+}
+
+function runInlineSyncQuery(
+  client: SyncClient,
+  sql: string,
+  mode: QueryResultMode,
+  params: PreparedStatementParams | undefined,
+): InlineRuntimeQueryResult {
+  using stmt = client.prepare(sql);
+  if (mode === 'metadata') return stmt.run(params);
+  return inlineRowsResult(stmt.all(params), mode);
+}
+
+async function runInlineAsyncQuery(
+  client: AsyncClient,
+  sql: string,
+  mode: QueryResultMode,
+  params: PreparedStatementParams | undefined,
+): Promise<InlineRuntimeQueryResult> {
+  const stmt = client.prepare(sql);
+  try {
+    if (mode === 'metadata') return await stmt.run(params);
+    return inlineRowsResult(await stmt.all(params), mode);
+  } finally {
+    await stmt[Symbol.asyncDispose]();
   }
-  return stmt
-    .all(params)
-    .then((rows) => inlineRowsResult(rows, mode))
-    .finally(() => stmt[Symbol.asyncDispose]());
 }
 
 function readInlineQueryMode(query: InlineConfigQuery): QueryResultMode {
