@@ -110,7 +110,8 @@ function parseInlineConfigSourceForCall(
 
   const definitions = readSqlProperty(definitionProperties, 'definitions', modulePath);
   const migrationsProperty = definitionProperties.find((property) => property.name === 'migrations');
-  const migrationsArray = migrationsProperty && readArrayInitializer(sourceText, migrationsProperty, 'migrations', modulePath);
+  const migrationsArray =
+    migrationsProperty && readArrayInitializer(sourceText, migrationsProperty, 'migrations', modulePath);
   const queriesProperty = readProperty(definitionProperties, 'queries', modulePath);
   const queriesObject = readObjectInitializer(sourceText, queriesProperty, 'queries', modulePath);
 
@@ -995,11 +996,7 @@ function renderInlineMigrationObject(
   migration: {name: string; content: string},
   style: InlineSourceStyle,
 ): string {
-  const isMultiline = migration.content.includes('\n');
   const content = migration.content.trim();
-  if (!isMultiline) {
-    return `${indent}{ name: ${quotedString(migration.name, style.quote)}, content: sql\`${escapeTemplateLiteral(content)}\` }`;
-  }
   const propertyIndent = `${indent}${style.indent}`;
   const bodyIndent = `${propertyIndent}${style.indent}`;
   const body = content
