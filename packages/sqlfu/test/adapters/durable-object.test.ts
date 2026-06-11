@@ -261,7 +261,7 @@ test('inline defineConfig modules generate, draft, and migrate durable object st
     'sql.many<{ parameters: { limit: number }; result: { slug: string; published_at: string | null } }>',
   );
   expect(generatedV1).toMatch(
-    /\{ name: '\d{4}-\d{2}-\d{2}T\d{2}\.\d{2}\.\d{2}\.\d{3}Z_create_posts', content: sql`create table posts\(slug text primary key, published_at text\);` \}/u,
+    /\{\s*name: '\d{4}-\d{2}-\d{2}T\d{2}\.\d{2}\.\d{2}\.\d{3}Z_create_posts',\s*content: sql`\s*create table posts\(slug text primary key, published_at text\);\s*`,?\s*\}/u,
   );
 
   const initial = await fixture.deploy();
@@ -277,7 +277,7 @@ test('inline defineConfig modules generate, draft, and migrate durable object st
     'sql.many<{ parameters: { limit: number }; result: { slug: string; published_at: string | null; body: string | null } }>',
   );
   expect(generatedV2).toMatch(
-    /\{ name: '\d{4}-\d{2}-\d{2}T\d{2}\.\d{2}\.\d{2}\.\d{3}Z_add_body', content: sql`alter table posts add column body text;` \}/u,
+    /\{\s*name: '\d{4}-\d{2}-\d{2}T\d{2}\.\d{2}\.\d{2}\.\d{3}Z_add_body',\s*content: sql`\s*alter table posts add column body text;\s*`,?\s*\}/u,
   );
 
   const upgraded = await fixture.deploy();

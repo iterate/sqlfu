@@ -292,7 +292,12 @@ export class OrganizationObject {
       create table organizations (slug text primary key);
     `,
     migrations: [
-      { name: '0001_create_organizations', content: sql`create table organizations (slug text primary key);` },
+      {
+        name: '0001_create_organizations',
+        content: sql`
+          create table organizations (slug text primary key);
+        `,
+      },
     ],
     queries: {
       list: sql.many<{ result: { slug: string } }>`
@@ -637,7 +642,12 @@ export class PostObject {
         `,
         migrations: [
             { name: '0001_posts', content: sql`create table posts(slug text primary key);` },
-            { name: '0002_add_body', content: sql`alter table posts add column body text;` },
+            {
+                name: '0002_add_body',
+                content: sql`
+                    alter table posts add column body text;
+                `,
+            },
         ],
         queries: {},
     });
@@ -837,7 +847,12 @@ const organizationDb = defineConfig({
     create table organizations (slug text primary key);
   `,
   migrations: [
-    { name: '0001_create_organizations', content: sql`create table organizations (slug text primary key);` },
+    {
+      name: '0001_create_organizations',
+      content: sql`
+        create table organizations (slug text primary key);
+      `,
+    },
   ],
   queries: {
     list: sql.many<{ result: { slug: string } }>`
@@ -1174,7 +1189,12 @@ const app = defineConfig({
     `,
     migrations: [
         { name: '0001_posts', content: sql`create table posts(slug text primary key);` },
-        { name: '0002_add_body', content: sql`alter table posts add column body text;` },
+        {
+            name: '0002_add_body',
+            content: sql`
+                alter table posts add column body text;
+            `,
+        },
     ],
     queries: {},
 });
