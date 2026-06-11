@@ -25,6 +25,9 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      # The bun adapter tests spawn real `bun` subprocesses.
+      - uses: oven-sh/setup-bun@v2
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -33,6 +36,11 @@ jobs:
       # runtime-only build that ensureBuilt() produces.
       - name: Build sqlfu
         run: pnpm --filter sqlfu build
+
+      # resolve-sqlfu-ui tests resolve the workspace @sqlfu/ui package, whose
+      # #serialized-assets import map points into its build output.
+      - name: Build @sqlfu/ui
+        run: pnpm --filter @sqlfu/ui build
 
       - name: Typecheck sqlfu
         run: pnpm --filter sqlfu typecheck
