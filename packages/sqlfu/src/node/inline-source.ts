@@ -39,9 +39,6 @@ export type InlineMigrationsArraySource =
 export type InlineQuerySource = {
   name: string;
   content: InlineSqlTemplate;
-  object?: SourceSpan;
-  type?: PropertySpan;
-  mode?: PropertySpan;
 };
 
 export type InlineQueryType = {
@@ -175,7 +172,6 @@ function startsWithSqlTag(sourceText: string, index: number): boolean {
 
 export async function writeInlineQueryTypes(modulePath: string, queryTypes: InlineQueryType[]): Promise<boolean> {
   const inlines = await readRequiredInlineConfigSources(modulePath);
-  const style = inferInlineSourceStyle(inlines[0].sourceText);
   const replacements = inlines.flatMap((inline) =>
     inline.queries.flatMap((query) => {
       const queryType = queryTypes.find(
@@ -189,7 +185,7 @@ export async function writeInlineQueryTypes(modulePath: string, queryTypes: Inli
         // writing. Leave the failing query's existing annotation untouched.
         return [];
       }
-      return renderInlineQueryTypeReplacements(inlines[0].sourceText, query, queryType, style);
+      return renderInlineQueryTypeReplacements(inlines[0].sourceText, query, queryType);
     }),
   );
   const output = applyReplacements(inlines[0].sourceText, replacements);
@@ -204,46 +200,9 @@ function renderInlineQueryTypeReplacements(
   sourceText: string,
   query: InlineQuerySource,
   queryType: InlineQueryType,
-  style: InlineSourceStyle,
 ): SourceReplacement[] {
-  if (!query.object) {
-    const replacement = replaceSqlTagPrefix(sourceText, query.content, queryType);
-    return replacement ? [replacement] : [];
-  }
-
-  const typeValue = `{} as ${queryType.type}`;
-  const modeValue = quotedString(queryType.mode, style.quote);
-  if (
-    query.type &&
-    query.mode &&
-    query.type.start < query.mode.start &&
-    canReplaceGeneratedPropertyLines(sourceText, query.type, query.mode)
-  ) {
-    return [
-      replacePropertyLines(sourceText, query.type, query.mode, [`mode: ${modeValue}`, `$type: ${typeValue}`], style),
-    ];
-  }
-
-  const replacements: SourceReplacement[] = [];
-
-  if (query.mode) replacements.push(replacePropertyValue(sourceText, query.mode, modeValue));
-  if (query.type) replacements.push(replacePropertyValue(sourceText, query.type, typeValue));
-
-  if (!query.mode && query.type) replacements.push(insertPropertyBefore(sourceText, query.type, `mode: ${modeValue}`));
-  if (!query.mode && !query.type) {
-    replacements.push(
-      renderInlineQueryInsertedProperties(
-        sourceText,
-        query.object,
-        [`mode: ${modeValue}`, `$type: ${typeValue}`],
-        style,
-      ),
-    );
-  } else if (!query.type) {
-    replacements.push(renderInlineQueryInsertedProperties(sourceText, query.object, [`$type: ${typeValue}`], style));
-  }
-
-  return replacements;
+  const replacement = replaceSqlTagPrefix(sourceText, query.content, queryType);
+  return replacement ? [replacement] : [];
 }
 
 function replaceSqlTagPrefix(
@@ -269,90 +228,6 @@ function renderSqlTagPrefix(queryType: InlineQueryType): string {
 
 function normalizeInlineTypeTagPrefix(value: string): string {
   return value.replace(/;\s*\}/gu, '}').replace(/\s+/g, '');
-}
-
-function canReplaceGeneratedPropertyLines(
-  sourceText: string,
-  firstProperty: PropertySpan,
-  lastProperty: PropertySpan,
-): boolean {
-  const firstLineStart = lineStartIndex(sourceText, firstProperty.start);
-  const firstLineEnd = lineEndIndex(sourceText, firstProperty.end);
-  const lastLineStart = lineStartIndex(sourceText, lastProperty.start);
-  if (firstLineStart === lastLineStart) return false;
-
-  const firstValue = sourceText.slice(firstProperty.start, firstProperty.end);
-  const lastValue = sourceText.slice(lastProperty.start, lastProperty.end);
-  if (firstValue.includes('\n') || lastValue.includes('\n')) return false;
-
-  const firstPrefix = sourceText.slice(firstLineStart, firstProperty.start);
-  const firstSuffix = sourceText.slice(firstProperty.end, firstLineEnd);
-  const betweenLines = sourceText.slice(firstLineEnd, lastLineStart);
-  const lastPrefix = sourceText.slice(lastLineStart, lastProperty.start);
-
-  return (
-    /^\s*\$type\s*:\s*$/u.test(firstPrefix) &&
-    /^\s*,?\s*$/u.test(firstSuffix) &&
-    betweenLines.trim() === '' &&
-    /^\s*mode\s*:\s*$/u.test(lastPrefix)
-  );
-}
-
-function replacePropertyLines(
-  sourceText: string,
-  firstProperty: PropertySpan,
-  lastProperty: PropertySpan,
-  lines: string[],
-  style: InlineSourceStyle,
-): SourceReplacement {
-  const start = lineStartIndex(sourceText, firstProperty.start);
-  const end = lineEndIndex(sourceText, lastProperty.end);
-  const indent = lineIndentAt(sourceText, firstProperty.start);
-  return {
-    start,
-    end,
-    text:
-      lines.map((line, index) => `${indent}${line}${propertySeparator(index, lines.length, style)}`).join('\n') +
-      (sourceText[end - 1] === '\n' ? '\n' : ''),
-  };
-}
-
-function replacePropertyValue(sourceText: string, property: PropertySpan, text: string): SourceReplacement {
-  return {
-    start: skipTrivia(sourceText, property.start),
-    end: trimEndIndex(sourceText, property.end),
-    text,
-  };
-}
-
-function insertPropertyBefore(sourceText: string, property: PropertySpan, text: string): SourceReplacement {
-  const start = lineStartIndex(sourceText, property.start);
-  return {
-    start,
-    end: start,
-    text: `${lineIndentAt(sourceText, property.start)}${text},\n`,
-  };
-}
-
-function renderInlineQueryInsertedProperties(
-  sourceText: string,
-  object: SourceSpan,
-  properties: string[],
-  style: InlineSourceStyle,
-): SourceReplacement {
-  const insertionStart = trimEndIndex(sourceText, object.end);
-  const beforeClose = sourceText.slice(object.start + 1, insertionStart);
-  const closingIndent = lineIndentAt(sourceText, object.end);
-  const propertyIndent = `${closingIndent}${style.indent}`;
-  const prefix = beforeClose.length === 0 ? '\n' : `${beforeClose.endsWith(',') ? '' : ','}\n`;
-  const body = properties
-    .map((property, index) => `${propertyIndent}${property}${propertySeparator(index, properties.length, style)}`)
-    .join('\n');
-  return {
-    start: insertionStart,
-    end: object.end,
-    text: `${prefix}${body}\n${closingIndent}`,
-  };
 }
 
 export async function appendInlineMigration(
@@ -631,29 +506,10 @@ function readQuerySources(sourceText: string, object: SourceSpan, modulePath: st
     parseObjectProperties(sourceText, object.start, object.end, modulePath),
     `inline defineConfig(...) queries in ${modulePath}`,
   );
-  return queryProperties.map((property) => {
-    const name = property.name;
-    const objectStart = skipTrivia(sourceText, property.start);
-    if (sourceText[objectStart] !== '{') {
-      return {
-        name,
-        content: readSqlTemplate(sourceText, property, `${modulePath} query ${name}`),
-      };
-    }
-    const objectEnd = findMatchingDelimiter(sourceText, objectStart, '{', '}');
-    const properties = assertPlainProperties(
-      parseObjectProperties(sourceText, objectStart, objectEnd, modulePath),
-      `inline defineConfig(...) query ${name} in ${modulePath}`,
-    );
-    const content = readSqlProperty(properties, 'query', `${modulePath} query ${name}`);
-    return {
-      name,
-      content,
-      object: {start: objectStart, end: objectEnd},
-      type: properties.find((candidate) => candidate.name === '$type'),
-      mode: properties.find((candidate) => candidate.name === 'mode'),
-    };
-  });
+  return queryProperties.map((property) => ({
+    name: property.name,
+    content: readSqlTemplate(sourceText, property, `${modulePath} query ${property.name}`),
+  }));
 }
 
 function readSqlTemplate(sourceText: string, span: SourceSpan, location: string): InlineSqlTemplate {
@@ -1122,18 +978,6 @@ function lineStartIndex(sourceText: string, index: number): number {
   return sourceText.lastIndexOf('\n', index - 1) + 1;
 }
 
-function lineEndIndex(sourceText: string, index: number): number {
-  const lineEnd = sourceText.indexOf('\n', index);
-  return lineEnd === -1 ? index : lineEnd + 1;
-}
-
-function trimEndIndex(sourceText: string, end: number): number {
-  let index = end;
-  while (index > 0 && /\s/u.test(sourceText[index - 1] || '')) {
-    index -= 1;
-  }
-  return index;
-}
 
 type InlineSourceStyle = {
   indent: string;
@@ -1167,10 +1011,6 @@ function renderInlineMigrationObject(
     .map((line) => `${bodyIndent}${escapeTemplateLiteral(line.trimEnd())}`)
     .join('\n');
   return `${indent}{\n${propertyIndent}name: ${quotedString(migration.name, style.quote)},\n${propertyIndent}content: sql\`\n${body}\n${propertyIndent}\`${style.trailingComma ? ',' : ''}\n${indent}}`;
-}
-
-function propertySeparator(index: number, length: number, style: InlineSourceStyle): string {
-  return index < length - 1 || style.trailingComma ? ',' : '';
 }
 
 function quotedString(value: string, quote: '"' | "'"): string {

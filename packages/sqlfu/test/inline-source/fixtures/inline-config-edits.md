@@ -420,7 +420,7 @@ void fileBacked;
 
 </details>
 
-## class config rewrites quoted query names and nested existing generated properties
+## class config rewrites quoted query names
 
 <details>
 <summary>input</summary>
@@ -440,15 +440,11 @@ export class EventObject {
       { name: `0001_events`, content: sql`create table events(id integer primary key, payload text not null);` },
     ],
     queries: {
-      "eventById": {
-        query: sql`
-          select id, payload
-          from events
-          where id = :id
-        `,
-        $type: {} as {parameters: { id: number }; result: Array<{ oldPayload: string }>},
-        mode: 'one',
-      },
+      "eventById": sql.one<{parameters: { id: number }; result: Array<{ oldPayload: string }>}>`
+        select id, payload
+        from events
+        where id = :id
+      `,
     },
   });
 }
@@ -493,15 +489,11 @@ export class EventObject {
       { name: `0001_events`, content: sql`create table events(id integer primary key, payload text not null);` },
     ],
     queries: {
-      "eventById": {
-        query: sql`
-          select id, payload
-          from events
-          where id = :id
-        `,
-        mode: 'nullableOne',
-        $type: {} as { parameters: { id: number }; result: { id: number; payload: string } },
-      },
+      "eventById": sql.nullableOne<{ parameters: { id: number }; result: { id: number; payload: string } }>`
+        select id, payload
+        from events
+        where id = :id
+      `,
     },
   });
 }
@@ -972,7 +964,7 @@ void app;
 
 </details>
 
-## top-level const config rewrites quoted query names and nested existing generated properties
+## top-level const config rewrites quoted query names
 
 <details>
 <summary>input</summary>
@@ -980,7 +972,7 @@ void app;
 ```ts (worker.ts)
 import {defineConfig, sql} from 'sqlfu';
 
-const app = defineConfig({
+const eventDb = defineConfig({
   definitions: sql`
     create table events (
       id integer primary key,
@@ -991,19 +983,13 @@ const app = defineConfig({
     { name: `0001_events`, content: sql`create table events(id integer primary key, payload text not null);` },
   ],
   queries: {
-    "eventById": {
-      query: sql`
-        select id, payload
-        from events
-        where id = :id
-      `,
-      $type: {} as {parameters: { id: number }; result: Array<{ oldPayload: string }>},
-      mode: 'one',
-    },
+    "eventById": sql.one<{parameters: { id: number }; result: Array<{ oldPayload: string }>}>`
+      select id, payload
+      from events
+      where id = :id
+    `,
   },
 });
-
-void app;
 ```
 
 </details>
@@ -1015,7 +1001,7 @@ void app;
 {
   "types": [
     {
-      "configName": "app",
+      "configName": "eventDb",
       "queryName": "eventById",
       "type": "{ parameters: { id: number }; result: { id: number; payload: string } }",
       "mode": "nullableOne"
@@ -1032,7 +1018,7 @@ void app;
 ```ts (worker.ts)
 import {defineConfig, sql} from 'sqlfu';
 
-const app = defineConfig({
+const eventDb = defineConfig({
   definitions: sql`
     create table events (
       id integer primary key,
@@ -1043,19 +1029,13 @@ const app = defineConfig({
     { name: `0001_events`, content: sql`create table events(id integer primary key, payload text not null);` },
   ],
   queries: {
-    "eventById": {
-      query: sql`
-        select id, payload
-        from events
-        where id = :id
-      `,
-      mode: 'nullableOne',
-      $type: {} as { parameters: { id: number }; result: { id: number; payload: string } },
-    },
+    "eventById": sql.nullableOne<{ parameters: { id: number }; result: { id: number; payload: string } }>`
+      select id, payload
+      from events
+      where id = :id
+    `,
   },
 });
-
-void app;
 ```
 
 </details>

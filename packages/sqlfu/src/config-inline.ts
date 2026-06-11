@@ -22,14 +22,7 @@ export type InlineConfigMigration = {
   content: SqlQueryNoArgs;
 };
 
-export type InlineConfigQueryObject<TType extends InlineConfigQueryType = InlineConfigQueryType> = {
-  query: SqlQueryNoArgs;
-  $type?: TType;
-  mode?: QueryResultMode;
-};
-
 export type InlineConfigQuery<TType extends InlineConfigQueryType = InlineConfigQueryType> =
-  | InlineConfigQueryObject<TType>
   | SqlTypedQueryNoArgs<TType>
   | SqlQueryNoArgs;
 
@@ -39,13 +32,7 @@ export type InlineConfigDefinition<TQueries extends Record<string, InlineConfigQ
   queries: TQueries;
 };
 
-type InlineQueryTypePayload<TQuery> = TQuery extends {$type: infer TType}
-  ? TType
-  : TQuery extends {$type?: infer TType}
-    ? TType
-    : TQuery extends {__sqlfuType?: infer TType}
-      ? TType
-      : {};
+type InlineQueryTypePayload<TQuery> = TQuery extends {__sqlfuType?: infer TType} ? TType : {};
 
 type InlineQueryParameters<TQuery> =
   InlineQueryTypePayload<TQuery> extends {parameters: infer TParameters}
@@ -102,7 +89,7 @@ export function defineInlineConfig<const TQueries extends Record<string, InlineC
     };
 
     for (const [name, query] of Object.entries(definition.queries)) {
-      bound[name] = (params?: PreparedStatementParams) => runInlineQuery(client, query, params);
+      bound[name] = bindInlineQuery(client, query);
     }
 
     return bound as InlineConfigBound<TQueries, TClient>;
@@ -125,31 +112,30 @@ function inlineMigrations(migrations: InlineConfigMigration[]): Migration[] {
   });
 }
 
-function runInlineQuery(
+/**
+ * Mode and shape validation depend only on the static query definition, so
+ * they run once at bind time and the per-call closure only executes — this
+ * runs on every query inside a durable object's single-threaded event loop.
+ * Validation errors still surface on first call rather than at bind, so an
+ * ungenerated module can still construct its durable object.
+ */
+function bindInlineQuery(
   client: Client,
   query: InlineConfigQuery,
-  params: PreparedStatementParams | undefined,
-): InlineRuntimeQueryResult | Promise<InlineRuntimeQueryResult> {
-  const mode = readInlineQueryMode(query);
-  const sqlQuery = inlineQuerySql(query);
-  if (sqlQuery.args.length > 0) {
-    throw new Error('Inline queries cannot use template interpolations.');
+): (params?: PreparedStatementParams) => InlineRuntimeQueryResult | Promise<InlineRuntimeQueryResult> {
+  try {
+    const mode = readInlineQueryMode(query);
+    if (query.args.length > 0) {
+      throw new Error('Inline queries cannot use template interpolations.');
+    }
+    return client.sync
+      ? (params) => runInlineSyncQuery(client as SyncClient, query.sql, mode, params)
+      : (params) => runInlineAsyncQuery(client as AsyncClient, query.sql, mode, params);
+  } catch (error) {
+    return () => {
+      throw error;
+    };
   }
-  if (isInlineSyncClient(client)) {
-    return runInlineSyncQuery(client, sqlQuery.sql, mode, params);
-  }
-  if (isInlineAsyncClient(client)) {
-    return runInlineAsyncQuery(client, sqlQuery.sql, mode, params);
-  }
-  throw new Error('Inline defineConfig() received an unsupported client.');
-}
-
-function isInlineSyncClient(client: Client): client is SyncClient {
-  return client.sync;
-}
-
-function isInlineAsyncClient(client: Client): client is AsyncClient {
-  return !client.sync;
 }
 
 function runInlineSyncQuery(
@@ -179,7 +165,7 @@ async function runInlineAsyncQuery(
 }
 
 function readInlineQueryMode(query: InlineConfigQuery): QueryResultMode {
-  const mode = inlineQueryMode(query);
+  const mode: unknown = 'mode' in query ? query.mode : undefined;
   if (isQueryResultMode(mode)) {
     return mode;
   }
@@ -187,18 +173,6 @@ function readInlineQueryMode(query: InlineConfigQuery): QueryResultMode {
     throw new Error('Inline query is missing generated mode. Run sqlfu generate before binding inline defineConfig().');
   }
   throw new Error(`Inline query has unsupported generated mode ${JSON.stringify(mode)}.`);
-}
-
-function inlineQueryMode(query: InlineConfigQuery): unknown {
-  return 'mode' in query ? query.mode : undefined;
-}
-
-function inlineQuerySql(query: InlineConfigQuery): SqlQueryNoArgs {
-  return isInlineConfigQueryObject(query) ? query.query : query;
-}
-
-function isInlineConfigQueryObject(query: InlineConfigQuery): query is InlineConfigQueryObject {
-  return 'query' in query;
 }
 
 function isQueryResultMode(value: unknown): value is QueryResultMode {

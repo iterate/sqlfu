@@ -24,38 +24,58 @@ export function bindSqlParamsToPositional(
   params: PreparedStatementParams | null | undefined,
   placeholderStyle: SqlPlaceholderStyle,
 ): {sql: string; args: QueryArg[]} {
-  if (params == null || Array.isArray(params)) {
-    return {
-      sql: rewriteQuestionMarkPlaceholders(sql, placeholderStyle),
-      args: params ? (params as QueryArg[]) : [],
-    };
-  }
+  return prepareSqlParamsBinding(sql, placeholderStyle).bind(params);
+}
 
-  const named = params as Record<string, unknown>;
+export type PreparedSqlParamsBinding = {
+  bind(params: PreparedStatementParams | null | undefined): {sql: string; args: QueryArg[]};
+};
+
+/**
+ * Scan the SQL once and return a binder for repeated calls — the rewritten SQL
+ * is a pure function of the input, so adapters that re-issue the same
+ * statement (durable objects re-exec per call) can cache this instead of
+ * rescanning every execution. Only the args extraction depends on `params`.
+ */
+export function prepareSqlParamsBinding(sql: string, placeholderStyle: SqlPlaceholderStyle): PreparedSqlParamsBinding {
   const parameters = scanSqlParameters(sql, placeholderStyle);
+  const positionalOnlySql = renderPositionalSql(
+    sql,
+    parameters.filter((parameter) => parameter.kind === 'positional'),
+    placeholderStyle,
+  );
+  const allPositionalSql = renderPositionalSql(sql, parameters, placeholderStyle);
+  const namedParameterNames = parameters.flatMap((parameter) => (parameter.kind === 'named' ? [parameter.name] : []));
+
+  return {
+    bind(params) {
+      if (params == null || Array.isArray(params)) {
+        return {sql: positionalOnlySql, args: params ? (params as QueryArg[]) : []};
+      }
+      const named = params as Record<string, unknown>;
+      const args: QueryArg[] = [];
+      for (const name of namedParameterNames) {
+        if (!Object.prototype.hasOwnProperty.call(named, name)) {
+          throw new Error(`SQL: missing value for named parameter "${name}".`);
+        }
+        args.push(named[name] as QueryArg);
+      }
+      return {sql: allPositionalSql, args};
+    },
+  };
+}
+
+function renderPositionalSql(sql: string, parameters: SqlParameter[], placeholderStyle: SqlPlaceholderStyle): string {
   let out = '';
   let cursor = 0;
   let placeholderIndex = 0;
-  const args: QueryArg[] = [];
-
   for (const parameter of parameters) {
     out += sql.slice(cursor, parameter.start);
-    if (parameter.kind === 'positional') {
-      out += positionalPlaceholder(placeholderStyle, ++placeholderIndex);
-      cursor = parameter.end;
-      continue;
-    }
-
     out += positionalPlaceholder(placeholderStyle, ++placeholderIndex);
     cursor = parameter.end;
-    if (!Object.prototype.hasOwnProperty.call(named, parameter.name)) {
-      throw new Error(`SQL: missing value for named parameter "${parameter.name}".`);
-    }
-    args.push(named[parameter.name] as QueryArg);
   }
-
   out += sql.slice(cursor);
-  return {sql: out, args};
+  return out;
 }
 
 export function bindSqlParamsToPrefixedRecord(
@@ -82,22 +102,6 @@ export function scanSqlNamedParameters(sql: string): SqlNamedParameter[] {
   for (const parameter of scanSqlParameters(sql, 'question')) {
     if (parameter.kind === 'named') out.push(parameter);
   }
-  return out;
-}
-
-function rewriteQuestionMarkPlaceholders(sql: string, placeholderStyle: SqlPlaceholderStyle): string {
-  if (placeholderStyle === 'question') return sql;
-
-  let out = '';
-  let cursor = 0;
-  let placeholderIndex = 0;
-  for (const parameter of scanSqlParameters(sql, placeholderStyle)) {
-    if (parameter.kind !== 'positional') continue;
-    out += sql.slice(cursor, parameter.start);
-    out += positionalPlaceholder(placeholderStyle, ++placeholderIndex);
-    cursor = parameter.end;
-  }
-  out += sql.slice(cursor);
   return out;
 }
 

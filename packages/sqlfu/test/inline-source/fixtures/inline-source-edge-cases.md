@@ -153,65 +153,6 @@ export class PostObject {
 
 </details>
 
-## class config preserves compact query source when generated properties are out of order
-
-<details>
-<summary>input</summary>
-
-```ts (worker.ts)
-import {defineConfig, sql} from 'sqlfu';
-
-export class PostObject {
-  static db = defineConfig({
-    definitions: sql`create table posts (slug text primary key);`,
-    migrations: [],
-    queries: {
-      listPosts: { query: sql`select slug from posts`, $type: {} as { result: { oldSlug: string } }, mode: 'one' },
-    },
-  });
-}
-```
-
-</details>
-
-<details>
-<summary>edits</summary>
-
-```json (edits.json)
-{
-  "types": [
-    {
-      "className": "PostObject",
-      "configName": "db",
-      "queryName": "listPosts",
-      "type": "{ result: { slug: string } }",
-      "mode": "many"
-    }
-  ]
-}
-```
-
-</details>
-
-<details>
-<summary>output</summary>
-
-```ts (worker.ts)
-import {defineConfig, sql} from 'sqlfu';
-
-export class PostObject {
-  static db = defineConfig({
-    definitions: sql`create table posts (slug text primary key);`,
-    migrations: [],
-    queries: {
-      listPosts: { query: sql`select slug from posts`, $type: {} as { result: { slug: string } }, mode: 'many' },
-    },
-  });
-}
-```
-
-</details>
-
 ## class config ignores nested template expressions elsewhere in the module
 
 <details>
