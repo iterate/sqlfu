@@ -112,6 +112,10 @@ async function createAlchemyDevFixture() {
             CLOUDFLARE_ACCOUNT_ID: 'test-account-id',
             CLOUDFLARE_API_TOKEN: 'test-api-token',
             DO_NOT_TRACK: '1',
+            // Alchemy refuses its default local state store when CI is set;
+            // this fixture is a throwaway temp dir, exactly the case the
+            // escape hatch exists for.
+            ALCHEMY_CI_STATE_STORE_CHECK: 'false',
           },
         },
       );
