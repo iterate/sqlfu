@@ -51,7 +51,18 @@ export function defineConfig<const TQueries extends Record<string, InlineConfigQ
   definition: InlineConfigDefinition<TQueries>,
 ): InlineConfigFactory<TQueries>;
 export function defineConfig(config: any) {
-  if (typeof config?.definitions === 'string' || typeof config?.queries === 'string') {
+  const fileDefinitions = typeof config?.definitions === 'string';
+  const fileQueries = typeof config?.queries === 'string';
+  // The overloads reject this at compile time; the runtime guard is for
+  // untyped callers, who would otherwise get the plain file-backed object back
+  // and a confusing "db is not a function" far away from the config.
+  if (fileDefinitions !== fileQueries && config?.definitions !== undefined && config?.queries !== undefined) {
+    throw new Error(
+      'defineConfig(...) mixes inline and file-backed shapes: use string paths for both "definitions" and ' +
+        '"queries" (file-backed config), or sql`...` templates for both (inline config).',
+    );
+  }
+  if (fileDefinitions || fileQueries) {
     return defineConfigFs(config);
   }
   return defineInlineConfig(config);

@@ -298,6 +298,25 @@ test('inline migrations and queries tolerate sql line comments', () => {
   expect(db.listPosts()).toEqual([{slug: 'hello-world'}]);
 });
 
+test('defineConfig rejects configs that mix inline and file-backed shapes', () => {
+  // Compile-time overloads already reject these; the runtime guard is for
+  // untyped callers, who otherwise get a plain object back and a confusing
+  // "db is not a function" far away from the config.
+  expect(() =>
+    defineConfig({
+      definitions: sql`create table posts (slug text primary key)`,
+      queries: './sql',
+    } as any),
+  ).toThrow(/mixes inline and file-backed/);
+
+  expect(() =>
+    defineConfig({
+      definitions: './definitions.sql',
+      queries: {listPosts: sql`select slug from posts`},
+    } as any),
+  ).toThrow(/mixes inline and file-backed/);
+});
+
 function createInlineConfigFixture() {
   const database = new DatabaseSync(':memory:');
   const client = createNodeSqliteClient(database);
