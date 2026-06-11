@@ -1,5 +1,5 @@
 import {sql as runtimeSql} from '../sql.js';
-import type {LoadedSqlfuProject} from '../config.js';
+import {assertServableProject, type LoadedSqlfuProject} from '../config.js';
 import type {SqlfuHost} from '../host.js';
 import type {RootSqlTag, SqlfuProjectConfig} from '../types.js';
 import type {Confirm} from './core.js';
@@ -127,6 +127,7 @@ export async function format(sql: string, options: {language?: 'sqlite' | 'postg
 
 export async function serve(input: ServeOptions = {}) {
   const project = await loadNodeProjectState(input);
+  assertServableProject(project);
   const params = {port: input.port, configPath: project.configPath};
   const {startSqlfuServer} = await import('../ui/server.js');
   if (input.ui) {

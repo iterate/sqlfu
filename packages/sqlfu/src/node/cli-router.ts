@@ -26,6 +26,7 @@ import {
   generateInlineConfigModule,
   watchGenerateInlineConfigModule,
 } from './inline-commands.js';
+import {assertServableProject} from '../config.js';
 import {startSqlfuServer} from '../ui/server.js';
 import {resolveSqlfuUi} from '../ui/resolve-sqlfu-ui.js';
 import packageJson from '../../package.json' with {type: 'json'};
@@ -59,6 +60,7 @@ export const router = {
     )
     .handler(async ({context, input}) => {
       const project = await loadContextProjectState(context);
+      assertServableProject(project);
       const params = {port: input?.port, configPath: project.configPath};
       if (input?.ui) {
         const ui = await resolveSqlfuUi({sqlfuVersion: packageJson.version});
