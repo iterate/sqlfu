@@ -227,6 +227,17 @@ function stripSqlComments(value: string): string {
       i = end;
       continue;
     }
+    if (char === '$') {
+      // Postgres dollar-quoted strings ($$...$$, $tag$...$tag$) are data;
+      // @sqlfu/pg shares this tag. Null means "not a dollar string" (e.g. a
+      // $1 placeholder) and the $ is treated as a plain character.
+      const end = scanDollarQuoted(value, i);
+      if (end !== null) {
+        out += value.slice(i, end);
+        i = end;
+        continue;
+      }
+    }
     if (char === '[') {
       const end = value.indexOf(']', i + 1);
       const stop = end === -1 ? value.length : end + 1;
@@ -238,6 +249,21 @@ function stripSqlComments(value: string): string {
     i += 1;
   }
   return out;
+}
+
+function scanDollarQuoted(value: string, start: number): number | null {
+  let cursor = start + 1;
+  while (cursor < value.length) {
+    const char = value[cursor];
+    if (char === '$') {
+      const tag = value.slice(start, cursor + 1);
+      const end = value.indexOf(tag, cursor + 1);
+      return end === -1 ? null : end + tag.length;
+    }
+    if (!/[A-Za-z0-9_]/.test(char)) return null;
+    cursor += 1;
+  }
+  return null;
 }
 
 function scanQuoted(value: string, start: number, quote: string): number {
