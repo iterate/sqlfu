@@ -3,11 +3,9 @@ import path from 'node:path';
 import {generateQueryTypesForConfig} from './index.js';
 import {loadProjectConfig} from '../node/config.js';
 import {createNodeHost} from '../node/host.js';
-import {watch} from '../node/watcher.js';
+import {watchAndRegenerate} from '../node/watcher.js';
 import type {SqlfuHost} from '../host.js';
 import type {SqlfuProjectConfig} from '../types.js';
-
-const DEBOUNCE_MS = 150;
 
 export async function watchGenerateQueryTypes(): Promise<void> {
   const config = await loadProjectConfig();
@@ -43,75 +41,18 @@ export async function watchGenerateQueryTypesForConfig(
     );
   }
 
-  const logger = options.logger ?? console;
-  const watchPaths = collectWatchPaths(config);
   const generatedDir = path.join(config.queries, '.generated');
 
-  let running = false;
-  let pending = false;
-  let pendingReason = '';
-
-  const runGenerate = async (reason: string) => {
-    if (running) {
-      pending = true;
-      pendingReason = reason;
-      return;
-    }
-    running = true;
-    let nextReason = reason;
-    try {
-      do {
-        pending = false;
-        logger.log(`sqlfu generate (${nextReason})`);
-        try {
-          await generateQueryTypesForConfig(config, host);
-        } catch (error) {
-          logger.error(`sqlfu generate failed: ${formatError(error)}`);
-        }
-        nextReason = pendingReason;
-      } while (pending);
-    } finally {
-      running = false;
-    }
-  };
-
-  await runGenerate('initial run');
-
-  const debounce = createDebouncer(DEBOUNCE_MS);
-
-  const onEvent = (eventName: string, eventPath: string) => {
-    if (isInsideGenerated(eventPath, generatedDir)) return;
-    debounce(() => {
-      const relative = path.relative(config.projectRoot, eventPath) || eventPath;
-      void runGenerate(`${eventName}: ${relative}`);
-    });
-  };
-
-  const watcher = watch(watchPaths, {
-    ignoreInitial: true,
-    ignored: (watchedPath) => isInsideGenerated(watchedPath, generatedDir),
+  await watchAndRegenerate({
+    watchPaths: collectWatchPaths(config),
+    ignored: (eventPath) => isInsideGenerated(eventPath, generatedDir),
+    shouldRegenerate: null,
+    describeEventPath: (eventPath) => path.relative(config.projectRoot, eventPath) || eventPath,
+    generate: () => generateQueryTypesForConfig(config, host),
+    signal: options.signal,
+    onReady: options.onReady,
+    logger: options.logger ?? console,
   });
-
-  watcher.on('add', (eventPath) => onEvent('add', eventPath));
-  watcher.on('change', (eventPath) => onEvent('change', eventPath));
-  watcher.on('unlink', (eventPath) => onEvent('unlink', eventPath));
-  watcher.on('error', (error) => logger.error(`sqlfu watcher error: ${formatError(error)}`));
-
-  await new Promise<void>((resolve) => watcher.once('ready', () => resolve()));
-  logger.log(`sqlfu watching for changes in:\n${watchPaths.map((value) => `  ${value}`).join('\n')}`);
-  options.onReady?.();
-
-  try {
-    await new Promise<void>((resolve) => {
-      if (options.signal?.aborted) {
-        resolve();
-        return;
-      }
-      options.signal?.addEventListener('abort', () => resolve(), {once: true});
-    });
-  } finally {
-    await watcher.close();
-  }
 }
 
 function collectWatchPaths(config: SqlfuProjectConfig): string[] {
@@ -132,17 +73,4 @@ function collectWatchPaths(config: SqlfuProjectConfig): string[] {
 function isInsideGenerated(candidate: string, generatedDir: string): boolean {
   const relative = path.relative(generatedDir, candidate);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-}
-
-function createDebouncer(ms: number) {
-  let timer: NodeJS.Timeout | undefined;
-  return (fn: () => void) => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(fn, ms);
-  };
-}
-
-function formatError(error: unknown): string {
-  if (error instanceof Error) return error.stack || error.message;
-  return String(error);
 }

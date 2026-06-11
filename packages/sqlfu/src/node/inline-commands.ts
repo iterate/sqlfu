@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import {autoAcceptConfirm, type Confirm} from '../api/core.js';
@@ -7,15 +8,13 @@ import {materializeDefinitionsSchemaFor, materializeMigrationsSchemaFor} from '.
 import {migrationNickname} from '../naming.js';
 import type {SqlfuHost} from '../host.js';
 import {generateInlineConfigTypes, type GenerateQueryTypesResult} from '../typegen/index.js';
-import {watch} from './watcher.js';
+import {watchAndRegenerate} from './watcher.js';
 import {
   appendInlineMigration,
   inlineMigrationsToMigrationFiles,
   readInlineConfigSources,
   type InlineConfigSource,
 } from './inline-source.js';
-
-const INLINE_WATCH_DEBOUNCE_MS = 150;
 
 export async function generateInlineConfigModule(input: {
   modulePath: string;
@@ -37,67 +36,31 @@ export async function watchGenerateInlineConfigModule(
     logger?: Pick<Console, 'log' | 'error'>;
   } = {},
 ): Promise<void> {
-  const logger = options.logger || console;
-  let running = false;
-  let pending = false;
-  let pendingReason = '';
+  // The generator writes type annotations back into the watched module, so
+  // every generate fires a change event for our own write. Remember the module
+  // content as of the last generate and skip events that don't change it —
+  // otherwise each save costs a redundant second full typegen cycle.
+  let lastGeneratedContent: string | null = null;
 
-  const runGenerate = async (reason: string) => {
-    if (running) {
-      pending = true;
-      pendingReason = reason;
-      return;
-    }
-    running = true;
-    let nextReason = reason;
-    try {
-      do {
-        pending = false;
-        logger.log(`sqlfu generate (${nextReason})`);
-        try {
-          await generateInlineConfigModule(input);
-        } catch (error) {
-          logger.error(`sqlfu generate failed: ${formatError(error)}`);
-        }
-        nextReason = pendingReason;
-      } while (pending);
-    } finally {
-      running = false;
-    }
-  };
-
-  await runGenerate('initial run');
-
-  const debounce = createDebouncer(INLINE_WATCH_DEBOUNCE_MS);
-  const watcher = watch([input.modulePath], {ignoreInitial: true});
-
-  const onEvent = (eventName: string, eventPath: string) => {
-    debounce(() => {
-      const relative = projectRelativePath(input.projectRoot, eventPath);
-      void runGenerate(`${eventName}: ${relative}`);
-    });
-  };
-
-  watcher.on('add', (eventPath) => onEvent('add', eventPath));
-  watcher.on('change', (eventPath) => onEvent('change', eventPath));
-  watcher.on('unlink', (eventPath) => onEvent('unlink', eventPath));
-  watcher.on('error', (error) => logger.error(`sqlfu watcher error: ${formatError(error)}`));
-
-  await new Promise<void>((resolve) => watcher.once('ready', () => resolve()));
-  logger.log(`sqlfu watching for changes in:\n  ${input.modulePath}`);
-  options.onReady?.();
-
-  try {
-    await new Promise<void>((resolve) => {
-      if (options.signal?.aborted) {
-        resolve();
-        return;
+  await watchAndRegenerate({
+    watchPaths: [input.modulePath],
+    ignored: null,
+    shouldRegenerate: async () => {
+      const current = await fs.readFile(input.modulePath, 'utf8').catch(() => null);
+      return current === null || current !== lastGeneratedContent;
+    },
+    describeEventPath: (eventPath) => projectRelativePath(input.projectRoot, eventPath),
+    generate: async () => {
+      try {
+        await generateInlineConfigTypes(input);
+      } finally {
+        lastGeneratedContent = await fs.readFile(input.modulePath, 'utf8').catch(() => null);
       }
-      options.signal?.addEventListener('abort', () => resolve(), {once: true});
-    });
-  } finally {
-    await watcher.close();
-  }
+    },
+    signal: options.signal,
+    onReady: options.onReady,
+    logger: options.logger || console,
+  });
 }
 
 export async function draftInlineConfigMigration(input: {
@@ -181,19 +144,6 @@ async function draftInlineConfigMigrationForSource(
 
 function projectRelativePath(projectRoot: string, filePath: string) {
   return path.relative(projectRoot, filePath).split(path.sep).join('/');
-}
-
-function createDebouncer(ms: number) {
-  let timer: NodeJS.Timeout | undefined;
-  return (fn: () => void) => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(fn, ms);
-  };
-}
-
-function formatError(error: unknown): string {
-  if (error instanceof Error) return error.stack || error.message;
-  return String(error);
 }
 
 function slugify(value: string) {
