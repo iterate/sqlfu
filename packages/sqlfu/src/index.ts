@@ -37,7 +37,36 @@ export * from './adapters/turso-database.js';
 export * from './adapters/turso-serverless.js';
 export * from './adapters/pg.js';
 
-export {defineConfig} from './config.js';
+import {defineConfig as defineConfigFs} from './config.js';
+import {
+  defineInlineConfig,
+  type InlineConfigDefinition,
+  type InlineConfigFactory,
+  type InlineConfigQuery,
+} from './config-inline.js';
+import type {SqlfuConfig} from './types.js';
+
+export function defineConfig(config: SqlfuConfig): SqlfuConfig;
+export function defineConfig<const TQueries extends Record<string, InlineConfigQuery>>(
+  definition: InlineConfigDefinition<TQueries>,
+): InlineConfigFactory<TQueries>;
+export function defineConfig(config: any) {
+  const fileDefinitions = typeof config?.definitions === 'string';
+  const fileQueries = typeof config?.queries === 'string';
+  // The overloads reject this at compile time; the runtime guard is for
+  // untyped callers, who would otherwise get the plain file-backed object back
+  // and a confusing "db is not a function" far away from the config.
+  if (fileDefinitions !== fileQueries && config?.definitions !== undefined && config?.queries !== undefined) {
+    throw new Error(
+      'defineConfig(...) mixes inline and file-backed shapes: use string paths for both "definitions" and ' +
+        '"queries" (file-backed config), or sql`...` templates for both (inline config).',
+    );
+  }
+  if (fileDefinitions || fileQueries) {
+    return defineConfigFs(config);
+  }
+  return defineInlineConfig(config);
+}
 
 // Pluggable dialect surface. The default `sqliteDialect` is wired up
 // automatically when `defineConfig` omits `dialect`. Postgres support arrives

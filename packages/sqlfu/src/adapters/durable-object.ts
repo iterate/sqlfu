@@ -1,6 +1,6 @@
 import {wrapSyncClientErrors} from '../adapter-errors.js';
 import {bindSyncSql} from '../sql.js';
-import {bindSqlParamsToPositional} from '../sql-params.js';
+import {prepareSqlParamsBinding, type PreparedSqlParamsBinding} from '../sql-params.js';
 import {rawSqlWithSqlSplittingSync} from '../sqlite-text.js';
 import type {ResultRow, SqlQuery, SyncClient, SyncPreparedStatement} from '../types.js';
 
@@ -36,6 +36,18 @@ export function createDurableObjectClient<TStorage extends DurableObjectClientIn
 ): SyncClient<TStorage> {
   const sqlStorage = getSqlStorage(storage);
   const transactionSync = getTransactionSync(storage);
+  // Cached per distinct SQL string: prepare() is called with static query text
+  // (generated wrappers, inline configs), so this stays bounded while saving a
+  // full character scan + SQL rewrite on every execution.
+  const paramBindings = new Map<string, PreparedSqlParamsBinding>();
+  const paramBindingFor = (sql: string) => {
+    let binding = paramBindings.get(sql);
+    if (!binding) {
+      binding = prepareSqlParamsBinding(sql, 'question');
+      paramBindings.set(sql, binding);
+    }
+    return binding;
+  };
   const client: Omit<SyncClient<TStorage>, 'sql'> & {
     sql: SyncClient<TStorage>['sql'];
   } = {
@@ -70,19 +82,20 @@ export function createDurableObjectClient<TStorage extends DurableObjectClientIn
       // which the design grills already declared cheap. Named params are
       // bound to positional because `storage.exec` only accepts a
       // positional `...bindings` spread.
+      const binding = paramBindingFor(sql);
       return {
         all(params) {
-          const rewritten = bindSqlParamsToPositional(sql, params, 'question');
-          return sqlStorage.exec(rewritten.sql, ...rewritten.args).toArray() as TRow[];
+          const bound = binding.bind(params);
+          return sqlStorage.exec(bound.sql, ...bound.args).toArray() as TRow[];
         },
         run(params) {
-          const rewritten = bindSqlParamsToPositional(sql, params, 'question');
-          const cursor = sqlStorage.exec(rewritten.sql, ...rewritten.args);
+          const bound = binding.bind(params);
+          const cursor = sqlStorage.exec(bound.sql, ...bound.args);
           return {rowsAffected: cursor.rowsWritten};
         },
         *iterate(params) {
-          const rewritten = bindSqlParamsToPositional(sql, params, 'question');
-          yield* sqlStorage.exec(rewritten.sql, ...rewritten.args).toArray() as TRow[];
+          const bound = binding.bind(params);
+          yield* sqlStorage.exec(bound.sql, ...bound.args).toArray() as TRow[];
         },
         [Symbol.dispose]() {},
       };

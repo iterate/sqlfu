@@ -2,8 +2,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {expect, test, vi} from 'vitest';
 
+import dedent from 'dedent';
 import {sqliteDialect} from '../src/dialect.js';
 import {createNodeHost} from '../src/node/host.js';
+import {watchGenerateInlineConfigModule} from '../src/node/inline-commands.js';
 import type {SqlfuProjectConfig} from '../src/types.js';
 import {watchGenerateQueryTypesForConfig} from '../src/typegen/watch.js';
 import {createTempFixtureRoot, writeFixtureFiles} from './fs-fixture.js';
@@ -69,6 +71,90 @@ test('regenerates tables file when definitions.sql changes', async () => {
     const updated = await fs.readFile(tablesPath, 'utf8');
     expect(updated).toMatch(/PetRow/);
   });
+});
+
+test('regenerates an inline class config when its module changes', async () => {
+  await using fixture = await createInlineWatchFixture(dedent`
+    import {defineConfig, sql} from 'sqlfu';
+
+    export class PostObject {
+      static db = defineConfig({
+        definitions: sql\`
+          create table posts (
+            slug text primary key not null,
+            title text not null
+          );
+        \`,
+        migrations: [],
+        queries: {
+          listPosts: sql\`
+            select slug
+            from posts
+            order by slug
+          \`,
+        },
+      });
+    }
+  `);
+
+  await using _watcher = await fixture.startWatcher();
+
+  const initial = await fs.readFile(fixture.modulePath, 'utf8');
+  expect(initial).toContain(`sql.many<{ result: { slug: string } }>`);
+  expect(initial).not.toContain(`title: string`);
+
+  await fixture.writeModule((source) => source.replace('select slug', 'select slug, title'));
+
+  await waitFor(async () => {
+    const updated = await fs.readFile(fixture.modulePath, 'utf8');
+    expect(updated).toContain(`sql.many<{ result: { slug: string; title: string } }>`);
+  });
+});
+
+test('inline watch does not regenerate for its own type-annotation writes', async () => {
+  await using fixture = await createInlineWatchFixture(dedent`
+    import {defineConfig, sql} from 'sqlfu';
+
+    export class PostObject {
+      static db = defineConfig({
+        definitions: sql\`
+          create table posts (
+            slug text primary key not null,
+            title text not null
+          );
+        \`,
+        migrations: [],
+        queries: {
+          listPosts: sql\`
+            select slug
+            from posts
+            order by slug
+          \`,
+        },
+      });
+    }
+  `);
+
+  const generateRuns: string[] = [];
+  const log = (message: string) => {
+    if (message.startsWith('sqlfu generate (')) generateRuns.push(message);
+  };
+  await using _watcher = await fixture.startWatcher({logger: {log, error: () => {}}});
+
+  // The initial run rewrites the module (injecting the generated tag), which
+  // fires a change event for the watcher's own write.
+  expect(generateRuns).toHaveLength(1);
+
+  await fixture.writeModule((source) => source.replace('select slug', 'select slug, title'));
+  await waitFor(async () => {
+    const updated = await fs.readFile(fixture.modulePath, 'utf8');
+    expect(updated).toContain(`title: string`);
+  });
+
+  // Let any echo of the generator's own write settle, then check the user's
+  // change cost exactly one generate cycle.
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  expect(generateRuns).toHaveLength(2);
 });
 
 test("errors out on authority 'live_schema' with a helpful message", async () => {
@@ -177,7 +263,51 @@ async function createWatchFixture(input: {
       };
     },
     async [Symbol.asyncDispose]() {
-      await fs.rm(root, {recursive: true, force: true});
+      await fs.rm(root, {recursive: true, force: true, maxRetries: 5, retryDelay: 50});
+    },
+  };
+}
+
+async function createInlineWatchFixture(moduleText: string) {
+  const root = await createTempFixtureRoot('generate-inline-watch');
+  const modulePath = path.join(root, 'post-object.ts');
+  await fs.writeFile(modulePath, moduleText.endsWith('\n') ? moduleText : `${moduleText}\n`);
+  const host = await createNodeHost();
+
+  return {
+    root,
+    modulePath,
+    async writeModule(update: (source: string) => string) {
+      const source = await fs.readFile(modulePath, 'utf8');
+      await fs.writeFile(modulePath, update(source));
+    },
+    async startWatcher(options: {logger?: {log: (msg: string) => void; error: (msg: string) => void}} = {}) {
+      const logger = options.logger || {log: () => {}, error: () => {}};
+      const abortController = new AbortController();
+      let runPromise!: Promise<void>;
+      const ready = new Promise<void>((resolve) => {
+        runPromise = watchGenerateInlineConfigModule(
+          {modulePath, projectRoot: root, host},
+          {
+            signal: abortController.signal,
+            onReady: () => resolve(),
+            logger: {...console, ...logger},
+          },
+        );
+        runPromise.catch((error) => {
+          logger.error(String(error));
+        });
+      });
+      await ready;
+      return {
+        async [Symbol.asyncDispose]() {
+          abortController.abort();
+          await runPromise;
+        },
+      };
+    },
+    async [Symbol.asyncDispose]() {
+      await fs.rm(root, {recursive: true, force: true, maxRetries: 5, retryDelay: 50});
     },
   };
 }

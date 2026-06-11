@@ -216,7 +216,29 @@ export type LoadedSqlfuProject =
       config: SqlfuProjectConfig;
     }
   | {
+      initialized: true;
+      projectRoot: string;
+      configPath: string;
+      inline: {
+        modulePath: string;
+      };
+    }
+  | {
       initialized: false;
       projectRoot: string;
       configPath: string;
     };
+
+/**
+ * The UI server deliberately serves uninitialized directories (it has an init
+ * flow), but an inline defineConfig module would start a server whose every
+ * request fails — `serve` rejects those up front like the other non-inline
+ * commands.
+ */
+export function assertServableProject(project: LoadedSqlfuProject): void {
+  if (project.initialized && 'inline' in project) {
+    throw new Error(
+      `No file-backed sqlfu config found at ${project.configPath}; inline defineConfig modules support generate and draft only.`,
+    );
+  }
+}

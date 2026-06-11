@@ -9,6 +9,10 @@ import {findMiniflareD1Path} from '../../src/cloudflare/miniflare.js';
 const packageRoot = path.resolve(path.dirname(import.meta.filename), '../..');
 const repoRoot = path.resolve(packageRoot, '../..');
 
+// Spawning `alchemy dev` is fast on a warm dev machine but can take much
+// longer on a cold shared CI runner (workerd startup, first-run caches).
+const ALCHEMY_DEV_TIMEOUT_MS = process.env.CI ? 90_000 : 15_000;
+
 test('findMiniflareD1Path resolves the sqlite file created by Alchemy dev for a D1 binding', async () => {
   await using fixture = await createAlchemyDevFixture();
 
@@ -28,7 +32,7 @@ test('findMiniflareD1Path resolves the sqlite file created by Alchemy dev for a 
 
   expect(tables).toEqual(expect.arrayContaining([{name: 'd1_migrations'}, {name: 'message'}]));
   expect(migrations).toEqual([{name: '0001_create_message.sql', type: 'migration'}]);
-}, 15_000);
+}, ALCHEMY_DEV_TIMEOUT_MS + 15_000);
 
 test('findMiniflareD1Path throws an actionable error when no well-known Miniflare root is found', async () => {
   await using fixture = await createTempDirectory('miniflare-d1-path-missing');
@@ -108,6 +112,10 @@ async function createAlchemyDevFixture() {
             CLOUDFLARE_ACCOUNT_ID: 'test-account-id',
             CLOUDFLARE_API_TOKEN: 'test-api-token',
             DO_NOT_TRACK: '1',
+            // Alchemy refuses its default local state store when CI is set;
+            // this fixture is a throwaway temp dir, exactly the case the
+            // escape hatch exists for.
+            ALCHEMY_CI_STATE_STORE_CHECK: 'false',
           },
         },
       );
@@ -161,7 +169,7 @@ function openSqliteFile(dbPath: string) {
 }
 
 async function waitForAlchemyD1Sqlite(root: string, logs: () => string) {
-  const deadline = Date.now() + 15_000;
+  const deadline = Date.now() + ALCHEMY_DEV_TIMEOUT_MS;
   let lastError = '';
 
   while (Date.now() < deadline) {

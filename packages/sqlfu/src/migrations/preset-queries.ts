@@ -19,6 +19,16 @@ import {awaited, type DualGenerator} from '../dual-dispatch.js';
 const SQLFU_TABLE = 'sqlfu_migrations';
 const D1_TABLE = 'd1_migrations';
 
+/**
+ * The canonical sqlfu migration-table DDL. Used directly when no dialect is
+ * passed (inline `defineConfig().migrate()`, generated migration bundles) and
+ * re-exported as `sqliteDialect().defaultMigrationTableDdl`, so every sqlite
+ * path creates an identical table. Dialects with different column flavors
+ * (e.g. `@sqlfu/pg`'s timestamptz) override via `defaultMigrationTableDdl`.
+ */
+export const sqlfuMigrationTableDdl = (tableName: string) =>
+  `create table if not exists ${tableName} (\n  name text primary key check (name not like '%.sql'),\n  checksum text not null,\n  applied_at text not null\n);`;
+
 export type ResolvedPresetShape =
   | {kind: 'sqlfu'; table: typeof SQLFU_TABLE; hasChecksum: true}
   | {kind: 'd1'; table: typeof D1_TABLE; hasChecksum: false; variant: 'remote' | 'local'};
@@ -30,11 +40,11 @@ export function presetTableName(preset: SqlfuMigrationPreset): string {
 export function* ensureMigrationTableGen(
   client: Client,
   preset: SqlfuMigrationPreset,
-  dialect: Dialect,
+  dialect?: Pick<Dialect, 'defaultMigrationTableDdl'>,
 ): DualGenerator<ResolvedPresetShape> {
   if (preset === 'sqlfu') {
     yield client.run({
-      sql: dialect.defaultMigrationTableDdl(SQLFU_TABLE),
+      sql: dialect ? dialect.defaultMigrationTableDdl(SQLFU_TABLE) : sqlfuMigrationTableDdl(SQLFU_TABLE),
       args: [],
       name: 'ensureMigrationTable',
     });

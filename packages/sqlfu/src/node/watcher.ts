@@ -23,6 +23,106 @@ export function watch(watchPaths: string[], options: WatchOptions) {
   return watcher;
 }
 
+const REGENERATE_DEBOUNCE_MS = 150;
+
+/**
+ * The shared generate-on-change loop behind `sqlfu generate --watch`, used by
+ * both the file-backed and inline modes: initial run, debounced events,
+ * coalescing (events arriving mid-generate queue exactly one follow-up run),
+ * and ready/abort/close lifecycle. Generate failures are logged, not fatal —
+ * the watcher keeps running so the next change can recover.
+ */
+export async function watchAndRegenerate(input: {
+  watchPaths: string[];
+  /** Filter paths out of watching and events (e.g. the generated output dir). */
+  ignored: ((eventPath: string) => boolean) | null;
+  /** Veto a debounced event, e.g. to skip the generator's own writes. */
+  shouldRegenerate: ((eventPath: string) => Promise<boolean>) | null;
+  describeEventPath: (eventPath: string) => string;
+  generate: () => Promise<unknown>;
+  signal: AbortSignal | undefined;
+  onReady: (() => void) | undefined;
+  logger: Pick<Console, 'log' | 'error'>;
+}): Promise<void> {
+  const {logger} = input;
+  let running = false;
+  let pending = false;
+  let pendingReason = '';
+
+  const runGenerate = async (reason: string) => {
+    if (running) {
+      pending = true;
+      pendingReason = reason;
+      return;
+    }
+    running = true;
+    let nextReason = reason;
+    try {
+      do {
+        pending = false;
+        logger.log(`sqlfu generate (${nextReason})`);
+        try {
+          await input.generate();
+        } catch (error) {
+          logger.error(`sqlfu generate failed: ${formatWatchError(error)}`);
+        }
+        nextReason = pendingReason;
+      } while (pending);
+    } finally {
+      running = false;
+    }
+  };
+
+  await runGenerate('initial run');
+
+  const debounce = createDebouncer(REGENERATE_DEBOUNCE_MS);
+  const onEvent = (eventName: string, eventPath: string) => {
+    if (input.ignored?.(eventPath)) return;
+    debounce(() => {
+      void (async () => {
+        if (input.shouldRegenerate && !(await input.shouldRegenerate(eventPath))) return;
+        await runGenerate(`${eventName}: ${input.describeEventPath(eventPath)}`);
+      })();
+    });
+  };
+
+  const watcher = watch(input.watchPaths, {ignoreInitial: true, ignored: input.ignored || undefined});
+
+  watcher.on('add', (eventPath) => onEvent('add', eventPath));
+  watcher.on('change', (eventPath) => onEvent('change', eventPath));
+  watcher.on('unlink', (eventPath) => onEvent('unlink', eventPath));
+  watcher.on('error', (error) => logger.error(`sqlfu watcher error: ${formatWatchError(error)}`));
+
+  await new Promise<void>((resolve) => watcher.once('ready', () => resolve()));
+  logger.log(`sqlfu watching for changes in:\n${input.watchPaths.map((value) => `  ${value}`).join('\n')}`);
+  input.onReady?.();
+
+  try {
+    await new Promise<void>((resolve) => {
+      if (input.signal?.aborted) {
+        resolve();
+        return;
+      }
+      input.signal?.addEventListener('abort', () => resolve(), {once: true});
+    });
+  } finally {
+    await watcher.close();
+  }
+}
+
+function createDebouncer(ms: number) {
+  let timer: NodeJS.Timeout | undefined;
+  return (fn: () => void) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(fn, ms);
+  };
+}
+
+function formatWatchError(error: unknown): string {
+  if (error instanceof Error) return error.stack || error.message;
+  return String(error);
+}
+
 class FileWatcher extends EventEmitter {
   private snapshot: FileSnapshot = new Map();
   private nativeWatchers: FSWatcher[] = [];

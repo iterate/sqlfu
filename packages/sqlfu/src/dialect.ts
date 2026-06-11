@@ -36,6 +36,7 @@
  */
 import {formatSql, type FormatSqlOptions} from './formatter.js';
 import type {SqlfuHost} from './host.js';
+import {sqlfuMigrationTableDdl} from './migrations/preset-queries.js';
 import {diffBaselineSqlToDesiredSql} from './schemadiff/sqlite/index.js';
 import {quoteIdentifier as sqliteQuoteIdentifier} from './schemadiff/sqlite/identifiers.js';
 import {excludeReservedSqliteObjects, extractSchema as extractSqliteSchema} from './sqlite-text.js';
@@ -251,9 +252,6 @@ export type Dialect = {
   analyzeQueries(materialized: MaterializedTypegenSchema, queries: QueryAnalysisInput[]): Promise<QueryAnalysis[]>;
 };
 
-const sqliteSqlfuMigrationTableDdl = (tableName: string) =>
-  `create table if not exists ${tableName} (\n  name text primary key check (name not like '%.sql'),\n  checksum text not null,\n  applied_at text not null\n);`;
-
 /** Real implementations registered by `typegen/index.ts` at module-load. */
 type SqliteTypegenImpls = {
   materializeTypegenSchema: Dialect['materializeTypegenSchema'];
@@ -294,7 +292,7 @@ export function sqliteDialect(): Dialect {
     diffSchema: diffBaselineSqlToDesiredSql,
     formatSql,
     quoteIdentifier: sqliteQuoteIdentifier,
-    defaultMigrationTableDdl: sqliteSqlfuMigrationTableDdl,
+    defaultMigrationTableDdl: sqlfuMigrationTableDdl,
     // withMigrationLock omitted — sqlite serializes writers at the file level
 
     materializeSchemaSql: async (host, input) => {
