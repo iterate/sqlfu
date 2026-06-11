@@ -1,21 +1,17 @@
 import {sql as runtimeSql} from '../sql.js';
 import type {LoadedSqlfuProject} from '../config.js';
 import type {SqlfuHost} from '../host.js';
-import type {RootSqlTag} from '../types.js';
+import type {RootSqlTag, SqlfuProjectConfig} from '../types.js';
+import type {Confirm} from './core.js';
 import packageJson from '../../package.json' with {type: 'json'};
 
-export type Confirm = (params: {
-  title: string;
-  body: string;
-  bodyType?: 'markdown' | 'sql' | 'typescript';
-  editable?: boolean;
-}) => string | null | Promise<string | null>;
+export type {Confirm} from './core.js';
 
 export const sql = runtimeSql as RootSqlTag;
 
-async function load<TModule>(specifier: string): Promise<TModule> {
-  return import(specifier) as Promise<TModule>;
-}
+// Node-only project/config code is loaded lazily — via dynamic imports with
+// literal specifiers, so bundlers can still follow them — keeping this entry
+// cheap to import and free of eager node:* dependencies.
 
 type NodeApiOptions = {
   configPath?: string;
@@ -53,7 +49,7 @@ export async function init(input: InitOptions): Promise<string> {
   return (await createNodeSqlfuApi(input)).init(input);
 }
 
-export async function config(input: ConfigOptions = {}): Promise<unknown> {
+export async function config(input: ConfigOptions = {}): Promise<SqlfuProjectConfig> {
   return (await createNodeSqlfuApi(input)).config();
 }
 
@@ -64,8 +60,7 @@ export async function sync(input: SyncOptions): Promise<void> {
 export async function draft(input: DraftOptions): Promise<{path: string} | null> {
   const {project, host} = await loadInitializedNodeProject(input);
   if ('inline' in project) {
-    const {draftInlineConfigMigration} =
-      await load<typeof import('../node/inline-commands.js')>('../node/inline-commands.js');
+    const {draftInlineConfigMigration} = await import('../node/inline-commands.js');
     return draftInlineConfigMigration({
       modulePath: project.inline.modulePath,
       projectRoot: project.projectRoot,
@@ -74,7 +69,7 @@ export async function draft(input: DraftOptions): Promise<{path: string} | null>
       confirm: input.confirm,
     });
   }
-  const {createSqlfuApi} = await load<typeof import('./core.js')>('./core.js');
+  const {createSqlfuApi} = await import('./core.js');
   return createSqlfuApi({
     projectRoot: project.projectRoot,
     configPath: project.configPath,
@@ -114,46 +109,43 @@ export async function check(input: CheckOptions = {}): Promise<void> {
 export async function generate(input: GenerateOptions = {}): Promise<GenerateQueryTypesResult> {
   const {project, host} = await loadInitializedNodeProject(input);
   if ('inline' in project) {
-    const {generateInlineConfigModule} =
-      await load<typeof import('../node/inline-commands.js')>('../node/inline-commands.js');
+    const {generateInlineConfigModule} = await import('../node/inline-commands.js');
     return generateInlineConfigModule({
       modulePath: project.inline.modulePath,
       projectRoot: project.projectRoot,
       host,
     });
   }
-  const {generateQueryTypesForConfig} = await load<typeof import('../typegen/index.js')>('../typegen/index.js');
+  const {generateQueryTypesForConfig} = await import('../typegen/index.js');
   return generateQueryTypesForConfig(project.config, host);
 }
 
 export async function format(sql: string, options: {language?: 'sqlite' | 'postgresql'} = {}): Promise<string> {
-  const {formatSql} = await load<typeof import('../formatter.js')>('../formatter.js');
+  const {formatSql} = await import('../formatter.js');
   return formatSql(sql, {language: options.language});
 }
 
-export async function serve(input: ServeOptions = {}): Promise<unknown> {
+export async function serve(input: ServeOptions = {}) {
   const project = await loadNodeProjectState(input);
   const params = {port: input.port, configPath: project.configPath};
+  const {startSqlfuServer} = await import('../ui/server.js');
   if (input.ui) {
-    const {resolveSqlfuUi} = await load<typeof import('../ui/resolve-sqlfu-ui.js')>('../ui/resolve-sqlfu-ui.js');
-    const {startSqlfuServer} = await load<typeof import('../ui/server.js')>('../ui/server.js');
+    const {resolveSqlfuUi} = await import('../ui/resolve-sqlfu-ui.js');
     const ui = await resolveSqlfuUi({sqlfuVersion: packageJson.version});
     return startSqlfuServer({...params, ui});
   }
-  const {startSqlfuServer} = await load<typeof import('../ui/server.js')>('../ui/server.js');
   return startSqlfuServer(params);
 }
 
-export async function kill(input: KillOptions = {}): Promise<unknown[]> {
-  const {stopProcessesListeningOnPort} =
-    await load<typeof import('../node/port-process.js')>('../node/port-process.js');
+export async function kill(input: KillOptions = {}) {
+  const {stopProcessesListeningOnPort} = await import('../node/port-process.js');
   return stopProcessesListeningOnPort(input.port || 56081);
 }
 
 async function createNodeSqlfuApi(input: NodeApiOptions) {
-  const {createSqlfuApi} = await load<typeof import('./core.js')>('./core.js');
+  const {createSqlfuApi} = await import('./core.js');
   const host = await createNodeHost();
-  const projectRoot = input.projectRoot || (await load<typeof import('node:process')>('node:process')).cwd();
+  const projectRoot = input.projectRoot || process.cwd();
   return createSqlfuApi({
     projectRoot,
     configPath: input.configPath,
@@ -163,9 +155,8 @@ async function createNodeSqlfuApi(input: NodeApiOptions) {
 }
 
 async function loadNodeProjectState(input: NodeApiOptions) {
-  const projectRoot = input.projectRoot || (await load<typeof import('node:process')>('node:process')).cwd();
-  const {loadProjectStateFrom, loadProjectStateFromConfigPath} =
-    await load<typeof import('../node/config.js')>('../node/config.js');
+  const projectRoot = input.projectRoot || process.cwd();
+  const {loadProjectStateFrom, loadProjectStateFromConfigPath} = await import('../node/config.js');
   if (input.configPath) {
     return loadProjectStateFromConfigPath(input.configPath, projectRoot);
   }
@@ -187,6 +178,6 @@ async function loadInitializedNodeProject(
 }
 
 async function createNodeHost() {
-  const {createNodeHost} = await load<typeof import('../node/host.js')>('../node/host.js');
+  const {createNodeHost} = await import('../node/host.js');
   return createNodeHost();
 }

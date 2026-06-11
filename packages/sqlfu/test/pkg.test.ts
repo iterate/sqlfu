@@ -139,6 +139,9 @@ async function createPackedPackageFixture() {
         outfile,
         absWorkingDir: root,
         logLevel: 'silent',
+        // Environment-optional imports a bundling consumer would externalize:
+        // bun:sqlite only loads under bun, vite only on the dev UI path.
+        external: ['bun:sqlite', 'vite'],
         banner: {js: `import {createRequire} from 'node:module'; const require = createRequire(import.meta.url);`},
       });
       await execa('node', [outfile], {cwd: root});

@@ -148,6 +148,7 @@ export async function generateInlineConfigTypes(input: {
 
   const dialect = sqliteDialect();
   const queryTypes: InlineQueryType[] = [];
+  const failures: string[] = [];
   for (const inline of inlines) {
     const sourceSql = await materializeDefinitionsSchemaFor(input.host, inline.definitions.sql, {dialect});
     await using materialized = await dialect.materializeTypegenSchema(input.host, {
@@ -175,7 +176,10 @@ export async function generateInlineConfigTypes(input: {
         throw new Error(`Missing vendored TypeSQL analysis for ${querySource.sqlPath}`);
       }
       if (!analysis.ok) {
-        throw new Error(analysis.error.description);
+        // Collect instead of throwing so one bad query (a mid-edit typo in
+        // watch mode, say) doesn't stale every other query's types.
+        failures.push(`${querySource.functionName}: ${analysis.error.description}`);
+        continue;
       }
       const prepared = prepareQueryDescriptor({
         descriptor: refineDescriptor(analysis.descriptor, querySource.analysisSqlContent, schema),
@@ -194,6 +198,14 @@ export async function generateInlineConfigTypes(input: {
   }
 
   const wroteTypes = await writeInlineQueryTypes(input.modulePath, queryTypes);
+
+  if (failures.length > 0) {
+    throw new Error(
+      failures.length === 1
+        ? `Failed to generate types for inline query ${failures[0]}`
+        : `Failed to generate types for ${failures.length} inline queries:\n${failures.join('\n')}`,
+    );
+  }
 
   return {writtenFiles: wroteTypes ? [projectRelativePath(input, input.modulePath)] : []};
 }

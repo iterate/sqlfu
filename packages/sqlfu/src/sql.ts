@@ -121,7 +121,7 @@ function runtimeSql<TType = unknown>(
     args.push(value);
   }
 
-  return {sql: collapseWhitespace(text), args};
+  return {sql: collapseWhitespace(stripSqlComments(text)), args};
 }
 
 export const sql = Object.assign(runtimeSql, {
@@ -196,4 +196,61 @@ export function bindAsyncSql(client: AsyncClient): AsyncSqlTag {
 
 function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Remove sql comments before whitespace collapsing — otherwise a `--` line
+ * comment swallows everything after it once newlines become spaces. Respects
+ * string literals and quoted identifiers so `--` inside them survives.
+ */
+function stripSqlComments(value: string): string {
+  let out = '';
+  let i = 0;
+  while (i < value.length) {
+    const char = value[i];
+    const next = value[i + 1];
+    if (char === '-' && next === '-') {
+      const lineEnd = value.indexOf('\n', i + 2);
+      if (lineEnd === -1) break;
+      i = lineEnd;
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      const end = value.indexOf('*/', i + 2);
+      out += ' ';
+      i = end === -1 ? value.length : end + 2;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === '`') {
+      const end = scanQuoted(value, i, char);
+      out += value.slice(i, end);
+      i = end;
+      continue;
+    }
+    if (char === '[') {
+      const end = value.indexOf(']', i + 1);
+      const stop = end === -1 ? value.length : end + 1;
+      out += value.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    out += char;
+    i += 1;
+  }
+  return out;
+}
+
+function scanQuoted(value: string, start: number, quote: string): number {
+  let cursor = start + 1;
+  while (cursor < value.length) {
+    if (value[cursor] === quote) {
+      if (value[cursor + 1] === quote) {
+        cursor += 2;
+        continue;
+      }
+      return cursor + 1;
+    }
+    cursor += 1;
+  }
+  return value.length;
 }

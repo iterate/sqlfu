@@ -93,10 +93,11 @@ function parseInlineConfigSourceForCall(
   if (!looksLikeInlineDefineConfigObject(sourceText, definitionStart, definitionEnd)) {
     return null;
   }
-  const definitionProperties = parseObjectProperties(sourceText, definitionStart, definitionEnd, modulePath);
-  if (!isInlineDefineConfigShape(sourceText, definitionProperties)) {
+  const parsedDefinition = parseObjectProperties(sourceText, definitionStart, definitionEnd, modulePath);
+  if (!isInlineDefineConfigShape(sourceText, parsedDefinition.properties, modulePath)) {
     return null;
   }
+  const definitionProperties = assertPlainProperties(parsedDefinition, `inline defineConfig(...) in ${modulePath}`);
 
   const afterDefinition = skipTrivia(sourceText, definitionEnd + 1);
   if (sourceText[afterDefinition] !== ')') {
@@ -145,17 +146,30 @@ function looksLikeInlineDefineConfigObject(
   return definitionBody.includes('sql`') || definitionBody.includes('sql<');
 }
 
-function isInlineDefineConfigShape(sourceText: string, properties: PropertySpan[]): boolean {
+function isInlineDefineConfigShape(sourceText: string, properties: PropertySpan[], modulePath: string): boolean {
   const definitions = properties.find((property) => property.name === 'definitions');
   if (!definitions) return false;
-  const queries = properties.find((property) => property.name === 'queries');
-  if (!queries) return false;
   const definitionsStart = skipTrivia(sourceText, definitions.start);
-  if (!startsWithIdentifier(sourceText, definitionsStart, 'sql')) return false;
-  const previous = sourceText[definitionsStart - 1] || '';
-  const next = sourceText[definitionsStart + 'sql'.length] || '';
+  if (startsWithSqlTag(sourceText, definitionsStart)) return true;
+  const quote = sourceText[definitionsStart] || '';
+  if (quote === "'" || quote === '"' || quote === '`') return false; // file-backed path string
+  // The call body contains sql tagged templates (the looksLike... gate) but
+  // "definitions" is neither a sql tag nor a path string — e.g. a hoisted
+  // `const ddl = sql\`...\``. Silently treating this as file-backed would make
+  // the CLI dynamic-import the module and crash with an unrelated error.
+  throw new Error(
+    `${modulePath} defineConfig(...) looks like an inline config (it contains sql tagged templates) but ` +
+      '"definitions" is not a literal sql`...` template. Define the schema inline with sql`...` so sqlfu can ' +
+      'statically analyze it, or use a string path for a file-backed config.',
+  );
+}
+
+function startsWithSqlTag(sourceText: string, index: number): boolean {
+  if (!startsWithIdentifier(sourceText, index, 'sql')) return false;
+  const previous = sourceText[index - 1] || '';
+  const next = sourceText[index + 'sql'.length] || '';
   if (isIdentifierPart(previous) || isIdentifierPart(next)) return false;
-  const afterTag = skipTrivia(sourceText, definitionsStart + 'sql'.length);
+  const afterTag = skipTrivia(sourceText, index + 'sql'.length);
   return sourceText[afterTag] === '`' || sourceText[afterTag] === '<';
 }
 
@@ -171,7 +185,9 @@ export async function writeInlineQueryTypes(modulePath: string, queryTypes: Inli
           candidate.queryName === query.name,
       );
       if (!queryType) {
-        throw new Error(`Missing generated inline query type for ${inlineConfigReferenceName(inline)}.${query.name}.`);
+        // Query analysis can fail per query; the generator reports those after
+        // writing. Leave the failing query's existing annotation untouched.
+        return [];
       }
       return renderInlineQueryTypeReplacements(inlines[0].sourceText, query, queryType, style);
     }),
@@ -364,12 +380,33 @@ export async function appendInlineMigration(
   }
 
   const insertPosition = inline.migrationsArray.insertPosition;
-  const beforeInsert = inline.sourceText.slice(0, insertPosition).trimEnd();
+  let beforeInsert = inline.sourceText.slice(0, insertPosition).trimEnd();
   const closingIndent = lineIndentAt(inline.sourceText, insertPosition);
   const elementIndent = `${closingIndent}${style.indent}`;
-  const prefix = inline.migrations.length === 0 ? '\n' : `${beforeInsert.endsWith(',') ? '' : ','}\n`;
-  const insertion = `${prefix}${renderInlineMigrationObject(elementIndent, migration, style)}${style.trailingComma ? ',' : ''}\n${closingIndent}`;
+  if (inline.migrations.length > 0) {
+    // The separating comma goes right after the previous element's last code
+    // character — `beforeInsert` may end with a trailing line comment, and a
+    // comma appended there would be swallowed by the comment.
+    const lastCode = lastCodeIndexBefore(inline.sourceText, insertPosition);
+    if (lastCode !== null && inline.sourceText[lastCode] !== ',') {
+      beforeInsert = `${beforeInsert.slice(0, lastCode + 1)},${beforeInsert.slice(lastCode + 1)}`;
+    }
+  }
+  const insertion = `\n${renderInlineMigrationObject(elementIndent, migration, style)}${style.trailingComma ? ',' : ''}\n${closingIndent}`;
   await fs.writeFile(modulePath, `${beforeInsert}${insertion}${inline.sourceText.slice(insertPosition)}`);
+}
+
+function lastCodeIndexBefore(sourceText: string, limit: number): number | null {
+  let cursor = 0;
+  let last: number | null = null;
+  while (cursor < limit) {
+    const next = skipTrivia(sourceText, cursor);
+    if (next >= limit) break;
+    const end = skipSourceElement(sourceText, next);
+    last = Math.min(end, limit) - 1;
+    cursor = end;
+  }
+  return last;
 }
 
 export function inlineMigrationsToMigrationFiles(inline: InlineConfigSource): Migration[] {
@@ -571,7 +608,10 @@ function readMigrationSources(sourceText: string, array: SourceSpan, modulePath:
       throw new Error(`inline defineConfig(...) migration ${index} in ${modulePath} must be an object literal.`);
     }
     const objectEnd = findMatchingDelimiter(sourceText, objectStart, '{', '}');
-    const properties = parseObjectProperties(sourceText, objectStart, objectEnd, modulePath);
+    const properties = assertPlainProperties(
+      parseObjectProperties(sourceText, objectStart, objectEnd, modulePath),
+      `inline defineConfig(...) migration ${index} in ${modulePath}`,
+    );
     const name = readStringInitializer(
       sourceText,
       readProperty(properties, 'name', modulePath),
@@ -587,7 +627,11 @@ function readMigrationSources(sourceText: string, array: SourceSpan, modulePath:
 }
 
 function readQuerySources(sourceText: string, object: SourceSpan, modulePath: string): InlineQuerySource[] {
-  return parseObjectProperties(sourceText, object.start, object.end, modulePath).map((property) => {
+  const queryProperties = assertPlainProperties(
+    parseObjectProperties(sourceText, object.start, object.end, modulePath),
+    `inline defineConfig(...) queries in ${modulePath}`,
+  );
+  return queryProperties.map((property) => {
     const name = property.name;
     const objectStart = skipTrivia(sourceText, property.start);
     if (sourceText[objectStart] !== '{') {
@@ -597,7 +641,10 @@ function readQuerySources(sourceText: string, object: SourceSpan, modulePath: st
       };
     }
     const objectEnd = findMatchingDelimiter(sourceText, objectStart, '{', '}');
-    const properties = parseObjectProperties(sourceText, objectStart, objectEnd, modulePath);
+    const properties = assertPlainProperties(
+      parseObjectProperties(sourceText, objectStart, objectEnd, modulePath),
+      `inline defineConfig(...) query ${name} in ${modulePath}`,
+    );
     const content = readSqlProperty(properties, 'query', `${modulePath} query ${name}`);
     return {
       name,
@@ -635,10 +682,26 @@ function readSqlTemplate(sourceText: string, span: SourceSpan, location: string)
     throw new Error(`${location} must be a plain sql\`...\` tagged template.`);
   }
   return {
-    sql: sourceText.slice(templateStart + 1, templateEnd).trim(),
+    // Cooked, not raw: the runtime template literal decodes escapes, so static
+    // analysis must see the same text the runtime executes.
+    sql: cookTemplateText(sourceText.slice(templateStart + 1, templateEnd)).trim(),
     tagStart,
     templateStart,
   };
+}
+
+function cookTemplateText(raw: string): string {
+  return raw.replace(
+    /\\(?:u\{([0-9A-Fa-f]+)\}|u([0-9A-Fa-f]{4})|x([0-9A-Fa-f]{2})|\r?\n|([\s\S]))/gu,
+    (_match, uBrace: string, u4: string, x2: string, single: string | undefined) => {
+      if (uBrace) return String.fromCodePoint(Number.parseInt(uBrace, 16));
+      if (u4) return String.fromCharCode(Number.parseInt(u4, 16));
+      if (x2) return String.fromCharCode(Number.parseInt(x2, 16));
+      if (single === undefined) return ''; // line continuation
+      const simple: Record<string, string> = {n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', 0: '\0'};
+      return simple[single] || single;
+    },
+  );
 }
 
 function readIdentifier(sourceText: string, start: number, location: string): {value: string; end: number} {
@@ -670,35 +733,62 @@ function readStringInitializer(sourceText: string, span: SourceSpan, location: s
   return sourceText.slice(start + 1, end);
 }
 
+type ParsedObjectProperties = {
+  properties: PropertySpan[];
+  /** Object elements the scanner can't model: spreads, shorthand, methods, computed keys. */
+  unsupported: string[];
+};
+
 function parseObjectProperties(
   sourceText: string,
   objectStart: number,
   objectEnd: number,
   modulePath: string,
-): PropertySpan[] {
+): ParsedObjectProperties {
   const properties: PropertySpan[] = [];
+  const unsupported: string[] = [];
   let cursor = objectStart + 1;
   while (cursor < objectEnd) {
     cursor = skipTriviaAndCommas(sourceText, cursor);
     if (cursor >= objectEnd) break;
 
-    const name = readPropertyName(sourceText, cursor, `${modulePath} object`);
-    cursor = skipTrivia(sourceText, name.end);
-    if (sourceText[cursor] !== ':') {
-      throw new Error(`inline defineConfig(...) in ${modulePath} only supports property assignments.`);
+    const name = tryReadPropertyName(sourceText, cursor);
+    const colonIndex = name && skipTrivia(sourceText, name.end);
+    if (!name || sourceText[colonIndex!] !== ':') {
+      // Not a plain `name: value` assignment. Skip the whole element so config
+      // probing degrades gracefully — confirmed-inline callers reject these
+      // via assertPlainProperties below.
+      unsupported.push(describeObjectElement(sourceText, cursor));
+      cursor = findTopLevelValueEnd(sourceText, cursor, objectEnd) + 1;
+      continue;
     }
-    const valueStart = cursor + 1;
+    const valueStart = colonIndex! + 1;
     const valueEnd = findTopLevelValueEnd(sourceText, valueStart, objectEnd);
     properties.push({
       name: name.value,
-      nameStart: cursor,
+      nameStart: colonIndex!,
       start: valueStart,
       end: valueEnd,
     });
     cursor = valueEnd + 1;
   }
   Object.defineProperty(properties, sourceTextSymbol, {value: sourceText});
-  return properties;
+  return {properties, unsupported};
+}
+
+function assertPlainProperties(parsed: ParsedObjectProperties, location: string): PropertySpan[] {
+  if (parsed.unsupported.length > 0) {
+    throw new Error(
+      `${location} only supports plain property assignments; found: ${parsed.unsupported.join(', ')}.`,
+    );
+  }
+  return parsed.properties;
+}
+
+function describeObjectElement(sourceText: string, start: number): string {
+  const lineEnd = sourceText.indexOf('\n', start);
+  const snippet = sourceText.slice(start, lineEnd === -1 ? start + 30 : Math.min(lineEnd, start + 30)).trim();
+  return JSON.stringify(snippet);
 }
 
 function parseArrayElements(sourceText: string, array: SourceSpan): SourceSpan[] {
@@ -714,14 +804,15 @@ function parseArrayElements(sourceText: string, array: SourceSpan): SourceSpan[]
   return elements;
 }
 
-function readPropertyName(sourceText: string, start: number, location: string): {value: string; end: number} {
+function tryReadPropertyName(sourceText: string, start: number): {value: string; end: number} | null {
   const quote = sourceText[start];
   if (quote === "'" || quote === '"' || quote === '`') {
-    const end = quote === '`' ? findTemplateEnd(sourceText, start, location) : findStringEnd(sourceText, start, quote);
+    const end =
+      quote === '`' ? findTemplateEnd(sourceText, start, 'object property name') : findStringEnd(sourceText, start, quote);
     return {value: sourceText.slice(start + 1, end), end: end + 1};
   }
   if (!isIdentifierStart(sourceText[start] || '')) {
-    throw new Error(`${location} name must be an identifier or string literal.`);
+    return null;
   }
   let end = start + 1;
   while (isIdentifierPart(sourceText[end] || '')) {
@@ -780,6 +871,12 @@ function findMatchingAngle(sourceText: string, openIndex: number): number {
   let cursor = openIndex;
   while (cursor < sourceText.length) {
     const char = sourceText[cursor];
+    if (char === '=' && sourceText[cursor + 1] === '>') {
+      // The `>` of an arrow function type (e.g. `render: () => string`) is not
+      // an angle-bracket closer.
+      cursor += 2;
+      continue;
+    }
     if (char === '<') {
       depth += 1;
       cursor += 1;
@@ -828,9 +925,75 @@ function skipSourceElement(sourceText: string, index: number): number {
   const next = sourceText[index + 1];
   if (char === '/' && next === '/') return skipLineComment(sourceText, index);
   if (char === '/' && next === '*') return skipBlockComment(sourceText, index);
+  if (char === '/') {
+    const regexEnd = maybeSkipRegexLiteral(sourceText, index);
+    if (regexEnd !== null) return regexEnd;
+  }
   if (char === "'" || char === '"') return findStringEnd(sourceText, index, char) + 1;
   if (char === '`') return skipTemplateLiteral(sourceText, index);
   return index + 1;
+}
+
+/**
+ * `/` is ambiguous: division or the start of a regex literal. A regex literal
+ * containing a quote, backtick, or brace corrupts the lex if treated as plain
+ * characters. Standard lexer heuristic: `/` starts a regex unless the previous
+ * significant token could end an expression (identifier, number, `)`, `]`, or
+ * a string) — with keywords like `return` treated as expression starts.
+ * Returns null for division, and also bails to null when no closing `/` is
+ * found on the same line, so a mis-detection degrades to the old behavior
+ * instead of swallowing the rest of the file.
+ */
+function maybeSkipRegexLiteral(sourceText: string, index: number): number | null {
+  if (!isRegexAllowedAt(sourceText, index)) return null;
+  let cursor = index + 1;
+  let inCharacterClass = false;
+  while (cursor < sourceText.length) {
+    const char = sourceText[cursor];
+    if (char === '\\') {
+      cursor += 2;
+      continue;
+    }
+    if (char === '\n') return null;
+    if (char === '[') inCharacterClass = true;
+    else if (char === ']') inCharacterClass = false;
+    else if (char === '/' && !inCharacterClass) {
+      cursor += 1;
+      while (isIdentifierPart(sourceText[cursor] || '')) cursor += 1;
+      return cursor;
+    }
+    cursor += 1;
+  }
+  return null;
+}
+
+const regexPrecedingKeywords = new Set([
+  'await',
+  'case',
+  'delete',
+  'do',
+  'else',
+  'in',
+  'instanceof',
+  'new',
+  'of',
+  'return',
+  'throw',
+  'typeof',
+  'void',
+  'yield',
+]);
+
+function isRegexAllowedAt(sourceText: string, index: number): boolean {
+  let cursor = index - 1;
+  while (cursor >= 0 && /\s/u.test(sourceText[cursor] || '')) cursor -= 1;
+  if (cursor < 0) return true;
+  const char = sourceText[cursor] || '';
+  if (char === ')' || char === ']' || char === "'" || char === '"' || char === '`') return false;
+  if (!isIdentifierPart(char)) return true;
+  let wordStart = cursor;
+  while (wordStart > 0 && isIdentifierPart(sourceText[wordStart - 1] || '')) wordStart -= 1;
+  return regexPrecedingKeywords.has(sourceText.slice(wordStart, cursor + 1));
 }
 
 function skipTrivia(sourceText: string, index: number): number {
