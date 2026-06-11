@@ -259,6 +259,45 @@ test('static inline defineConfig binds generated query methods to a sync client'
   expect(requiredPost).toEqual({slug: 'hello-world', title: 'Hello, World!'});
 });
 
+test('inline migrations and queries tolerate sql line comments', () => {
+  using fixture = createInlineConfigFixture();
+
+  const app = defineConfig({
+    definitions: sql`
+      create table posts (slug text primary key);
+    `,
+    migrations: [
+      {
+        name: '0001_create_posts',
+        content: sql`
+          -- create the posts table
+          create table posts (slug text primary key);
+        `,
+      },
+    ],
+    queries: {
+      listPosts: sql.many<{result: {slug: string}}>`
+        -- list every post
+        select slug
+        from posts
+        order by slug
+      `,
+    },
+  });
+
+  const db = app(fixture.client);
+  db.migrate();
+
+  // The runtime sql tag collapses whitespace; if the `--` comment swallows the
+  // rest of the migration, the table never gets created even though the
+  // migration is recorded as applied.
+  const tables = fixture.client.all(sql`select name from sqlite_schema where type = 'table'`);
+  expect(tables).toContainEqual({name: 'posts'});
+
+  fixture.client.run(sql`insert into posts (slug) values ('hello-world')`);
+  expect(db.listPosts()).toEqual([{slug: 'hello-world'}]);
+});
+
 function createInlineConfigFixture() {
   const database = new DatabaseSync(':memory:');
   const client = createNodeSqliteClient(database);

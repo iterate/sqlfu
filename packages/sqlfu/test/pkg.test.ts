@@ -15,6 +15,15 @@ test('packed package supports normal public imports', async () => {
   await fixture.typecheck('tsconfig.worker.json');
 });
 
+test('packed package sqlfu/api still works after bundling', async () => {
+  await using fixture = await createPackedPackageFixture();
+
+  // Bundlers can only follow dynamic imports with literal specifiers; routing
+  // them through a helper that takes the specifier as a runtime parameter
+  // leaves the imports unresolved and the bundle broken at call time.
+  await fixture.bundleAndRun('api-import.mjs');
+});
+
 async function createPackedPackageFixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-pkg-ignoreme-'));
   const pack = await execa('pnpm', ['pack', '--json', '--pack-destination', root], {cwd: packageRoot});
@@ -118,6 +127,21 @@ async function createPackedPackageFixture() {
   return {
     async run(fileName: string) {
       await execa('node', [path.join(root, fileName)], {cwd: root});
+    },
+    async bundleAndRun(fileName: string) {
+      const {build} = await import('esbuild');
+      const outfile = path.join(root, `${fileName}.bundle.mjs`);
+      await build({
+        entryPoints: [path.join(root, fileName)],
+        bundle: true,
+        platform: 'node',
+        format: 'esm',
+        outfile,
+        absWorkingDir: root,
+        logLevel: 'silent',
+        banner: {js: `import {createRequire} from 'node:module'; const require = createRequire(import.meta.url);`},
+      });
+      await execa('node', [outfile], {cwd: root});
     },
     async typecheck(fileName: string) {
       await execa(
