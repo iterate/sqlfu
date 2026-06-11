@@ -1,5 +1,5 @@
 import * as esbuild from 'esbuild';
-import {cp, readdir, rm} from 'node:fs/promises';
+import {cp, readdir, rm, writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 
 const pkgRoot = resolve(import.meta.dirname, '..');
@@ -182,6 +182,7 @@ for (const dialect of ['sqlite', 'postgresql']) {
 const sqlFormatterToDelete = [
   'sql-formatter/allDialects.js',
   'sql-formatter/allDialects.js.map',
+  'sql-formatter/allDialects.d.ts.map',
   'sql-formatter/dialect.js',
   'sql-formatter/dialect.js.map',
   'sql-formatter/expandPhrases.js',
@@ -195,14 +196,33 @@ const sqlFormatterToDelete = [
   'sql-formatter/utils.js.map',
   'sql-formatter/validateConfig.js',
   'sql-formatter/validateConfig.js.map',
-  'sql-formatter/formatter',
-  'sql-formatter/lexer',
-  'sql-formatter/parser',
 ];
 
 for (const p of sqlFormatterToDelete) {
   await rm(resolve(distVendor, p), {recursive: true, force: true});
 }
+
+// The runtime .js in these subtrees is inlined into the bundles above, but the
+// kept declaration files (dialect.d.ts, FormatOptions.d.ts, the exposed
+// language formatters) import types from them. Keep the .d.ts graph intact so
+// consumers compiling with skipLibCheck: false don't hit dangling imports;
+// delete only the runtime output.
+for (const dir of ['sql-formatter/formatter', 'sql-formatter/lexer', 'sql-formatter/parser']) {
+  await rmRuntimeOutput(resolve(distVendor, dir));
+}
+
+// Same trick as the exposed-dialects esbuild plugin, applied to the
+// declaration file: the shipped allDialects.js only exports the exposed
+// dialects, so the .d.ts must match instead of referencing 18 deleted
+// language modules.
+await writeFile(
+  resolve(distVendor, 'sql-formatter/allDialects.d.ts'),
+  [
+    `export { sqlite } from './languages/sqlite/sqlite.formatter.js';`,
+    `export { postgresql } from './languages/postgresql/postgresql.formatter.js';`,
+    '',
+  ].join('\n'),
+);
 
 const dialectsDir = resolve(distVendor, 'sql-formatter/languages');
 for (const entry of await readdir(dialectsDir)) {
@@ -212,7 +232,16 @@ for (const entry of await readdir(dialectsDir)) {
 for (const dialect of ['sqlite', 'postgresql']) {
   const dialectDir = resolve(dialectsDir, dialect);
   for (const entry of await readdir(dialectDir)) {
-    if (entry === `${dialect}.formatter.js`) continue;
+    if (entry === `${dialect}.formatter.js` || entry.endsWith('.d.ts')) continue;
     await rm(resolve(dialectDir, entry), {recursive: true, force: true});
+  }
+}
+
+async function rmRuntimeOutput(dir: string) {
+  for (const entry of await readdir(dir, {recursive: true})) {
+    const name = String(entry);
+    if (name.endsWith('.js') || name.endsWith('.js.map') || name.endsWith('.d.ts.map')) {
+      await rm(resolve(dir, name), {force: true});
+    }
   }
 }

@@ -12,7 +12,7 @@ permissions:
 jobs:
   sqlfu:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code
@@ -28,8 +28,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run sqlfu migration and schemadiff unit tests
-        run: pnpm --dir packages/sqlfu exec vitest test/migrations test/schemadiff --run
+      # Full build (including bundle-vendor) so the packed-package tests in
+      # test/pkg.test.ts exercise the publish-shaped dist, not just the
+      # runtime-only build that ensureBuilt() produces.
+      - name: Build sqlfu
+        run: pnpm --filter sqlfu build
+
+      - name: Typecheck sqlfu
+        run: pnpm --filter sqlfu typecheck
+
+      - name: Run sqlfu tests
+        run: pnpm --dir packages/sqlfu exec vitest --run
 
   pg-package:
     runs-on: ubuntu-latest
