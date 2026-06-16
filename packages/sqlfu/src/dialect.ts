@@ -296,11 +296,15 @@ export function sqliteDialect(): Dialect {
     // withMigrationLock omitted — sqlite serializes writers at the file level
 
     materializeSchemaSql: async (host, input) => {
-      await using database = await host.openScratchDb('materialize-schema');
-      if (input.sourceSql.trim()) {
-        await database.client.raw(input.sourceSql);
+      const database = await host.openScratchDb('materialize-schema');
+      try {
+        if (input.sourceSql.trim()) {
+          await database.client.raw(input.sourceSql);
+        }
+        return extractSqliteSchema(database.client, 'main', {excludedTables: [...(input.excludedTables ?? [])]});
+      } finally {
+        await database[Symbol.asyncDispose]();
       }
-      return extractSqliteSchema(database.client, 'main', {excludedTables: [...(input.excludedTables ?? [])]});
     },
     extractSchemaFromClient: async (client, options) =>
       extractSqliteSchema(client, 'main', {excludedTables: [...(options?.excludedTables ?? [])]}),

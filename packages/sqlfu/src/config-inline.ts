@@ -144,9 +144,13 @@ function runInlineSyncQuery(
   mode: QueryResultMode,
   params: PreparedStatementParams | undefined,
 ): InlineRuntimeQueryResult {
-  using stmt = client.prepare(sql);
-  if (mode === 'metadata') return stmt.run(params);
-  return inlineRowsResult(stmt.all(params), mode);
+  const stmt = client.prepare(sql);
+  try {
+    if (mode === 'metadata') return stmt.run(params);
+    return inlineRowsResult(stmt.all(params), mode);
+  } finally {
+    stmt[Symbol.dispose]();
+  }
 }
 
 async function runInlineAsyncQuery(

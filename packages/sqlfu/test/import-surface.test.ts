@@ -1,4 +1,5 @@
 import {expect, test} from 'vitest';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 
@@ -64,6 +65,23 @@ test('built cloudflare entry exposes the D1 helpers', async () => {
     'findMiniflareD1Path',
     'readAlchemyD1State',
   ]);
+});
+
+test('built root runtime entry is parseable by bundlers without explicit resource management syntax', async () => {
+  const runtimeFiles = ['dist/index.js', 'dist/config-inline.js', 'dist/dialect.js'];
+  for (const runtimeFile of runtimeFiles) {
+    const text = await fs.readFile(path.join(packageRoot, runtimeFile), 'utf8');
+    expect(text).not.toMatch(/\b(?:await\s+)?using\s+\w+\s*=/);
+  }
+
+  const rootEntry = path.join(packageRoot, 'dist/index.js');
+  const sqlfu = await import(pathToFileURL(rootEntry).href);
+  expect(sqlfu).toMatchObject({
+    applyMigrations: expect.any(Function),
+    createD1Client: expect.any(Function),
+    defineConfig: expect.any(Function),
+    sql: expect.any(Function),
+  });
 });
 
 test('confirm type accepts inline auto-accept callbacks', () => {
