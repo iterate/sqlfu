@@ -68,7 +68,7 @@ test('built cloudflare entry exposes the D1 helpers', async () => {
 });
 
 test('built root runtime entry is parseable by bundlers without explicit resource management syntax', async () => {
-  const runtimeFiles = ['dist/index.js', 'dist/config-inline.js', 'dist/dialect.js'];
+  const runtimeFiles = await collectRelativeImportGraph('dist/index.js');
   for (const runtimeFile of runtimeFiles) {
     const text = await fs.readFile(path.join(packageRoot, runtimeFile), 'utf8');
     expect(text).not.toMatch(/\b(?:await\s+)?using\s+\w+\s*=/);
@@ -83,6 +83,30 @@ test('built root runtime entry is parseable by bundlers without explicit resourc
     sql: expect.any(Function),
   });
 });
+
+async function collectRelativeImportGraph(entry: string): Promise<string[]> {
+  const seen = new Set<string>();
+  const pending = [entry];
+  while (pending.length > 0) {
+    const runtimeFile = pending.pop()!;
+    if (seen.has(runtimeFile)) continue;
+    seen.add(runtimeFile);
+
+    const text = await fs.readFile(path.join(packageRoot, runtimeFile), 'utf8');
+    const importMatches = text.matchAll(/(?:import|export)\s+(?:[^'"]*?from\s*)?['"](\.\/[^'"]+)['"]/g);
+    for (const match of importMatches) {
+      const specifier = match[1].endsWith('.js') ? match[1] : `${match[1]}.js`;
+      const resolved = path.normalize(path.join(path.dirname(runtimeFile), specifier));
+      try {
+        await fs.access(path.join(packageRoot, resolved));
+      } catch {
+        continue;
+      }
+      pending.push(resolved);
+    }
+  }
+  return [...seen].sort();
+}
 
 test('confirm type accepts inline auto-accept callbacks', () => {
   const confirm: Confirm = (params) => params.body;

@@ -26,35 +26,46 @@ export async function diffBaselineSqlToDesiredSql(
   assertNoUnsupportedSqlText(input.baselineSql, 'baselineSql');
   assertNoUnsupportedSqlText(input.desiredSql, 'desiredSql');
 
-  await using baseline = await host.openScratchDb('baseline');
-  await using desired = await host.openScratchDb('desired');
+  const baseline = await host.openScratchDb('baseline');
+  try {
+    const desired = await host.openScratchDb('desired');
+    try {
+      if (input.baselineSql.trim()) {
+        await applySchemaSql(baseline.client, input.baselineSql);
+      }
 
-  if (input.baselineSql.trim()) {
-    await applySchemaSql(baseline.client, input.baselineSql);
+      if (input.desiredSql.trim()) {
+        await applySchemaSql(desired.client, input.desiredSql);
+      }
+
+      const [baselineSchema, desiredSchema] = await Promise.all([
+        inspectSqliteSchema(baseline.client),
+        inspectSqliteSchema(desired.client),
+      ]);
+
+      return planSchemaDiff({
+        baseline: baselineSchema,
+        desired: desiredSchema,
+        allowDestructive: input.allowDestructive,
+      });
+    } finally {
+      await desired[Symbol.asyncDispose]();
+    }
+  } finally {
+    await baseline[Symbol.asyncDispose]();
   }
-
-  if (input.desiredSql.trim()) {
-    await applySchemaSql(desired.client, input.desiredSql);
-  }
-
-  const [baselineSchema, desiredSchema] = await Promise.all([
-    inspectSqliteSchema(baseline.client),
-    inspectSqliteSchema(desired.client),
-  ]);
-
-  return planSchemaDiff({
-    baseline: baselineSchema,
-    desired: desiredSchema,
-    allowDestructive: input.allowDestructive,
-  });
 }
 
 export async function inspectSqliteSchemaSql(host: SqlfuHost, sql: string): Promise<SqliteInspectedDatabase> {
-  await using database = await host.openScratchDb('inspect');
-  if (sql.trim()) {
-    await applySchemaSql(database.client, sql);
+  const database = await host.openScratchDb('inspect');
+  try {
+    if (sql.trim()) {
+      await applySchemaSql(database.client, sql);
+    }
+    return await inspectSqliteSchema(database.client);
+  } finally {
+    await database[Symbol.asyncDispose]();
   }
-  return await inspectSqliteSchema(database.client);
 }
 
 export {inspectSqliteSchema};
