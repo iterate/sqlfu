@@ -112,6 +112,37 @@ test('schema page shows mismatch cards and can run the recommended sqlfu draft c
   await expect(await readCodeMirrorText(page, 'Live Schema editor')).toContain('create table posts');
 });
 
+test('schema recommended actions stay out of the brown palette in dark theme', async ({page}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('sqlfu-ui/theme', JSON.stringify('dark'));
+  });
+  await page.goto('/#schema');
+
+  const recommendations = page.locator('.schema-card.recommendations');
+  await expect(recommendations).toBeVisible();
+
+  const colors = await recommendations.evaluate((element) => {
+    const styles = getComputedStyle(element);
+    const status = element.querySelector('.schema-card-status.recommendations');
+    if (!status) {
+      throw new Error('Expected recommendations status icon');
+    }
+    return {
+      backgroundColor: styles.backgroundColor,
+      borderColor: styles.borderTopColor,
+      statusColor: getComputedStyle(status).color,
+    };
+  });
+
+  const background = parseRgb(colors.backgroundColor);
+  const border = parseRgb(colors.borderColor);
+  const status = parseRgb(colors.statusColor);
+
+  expect(background[1]! - background[0]!).toBeGreaterThanOrEqual(20);
+  expect(border[1]! - border[0]!).toBeGreaterThanOrEqual(20);
+  expect(status[1]! - status[0]!).toBeGreaterThanOrEqual(20);
+});
+
 test('migration details show content and metadata tabs in the migrations card', async ({page}) => {
   await page.goto('/#schema');
 

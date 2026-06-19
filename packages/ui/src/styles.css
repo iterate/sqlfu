@@ -110,9 +110,9 @@
   --semantic-info-bg: rgba(40, 68, 90, 0.32);
   --semantic-info-border: rgba(120, 170, 210, 0.32);
   --semantic-info-text: #8cb8d8;
-  --semantic-recommendations-bg: rgba(90, 70, 28, 0.32);
-  --semantic-recommendations-border: rgba(210, 175, 90, 0.35);
-  --semantic-recommendations-text: #e5c478;
+  --semantic-recommendations-bg: rgba(94, 183, 168, 0.1);
+  --semantic-recommendations-border: rgba(94, 183, 168, 0.24);
+  --semantic-recommendations-text: #7dd3c7;
   --semantic-error-bg: rgba(95, 40, 28, 0.38);
   --semantic-error-border: rgba(232, 120, 90, 0.4);
   --semantic-error-text: #f7b9a2;
@@ -173,9 +173,9 @@
     --semantic-info-bg: rgba(40, 68, 90, 0.32);
     --semantic-info-border: rgba(120, 170, 210, 0.32);
     --semantic-info-text: #8cb8d8;
-    --semantic-recommendations-bg: rgba(90, 70, 28, 0.32);
-    --semantic-recommendations-border: rgba(210, 175, 90, 0.35);
-    --semantic-recommendations-text: #e5c478;
+    --semantic-recommendations-bg: rgba(94, 183, 168, 0.1);
+    --semantic-recommendations-border: rgba(94, 183, 168, 0.24);
+    --semantic-recommendations-text: #7dd3c7;
     --semantic-error-bg: rgba(95, 40, 28, 0.38);
     --semantic-error-border: rgba(232, 120, 90, 0.4);
     --semantic-error-text: #f7b9a2;

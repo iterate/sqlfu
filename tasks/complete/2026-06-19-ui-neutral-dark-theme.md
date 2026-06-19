@@ -36,7 +36,9 @@ The sqlfu UI should feel like a quiet database studio: neutral dark grey / near-
 - Worktree: `../worktrees/sqlfu/ui-neutral-dark-studio`
 - Branch: `ui/neutral-dark-studio`
 - PR: https://github.com/iterate/sqlfu/pull/143
+- Follow-up: clipboard review found the schema `Recommended actions` card still using the old warm recommendation palette; dark recommendation tokens now use the teal accent family and have a Playwright regression.
 - Verification:
   - `pnpm --filter @sqlfu/ui test --grep "syntax highlighting|CodeMirror gutter|line numbers aligned"`
+  - `pnpm --filter @sqlfu/ui test --grep "recommended actions stay|CodeMirror gutter|syntax highlighting|line numbers aligned"`
   - `pnpm --filter @sqlfu/ui typecheck`
   - `pnpm --filter @sqlfu/ui build`
