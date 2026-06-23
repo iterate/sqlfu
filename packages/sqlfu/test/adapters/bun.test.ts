@@ -141,6 +141,29 @@ test('createBunClient.raw runs multiple statements in a bun subprocess', async (
   expect(await fixture.stub.listUsers()).toMatchObject([{email: 'ada@example.com'}, {email: 'grace@example.com'}]);
 });
 
+test('createBunClient.prepare binds bare named params in a bun subprocess', async () => {
+  await using fixture = await createBunFixture(
+    class ClientPreparedNamedParamsTest {
+      client: ReturnType<typeof createBunClient>;
+
+      constructor(db: any) {
+        this.client = createBunClient(db);
+        this.client.sql.run`create table items (id text primary key, value integer not null)`;
+      }
+
+      insertAndReadItem() {
+        const insert = this.client.prepare('insert into items (id, value) values (:id, :value)');
+        insert.run({id: 'a', value: 1});
+
+        const select = this.client.prepare<{id: string; value: number}>('select id, value from items where id = :id');
+        return select.all({id: 'a'});
+      }
+    },
+  );
+
+  expect(await fixture.stub.insertAndReadItem()).toMatchObject([{id: 'a', value: 1}]);
+});
+
 async function createBunFixture<TInstance extends object>(classDef: new (...args: any[]) => TInstance) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-bun-fixture-'));
   const port = await getAvailablePort();

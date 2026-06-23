@@ -8,7 +8,7 @@ github_issue: https://github.com/iterate/sqlfu/issues/144
 
 ## Status summary
 
-Not implemented yet. The task is specified from issue 144: reproduce the real `bun:sqlite` adapter bug where `createBunClient().prepare()` fails to bind bare named parameter records, then fix the adapter so inline config/runtime callers can pass `{id: ...}` for SQL placeholders like `:id`.
+Roughly 25% complete. The real-Bun regression test now reproduces issue 144 with the expected `NOT NULL constraint failed` failure; the adapter fix and green verification are still missing.
 
 ## Assumptions
 
@@ -19,7 +19,7 @@ Not implemented yet. The task is specified from issue 144: reproduce the real `b
 
 ## Checklist
 
-- [ ] Add a failing real-Bun regression test for `createBunClient().prepare()` with `:name` placeholders and bare record params.
+- [x] Add a failing real-Bun regression test for `createBunClient().prepare()` with `:name` placeholders and bare record params. _Added `createBunClient.prepare binds bare named params in a bun subprocess` in `packages/sqlfu/test/adapters/bun.test.ts`; it fails before the adapter fix._
 - [ ] Normalize Bun prepared-statement params to the driver-prefixed record shape before calling `bun:sqlite`.
 - [ ] Keep positional array params and already-prefixed record params working.
 - [ ] Run the targeted Bun adapter test.
@@ -28,3 +28,4 @@ Not implemented yet. The task is specified from issue 144: reproduce the real `b
 ## Implementation notes
 
 - Issue 144 shows both write and read failures. The regression should cover the adapter behavior through `createBunClient()` and a real in-memory `bun:sqlite` database.
+- Red run: `pnpm --filter sqlfu exec vitest test/adapters/bun.test.ts` fails with `SqlfuError: NOT NULL constraint failed: items.value`.
