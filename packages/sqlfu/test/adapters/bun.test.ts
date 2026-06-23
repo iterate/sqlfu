@@ -155,13 +155,26 @@ test('createBunClient.prepare binds bare named params in a bun subprocess', asyn
         const insert = this.client.prepare('insert into items (id, value) values (:id, :value)');
         insert.run({id: 'a', value: 1});
 
-        const select = this.client.prepare<{id: string; value: number}>('select id, value from items where id = :id');
-        return select.all({id: 'a'});
+        const namedSelect = this.client.prepare<{id: string; value: number}>(
+          'select id, value from items where id = :id',
+        );
+        const positionalSelect = this.client.prepare<{id: string; value: number}>(
+          'select id, value from items where id = ?',
+        );
+        return {
+          bare: namedSelect.all({id: 'a'}),
+          prefixed: namedSelect.all({':id': 'a'}),
+          positional: positionalSelect.all(['a']),
+        };
       }
     },
   );
 
-  expect(await fixture.stub.insertAndReadItem()).toMatchObject([{id: 'a', value: 1}]);
+  expect(await fixture.stub.insertAndReadItem()).toMatchObject({
+    bare: [{id: 'a', value: 1}],
+    prefixed: [{id: 'a', value: 1}],
+    positional: [{id: 'a', value: 1}],
+  });
 });
 
 async function createBunFixture<TInstance extends object>(classDef: new (...args: any[]) => TInstance) {
