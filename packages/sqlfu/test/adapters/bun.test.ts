@@ -161,10 +161,14 @@ test('createBunClient.prepare binds bare named params in a bun subprocess', asyn
         const positionalSelect = this.client.prepare<{id: string; value: number}>(
           'select id, value from items where id = ?',
         );
+        const mixedPrefixSelect = this.client.prepare<{colon_id: string; at_id: string; dollar_id: string}>(
+          'select :id as colon_id, @id as at_id, $id as dollar_id',
+        );
         return {
           bare: namedSelect.all({id: 'a'}),
           prefixed: namedSelect.all({':id': 'a'}),
           positional: positionalSelect.all(['a']),
+          mixedPrefix: mixedPrefixSelect.all({id: 'a'}),
         };
       }
     },
@@ -174,6 +178,7 @@ test('createBunClient.prepare binds bare named params in a bun subprocess', asyn
     bare: [{id: 'a', value: 1}],
     prefixed: [{id: 'a', value: 1}],
     positional: [{id: 'a', value: 1}],
+    mixedPrefix: [{colon_id: 'a', at_id: 'a', dollar_id: 'a'}],
   });
 });
 
