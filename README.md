@@ -6,7 +6,7 @@
 
 It is built around a simple idea: SQL should be the source language for schema, migrations, queries, formatting, and diffing. TypeScript comes second. You should still get good generated types and wrappers, but without having to push the whole project through an ORM-shaped API.
 
-**New to sqlfu?** Start with the [Getting Started](https://sqlfu.dev/docs/getting-started) walkthrough.
+**New to sqlfu?** Start with the [Getting Started](https://sqlfu.dev/docs/getting-started) walkthrough, or read the [introductory blog post](https://sqlfu.dev/blog/introducing-sqlfu) for the thinking behind it.
 
 ![i know sqlfu](packages/sqlfu/docs/i-know-sqlfu.gif)
 
