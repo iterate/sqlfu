@@ -53,6 +53,14 @@
 
   --sidebar-gradient: linear-gradient(180deg, rgba(255, 251, 245, 0.9), rgba(247, 233, 207, 0.86));
   --button-primary-text: #ffffff;
+  --code-bg: #fffaf2;
+  --code-gutter-bg: #f4eadb;
+  --code-active-line-bg: rgba(178, 76, 43, 0.08);
+  --code-selection-bg: rgba(178, 76, 43, 0.22);
+  --code-tooltip-bg: #fffaf2;
+  --code-tooltip-hover-bg: #f6ead7;
+  --code-tooltip-selected-bg: #b24c2b;
+  --code-tooltip-selected-text: #ffffff;
 
   font-family: 'Avenir Next', 'Segoe UI', 'Helvetica Neue', sans-serif;
   color: var(--text);
@@ -70,32 +78,30 @@
 */
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: #1a1410;
-  --bg-strong: #211912;
-  --panel: rgba(42, 31, 22, 0.92);
-  --panel-strong: #2a1f16;
-  --line: rgba(240, 224, 196, 0.12);
-  --text: #f0e6d6;
-  --muted: #b8a484;
-  --accent: #e89b66;
-  --accent-strong: #f4b382;
+  --bg: #08090b;
+  --bg-strong: #101216;
+  --panel: rgba(18, 21, 27, 0.94);
+  --panel-strong: #151922;
+  --line: rgba(226, 232, 240, 0.12);
+  --text: #e6e9ef;
+  --muted: #9aa3b2;
+  --accent: #5eb7a8;
+  --accent-strong: #7dd3c7;
   --shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
-  --bg-gradient:
-    radial-gradient(circle at top left, rgba(232, 155, 102, 0.08), transparent 30rem),
-    linear-gradient(135deg, #1a1410, #221810 45%, #2b1f15);
+  --bg-gradient: linear-gradient(180deg, #08090b, #111318);
 
-  --panel-tint-soft: rgba(240, 224, 196, 0.05);
-  --panel-tint-mid: rgba(240, 224, 196, 0.06);
-  --panel-tint-strong: rgba(240, 224, 196, 0.08);
-  --panel-tint-faint: rgba(240, 224, 196, 0.03);
-  --panel-tint-veryfaint: rgba(240, 224, 196, 0.04);
+  --panel-tint-soft: rgba(226, 232, 240, 0.05);
+  --panel-tint-mid: rgba(226, 232, 240, 0.06);
+  --panel-tint-strong: rgba(226, 232, 240, 0.08);
+  --panel-tint-faint: rgba(226, 232, 240, 0.03);
+  --panel-tint-veryfaint: rgba(226, 232, 240, 0.04);
 
-  --accent-bg-soft: rgba(232, 155, 102, 0.1);
-  --accent-bg-mid: rgba(232, 155, 102, 0.16);
-  --accent-bg-strong: rgba(232, 155, 102, 0.22);
-  --accent-border-soft: rgba(232, 155, 102, 0.2);
-  --accent-border-mid: rgba(232, 155, 102, 0.3);
-  --accent-border-strong: rgba(232, 155, 102, 0.38);
+  --accent-bg-soft: rgba(94, 183, 168, 0.1);
+  --accent-bg-mid: rgba(94, 183, 168, 0.16);
+  --accent-bg-strong: rgba(94, 183, 168, 0.24);
+  --accent-border-soft: rgba(94, 183, 168, 0.2);
+  --accent-border-mid: rgba(94, 183, 168, 0.32);
+  --accent-border-strong: rgba(94, 183, 168, 0.42);
 
   --overlay: rgba(0, 0, 0, 0.65);
 
@@ -104,21 +110,29 @@
   --semantic-info-bg: rgba(40, 68, 90, 0.32);
   --semantic-info-border: rgba(120, 170, 210, 0.32);
   --semantic-info-text: #8cb8d8;
-  --semantic-recommendations-bg: rgba(90, 70, 28, 0.32);
-  --semantic-recommendations-border: rgba(210, 175, 90, 0.35);
-  --semantic-recommendations-text: #e5c478;
+  --semantic-recommendations-bg: rgba(94, 183, 168, 0.1);
+  --semantic-recommendations-border: rgba(94, 183, 168, 0.24);
+  --semantic-recommendations-text: #7dd3c7;
   --semantic-error-bg: rgba(95, 40, 28, 0.38);
   --semantic-error-border: rgba(232, 120, 90, 0.4);
   --semantic-error-text: #f7b9a2;
 
-  --rg-header-bg: #34261a;
-  --rg-append-bg: rgba(52, 38, 26, 0.5);
-  --rg-append-fg: rgba(184, 164, 132, 0.55);
+  --rg-header-bg: #171b24;
+  --rg-append-bg: rgba(22, 26, 34, 0.72);
+  --rg-append-fg: rgba(154, 163, 178, 0.55);
   --rg-shadow: rgba(0, 0, 0, 0.5);
   --rg-cell-editor-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
 
-  --sidebar-gradient: linear-gradient(180deg, rgba(42, 31, 22, 0.9), rgba(28, 20, 14, 0.86));
-  --button-primary-text: #2a1810;
+  --sidebar-gradient: linear-gradient(180deg, rgba(18, 21, 27, 0.96), rgba(10, 12, 15, 0.92));
+  --button-primary-text: #05110f;
+  --code-bg: #080a0d;
+  --code-gutter-bg: #0d1015;
+  --code-active-line-bg: rgba(226, 232, 240, 0.06);
+  --code-selection-bg: rgba(94, 183, 168, 0.28);
+  --code-tooltip-bg: #12161d;
+  --code-tooltip-hover-bg: #1a2029;
+  --code-tooltip-selected-bg: rgba(94, 183, 168, 0.22);
+  --code-tooltip-selected-text: #eafffb;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -127,32 +141,30 @@
      declarations — we list the selector twice rather than the declarations. */
   :root:not([data-theme='light']):not([data-theme='dark']) {
     color-scheme: dark;
-    --bg: #1a1410;
-    --bg-strong: #211912;
-    --panel: rgba(42, 31, 22, 0.92);
-    --panel-strong: #2a1f16;
-    --line: rgba(240, 224, 196, 0.12);
-    --text: #f0e6d6;
-    --muted: #b8a484;
-    --accent: #e89b66;
-    --accent-strong: #f4b382;
+    --bg: #08090b;
+    --bg-strong: #101216;
+    --panel: rgba(18, 21, 27, 0.94);
+    --panel-strong: #151922;
+    --line: rgba(226, 232, 240, 0.12);
+    --text: #e6e9ef;
+    --muted: #9aa3b2;
+    --accent: #5eb7a8;
+    --accent-strong: #7dd3c7;
     --shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
-    --bg-gradient:
-      radial-gradient(circle at top left, rgba(232, 155, 102, 0.08), transparent 30rem),
-      linear-gradient(135deg, #1a1410, #221810 45%, #2b1f15);
+    --bg-gradient: linear-gradient(180deg, #08090b, #111318);
 
-    --panel-tint-soft: rgba(240, 224, 196, 0.05);
-    --panel-tint-mid: rgba(240, 224, 196, 0.06);
-    --panel-tint-strong: rgba(240, 224, 196, 0.08);
-    --panel-tint-faint: rgba(240, 224, 196, 0.03);
-    --panel-tint-veryfaint: rgba(240, 224, 196, 0.04);
+    --panel-tint-soft: rgba(226, 232, 240, 0.05);
+    --panel-tint-mid: rgba(226, 232, 240, 0.06);
+    --panel-tint-strong: rgba(226, 232, 240, 0.08);
+    --panel-tint-faint: rgba(226, 232, 240, 0.03);
+    --panel-tint-veryfaint: rgba(226, 232, 240, 0.04);
 
-    --accent-bg-soft: rgba(232, 155, 102, 0.1);
-    --accent-bg-mid: rgba(232, 155, 102, 0.16);
-    --accent-bg-strong: rgba(232, 155, 102, 0.22);
-    --accent-border-soft: rgba(232, 155, 102, 0.2);
-    --accent-border-mid: rgba(232, 155, 102, 0.3);
-    --accent-border-strong: rgba(232, 155, 102, 0.38);
+    --accent-bg-soft: rgba(94, 183, 168, 0.1);
+    --accent-bg-mid: rgba(94, 183, 168, 0.16);
+    --accent-bg-strong: rgba(94, 183, 168, 0.24);
+    --accent-border-soft: rgba(94, 183, 168, 0.2);
+    --accent-border-mid: rgba(94, 183, 168, 0.32);
+    --accent-border-strong: rgba(94, 183, 168, 0.42);
 
     --overlay: rgba(0, 0, 0, 0.65);
 
@@ -161,21 +173,29 @@
     --semantic-info-bg: rgba(40, 68, 90, 0.32);
     --semantic-info-border: rgba(120, 170, 210, 0.32);
     --semantic-info-text: #8cb8d8;
-    --semantic-recommendations-bg: rgba(90, 70, 28, 0.32);
-    --semantic-recommendations-border: rgba(210, 175, 90, 0.35);
-    --semantic-recommendations-text: #e5c478;
+    --semantic-recommendations-bg: rgba(94, 183, 168, 0.1);
+    --semantic-recommendations-border: rgba(94, 183, 168, 0.24);
+    --semantic-recommendations-text: #7dd3c7;
     --semantic-error-bg: rgba(95, 40, 28, 0.38);
     --semantic-error-border: rgba(232, 120, 90, 0.4);
     --semantic-error-text: #f7b9a2;
 
-    --rg-header-bg: #34261a;
-    --rg-append-bg: rgba(52, 38, 26, 0.5);
-    --rg-append-fg: rgba(184, 164, 132, 0.55);
+    --rg-header-bg: #171b24;
+    --rg-append-bg: rgba(22, 26, 34, 0.72);
+    --rg-append-fg: rgba(154, 163, 178, 0.55);
     --rg-shadow: rgba(0, 0, 0, 0.5);
     --rg-cell-editor-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
 
-    --sidebar-gradient: linear-gradient(180deg, rgba(42, 31, 22, 0.9), rgba(28, 20, 14, 0.86));
-    --button-primary-text: #2a1810;
+    --sidebar-gradient: linear-gradient(180deg, rgba(18, 21, 27, 0.96), rgba(10, 12, 15, 0.92));
+    --button-primary-text: #05110f;
+    --code-bg: #080a0d;
+    --code-gutter-bg: #0d1015;
+    --code-active-line-bg: rgba(226, 232, 240, 0.06);
+    --code-selection-bg: rgba(94, 183, 168, 0.28);
+    --code-tooltip-bg: #12161d;
+    --code-tooltip-hover-bg: #1a2029;
+    --code-tooltip-selected-bg: rgba(94, 183, 168, 0.22);
+    --code-tooltip-selected-text: #eafffb;
   }
 }
 
@@ -1514,9 +1534,8 @@ h3 {
 }
 
 .button.primary {
-  /* Dark-mode --accent is a light warm orange — white text fails contrast on it,
-     so the palette defines --button-primary-text (white in light mode, deep
-     brown in dark) instead of hardcoding `color: white`. */
+  /* Dark-mode --accent is light enough that white text fails contrast, so the
+     palette owns the primary button text color instead of hardcoding white. */
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
   color: var(--button-primary-text);
   border-color: transparent;
@@ -1554,20 +1573,86 @@ h3 {
   max-width: 100%;
   width: 100%;
   border-radius: 0.25rem;
-  /* border: 1px solid var(--line); */
+  background: var(--code-bg);
+  color: var(--text);
   overflow: hidden;
+}
+
+.cm-editor.cm-focused {
+  outline: 1px solid var(--accent-border-mid);
 }
 
 .cm-scroller {
   min-height: 16rem;
   font-family: 'IBM Plex Mono', 'SFMono-Regular', 'Menlo', monospace;
   padding: 0;
+  background: var(--code-bg);
 }
 
 .cm-content,
 .cm-gutter {
   padding-top: 0;
   padding-bottom: 0;
+}
+
+.cm-editor .cm-gutters {
+  background: var(--code-gutter-bg);
+  color: var(--muted);
+  border-right: 1px solid var(--line);
+}
+
+.cm-editor .cm-activeLine {
+  background: var(--code-active-line-bg);
+}
+
+.cm-editor .cm-activeLineGutter {
+  background: var(--code-active-line-bg);
+  color: var(--text);
+}
+
+.cm-editor .cm-cursor {
+  border-left-color: var(--accent-strong);
+}
+
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground,
+.cm-editor .cm-content ::selection {
+  background: var(--code-selection-bg);
+}
+
+.cm-tooltip {
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+  background: var(--code-tooltip-bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.cm-tooltip-autocomplete > ul {
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', 'Menlo', monospace;
+}
+
+.cm-tooltip-autocomplete ul li {
+  color: var(--text);
+}
+
+.cm-tooltip-autocomplete ul li:hover {
+  background: var(--code-tooltip-hover-bg);
+}
+
+.cm-tooltip-autocomplete ul li[aria-selected='true'] {
+  background: var(--code-tooltip-selected-bg);
+  color: var(--code-tooltip-selected-text);
+}
+
+.cm-tooltip-autocomplete .cm-completionMatchedText {
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+
+.cm-tooltip-autocomplete .cm-completionIcon {
+  color: var(--muted);
+  opacity: 1;
 }
 
 .inline-editor input {

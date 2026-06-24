@@ -18,6 +18,69 @@ const FULLSCREEN_HEIGHT = '78vh';
 
 const Original = CodeMirrorMerge.Original;
 const Modified = CodeMirrorMerge.Modified;
+const appCodeMirrorTheme = EditorView.theme({
+  '&': {
+    backgroundColor: 'var(--code-bg)',
+    color: 'var(--text)',
+  },
+  '&.cm-focused': {
+    outline: '1px solid var(--accent-border-mid)',
+  },
+  '.cm-scroller': {
+    backgroundColor: 'var(--code-bg)',
+  },
+  '.cm-gutters': {
+    backgroundColor: 'var(--code-gutter-bg)',
+    color: 'var(--muted)',
+    borderRight: '1px solid var(--line)',
+  },
+  '.cm-activeLine': {
+    backgroundColor: 'var(--code-active-line-bg)',
+  },
+  '.cm-activeLineGutter': {
+    backgroundColor: 'var(--code-active-line-bg)',
+    color: 'var(--text)',
+  },
+  '.cm-cursor': {
+    borderLeftColor: 'var(--accent-strong)',
+  },
+  '.cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection': {
+    backgroundColor: 'var(--code-selection-bg)',
+  },
+  '.cm-tooltip': {
+    border: '1px solid var(--line)',
+    borderRadius: '0.35rem',
+    backgroundColor: 'var(--code-tooltip-bg)',
+    color: 'var(--text)',
+    boxShadow: 'var(--shadow)',
+  },
+  '.cm-tooltip-autocomplete, .cm-tooltip-autocomplete > ul': {
+    backgroundColor: 'var(--code-tooltip-bg)',
+    color: 'var(--text)',
+  },
+  '.cm-tooltip-autocomplete > ul': {
+    fontFamily: "'IBM Plex Mono', 'SFMono-Regular', 'Menlo', monospace",
+  },
+  '.cm-tooltip-autocomplete ul li': {
+    backgroundColor: 'transparent',
+    color: 'var(--text)',
+  },
+  '.cm-tooltip-autocomplete ul li:hover': {
+    backgroundColor: 'var(--code-tooltip-hover-bg)',
+  },
+  '.cm-tooltip-autocomplete ul li[aria-selected]': {
+    backgroundColor: 'var(--code-tooltip-selected-bg)',
+    color: 'var(--code-tooltip-selected-text)',
+  },
+  '.cm-completionMatchedText': {
+    color: 'var(--accent-strong)',
+    textDecoration: 'none',
+  },
+  '.cm-completionIcon': {
+    color: 'var(--muted)',
+    opacity: '1',
+  },
+});
 
 export type CodeMirrorAction = {
   icon: ReactNode;
@@ -72,6 +135,7 @@ function SqlCodeMirrorBase(input: SqlCodeMirrorProps) {
     EditorView.lineWrapping,
     EditorState.readOnly.of(Boolean(input.readOnly)),
     EditorView.editable.of(!input.readOnly),
+    appCodeMirrorTheme,
     Prec.highest(
       keymap.of([
         {
@@ -283,5 +347,6 @@ function buildTextExtensions(readOnly: boolean, language: 'plain' | 'yaml' | 'ma
     EditorView.lineWrapping,
     EditorState.readOnly.of(readOnly),
     EditorView.editable.of(!readOnly),
+    appCodeMirrorTheme,
   ];
 }

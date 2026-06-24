@@ -112,6 +112,37 @@ test('schema page shows mismatch cards and can run the recommended sqlfu draft c
   await expect(await readCodeMirrorText(page, 'Live Schema editor')).toContain('create table posts');
 });
 
+test('schema recommended actions stay out of the brown palette in dark theme', async ({page}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('sqlfu-ui/theme', JSON.stringify('dark'));
+  });
+  await page.goto('/#schema');
+
+  const recommendations = page.locator('.schema-card.recommendations');
+  await expect(recommendations).toBeVisible();
+
+  const colors = await recommendations.evaluate((element) => {
+    const styles = getComputedStyle(element);
+    const status = element.querySelector('.schema-card-status.recommendations');
+    if (!status) {
+      throw new Error('Expected recommendations status icon');
+    }
+    return {
+      backgroundColor: styles.backgroundColor,
+      borderColor: styles.borderTopColor,
+      statusColor: getComputedStyle(status).color,
+    };
+  });
+
+  const background = parseRgb(colors.backgroundColor);
+  const border = parseRgb(colors.borderColor);
+  const status = parseRgb(colors.statusColor);
+
+  expect(background[1]! - background[0]!).toBeGreaterThanOrEqual(20);
+  expect(border[1]! - border[0]!).toBeGreaterThanOrEqual(20);
+  expect(status[1]! - status[0]!).toBeGreaterThanOrEqual(20);
+});
+
 test('migration details show content and metadata tabs in the migrations card', async ({page}) => {
   await page.goto('/#schema');
 
@@ -1023,6 +1054,38 @@ test('sql runner provides syntax highlighting and schema autocomplete', async ({
   await expect(await readCodeMirrorText(page, 'SQL editor')).toContain(`select * from ${selectedLabel}`);
 });
 
+test('sql runner keeps CodeMirror gutter and autocomplete readable in dark theme', async ({page}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('sqlfu-ui/theme', JSON.stringify('dark'));
+  });
+  await page.goto('/#sql');
+
+  await replaceCodeMirrorText(page, 'SQL editor', 'select * from po');
+  await page.keyboard.press('Control+Space');
+
+  const gutterBackground = await page.locator('.cm-gutters').evaluate((element) => {
+    return getComputedStyle(element).backgroundColor;
+  });
+  const completion = page.locator('.cm-tooltip-autocomplete');
+  await expect(completion).toBeVisible();
+  const completionBackground = await completion.evaluate((element) => {
+    return getComputedStyle(element).backgroundColor;
+  });
+  const completionListBackground = await completion.locator('ul').first().evaluate((element) => {
+    return getComputedStyle(element).backgroundColor;
+  });
+  const completionOption = completion.locator('li:not([aria-selected="true"])').first();
+  await expect(completionOption).toBeVisible();
+  const completionTextColor = await completionOption.evaluate((element) => {
+    return getComputedStyle(element).color;
+  });
+
+  expect(relativeLuminance(gutterBackground)).toBeLessThan(0.18);
+  expect(relativeLuminance(completionBackground)).toBeLessThan(0.18);
+  expect(relativeLuminance(completionListBackground)).toBeLessThan(0.18);
+  expect(contrastRatio(completionTextColor, completionBackground)).toBeGreaterThanOrEqual(4.5);
+});
+
 test('sql runner shows inline analysis diagnostics before execution', async ({page}) => {
   await page.addInitScript(() => window.localStorage.clear());
   await page.goto('/#sql');
@@ -1417,6 +1480,31 @@ async function replaceCodeMirrorText(page: any, ariaLabel: string, value: string
 
 async function readCodeMirrorText(page: any, ariaLabel: string) {
   return (await page.locator(`[aria-label="${ariaLabel}"] .cm-content`).textContent()) ?? '';
+}
+
+function relativeLuminance(color: string) {
+  const [red, green, blue] = parseRgb(color);
+  const [r, g, b] = [red, green, blue].map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+
+function contrastRatio(foreground: string, background: string) {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function parseRgb(color: string) {
+  const match = color.match(/^rgba?\((\d+), (\d+), (\d+)/);
+  if (!match) {
+    throw new Error(`Expected rgb() color, got ${color}`);
+  }
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
 async function fillGridTextCell(page: any, rowIndex: number, columnIndex: number, value: string) {
