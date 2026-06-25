@@ -6,6 +6,7 @@ import type {SqlfuConfig, SqlfuProjectConfig} from '../types.js';
 import {
   assertConfigShape,
   createDefaultInitPreview,
+  type InitPreviewFormat,
   resolveProjectConfig,
   type LoadedSqlfuProject,
   type TsconfigPreferences,
@@ -108,7 +109,12 @@ export async function loadProjectStateFromConfigPath(configPath: string, cwd: st
   };
 }
 
-export async function initializeProject(input: {projectRoot: string; configContents: string; configPath?: string}) {
+export async function initializeProject(input: {
+  projectRoot: string;
+  configContents: string;
+  configPath?: string;
+  format?: InitPreviewFormat;
+}) {
   const preview = createDefaultInitPreview(input.projectRoot, {configPath: input.configPath});
   const state = input.configPath
     ? await loadProjectStateFromConfigPath(input.configPath, input.projectRoot)
@@ -117,17 +123,19 @@ export async function initializeProject(input: {projectRoot: string; configConte
     throw new Error(`sqlfu is already initialized in ${input.projectRoot}`);
   }
 
-  await fs.mkdir(path.join(input.projectRoot, 'migrations'), {recursive: true});
-  await fs.mkdir(path.join(input.projectRoot, 'sql'), {recursive: true});
   await fs.mkdir(path.dirname(preview.configPath), {recursive: true});
   await fs.writeFile(preview.configPath, withTrailingNewline(input.configContents));
-  await fs.writeFile(
-    path.join(input.projectRoot, 'definitions.sql'),
-    '-- create table yourtable(id int, body text);\n',
-  );
+  if (input.format === 'file-backed') {
+    await fs.mkdir(path.join(input.projectRoot, 'migrations'), {recursive: true});
+    await fs.mkdir(path.join(input.projectRoot, 'sql'), {recursive: true});
+    await fs.writeFile(
+      path.join(input.projectRoot, 'definitions.sql'),
+      '-- create table yourtable(id int, body text);\n',
+    );
+    await fs.writeFile(path.join(input.projectRoot, 'migrations', '.gitkeep'), '');
+    await fs.writeFile(path.join(input.projectRoot, 'sql', '.gitkeep'), '');
+  }
   await ensureGitignoreEntry(path.join(input.projectRoot, '.gitignore'), defaultLocalArtifactsGitignoreEntry);
-  await fs.writeFile(path.join(input.projectRoot, 'migrations', '.gitkeep'), '');
-  await fs.writeFile(path.join(input.projectRoot, 'sql', '.gitkeep'), '');
 }
 
 async function ensureGitignoreEntry(gitignorePath: string, entry: string) {

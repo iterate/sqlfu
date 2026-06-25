@@ -9,10 +9,10 @@ import type {
   SqlfuValidator,
 } from './types.js';
 import {sqliteDialect} from './dialect.js';
-import {createDefaultInitPreview} from './init-preview.js';
+import {createDefaultInitPreview, type InitPreviewFormat} from './init-preview.js';
 import {dirname, resolvePath} from './paths.js';
 
-export {createDefaultInitPreview};
+export {createDefaultInitPreview, type InitPreviewFormat};
 
 export function defineConfig(config: SqlfuConfig): SqlfuConfig {
   return config;

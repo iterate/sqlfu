@@ -1,24 +1,27 @@
 # Type generation from SQL
 
-`sqlfu generate` reads checked-in `.sql` files and emits TypeScript wrappers under
-`sql/.generated/`. The generated function name normally comes from the file path:
-`sql/get-post.sql` becomes `getPost`.
+`sqlfu generate` reads inline queries from `defineConfig(...)` modules first and
+writes inferred modes plus parameter/result types back into those `sql` tags.
+For file-backed projects, it reads checked-in `.sql` files and emits TypeScript
+wrappers under `sql/.generated/`.
 
 The goal is to write the data-access layer in plain SQL, then call it from
 TypeScript with inferred params and rows.
 
 ```sql
--- sql/get-post.sql
 select id, slug, title
 from posts
 where id = :id;
 ```
 
 ```ts
-import {getPost} from './sql/.generated/get-post.sql.ts';
+const db = dbConfig(client);
 
-const post = await getPost(client, {id: 123});
+const post = await db.getPost({id: 123});
 ```
+
+In a file-backed project, the same query can live in `sql/get-post.sql` and
+generate an importable wrapper such as `getPost(client, {id: 123})`.
 
 ## Generated casing
 

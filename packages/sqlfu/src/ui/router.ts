@@ -328,6 +328,7 @@ export const uiRouter = {
             projectRoot: context.project.projectRoot,
             configPath: context.project.initialized ? undefined : context.project.configPath,
             config: context.project.initialized ? context.project.config : undefined,
+            initPreviewFormat: 'file-backed',
             host: context.host as SqlfuHost,
           },
           input.command,

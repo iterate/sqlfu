@@ -35,6 +35,7 @@ export type CreateSqlfuApiInput = {
   configPath?: string;
   config?: SqlfuProjectConfig;
   loadProjectState?: () => Promise<LoadedSqlfuProject>;
+  initPreviewFormat?: 'inline' | 'file-backed';
   host: SqlfuHost;
 };
 
@@ -98,7 +99,10 @@ export function createSqlfuApi(input: CreateSqlfuApiInput): SqlfuApi {
   return {
     async init({confirm}) {
       const project = await loadContextProjectState(context);
-      const preview = createDefaultInitPreview(project.projectRoot, {configPath: project.configPath});
+      const preview = createDefaultInitPreview(project.projectRoot, {
+        configPath: project.configPath,
+        format: context.initPreviewFormat,
+      });
       const configContents = await confirm({
         title: 'Create sqlfu.config.ts?',
         body: preview.configContents,
@@ -114,6 +118,7 @@ export function createSqlfuApi(input: CreateSqlfuApiInput): SqlfuApi {
         projectRoot: project.projectRoot,
         configPath: project.configPath,
         configContents,
+        format: preview.format,
       });
 
       return `Initialized sqlfu project in ${project.projectRoot}.`;
@@ -209,6 +214,7 @@ function createCommandContext(input: CreateSqlfuApiInput): SqlfuCommandContext {
     configPath: input.configPath,
     config: input.config,
     loadProjectState: input.loadProjectState,
+    initPreviewFormat: input.initPreviewFormat,
     host: input.host,
   };
 }

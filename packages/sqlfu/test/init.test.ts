@@ -15,17 +15,18 @@ test('sqlfu init creates the default scaffold in a fresh directory', async () =>
 
   const files = await dumpFixtureFs(root);
   expect(files).toContain('sqlfu.config.ts');
-  expect(files).toContain('definitions.sql');
-  expect(files).toContain('migrations/');
-  expect(files).toContain('sql/');
-  expect(files).toContain(`migrations: './migrations'`);
-  expect(files).toContain(`definitions: './definitions.sql'`);
-  expect(files).toContain(`queries: './sql'`);
+  expect(files).toContain(`import {defineConfig, sql} from 'sqlfu';`);
+  expect(files).toContain('export default defineConfig({');
+  expect(files).toContain('definitions: sql`');
+  expect(files).toContain('listPosts: sql`');
+  expect(files).not.toContain('definitions.sql');
+  expect(files).not.toContain('migrations/');
+  expect(files).not.toContain('sql/');
   expect(files).not.toContain('db/');
   expect(files).not.toContain('db:');
   expect(files).toContain('.gitignore');
   expect(files).toContain('.sqlfu/');
-  expect(files).toContain('.gitkeep');
+  expect(files).not.toContain('.gitkeep');
 });
 
 test('sqlfu init appends local sqlfu artifacts to an existing gitignore', async () => {

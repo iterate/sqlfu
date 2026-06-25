@@ -150,7 +150,10 @@ export async function runSqlfuCommand(
 
   if (normalized === 'sqlfu init') {
     const project = await loadContextProjectState(context);
-    const preview = createDefaultInitPreview(project.projectRoot, {configPath: project.configPath});
+    const preview = createDefaultInitPreview(project.projectRoot, {
+      configPath: project.configPath,
+      format: context.initPreviewFormat,
+    });
     const configContents = await confirm({
       title: 'Create sqlfu.config.ts?',
       body: preview.configContents,
@@ -164,6 +167,7 @@ export async function runSqlfuCommand(
       projectRoot: project.projectRoot,
       configPath: project.configPath,
       configContents,
+      format: preview.format,
     });
     return;
   }
@@ -1001,6 +1005,7 @@ export interface SqlfuCommandContext {
   configPath?: string;
   config?: SqlfuProjectConfig;
   loadProjectState?: () => Promise<LoadedSqlfuProject>;
+  initPreviewFormat?: 'inline' | 'file-backed';
   host: SqlfuHost;
 }
 
