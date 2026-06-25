@@ -1,5 +1,6 @@
 import {defineConfig} from 'astro/config';
 import starlight from '@astrojs/starlight';
+import {sqlTagShikiTransformer} from './src/sql-tag-shiki-transformer.mjs';
 
 const site = 'https://sqlfu.dev';
 const socialImage = `${site}/social-card.png`;
@@ -28,6 +29,11 @@ export default defineConfig({
       disable404Route: true,
       favicon: '/favicon.ico',
       logo: {src: './src/assets/logo.png', alt: 'sqlfu'},
+      expressiveCode: {
+        shiki: {
+          transformers: [sqlTagShikiTransformer()],
+        },
+      },
       head: [
         {tag: 'link', attrs: {rel: 'preconnect', href: 'https://fonts.googleapis.com'}},
         {tag: 'link', attrs: {rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: ''}},

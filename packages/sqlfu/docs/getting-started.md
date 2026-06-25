@@ -43,14 +43,14 @@ import {defineConfig, sql} from 'sqlfu';
 export default defineConfig({
   definitions: sql`
     create table posts (
-      id integer primary key autoincrement,
-      title text not null,
-      body text not null
+      id int,
+      slug text,
+      body text
     );
   `,
   queries: {
     listPosts: sql`
-      select id, title, body
+      select id, slug, body
       from posts
       order by id desc
     `,
@@ -70,18 +70,15 @@ import {defineConfig, sql} from 'sqlfu';
 export default defineConfig({
   definitions: sql`
     create table posts (
-      id integer primary key autoincrement,
-      slug text not null unique,
-      title text not null,
-      body text not null,
-      published integer not null default 0
+      id int,
+      slug text,
+      body text
     );
   `,
   queries: {
     listPosts: sql`
-      select id, slug, title, body, published
+      select id, slug, body
       from posts
-      where published = 1
       order by id desc
       limit :limit
     `,
@@ -107,11 +104,9 @@ migrations: [
     name: '20260101000000_create_posts',
     content: sql`
       create table posts (
-        id integer primary key autoincrement,
-        slug text not null unique,
-        title text not null,
-        body text not null,
-        published integer not null default 0
+        id int,
+        slug text,
+        body text
       );
     `,
   },
@@ -129,10 +124,9 @@ npx sqlfu generate
 sqlfu reads the inline queries against the inline schema and writes compact type tags back into `sqlfu.config.ts`. For the `listPosts` query you get a generated mode and payload type:
 
 ```ts
-listPosts: sql.many<{parameters: {limit: number}; result: {id: number; slug: string; title: string; body: string; published: number}}>`
-  select id, slug, title, body, published
+listPosts: sql.many<{parameters: {limit: number}; result: {id: number | null; slug: string | null; body: string | null}}>`
+  select id, slug, body
   from posts
-  where published = 1
   order by id desc
   limit :limit
 `,
@@ -154,7 +148,7 @@ const db = dbConfig(client);
 db.migrate();
 
 const posts = db.listPosts({limit: 10});
-//    ^? Array<{id: number, slug: string, title: string, body: string, published: number}>
+//    ^? Array<{id: number | null, slug: string | null, body: string | null}>
 ```
 
 Params and result rows are fully typed. Your IDE hover shows the inferred row type directly. The `listPosts` key travels with every call to OpenTelemetry spans, Sentry errors, and Datadog metrics -- see [Observability](/docs/observability).
@@ -168,12 +162,10 @@ Add a column to `definitions`:
 ```ts
 definitions: sql`
   create table posts (
-    id integer primary key autoincrement,
-    slug text not null unique,
-    title text not null,
-    body text not null,
-    excerpt text,
-    published integer not null default 0
+    id int,
+    slug text,
+    body text,
+    excerpt text
   );
 `,
 ```
