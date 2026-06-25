@@ -1054,6 +1054,36 @@ test('sql runner provides syntax highlighting and schema autocomplete', async ({
   await expect(await readCodeMirrorText(page, 'SQL editor')).toContain(`select * from ${selectedLabel}`);
 });
 
+test('sql runner promotes columns from tables in the current query', async ({page}) => {
+  await page.addInitScript(() => window.localStorage.clear());
+  await page.goto('/#sql');
+
+  await replaceCodeMirrorText(page, 'SQL editor', 'select x\nfrom posts');
+  await moveCodeMirrorCursorTo(page, 'SQL editor', 0, 7);
+  await page.keyboard.press('Control+Space');
+
+  await expect(page.locator('.cm-tooltip-autocomplete')).toBeVisible();
+  await expect.poll(() => completionItems(page).then((items) => items.slice(0, 3))).toEqual([
+    {label: 'id', detail: 'posts · INTEGER'},
+    {label: 'slug', detail: 'posts · TEXT'},
+    {label: 'title', detail: 'posts · TEXT'},
+  ]);
+  await page.reload();
+  await expect(page.locator('.cm-editor')).toBeVisible();
+
+  await replaceCodeMirrorText(page, 'SQL editor', 'select x\nfrom posts pp');
+  await moveCodeMirrorCursorTo(page, 'SQL editor', 0, 7);
+  await page.keyboard.press('Control+Space');
+
+  await expect(page.locator('.cm-tooltip-autocomplete')).toBeVisible();
+  await expect.poll(() => completionItems(page).then((items) => items.slice(0, 4))).toEqual([
+    {label: 'id', detail: 'posts · INTEGER'},
+    {label: 'slug', detail: 'posts · TEXT'},
+    {label: 'title', detail: 'posts · TEXT'},
+    {label: 'body', detail: 'posts · TEXT'},
+  ]);
+});
+
 test('sql runner keeps CodeMirror gutter and autocomplete readable in dark theme', async ({page}) => {
   await page.addInitScript(() => {
     window.localStorage.setItem('sqlfu-ui/theme', JSON.stringify('dark'));
@@ -1480,6 +1510,56 @@ async function replaceCodeMirrorText(page: any, ariaLabel: string, value: string
 
 async function readCodeMirrorText(page: any, ariaLabel: string) {
   return (await page.locator(`[aria-label="${ariaLabel}"] .cm-content`).textContent()) ?? '';
+}
+
+async function moveCodeMirrorCursorTo(page: Page, ariaLabel: string, lineIndex: number, column: number) {
+  const point = await page.locator(`[aria-label="${ariaLabel}"] .cm-line`).nth(lineIndex).evaluate(
+    (line, targetColumn) => {
+      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+      let remaining = targetColumn;
+      let textNode = walker.nextNode();
+
+      while (textNode && remaining > textNode.textContent!.length) {
+        remaining -= textNode.textContent!.length;
+        textNode = walker.nextNode();
+      }
+
+      if (!textNode) {
+        throw new Error(`Could not place CodeMirror cursor at column ${targetColumn}`);
+      }
+
+      const range = document.createRange();
+      if (remaining < textNode.textContent!.length) {
+        range.setStart(textNode, remaining);
+        range.setEnd(textNode, remaining + 1);
+        const rect = range.getBoundingClientRect();
+        return {x: rect.left, y: rect.top + rect.height / 2};
+      }
+
+      range.setStart(textNode, remaining - 1);
+      range.setEnd(textNode, remaining);
+      const rect = range.getBoundingClientRect();
+      return {x: rect.right, y: rect.top + rect.height / 2};
+    },
+    column,
+  );
+  await page.mouse.click(point.x, point.y);
+}
+
+async function completionLabels(page: Page) {
+  return page.locator('.cm-tooltip-autocomplete .cm-completionLabel').allTextContents();
+}
+
+async function completionItems(page: Page) {
+  return page.locator('.cm-tooltip-autocomplete .cm-completionLabel').evaluateAll((labels) =>
+    labels.map((label) => {
+      const option = label.closest('[role="option"]');
+      return {
+        label: label.textContent || '',
+        detail: option?.querySelector('.cm-completionDetail')?.textContent || '',
+      };
+    }),
+  );
 }
 
 function relativeLuminance(color: string) {
