@@ -533,9 +533,9 @@ function readSqlTemplate(sourceText: string, span: SourceSpan, location: string)
   }
   const templateStart = cursor;
   const templateEnd = findTemplateEnd(sourceText, templateStart, location);
-  const afterTemplate = skipTrivia(sourceText, templateEnd + 1);
+  const afterTemplate = skipSqlMapCalls(sourceText, skipTrivia(sourceText, templateEnd + 1), span.end, location);
   if (afterTemplate < span.end) {
-    throw new Error(`${location} must be a plain sql\`...\` tagged template.`);
+    throw new Error(`${location} must be a sql\`...\` tagged template, optionally followed by .map(...).`);
   }
   return {
     // Cooked, not raw: the runtime template literal decodes escapes, so static
@@ -558,6 +558,22 @@ function cookTemplateText(raw: string): string {
       return simple[single] || single;
     },
   );
+}
+
+function skipSqlMapCalls(sourceText: string, start: number, end: number, location: string): number {
+  let cursor = start;
+  while (cursor < end && sourceText[cursor] === '.') {
+    const method = readIdentifier(sourceText, skipTrivia(sourceText, cursor + 1), `${location} sql tag method`);
+    if (method.value !== 'map') {
+      return cursor;
+    }
+    cursor = skipTrivia(sourceText, method.end);
+    if (sourceText[cursor] !== '(') {
+      throw new Error(`${location} sql.map must be called with a mapper function.`);
+    }
+    cursor = skipTrivia(sourceText, findMatchingDelimiter(sourceText, cursor, '(', ')') + 1);
+  }
+  return cursor;
 }
 
 function readIdentifier(sourceText: string, start: number, location: string): {value: string; end: number} {

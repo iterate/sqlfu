@@ -15,6 +15,13 @@ export interface SqlFragment {
   args: QueryArg[];
 }
 
+export type SqlResultMapper<TInput = ResultRow, TOutput = ResultRow> = (result: TInput) => TOutput;
+
+export type SqlQueryResultType<TType> = TType extends {result: infer TResult} ? TResult : ResultRow;
+
+export type SqlMappedQueryType<TType, TOutput> =
+  TType extends {parameters: infer TParameters} ? {parameters: TParameters; result: TOutput} : {result: TOutput};
+
 export interface SqlQuery<TType = unknown> extends SqlFragment {
   name?: string;
   __sqlfuType?: TType;
@@ -24,6 +31,18 @@ export interface SqlQueryNoArgs<TType = unknown> extends SqlFragmentNoArgs {
   name?: string;
   __sqlfuType?: TType;
 }
+
+export type SqlMappableQuery<TType = unknown> = SqlQuery<TType> & {
+  map<TOutput extends ResultRow>(
+    mapper: SqlResultMapper<SqlQueryResultType<TType>, TOutput>,
+  ): SqlMappableQuery<SqlMappedQueryType<TType, TOutput>>;
+};
+
+export type SqlMappableQueryNoArgs<TType = unknown> = SqlQueryNoArgs<TType> & {
+  map<TOutput extends ResultRow>(
+    mapper: SqlResultMapper<SqlQueryResultType<TType>, TOutput>,
+  ): SqlMappableQueryNoArgs<SqlMappedQueryType<TType, TOutput>>;
+};
 
 export interface QueryMetadata {
   rowsAffected?: number;
@@ -37,24 +56,43 @@ export type QueryResultMode = 'many' | 'nullableOne' | 'one' | 'metadata';
 export interface SqlTypedQueryNoArgs<
   TType = unknown,
   TMode extends QueryResultMode = QueryResultMode,
-> extends SqlQueryNoArgs {
+> extends SqlQueryNoArgs<TType> {
   mode: TMode;
   __sqlfuType?: TType;
 }
 
-export interface SqlTypedQuery<TType = unknown, TMode extends QueryResultMode = QueryResultMode> extends SqlQuery {
+export interface SqlTypedQuery<TType = unknown, TMode extends QueryResultMode = QueryResultMode>
+  extends SqlQuery<TType> {
   mode: TMode;
   __sqlfuType?: TType;
 }
+
+export type SqlMappableTypedQueryNoArgs<
+  TType = unknown,
+  TMode extends QueryResultMode = QueryResultMode,
+> = SqlTypedQueryNoArgs<TType, TMode> & {
+  map<TOutput extends ResultRow>(
+    mapper: SqlResultMapper<SqlQueryResultType<TType>, TOutput>,
+  ): SqlMappableTypedQueryNoArgs<SqlMappedQueryType<TType, TOutput>, TMode>;
+};
+
+export type SqlMappableTypedQuery<TType = unknown, TMode extends QueryResultMode = QueryResultMode> = SqlTypedQuery<
+  TType,
+  TMode
+> & {
+  map<TOutput extends ResultRow>(
+    mapper: SqlResultMapper<SqlQueryResultType<TType>, TOutput>,
+  ): SqlMappableTypedQuery<SqlMappedQueryType<TType, TOutput>, TMode>;
+};
 
 export interface SqlModeTag<TMode extends QueryResultMode> {
-  <TType = unknown>(strings: TemplateStringsArray): SqlTypedQueryNoArgs<TType, TMode>;
-  <TType = unknown>(strings: TemplateStringsArray, ...values: SqlValue[]): SqlTypedQuery<TType, TMode>;
+  <TType = unknown>(strings: TemplateStringsArray): SqlMappableTypedQueryNoArgs<TType, TMode>;
+  <TType = unknown>(strings: TemplateStringsArray, ...values: SqlValue[]): SqlMappableTypedQuery<TType, TMode>;
 }
 
 export interface RootSqlTag {
-  <TType = unknown>(strings: TemplateStringsArray): SqlQueryNoArgs<TType>;
-  <TType = unknown>(strings: TemplateStringsArray, ...values: SqlValue[]): SqlQuery<TType>;
+  <TType = unknown>(strings: TemplateStringsArray): SqlMappableQueryNoArgs<TType>;
+  <TType = unknown>(strings: TemplateStringsArray, ...values: SqlValue[]): SqlMappableQuery<TType>;
   many: SqlModeTag<'many'>;
   nullableOne: SqlModeTag<'nullableOne'>;
   one: SqlModeTag<'one'>;

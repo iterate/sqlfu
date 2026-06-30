@@ -5,7 +5,7 @@ size: medium
 
 # Bias docs and init toward inline config
 
-Status: Implementation complete and pushed for review. Onboarding docs, guide intros, typegen/migration concepts, and CLI/API `sqlfu init` now start from inline config. File-backed config is documented as the split-out path, and the Admin UI init path deliberately keeps a file-backed scaffold because the UI server still requires file-backed projects.
+Status: Implementation complete and pushed for review. Onboarding docs, guide intros, typegen/migration concepts, and CLI/API `sqlfu init` now start from inline config. File-backed config is documented as the split-out path, the Admin UI init path deliberately keeps a file-backed scaffold because the UI server still requires file-backed projects, and inline queries now support `.map(...)` result shaping so inline mode has a first step toward mapper parity.
 
 ## Goal
 
@@ -24,6 +24,7 @@ Make sqlfu's instructions, guides, getting started material, tutorials, and star
 - [x] Rewrite onboarding and getting-started paths so the first runnable examples use inline config. _`packages/sqlfu/docs/getting-started.md` now walks through inline `defineConfig`, inline `draft`, inline `generate`, and runtime binding via `dbConfig(client)`_
 - [x] Move file-based config explanations into an explicit "split it out later" or advanced/shared-config framing. _README and getting-started now include split-out sections; runtime guides keep file-backed snippets where D1 presets or larger project shape need them_
 - [x] Update `sqlfu init` output and tests so new projects start from inline config by default. _`createDefaultInitPreview()` defaults to inline config and `test/init.test.ts` asserts the new scaffold; UI command context opts into file-backed init because inline projects are not UI-servable yet_
+- [x] Add inline query result mapping with `sql.one\`...\`.map(...)` / `sql.many\`...\`.map(...)`. _the `sql` tag now returns mappable query objects, inline config applies row mappers at runtime, and inline source rewriting preserves `.map(...)` after generated type metadata is inserted_
 - [x] Run focused tests and docs/build checks that cover the changed surfaces. _ran init/UI-init focused Vitest tests, sqlfu and UI typechecks, root README sync, and website docs/LLMs sync_
 - [x] Open a draft PR and keep it updated with the net behavior change for reviewers. _opened draft PR #148 and updated the body after implementation_
 
@@ -35,6 +36,7 @@ Make sqlfu's instructions, guides, getting started material, tutorials, and star
   - `pnpm --filter sqlfu exec vitest run test/init.test.ts`
   - `pnpm --filter sqlfu exec vitest run test/ui-server.test.ts -t "sqlfu server can initialize a fresh directory through the ui rpc"`
   - `pnpm --filter sqlfu typecheck`
+  - `pnpm --filter sqlfu exec vitest run test/config-inline.test.ts test/inline-source.test.ts`
   - `pnpm --filter @sqlfu/ui typecheck`
   - `pnpm sync:root-readme`
   - `pnpm --filter sqlfu-website exec node scripts/sync-docs.mjs && pnpm --filter sqlfu-website exec node scripts/sync-llms.mjs`

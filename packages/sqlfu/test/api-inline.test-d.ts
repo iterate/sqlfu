@@ -52,3 +52,29 @@ const compactPosts: {slug: string; title: string}[] = compactApp(client).listPos
 const compactPost: {slug: string; title: string} = compactApp(client).getPost({slug: 'hello'});
 const maybeCompactPost: {slug: string; title: string} | null = compactApp(client).findPost({slug: 'hello'});
 const compactRunResult: {rowsAffected?: number} = compactApp(client).createPost({slug: 'hello', title: 'Hello'});
+
+const mappedApp = defineConfig({
+  definitions: sql`
+    create table posts(slug text primary key, title text not null);
+  `,
+  queries: {
+    getPostCount: sql.one<{result: {post_count: number}}>`
+      select count(*) as post_count from posts
+    `.map((result) => ({postCount: result.post_count})),
+    listPosts: sql.many<{parameters: {limit: number}; result: {slug: string; title: string}}>`
+      select slug, title
+      from posts
+      order by slug
+      limit :limit
+    `.map((result) => ({slug: result.slug, headline: result.title})),
+    findPost: sql.nullableOne<{parameters: {slug: string}; result: {slug: string; title: string}}>`
+      select slug, title
+      from posts
+      where slug = :slug
+    `.map((result) => ({slug: result.slug, headline: result.title})),
+  },
+});
+
+const mappedPostCount: {postCount: number} = mappedApp(client).getPostCount();
+const mappedPosts: {slug: string; headline: string}[] = mappedApp(client).listPosts({limit: 10});
+const maybeMappedPost: {slug: string; headline: string} | null = mappedApp(client).findPost({slug: 'hello'});

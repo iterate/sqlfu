@@ -5,6 +5,9 @@ import type {
   QueryResultMode,
   ResultRow,
   RootSqlTag,
+  SqlResultMapper,
+  SqlMappableQuery,
+  SqlMappableQueryNoArgs,
   RunResult,
   SqlFragment,
   SqlModeTag,
@@ -16,6 +19,12 @@ import type {
 } from './types.js';
 
 const emptyFragment: SqlFragment = {sql: '', args: []};
+const sqlQueryMapper = Symbol('sqlfu.sqlQueryMapper');
+
+type MappableSqlQuery = SqlQuery | (Omit<SqlQuery, 'args'> & {args: []});
+type RuntimeMappableSqlQuery = MappableSqlQuery & {
+  [sqlQueryMapper]?: SqlResultMapper;
+};
 
 export class AsyncBoundRows<TRow extends ResultRow> implements SqlRowsPromise<TRow> {
   query: SqlQuery;
@@ -91,15 +100,15 @@ export function isSqlFragment(value: unknown): value is SqlFragment {
 
 function runtimeSql<TType = unknown>(
   strings: TemplateStringsArray,
-): Omit<SqlQuery, 'args'> & {args: []; __sqlfuType?: TType};
+): SqlMappableQueryNoArgs<TType>;
 function runtimeSql<TType = unknown>(
   strings: TemplateStringsArray,
   ...values: SqlValue[]
-): SqlQuery & {__sqlfuType?: TType};
+): SqlMappableQuery<TType>;
 function runtimeSql<TType = unknown>(
   strings: TemplateStringsArray,
   ...values: SqlValue[]
-): SqlQuery & {__sqlfuType?: TType} {
+): SqlMappableQuery<TType> {
   let text = '';
   const args: QueryArg[] = [];
 
@@ -121,7 +130,7 @@ function runtimeSql<TType = unknown>(
     args.push(value);
   }
 
-  return {sql: collapseWhitespace(stripSqlComments(text)), args};
+  return attachSqlQueryMap({sql: collapseWhitespace(stripSqlComments(text)), args}) as SqlMappableQuery<TType>;
 }
 
 export const sql = Object.assign(runtimeSql, {
@@ -134,8 +143,33 @@ export const sql = Object.assign(runtimeSql, {
 
 function modeSqlTag<TMode extends QueryResultMode>(mode: TMode): SqlModeTag<TMode> {
   return ((strings: TemplateStringsArray, ...values: SqlValue[]) => {
-    return {...runtimeSql(strings, ...values), mode};
+    return attachSqlQueryMap({...runtimeSql(strings, ...values), mode});
   }) as SqlModeTag<TMode>;
+}
+
+export function readSqlQueryMapper(query: MappableSqlQuery): SqlResultMapper | undefined {
+  return (query as RuntimeMappableSqlQuery)[sqlQueryMapper];
+}
+
+function attachSqlQueryMap<TQuery extends MappableSqlQuery>(
+  query: TQuery,
+  mapper?: SqlResultMapper,
+): TQuery & {map: SqlMappableQuery['map']} {
+  if (mapper) {
+    Object.defineProperty(query, sqlQueryMapper, {
+      value: mapper,
+    });
+  }
+  Object.defineProperty(query, 'map', {
+    value(nextMapper: SqlResultMapper) {
+      const previousMapper = readSqlQueryMapper(query);
+      const combinedMapper = previousMapper
+        ? (result: ResultRow) => nextMapper(previousMapper(result))
+        : nextMapper;
+      return attachSqlQueryMap({...query}, combinedMapper);
+    },
+  });
+  return query as TQuery & {map: SqlMappableQuery['map']};
 }
 
 export function raw(value: string): SqlFragment {
