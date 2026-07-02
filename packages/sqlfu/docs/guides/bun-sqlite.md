@@ -3,56 +3,42 @@
 Use this guide when your app runs on Bun and uses `bun:sqlite`.
 
 The sqlfu project loop stays the same as [Getting Started](../getting-started.md):
-write schema SQL, draft migrations, write query SQL, generate wrappers. The
-runtime adapter changes to `createBunClient()`.
+write inline schema SQL, draft inline migrations, write inline queries, and
+generate query types. The runtime adapter changes to `createBunClient()`.
 
-## Config
-
-The CLI can use the default `.sqlfu/app.db` local SQLite file:
+## Inline config
 
 ```ts
-import {defineConfig} from 'sqlfu';
+import {defineConfig, sql} from 'sqlfu';
 
 export default defineConfig({
-  definitions: './definitions.sql',
-  migrations: './migrations',
-  queries: './sql',
-  generate: {
-    sync: true,
+  definitions: sql`
+    create table jobs (
+      id integer primary key,
+      name text not null,
+      status text not null
+    );
+  `,
+  queries: {
+    listJobsByStatus: sql`
+      select id, name, status
+      from jobs
+      where status = :status
+      order by id
+    `,
   },
 });
 ```
 
-`bun:sqlite` is synchronous, so `generate.sync: true` keeps generated wrappers
-synchronous too.
-
-## Schema and query
-
-```sql
-create table jobs (
-  id integer primary key,
-  name text not null,
-  status text not null
-);
-```
-
-Put the query in `sql/queries.sql`:
-
-```sql
-/** @name listJobsByStatus */
-select id, name, status
-from jobs
-where status = :status
-order by id;
-```
-
-Generate the migration and wrappers:
+Draft the migration entry and generate query types:
 
 ```sh
 npx sqlfu draft
-npx sqlfu migrate
 npx sqlfu generate
 ```
+
+Migrations for inline configs apply at runtime: the `jobsDb.migrate()` call
+below runs anything pending against the database the app is bound to.
 
 ## Bun runtime
 
@@ -60,16 +46,17 @@ npx sqlfu generate
 import {Database} from 'bun:sqlite';
 import {createBunClient} from 'sqlfu';
 
-import {listJobsByStatus} from './sql/.generated/queries.sql.ts';
+import dbConfig from './sqlfu.config.ts';
 
 const db = new Database('./.sqlfu/app.db');
 const client = createBunClient(db);
+const jobsDb = dbConfig(client);
 
-const pendingJobs = listJobsByStatus(client, {status: 'pending'});
+jobsDb.migrate();
+const pendingJobs = jobsDb.listJobsByStatus({status: 'pending'});
 ```
 
-The wrapper is the same wrapper you would call with `node:sqlite` or
-`better-sqlite3` when `generate.sync: true` is enabled.
+The bound inline query is synchronous because the `bun:sqlite` client is synchronous.
 
 ## Read next
 

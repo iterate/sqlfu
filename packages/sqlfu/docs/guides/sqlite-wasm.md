@@ -3,47 +3,38 @@
 Use this guide when your app runs in the browser with `@sqlite.org/sqlite-wasm`.
 
 The authoring loop is the same as [Getting Started](../getting-started.md):
-schema in `definitions.sql`, reviewed migrations in `migrations/`, queries in
-`sql/queries.sql`, generated wrappers in `sql/.generated/`. The browser runtime uses
-the sqlite-wasm adapter and the generated migration bundle.
+inline schema, reviewed inline migrations, inline queries, and generated query
+types. The browser runtime uses the sqlite-wasm adapter.
 
-## Config
+## Inline config
 
-The browser cannot read migration files from your project directory at runtime,
-so keep `migrations` configured and run `sqlfu generate`:
+The browser can import a TypeScript config module, so keep the starter shape
+inline:
 
 ```ts
-import {defineConfig} from 'sqlfu';
+import {defineConfig, sql} from 'sqlfu';
 
 export default defineConfig({
-  definitions: './definitions.sql',
-  migrations: './migrations',
-  queries: './sql',
+  definitions: sql`
+    create table notes (
+      id integer primary key,
+      title text not null,
+      body text not null
+    );
+  `,
+  queries: {
+    listNotes: sql`
+      select id, title, body
+      from notes
+      order by id desc
+    `,
+  },
 });
 ```
 
-The generated wrappers are async by default, matching the sqlite-wasm adapter.
+The bound inline queries are async, matching the sqlite-wasm adapter.
 
-## Schema and query
-
-```sql
-create table notes (
-  id integer primary key,
-  title text not null,
-  body text not null
-);
-```
-
-Put the query in `sql/queries.sql`:
-
-```sql
-/** @name listNotes */
-select id, title, body
-from notes
-order by id desc;
-```
-
-Generate the files the browser will import:
+Generate the query types the browser will import:
 
 ```sh
 npx sqlfu draft
@@ -56,22 +47,22 @@ npx sqlfu generate
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 import {createSqliteWasmClient} from 'sqlfu';
 
-import {migrate} from './migrations/.generated/migrations.ts';
-import {listNotes} from './sql/.generated/queries.sql.ts';
+import dbConfig from './sqlfu.config.ts';
 
 export async function openBrowserDatabase() {
   const sqlite3 = await sqlite3InitModule();
   const db = new sqlite3.oo1.DB('file:app.db?vfs=opfs');
   const client = createSqliteWasmClient(db);
+  const notesDb = dbConfig(client);
 
-  await migrate(client);
+  await notesDb.migrate();
 
-  return client;
+  return notesDb;
 }
 
 export async function loadNotes() {
-  const client = await openBrowserDatabase();
-  return listNotes(client);
+  const db = await openBrowserDatabase();
+  return db.listNotes();
 }
 ```
 

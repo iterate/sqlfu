@@ -1,17 +1,20 @@
 import {mapSqliteDriverError} from './errors.js';
-import {bindAsyncSql, bindSyncSql} from './sql.js';
+import {assertRowlessQueryHasNoMapper, bindAsyncSql, bindSyncSql, mapSqlQueryRows, readSqlQueryMapper} from './sql.js';
 import type {AsyncClient, PreparedStatement, ResultRow, SqlQuery, SyncClient, SyncPreparedStatement} from './types.js';
 
 /**
- * Wrap a `SyncClient` so every error from `all` / `run` / `raw` / `iterate`
- * is normalized via `mapSqliteDriverError`. Mirrors `instrumentClient`
- * structurally — applied once at adapter-factory exit rather than per call.
+ * Wrap a `SyncClient` to enforce the shared adapter boundary contract, applied
+ * once at adapter-factory exit rather than per call (mirrors
+ * `instrumentClient` structurally):
  *
- * The error's `system` comes from the client's own `.system` field, so
- * adapters don't have to pass it twice.
+ * - every error from `all` / `run` / `raw` / `iterate` is normalized via
+ *   `mapSqliteDriverError`, with `system` read from the client's own field so
+ *   adapters don't have to pass it twice
+ * - `.map(...)` mappers attached to queries are applied to returned rows
+ *   (and rejected on `run`, which returns no rows for a mapper to shape)
  *
  * Transactions re-wrap the inner client so queries inside a tx get the same
- * error contract as queries outside it.
+ * contract as queries outside it.
  */
 export function wrapSyncClientErrors<TDriver>(client: SyncClient<TDriver>): SyncClient<TDriver> {
   const mapQuery = (error: unknown, query: SqlQuery) => mapSqliteDriverError(error, {query, system: client.system});
@@ -22,12 +25,13 @@ export function wrapSyncClientErrors<TDriver>(client: SyncClient<TDriver>): Sync
     sync: true,
     all(query) {
       try {
-        return client.all(query);
+        return mapSqlQueryRows(query, client.all(query));
       } catch (error) {
         throw mapQuery(error, query);
       }
     },
     run(query) {
+      assertRowlessQueryHasNoMapper(query);
       try {
         return client.run(query);
       } catch (error) {
@@ -41,9 +45,12 @@ export function wrapSyncClientErrors<TDriver>(client: SyncClient<TDriver>): Sync
         throw mapQuery(error, {sql, args: []});
       }
     },
-    *iterate(query) {
+    *iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery): Iterable<TRow> {
+      const mapper = readSqlQueryMapper(query);
       try {
-        yield* client.iterate(query);
+        for (const row of client.iterate<TRow>(query)) {
+          yield (mapper ? mapper(row) : row) as TRow;
+        }
       } catch (error) {
         throw mapQuery(error, query);
       }
@@ -101,12 +108,13 @@ export function wrapAsyncClientErrors<TDriver>(client: AsyncClient<TDriver>): As
     sync: false,
     async all(query) {
       try {
-        return await client.all(query);
+        return mapSqlQueryRows(query, await client.all(query));
       } catch (error) {
         throw mapQuery(error, query);
       }
     },
     async run(query) {
+      assertRowlessQueryHasNoMapper(query);
       try {
         return await client.run(query);
       } catch (error) {
@@ -120,9 +128,12 @@ export function wrapAsyncClientErrors<TDriver>(client: AsyncClient<TDriver>): As
         throw mapQuery(error, {sql, args: []});
       }
     },
-    async *iterate(query) {
+    async *iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery): AsyncIterable<TRow> {
+      const mapper = readSqlQueryMapper(query);
       try {
-        yield* client.iterate(query);
+        for await (const row of client.iterate<TRow>(query)) {
+          yield (mapper ? mapper(row) : row) as TRow;
+        }
       } catch (error) {
         throw mapQuery(error, query);
       }

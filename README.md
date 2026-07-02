@@ -36,19 +36,22 @@ It is built around a simple idea: SQL should be the source language for schema, 
 
 `sqlfu` is a set of SQL-first tools that are meant to work together:
 
-- a client for executing checked-in SQL
-- a migrator built around SQL files, not JavaScript migration code
+- a client for executing authored SQL
+- a migrator built around SQL, not JavaScript migration code
 - a SQLite schema diff engine
-- a type generator for `.sql` queries
+- a type generator for inline queries and `.sql` query files
 - a SQL formatter
 - an Admin UI for inspecting and working with the project
 
-The intended shape is simple:
+The intended starting shape is simple:
 
-- your desired schema lives in `definitions.sql`
-- your migration history lives in `migrations/`
-- your queries live in a flat `sql/` directory
-- generated TypeScript wrappers live in `sql/.generated/`
+- your desired schema lives in an inline `definitions: sql\`...\`` block
+- your migration history lives in inline migration entries
+- your queries live in a named inline `queries` map
+- generated TypeScript query types are written back into those inline `sql` tags
+
+When those blocks get too large, split them out into `definitions.sql`,
+`migrations/`, and a flat `sql/` directory.
 
 ## Philosophy
 
@@ -58,9 +61,9 @@ Humans have been writing SQL for decades. Agents are excellent at generating and
 
 That is why the project leans so heavily on SQL artifacts:
 
-- schema in `definitions.sql`
-- migrations as SQL files
-- checked-in `.sql` queries
+- schema in inline `sql` templates or `definitions.sql`
+- migrations as inline entries or SQL files
+- inline named queries or checked-in `.sql` queries
 - a SQL formatter
 - a SQL diff engine
 
@@ -79,25 +82,25 @@ You should still get strong TypeScript output from SQL: generated wrappers, type
   your app depends on. Adapter factories create it from the SQLite driver you
   already use.
 - **SQL migrations.**
-  Schema history is a sequence of reviewed SQL files, with `sqlfu draft`
-  helping turn `definitions.sql` changes into best-effort migration drafts.
+  Schema history is a sequence of reviewed SQL migrations, with `sqlfu draft`
+  helping turn desired-schema changes into best-effort migration drafts.
 - **Type generation from SQL.**
-  Checked-in `.sql` query files become TypeScript wrappers with inferred params
-  and result rows.
+  Inline queries get generated modes and types; checked-in `.sql` query files
+  become TypeScript wrappers with inferred params and result rows.
 - **Admin UI.**
   The browser interface gives you a view of schema, migrations, queries,
   generated metadata, and live data.
 
 The main repo artifacts behind those concepts are:
 
-- `definitions.sql`
-  The desired schema now. Tables, views, triggers, and (if you want them) copy-paste id generators (ULID, KSUID, nanoid, cuid2-shaped) live here alongside your schema. See [docs/id-helpers.md](packages/sqlfu/docs/id-helpers.md).
-- `migrations/`
-  The ordered history of schema changes.
-- `sql/`
-  A flat directory of checked-in query files.
-- generated query wrappers
-  TypeScript code generated into `sql/.generated/` as `<name>.sql.ts`.
+- `definitions`
+  The desired schema now, usually inline in the starter config. Tables, views, triggers, and (if you want them) copy-paste id generators (ULID, KSUID, nanoid, cuid2-shaped) live here alongside your schema. See [docs/id-helpers.md](packages/sqlfu/docs/id-helpers.md).
+- migrations
+  The ordered history of schema changes, usually inline first and in `migrations/` after you split files out.
+- `queries`
+  A named map of inline query templates, or a flat directory of checked-in query files after you split files out.
+- generated query types
+  TypeScript types written into inline query tags, or generated wrappers in `sql/.generated/` as `<name>.sql.ts` for file-backed projects.
 - `sqlfu_migrations`
   The table that records applied migrations in a real database. Configurable via `migrations.preset`: set `preset: 'd1'` to use Cloudflare D1's `d1_migrations` table instead, for projects taking over from alchemy/wrangler.
 - live schema
@@ -128,15 +131,15 @@ See [Runtime client](https://sqlfu.dev/docs/client) for the shared interface and
 
 The migrator is SQL-only. Migrations are applied in filename order, recorded in `sqlfu_migrations`, and treated as explicit history. The production path is replayed migrations, not direct declarative apply.
 
-The diff engine powers `draft`, `goto`, and `sync` by comparing replayed migration state against `definitions.sql` and producing the SQL statements that describe the difference. See [SQL migrations](https://sqlfu.dev/docs/migration-model) for the full model.
+The diff engine powers `draft`, `goto`, and `sync` by comparing replayed migration state against the desired schema and producing the SQL statements that describe the difference. See [SQL migrations](https://sqlfu.dev/docs/migration-model) for the full model.
 
 For Cloudflare D1 projects already using alchemy or wrangler, set `migrations.preset: 'd1'` and sqlfu reads and writes the same `d1_migrations` table alchemy does. See [Migration Presets](https://sqlfu.dev/docs/migration-model#migration-presets) for the schema detection and checksum tradeoff.
 
 ### Type Generation from SQL
 
-`sqlfu generate` reads checked-in `.sql` files and generates TypeScript wrappers into a `.generated/` subdirectory. The implementation uses vendored TypeSQL analysis, with a small sqlfu post-pass to improve some SQLite result types.
+`sqlfu generate` reads inline queries and writes generated modes/types back into the config module. In file-backed projects it reads checked-in `.sql` files and generates TypeScript wrappers into a `.generated/` subdirectory. The implementation uses vendored TypeSQL analysis, with a small sqlfu post-pass to improve some SQLite result types.
 
-By default, `generate` reads `definitions.sql`, so no live database is required.
+By default, `generate` reads the desired schema, so no live database is required.
 Switch `generate.authority` when generated types should follow replayed
 migrations, migration history, or live schema instead.
 
@@ -237,7 +240,7 @@ See [Lint Plugin](https://sqlfu.dev/docs/lint-plugin) for setup and configuratio
 
 ### Agent Skill
 
-`sqlfu` ships an agent skill at [`skills/using-sqlfu`](skills/using-sqlfu/SKILL.md). It gives an agent the few sqlfu-specific facts it needs before editing a project: find `sqlfu.config.ts`, treat SQL as the authored source, draft migrations instead of inventing them, and regenerate TypeScript outputs from query files.
+`sqlfu` ships an agent skill at [`skills/using-sqlfu`](skills/using-sqlfu/SKILL.md). It gives an agent the few sqlfu-specific facts it needs before editing a project: find the sqlfu config, treat SQL as the authored source, draft migrations instead of inventing them, and regenerate TypeScript outputs from inline queries or query files.
 
 Install it into a project:
 
@@ -252,9 +255,9 @@ If your coding agent can fetch URLs, point it at the agent docs index before it 
 ```text
 You are a sqlfu assistant. Read https://sqlfu.dev/llms.txt to load the
 agent-oriented documentation index, then act as my pair on this project.
-Keep SQL as the authored source, inspect sqlfu.config.ts before changing
-behavior, and regenerate TypeScript wrappers instead of hand-editing generated
-files.
+Keep SQL as the authored source, inspect the sqlfu config before changing
+behavior, and regenerate TypeScript outputs instead of hand-editing generated
+types.
 ```
 
 ## Quick Start
@@ -263,34 +266,61 @@ files.
 pnpm add sqlfu
 ```
 
-For a full end-to-end walkthrough -- schema, migrations, query files, typed wrappers, and a working generated-function call -- see [Getting Started](https://sqlfu.dev/docs/getting-started).
+For a full end-to-end walkthrough -- inline schema, migrations, queries, generated query types, and a working `db.listPosts(...)` call -- see [Getting Started](https://sqlfu.dev/docs/getting-started).
 
 ## Configuration
 
-Create `sqlfu.config.ts` in your project root:
+Start with inline schema and queries in `sqlfu.config.ts`:
 
 ```ts
-export default {
-  migrations: './migrations',
-  definitions: './definitions.sql',
-  queries: './sql',
-};
+import {defineConfig, sql} from 'sqlfu';
+
+export default defineConfig({
+  definitions: sql`
+    create table posts (
+      id integer primary key autoincrement,
+      title text not null,
+      body text not null
+    );
+  `,
+  queries: {
+    listPosts: sql`
+      select id, title, body
+      from posts
+      order by id desc
+    `,
+  },
+});
 ```
 
 Required fields:
 
-- `definitions` -- schema source of truth (`definitions.sql`)
-- `queries` -- directory containing checked-in `.sql` queries
+- `definitions` -- schema source of truth, usually an inline `sql` template when you start
+- `queries` -- named query map, usually inline `sql` templates when you start
 
 Optional fields:
 
-- `db` -- the database sqlfu talks to for `migrate`, `check`, `sync`, `goto`, `baseline`, and the UI. Either a filesystem path (opens a local sqlite file) or a factory returning a `DisposableAsyncClient`. If omitted, commands that need a database use `.sqlfu/app.db`; this is useful for authoring migrations and generated types before wiring a runtime database. See [Pluggable `db`](#pluggable-db).
-- `migrations` -- directory containing migration files. Omit if you don't use migrations (library-author projects).
+- `db` -- the database sqlfu talks to for file-backed `migrate`, `check`, `sync`, `goto`, `baseline`, and the UI. Either a filesystem path (opens a local sqlite file) or a factory returning a `DisposableAsyncClient`. If omitted, commands that need a database use `.sqlfu/app.db`; this is useful for authoring migrations and generated types before wiring a runtime database. See [Pluggable `db`](#pluggable-db).
+- `migrations` -- inline migration entries, or a directory containing migration files after you split config out. Omit until you draft the first migration.
 - `generate.authority` -- where `sqlfu generate` reads the schema from. See [`generate.authority`](#generateauthority). Default `'desired_schema'`.
 - `generate.casing` -- generated SQL-derived property casing, either `'camel'` or `'preserve'`. Default `'camel'`.
 - `generate.experimentalJsonTypes` -- opt into experimental JSON logical-type handling. Today this covers SQLite columns declared exactly as `json`; the same flag is reserved for typed JSON metadata/schema support.
 
 `sqlfu` manages its own temporary files under `.sqlfu/`, including scratch databases used for schema diffing. These are generally safe to delete at any time. `sqlfu init` adds `.sqlfu/` to `.gitignore`.
+
+When inline config gets too large, split schema and queries into files:
+
+```ts
+import {defineConfig} from 'sqlfu';
+
+export default defineConfig({
+  migrations: './migrations',
+  definitions: './definitions.sql',
+  queries: './sql',
+});
+```
+
+File-backed config is the same model with the SQL moved out: `definitions.sql` holds the schema, `sql/*.sql` files hold named queries, and generated wrappers land under `sql/.generated/`.
 
 If a repo has more than one sqlfu project, pass the config file explicitly:
 
@@ -299,7 +329,7 @@ sqlfu --config ./durable-objects/counter/sqlfu.config.ts generate
 sqlfu --config ./durable-objects/session/sqlfu.config.ts draft
 ```
 
-Relative paths inside that config are resolved from the config file's directory, so each Durable Object can keep its own `definitions.sql`, `migrations/`, and `sql/` directories alongside the config.
+Relative paths inside file-backed config are resolved from the config file's directory, so each subproject can keep its own `definitions.sql`, `migrations/`, and `sql/` directories alongside the config.
 
 ### Inline Durable Object configs
 
@@ -420,10 +450,10 @@ export default defineConfig({
 
 ### `generate.authority`
 
-`sqlfu generate` needs to know your schema to produce typed query wrappers. The `generate.authority` option controls where it reads the schema from:
+`sqlfu generate` needs to know your schema to produce typed query outputs. The `generate.authority` option controls where it reads the schema from:
 
-- `'desired_schema'` (default) -- read `definitions.sql` directly. No DB required. Fastest, most deterministic. Drift between `definitions.sql` and migrations is surfaced by `sqlfu check`, not silently hidden here.
-- `'migrations'` -- replay `migrations/*.sql` into a scratch DB and extract the resulting schema. No DB required. Types follow what the migrator would actually produce.
+- `'desired_schema'` (default) -- read inline `definitions` or `definitions.sql` directly. No DB required. Fastest, most deterministic. Drift between desired schema and migrations is surfaced by `sqlfu check`, not silently hidden here.
+- `'migrations'` -- replay inline migrations or `migrations/*.sql` into a scratch DB and extract the resulting schema. No DB required. Types follow what the migrator would actually produce.
 - `'migration_history'` -- read `sqlfu_migrations` from `config.db`, then replay the matching migration files. Requires `db`. Throws if a recorded migration is missing from `migrations/`. Use when types should match what's actually deployed.
 - `'live_schema'` -- extract schema directly from `config.db`. Requires `db` to be populated up-front. This was the default before the factory form of `db` landed; now opt-in.
 
@@ -439,6 +469,12 @@ export default defineConfig({
 
 ## Command Reference
 
+`draft` and `generate` work on both inline and file-backed configs. The
+database-touching commands (`check`, `migrate`, `sync`, `goto`, `baseline`, the
+Admin UI backend) need a file-backed config with a `db` entry -- inline configs
+bind their database at runtime, so migrations there apply via `db.migrate()`.
+See [CLI](packages/sqlfu/docs/cli.md).
+
 Start the local backend used by the hosted Admin UI:
 
 ```sh
@@ -451,7 +487,7 @@ Generate query wrappers:
 sqlfu generate
 ```
 
-By default `generate` reads from `definitions.sql` (no DB needed). Switch `generate.authority` if you want types to reflect the live schema or the applied migration history -- see [`generate.authority`](#generateauthority).
+By default `generate` reads from the desired schema (no DB needed). Switch `generate.authority` if you want types to reflect the live schema or the applied migration history -- see [`generate.authority`](#generateauthority).
 
 Draft a migration:
 
@@ -483,7 +519,7 @@ Rewrite migration history to an exact target without changing live schema:
 sqlfu baseline <target>
 ```
 
-Update live schema directly from `definitions.sql`:
+Update live schema directly from the desired schema:
 
 ```sh
 sqlfu sync

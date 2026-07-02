@@ -102,7 +102,7 @@ function parseInlineConfigSourceForCall(
   }
   if (!inlineCall.target) {
     throw new Error(
-      `${modulePath} inline defineConfig(...) calls must be assigned to top-level const declarations or static properties on top-level named classes.`,
+      `${modulePath} inline defineConfig(...) calls must be exported as default, assigned to top-level const declarations, or assigned to static properties on top-level named classes.`,
     );
   }
 
@@ -355,8 +355,12 @@ function readDefineConfigTarget(sourceText: string, index: number, depth: Source
 
 function readDefineConfigConstName(sourceText: string, index: number): string | null {
   const prefix = sourceText.slice(0, index);
-  const match = prefix.match(/(?:^|[;\n])\s*(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)(?:\s*:[^=]+)?\s*=\s*$/u);
-  return match?.[1] || null;
+  const constMatch = prefix.match(/(?:^|[;\n])\s*(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)(?:\s*:[^=]+)?\s*=\s*$/u);
+  if (constMatch) return constMatch[1];
+  // `export default defineConfig({...})` has no binding name; "default" keeps
+  // duplicate detection and generated-type matching working for the common
+  // single-config module shape that `sqlfu init` scaffolds.
+  return /(?:^|[;\n])\s*export\s+default\s*$/u.test(prefix) ? 'default' : null;
 }
 
 function readDefineConfigStaticPropertyTarget(sourceText: string, index: number): InlineConfigTarget | null {
@@ -439,6 +443,7 @@ function readSqlProperty(properties: PropertySpan[], name: string, modulePath: s
     sourceTextFor(properties),
     readProperty(properties, name, modulePath),
     `${modulePath} ${name}`,
+    false,
   );
 }
 
@@ -496,6 +501,7 @@ function readMigrationSources(sourceText: string, array: SourceSpan, modulePath:
       sourceText,
       readProperty(properties, 'content', modulePath),
       `${modulePath} migration ${name}`,
+      false,
     );
     return {name, content};
   });
@@ -508,21 +514,28 @@ function readQuerySources(sourceText: string, object: SourceSpan, modulePath: st
   );
   return queryProperties.map((property) => ({
     name: property.name,
-    content: readSqlTemplate(sourceText, property, `${modulePath} query ${property.name}`),
+    content: readSqlTemplate(sourceText, property, `${modulePath} query ${property.name}`, true),
   }));
 }
 
-function readSqlTemplate(sourceText: string, span: SourceSpan, location: string): InlineSqlTemplate {
+function readSqlTemplate(
+  sourceText: string,
+  span: SourceSpan,
+  location: string,
+  allowMapCalls: boolean,
+): InlineSqlTemplate {
   const tagStart = skipTrivia(sourceText, span.start);
   if (!startsWithIdentifier(sourceText, tagStart, 'sql')) {
     throw new Error(`${location} must use the sql tag.`);
   }
   let cursor = skipTrivia(sourceText, tagStart + 'sql'.length);
+  let modeTagName: string | undefined;
   if (sourceText[cursor] === '.') {
     const modeName = readIdentifier(sourceText, skipTrivia(sourceText, cursor + 1), `${location} sql tag`);
     if (!isQueryResultModeTag(modeName.value)) {
       throw new Error(`${location} uses unsupported sql tag mode ${JSON.stringify(modeName.value)}.`);
     }
+    modeTagName = modeName.value;
     cursor = skipTrivia(sourceText, modeName.end);
   }
   if (sourceText[cursor] === '<') {
@@ -533,9 +546,22 @@ function readSqlTemplate(sourceText: string, span: SourceSpan, location: string)
   }
   const templateStart = cursor;
   const templateEnd = findTemplateEnd(sourceText, templateStart, location);
-  const afterTemplate = skipTrivia(sourceText, templateEnd + 1);
+  const afterTemplateStart = skipTrivia(sourceText, templateEnd + 1);
+  const afterTemplate = skipSqlMapCalls(sourceText, afterTemplateStart, span.end, location);
+  if (afterTemplate > afterTemplateStart) {
+    if (!allowMapCalls) {
+      throw new Error(`${location} must be a plain sql\`...\` tagged template; .map(...) is only supported on queries.`);
+    }
+    if (modeTagName === 'run' || modeTagName === 'metadata') {
+      throw new Error(`${location} sql.${modeTagName} queries do not return rows, so .map(...) would never run.`);
+    }
+  }
   if (afterTemplate < span.end) {
-    throw new Error(`${location} must be a plain sql\`...\` tagged template.`);
+    throw new Error(
+      allowMapCalls
+        ? `${location} must be a sql\`...\` tagged template, optionally followed by .map(...).`
+        : `${location} must be a plain sql\`...\` tagged template.`,
+    );
   }
   return {
     // Cooked, not raw: the runtime template literal decodes escapes, so static
@@ -558,6 +584,25 @@ function cookTemplateText(raw: string): string {
       return simple[single] || single;
     },
   );
+}
+
+function skipSqlMapCalls(sourceText: string, start: number, end: number, location: string): number {
+  let cursor = start;
+  while (cursor < end && sourceText[cursor] === '.') {
+    const method = readIdentifier(sourceText, skipTrivia(sourceText, cursor + 1), `${location} sql tag method`);
+    if (method.value !== 'map') {
+      return cursor;
+    }
+    cursor = skipTrivia(sourceText, method.end);
+    if (sourceText[cursor] === '<') {
+      cursor = skipTrivia(sourceText, findMatchingAngle(sourceText, cursor) + 1);
+    }
+    if (sourceText[cursor] !== '(') {
+      throw new Error(`${location} sql.map must be called with a mapper function.`);
+    }
+    cursor = skipTrivia(sourceText, findMatchingDelimiter(sourceText, cursor, '(', ')') + 1);
+  }
+  return cursor;
 }
 
 function readIdentifier(sourceText: string, start: number, location: string): {value: string; end: number} {

@@ -4,58 +4,48 @@ Use this guide when your app runs in Node and talks to a local SQLite database
 with `node:sqlite`, `better-sqlite3`, or native `libsql`.
 
 Start from [Getting Started](../getting-started.md). The project loop is the
-same: `definitions.sql`, reviewed migrations, `.sql` query files, generated
-TypeScript wrappers. The Node-specific part is choosing the runtime adapter.
+same: inline `definitions`, reviewed inline migrations, inline queries, and
+generated query types. The Node-specific part is choosing the runtime adapter.
 
-## Config
+## Inline config
 
-For a local database file, the CLI can use the default `.sqlfu/app.db` path:
+For a local database file, the runtime snippets below use `.sqlfu/app.db`:
 
 ```ts
-import {defineConfig} from 'sqlfu';
+import {defineConfig, sql} from 'sqlfu';
 
 export default defineConfig({
-  definitions: './definitions.sql',
-  migrations: './migrations',
-  queries: './sql',
-  generate: {
-    sync: true,
+  definitions: sql`
+    create table posts (
+      id integer primary key,
+      slug text not null unique,
+      title text not null,
+      published integer not null default 0
+    );
+  `,
+  queries: {
+    findPostBySlug: sql`
+      select id, slug, title
+      from posts
+      where slug = :slug
+      limit 1
+    `,
   },
 });
 ```
 
-`node:sqlite`, `better-sqlite3`, and native `libsql` are synchronous, so set
-`generate.sync: true`. Generated wrappers accept a `SyncClient` and return rows
-directly.
-
-## Schema and query
-
-```sql
-create table posts (
-  id integer primary key,
-  slug text not null unique,
-  title text not null,
-  published integer not null default 0
-);
-```
-
-Put the query in `sql/queries.sql`:
-
-```sql
-/** @name findPostBySlug */
-select id, slug, title
-from posts
-where slug = :slug
-limit 1;
-```
-
-Run the normal commands:
+Draft the migration entry and generate query types:
 
 ```sh
 npx sqlfu draft
-npx sqlfu migrate
 npx sqlfu generate
 ```
+
+`draft` writes the pending migration entry back into the inline config, and
+`generate` updates `findPostBySlug` to a typed `sql.nullableOne<{...}>` tag.
+There is no `sqlfu migrate` step for inline configs: the database is bound at
+runtime, so the `postsDb.migrate()` call in the snippets below applies pending
+migrations.
 
 ## `node:sqlite`
 
@@ -65,12 +55,14 @@ npx sqlfu generate
 import {DatabaseSync} from 'node:sqlite';
 import {createNodeSqliteClient} from 'sqlfu';
 
-import {findPostBySlug} from './sql/.generated/queries.sql.ts';
+import dbConfig from './sqlfu.config.ts';
 
 const db = new DatabaseSync('./.sqlfu/app.db');
 const client = createNodeSqliteClient(db);
+const postsDb = dbConfig(client);
 
-const post = findPostBySlug(client, {slug: 'hello-world'});
+postsDb.migrate();
+const post = postsDb.findPostBySlug({slug: 'hello-world'});
 ```
 
 ## `better-sqlite3`
@@ -81,12 +73,14 @@ Use `better-sqlite3` when you want its mature native driver surface:
 import Database from 'better-sqlite3';
 import {createBetterSqlite3Client} from 'sqlfu';
 
-import {findPostBySlug} from './sql/.generated/queries.sql.ts';
+import dbConfig from './sqlfu.config.ts';
 
 const db = new Database('./.sqlfu/app.db');
 const client = createBetterSqlite3Client(db);
+const postsDb = dbConfig(client);
 
-const post = findPostBySlug(client, {slug: 'hello-world'});
+postsDb.migrate();
+const post = postsDb.findPostBySlug({slug: 'hello-world'});
 ```
 
 ## Native `libsql`
@@ -97,12 +91,14 @@ Use native `libsql` when you want a local embedded libSQL database:
 import Database from 'libsql';
 import {createLibsqlSyncClient} from 'sqlfu';
 
-import {findPostBySlug} from './sql/.generated/queries.sql.ts';
+import dbConfig from './sqlfu.config.ts';
 
 const db = new Database('./.sqlfu/app.db');
 const client = createLibsqlSyncClient(db);
+const postsDb = dbConfig(client);
 
-const post = findPostBySlug(client, {slug: 'hello-world'});
+postsDb.migrate();
+const post = postsDb.findPostBySlug({slug: 'hello-world'});
 ```
 
 ## Read next

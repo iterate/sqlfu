@@ -8,15 +8,15 @@ import {
   autoAcceptConfirm,
   formatCheckFailure,
   loadContextConfig,
-  loadContextProjectState,
   materializeDefinitionsSchemaForContext,
   materializeMigrationsSchemaForContext,
   compareSchemasForContext,
   migrationsPresetOf,
   readMigrationsFromContext,
+  runInitCommand,
   type SqlfuCommandContext,
 } from './internal.js';
-import {createDefaultInitPreview} from '../init-preview.js';
+import type {InitPreviewFormat} from '../init-preview.js';
 import type {LoadedSqlfuProject} from '../config.js';
 import type {SqlfuHost} from '../host.js';
 import {migrationName, readMigrationHistory} from '../migrations/index.js';
@@ -35,6 +35,7 @@ export type CreateSqlfuApiInput = {
   configPath?: string;
   config?: SqlfuProjectConfig;
   loadProjectState?: () => Promise<LoadedSqlfuProject>;
+  initPreviewFormat?: InitPreviewFormat;
   host: SqlfuHost;
 };
 
@@ -97,26 +98,7 @@ export function createSqlfuApi(input: CreateSqlfuApiInput): SqlfuApi {
 
   return {
     async init({confirm}) {
-      const project = await loadContextProjectState(context);
-      const preview = createDefaultInitPreview(project.projectRoot, {configPath: project.configPath});
-      const configContents = await confirm({
-        title: 'Create sqlfu.config.ts?',
-        body: preview.configContents,
-        bodyType: 'typescript',
-        editable: true,
-      });
-
-      if (!configContents?.trim()) {
-        return 'Initialization cancelled.';
-      }
-
-      await context.host.initializeProject({
-        projectRoot: project.projectRoot,
-        configPath: project.configPath,
-        configContents,
-      });
-
-      return `Initialized sqlfu project in ${project.projectRoot}.`;
+      return runInitCommand(context, confirm);
     },
 
     async config() {
@@ -209,6 +191,7 @@ function createCommandContext(input: CreateSqlfuApiInput): SqlfuCommandContext {
     configPath: input.configPath,
     config: input.config,
     loadProjectState: input.loadProjectState,
+    initPreviewFormat: input.initPreviewFormat,
     host: input.host,
   };
 }

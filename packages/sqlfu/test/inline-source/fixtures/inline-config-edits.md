@@ -106,6 +106,68 @@ export class PostObject {
 
 </details>
 
+## query metadata insertion preserves map calls
+
+<details>
+<summary>input</summary>
+
+```ts (worker.ts)
+import {defineConfig, sql} from 'sqlfu';
+
+const db = defineConfig({
+  definitions: sql`
+    create table posts (slug text primary key, title text not null);
+  `,
+  queries: {
+    getPostCount: sql`
+      select count(*) as post_count
+      from posts
+    `.map((result) => ({postCount: result.post_count})),
+  },
+});
+```
+
+</details>
+
+<details>
+<summary>edits</summary>
+
+```json (edits.json)
+{
+  "types": [
+    {
+      "configName": "db",
+      "queryName": "getPostCount",
+      "type": "{ result: { post_count: number } }",
+      "mode": "one"
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary>output</summary>
+
+```ts (worker.ts)
+import {defineConfig, sql} from 'sqlfu';
+
+const db = defineConfig({
+  definitions: sql`
+    create table posts (slug text primary key, title text not null);
+  `,
+  queries: {
+    getPostCount: sql.one<{ result: { post_count: number } }>`
+      select count(*) as post_count
+      from posts
+    `.map((result) => ({postCount: result.post_count})),
+  },
+});
+```
+
+</details>
+
 ## class config keeps formatter-split query type tags when metadata is unchanged
 
 <details>
