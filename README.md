@@ -469,6 +469,12 @@ export default defineConfig({
 
 ## Command Reference
 
+`draft` and `generate` work on both inline and file-backed configs. The
+database-touching commands (`check`, `migrate`, `sync`, `goto`, `baseline`, the
+Admin UI backend) need a file-backed config with a `db` entry -- inline configs
+bind their database at runtime, so migrations there apply via `db.migrate()`.
+See [CLI](packages/sqlfu/docs/cli.md).
+
 Start the local backend used by the hosted Admin UI:
 
 ```sh

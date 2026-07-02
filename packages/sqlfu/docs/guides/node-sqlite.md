@@ -9,8 +9,7 @@ generated query types. The Node-specific part is choosing the runtime adapter.
 
 ## Inline config
 
-For a local database file, the CLI and runtime can use `.sqlfu/app.db` while you
-are authoring:
+For a local database file, the runtime snippets below use `.sqlfu/app.db`:
 
 ```ts
 import {defineConfig, sql} from 'sqlfu';
@@ -35,15 +34,18 @@ export default defineConfig({
 });
 ```
 
-Run the normal commands:
+Draft the migration entry and generate query types:
 
 ```sh
 npx sqlfu draft
-npx sqlfu migrate
 npx sqlfu generate
 ```
 
+`draft` writes the pending migration entry back into the inline config, and
 `generate` updates `findPostBySlug` to a typed `sql.nullableOne<{...}>` tag.
+There is no `sqlfu migrate` step for inline configs: the database is bound at
+runtime, so the `postsDb.migrate()` call in the snippets below applies pending
+migrations.
 
 ## `node:sqlite`
 

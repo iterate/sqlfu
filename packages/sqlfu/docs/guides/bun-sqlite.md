@@ -8,8 +8,6 @@ generate query types. The runtime adapter changes to `createBunClient()`.
 
 ## Inline config
 
-The CLI can use the default `.sqlfu/app.db` local SQLite file:
-
 ```ts
 import {defineConfig, sql} from 'sqlfu';
 
@@ -32,13 +30,15 @@ export default defineConfig({
 });
 ```
 
-Generate the migration and wrappers:
+Draft the migration entry and generate query types:
 
 ```sh
 npx sqlfu draft
-npx sqlfu migrate
 npx sqlfu generate
 ```
+
+Migrations for inline configs apply at runtime: the `jobsDb.migrate()` call
+below runs anything pending against the database the app is bound to.
 
 ## Bun runtime
 

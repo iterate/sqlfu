@@ -4,6 +4,16 @@ The sqlfu CLI is the project control surface. It reads inline `defineConfig`
 modules first, can still work against split-out SQL files, and starts the local
 backend used by the hosted Admin UI for file-backed projects.
 
+Which commands apply depends on the config shape:
+
+- **Inline configs** bind their database at runtime with `dbConfig(client)`,
+  so the CLI has no database to talk to. The authoring commands - `draft` and
+  `generate` - work on inline configs; migrations apply when your app calls
+  `db.migrate()`.
+- **File-backed configs** declare a `db` path or factory, so the
+  database-touching commands - `check`, `migrate`, `sync`, `goto`, `baseline`,
+  and the Admin UI backend - work too.
+
 Most commands can be run through `npx`:
 
 ```sh

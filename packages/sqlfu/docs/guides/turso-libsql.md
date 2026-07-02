@@ -8,31 +8,16 @@ inline migrations, write inline queries, and generate query types. Most
 Turso/libSQL client packages are asynchronous, so bound inline queries use
 `await`.
 
-## Config for `@libsql/client`
+## Inline config
 
-For a local `file:` database or Turso Cloud URL:
+The config declares schema and queries; the database connection is bound at
+runtime, so the same config works against a local `file:` database and Turso
+Cloud:
 
 ```ts
-import {mkdirSync} from 'node:fs';
-import {createClient} from '@libsql/client';
-import {defineConfig, createLibsqlClient, sql} from 'sqlfu';
+import {defineConfig, sql} from 'sqlfu';
 
 export default defineConfig({
-  db: () => {
-    mkdirSync('.sqlfu', {recursive: true});
-
-    const raw = createClient({
-      url: process.env.TURSO_DATABASE_URL || 'file:./.sqlfu/app.db',
-      authToken: process.env.TURSO_AUTH_TOKEN,
-    });
-
-    return {
-      client: createLibsqlClient(raw),
-      async [Symbol.asyncDispose]() {
-        await raw.close();
-      },
-    };
-  },
   definitions: sql`
     create table organizations (
       id integer primary key,
@@ -51,17 +36,15 @@ export default defineConfig({
 });
 ```
 
-Use the same `db` factory for `sqlfu migrate`, `sqlfu check`, and the UI. The
-factory keeps sqlfu pointed at the same database your app uses instead of a
-scratch file.
-
-Run:
+Draft the migration entry and generate query types:
 
 ```sh
 npx sqlfu draft
-npx sqlfu migrate
 npx sqlfu generate
 ```
+
+Migrations apply at runtime: each snippet below calls `await orgDb.migrate()`
+against the database the app is actually connected to.
 
 ## Runtime with `@libsql/client`
 
