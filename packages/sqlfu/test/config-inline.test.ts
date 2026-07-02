@@ -309,6 +309,68 @@ test('inline queries can map row results', () => {
   expect(missingPost).toBeNull();
 });
 
+test('a one-mode mapper is not called when the query returns zero rows', () => {
+  using fixture = createInlineConfigFixture();
+
+  const app = defineConfig({
+    definitions: sql`
+      create table posts (slug text primary key, title text not null);
+    `,
+    migrations: [
+      {
+        name: '0001_create_posts',
+        content: sql`
+          create table posts (slug text primary key, title text not null);
+        `,
+      },
+    ],
+    queries: {
+      getPost: sql.one<{parameters: {slug: string}; result: {slug: string; title: string}}>`
+        select slug, title
+        from posts
+        where slug = :slug
+      `.map((result) => ({headline: result.title})),
+    },
+  });
+
+  const db = app(fixture.client);
+  db.migrate();
+
+  // `one` with zero rows returns undefined, matching generated file-backed
+  // wrappers. The mapper must not run with undefined - that produces an opaque
+  // TypeError blamed on the user's sqlfu.config.ts instead of the real problem.
+  expect(db.getPost({slug: 'missing'})).toBeUndefined();
+});
+
+test('a mapper on a metadata query fails loudly instead of silently doing nothing', () => {
+  using fixture = createInlineConfigFixture();
+
+  const app = defineConfig({
+    definitions: sql`
+      create table posts (slug text primary key);
+    `,
+    migrations: [
+      {
+        name: '0001_create_posts',
+        content: sql`
+          create table posts (slug text primary key);
+        `,
+      },
+    ],
+    queries: {
+      // .map is untyped on metadata tags; the `as any` mimics an untyped caller.
+      createPost: (sql.run<{parameters: {slug: string}}>`
+        insert into posts (slug) values (:slug)
+      ` as any).map((result: any) => result) as any,
+    },
+  });
+
+  const db = app(fixture.client);
+  db.migrate();
+
+  expect(() => (db as any).createPost({slug: 'hello-world'})).toThrow(/\.map\(\.\.\.\) mapper.*does not return rows/);
+});
+
 test('inline migrations and queries tolerate sql line comments', () => {
   using fixture = createInlineConfigFixture();
 

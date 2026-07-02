@@ -78,3 +78,9 @@ const mappedApp = defineConfig({
 const mappedPostCount: {postCount: number} = mappedApp(client).getPostCount();
 const mappedPosts: {slug: string; headline: string}[] = mappedApp(client).listPosts({limit: 10});
 const maybeMappedPost: {slug: string; headline: string} | null = mappedApp(client).findPost({slug: 'hello'});
+
+// @ts-expect-error - metadata tags return no rows, so .map is not available on them
+sql.run<{parameters: {slug: string}}>`insert into posts (slug) values (:slug)`.map((result: any) => result);
+
+// @ts-expect-error - metadata tags return no rows, so .map is not available on them
+sql.metadata`delete from posts`.map((result: any) => result);

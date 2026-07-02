@@ -109,6 +109,10 @@ function runtimeSql<TType = unknown>(
   strings: TemplateStringsArray,
   ...values: SqlValue[]
 ): SqlMappableQuery<TType> {
+  return attachSqlQueryMap(buildSqlQuery(strings, values), undefined) as SqlMappableQuery<TType>;
+}
+
+function buildSqlQuery(strings: TemplateStringsArray, values: SqlValue[]): SqlQuery {
   let text = '';
   const args: QueryArg[] = [];
 
@@ -130,7 +134,7 @@ function runtimeSql<TType = unknown>(
     args.push(value);
   }
 
-  return attachSqlQueryMap({sql: collapseWhitespace(stripSqlComments(text)), args}) as SqlMappableQuery<TType>;
+  return {sql: collapseWhitespace(stripSqlComments(text)), args};
 }
 
 export const sql = Object.assign(runtimeSql, {
@@ -143,7 +147,7 @@ export const sql = Object.assign(runtimeSql, {
 
 function modeSqlTag<TMode extends QueryResultMode>(mode: TMode): SqlModeTag<TMode> {
   return ((strings: TemplateStringsArray, ...values: SqlValue[]) => {
-    return attachSqlQueryMap({...runtimeSql(strings, ...values), mode});
+    return attachSqlQueryMap({...buildSqlQuery(strings, values), mode}, undefined);
   }) as SqlModeTag<TMode>;
 }
 
@@ -151,9 +155,28 @@ export function readSqlQueryMapper(query: MappableSqlQuery): SqlResultMapper | u
   return (query as RuntimeMappableSqlQuery)[sqlQueryMapper];
 }
 
+/** Apply a query's `.map(...)` mapper to rows returned for it, if one is attached. */
+export function mapSqlQueryRows<TRow extends ResultRow>(query: SqlQuery, rows: TRow[]): TRow[] {
+  const mapper = readSqlQueryMapper(query);
+  return mapper ? rows.map((row) => mapper(row) as TRow) : rows;
+}
+
+/**
+ * Guard for execution paths that return metadata instead of rows: a `.map`
+ * mapper would silently never run there, which reads as data corruption to the
+ * user who attached it.
+ */
+export function assertRowlessQueryHasNoMapper(query: SqlQuery): void {
+  if (readSqlQueryMapper(query)) {
+    throw new Error(
+      'Query has a .map(...) mapper attached, but this call does not return rows, so the mapper would never run. Remove the .map(...) call or use a row-returning query mode.',
+    );
+  }
+}
+
 function attachSqlQueryMap<TQuery extends MappableSqlQuery>(
   query: TQuery,
-  mapper?: SqlResultMapper,
+  mapper: SqlResultMapper | undefined,
 ): TQuery & {map: SqlMappableQuery['map']} {
   if (mapper) {
     Object.defineProperty(query, sqlQueryMapper, {

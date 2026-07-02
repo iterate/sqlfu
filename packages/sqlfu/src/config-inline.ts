@@ -1,5 +1,5 @@
 import {applyMigrations, type Migration} from './migrations/index.js';
-import {readSqlQueryMapper} from './sql.js';
+import {assertRowlessQueryHasNoMapper, readSqlQueryMapper} from './sql.js';
 import type {
   AsyncClient,
   Client,
@@ -9,6 +9,7 @@ import type {
   ResultRow,
   RunResult,
   SqlQueryNoArgs,
+  SqlResultMapper,
   SqlTypedQueryNoArgs,
   SyncClient,
 } from './types.js';
@@ -129,6 +130,9 @@ function bindInlineQuery(
     if (query.args.length > 0) {
       throw new Error('Inline queries cannot use template interpolations.');
     }
+    if (mode === 'metadata') {
+      assertRowlessQueryHasNoMapper(query);
+    }
     const mapper = readSqlQueryMapper(query);
     return client.sync
       ? (params) => runInlineSyncQuery(client as SyncClient, query.sql, mode, params, mapper)
@@ -145,7 +149,7 @@ function runInlineSyncQuery(
   sql: string,
   mode: QueryResultMode,
   params: PreparedStatementParams | undefined,
-  mapper: ((result: ResultRow) => ResultRow) | undefined,
+  mapper: SqlResultMapper | undefined,
 ): InlineRuntimeQueryResult {
   using stmt = client.prepare(sql);
   if (mode === 'metadata') return stmt.run(params);
@@ -157,7 +161,7 @@ async function runInlineAsyncQuery(
   sql: string,
   mode: QueryResultMode,
   params: PreparedStatementParams | undefined,
-  mapper: ((result: ResultRow) => ResultRow) | undefined,
+  mapper: SqlResultMapper | undefined,
 ): Promise<InlineRuntimeQueryResult> {
   const stmt = client.prepare(sql);
   try {
@@ -186,7 +190,7 @@ function isQueryResultMode(value: unknown): value is QueryResultMode {
 function inlineRowsResult(
   rows: ResultRow[],
   mode: QueryResultMode,
-  mapper: ((result: ResultRow) => ResultRow) | undefined,
+  mapper: SqlResultMapper | undefined,
 ): ResultRow | ResultRow[] | null {
   if (mode === 'many') return mapper ? rows.map(mapper) : rows;
   if (mode === 'nullableOne') {
@@ -195,8 +199,10 @@ function inlineRowsResult(
     return mapper ? mapper(row) : row;
   }
   if (mode === 'one') {
+    // Zero rows falls through as undefined, matching generated file-backed
+    // wrappers; the mapper must never see undefined.
     const row = rows[0]!;
-    return mapper ? mapper(row) : row;
+    return row && mapper ? mapper(row) : row;
   }
   throw new Error(`Inline query mode ${JSON.stringify(mode)} cannot return rows.`);
 }

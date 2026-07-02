@@ -85,9 +85,19 @@ export type SqlMappableTypedQuery<TType = unknown, TMode extends QueryResultMode
   ): SqlMappableTypedQuery<SqlMappedQueryType<TType, TOutput>, TMode>;
 };
 
+/**
+ * Metadata-mode tags (`sql.run` / `sql.metadata`) return no rows, so their
+ * results deliberately expose no `.map` — a mapper there would typecheck and
+ * then silently never run.
+ */
 export interface SqlModeTag<TMode extends QueryResultMode> {
-  <TType = unknown>(strings: TemplateStringsArray): SqlMappableTypedQueryNoArgs<TType, TMode>;
-  <TType = unknown>(strings: TemplateStringsArray, ...values: SqlValue[]): SqlMappableTypedQuery<TType, TMode>;
+  <TType = unknown>(
+    strings: TemplateStringsArray,
+  ): TMode extends 'metadata' ? SqlTypedQueryNoArgs<TType, TMode> : SqlMappableTypedQueryNoArgs<TType, TMode>;
+  <TType = unknown>(
+    strings: TemplateStringsArray,
+    ...values: SqlValue[]
+  ): TMode extends 'metadata' ? SqlTypedQuery<TType, TMode> : SqlMappableTypedQuery<TType, TMode>;
 }
 
 export interface RootSqlTag {

@@ -443,6 +443,7 @@ function readSqlProperty(properties: PropertySpan[], name: string, modulePath: s
     sourceTextFor(properties),
     readProperty(properties, name, modulePath),
     `${modulePath} ${name}`,
+    false,
   );
 }
 
@@ -500,6 +501,7 @@ function readMigrationSources(sourceText: string, array: SourceSpan, modulePath:
       sourceText,
       readProperty(properties, 'content', modulePath),
       `${modulePath} migration ${name}`,
+      false,
     );
     return {name, content};
   });
@@ -512,21 +514,28 @@ function readQuerySources(sourceText: string, object: SourceSpan, modulePath: st
   );
   return queryProperties.map((property) => ({
     name: property.name,
-    content: readSqlTemplate(sourceText, property, `${modulePath} query ${property.name}`),
+    content: readSqlTemplate(sourceText, property, `${modulePath} query ${property.name}`, true),
   }));
 }
 
-function readSqlTemplate(sourceText: string, span: SourceSpan, location: string): InlineSqlTemplate {
+function readSqlTemplate(
+  sourceText: string,
+  span: SourceSpan,
+  location: string,
+  allowMapCalls: boolean,
+): InlineSqlTemplate {
   const tagStart = skipTrivia(sourceText, span.start);
   if (!startsWithIdentifier(sourceText, tagStart, 'sql')) {
     throw new Error(`${location} must use the sql tag.`);
   }
   let cursor = skipTrivia(sourceText, tagStart + 'sql'.length);
+  let modeTagName: string | undefined;
   if (sourceText[cursor] === '.') {
     const modeName = readIdentifier(sourceText, skipTrivia(sourceText, cursor + 1), `${location} sql tag`);
     if (!isQueryResultModeTag(modeName.value)) {
       throw new Error(`${location} uses unsupported sql tag mode ${JSON.stringify(modeName.value)}.`);
     }
+    modeTagName = modeName.value;
     cursor = skipTrivia(sourceText, modeName.end);
   }
   if (sourceText[cursor] === '<') {
@@ -537,9 +546,22 @@ function readSqlTemplate(sourceText: string, span: SourceSpan, location: string)
   }
   const templateStart = cursor;
   const templateEnd = findTemplateEnd(sourceText, templateStart, location);
-  const afterTemplate = skipSqlMapCalls(sourceText, skipTrivia(sourceText, templateEnd + 1), span.end, location);
+  const afterTemplateStart = skipTrivia(sourceText, templateEnd + 1);
+  const afterTemplate = skipSqlMapCalls(sourceText, afterTemplateStart, span.end, location);
+  if (afterTemplate > afterTemplateStart) {
+    if (!allowMapCalls) {
+      throw new Error(`${location} must be a plain sql\`...\` tagged template; .map(...) is only supported on queries.`);
+    }
+    if (modeTagName === 'run' || modeTagName === 'metadata') {
+      throw new Error(`${location} sql.${modeTagName} queries do not return rows, so .map(...) would never run.`);
+    }
+  }
   if (afterTemplate < span.end) {
-    throw new Error(`${location} must be a sql\`...\` tagged template, optionally followed by .map(...).`);
+    throw new Error(
+      allowMapCalls
+        ? `${location} must be a sql\`...\` tagged template, optionally followed by .map(...).`
+        : `${location} must be a plain sql\`...\` tagged template.`,
+    );
   }
   return {
     // Cooked, not raw: the runtime template literal decodes escapes, so static
@@ -572,6 +594,9 @@ function skipSqlMapCalls(sourceText: string, start: number, end: number, locatio
       return cursor;
     }
     cursor = skipTrivia(sourceText, method.end);
+    if (sourceText[cursor] === '<') {
+      cursor = skipTrivia(sourceText, findMatchingAngle(sourceText, cursor) + 1);
+    }
     if (sourceText[cursor] !== '(') {
       throw new Error(`${location} sql.map must be called with a mapper function.`);
     }
