@@ -102,7 +102,7 @@ function parseInlineConfigSourceForCall(
   }
   if (!inlineCall.target) {
     throw new Error(
-      `${modulePath} inline defineConfig(...) calls must be assigned to top-level const declarations or static properties on top-level named classes.`,
+      `${modulePath} inline defineConfig(...) calls must be exported as default, assigned to top-level const declarations, or assigned to static properties on top-level named classes.`,
     );
   }
 
@@ -355,8 +355,12 @@ function readDefineConfigTarget(sourceText: string, index: number, depth: Source
 
 function readDefineConfigConstName(sourceText: string, index: number): string | null {
   const prefix = sourceText.slice(0, index);
-  const match = prefix.match(/(?:^|[;\n])\s*(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)(?:\s*:[^=]+)?\s*=\s*$/u);
-  return match?.[1] || null;
+  const constMatch = prefix.match(/(?:^|[;\n])\s*(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)(?:\s*:[^=]+)?\s*=\s*$/u);
+  if (constMatch) return constMatch[1];
+  // `export default defineConfig({...})` has no binding name; "default" keeps
+  // duplicate detection and generated-type matching working for the common
+  // single-config module shape that `sqlfu init` scaffolds.
+  return /(?:^|[;\n])\s*export\s+default\s*$/u.test(prefix) ? 'default' : null;
 }
 
 function readDefineConfigStaticPropertyTarget(sourceText: string, index: number): InlineConfigTarget | null {

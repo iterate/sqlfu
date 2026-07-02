@@ -4,8 +4,27 @@ import path from 'node:path';
 import {expect, test} from 'vitest';
 
 import {createSqlfuApi} from '../src/api/core.js';
+import {loadProjectStateFrom} from '../src/node/config.js';
 import {createNodeHost} from '../src/node/host.js';
+import {generateInlineConfigTypes} from '../src/typegen/index.js';
 import {createTempFixtureRoot, dumpFixtureFs, writeFixtureFiles} from './fs-fixture.js';
+
+test('sqlfu init scaffold round-trips: the fresh project loads and generates', async () => {
+  const root = await createTempFixtureRoot('init-command-roundtrip');
+  const host = await createNodeHost();
+
+  await createSqlfuApi({projectRoot: root, host}).init({confirm: async (params) => params.body});
+
+  const configPath = path.join(root, 'sqlfu.config.ts');
+  await expect(loadProjectStateFrom(root)).resolves.toMatchObject({
+    initialized: true,
+    inline: {modulePath: configPath},
+  });
+
+  await generateInlineConfigTypes({modulePath: configPath, projectRoot: root, host});
+  const updated = await fs.readFile(configPath, 'utf8');
+  expect(updated).toContain('listPosts: sql.many<');
+});
 
 test('sqlfu init creates the default scaffold in a fresh directory', async () => {
   const root = await createTempFixtureRoot('init-command');

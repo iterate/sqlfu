@@ -159,3 +159,21 @@ export const app = defineConfig({
   const [inline] = parseInlineConfigSources('file-module.ts', source);
   expect(inline.queries[0].content.sql).toBe(runtime.sql);
 });
+
+test('parses an inline config exported as export default defineConfig(...)', () => {
+  const source = `
+import {defineConfig, sql} from 'sqlfu';
+
+export default defineConfig({
+  definitions: sql\`
+    create table posts (slug text primary key);
+  \`,
+  queries: {
+    listPosts: sql\`select slug from posts\`,
+  },
+});
+`;
+
+  const sources = parseInlineConfigSources('post-module.ts', source);
+  expect(sources).toMatchObject([{name: 'default', queries: [{name: 'listPosts'}]}]);
+});
