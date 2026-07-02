@@ -14,8 +14,8 @@ import {
   loadContextConfig,
   loadContextProjectState,
   migrationsPresetOf,
+  runInitCommand,
 } from '../api/internal.js';
-import {createDefaultInitPreview} from '../init-preview.js';
 import {migrationName, readMigrationHistory} from '../migrations/index.js';
 import {formatSqlFiles} from './format-files.js';
 import {stopProcessesListeningOnPort} from './port-process.js';
@@ -79,26 +79,7 @@ export const router = {
       description: `Initialize a new sqlfu project in the current directory.`,
     })
     .handler(async ({context}) => {
-      const project = await loadContextProjectState(context);
-      const preview = createDefaultInitPreview(project.projectRoot, {configPath: project.configPath});
-      const configContents = await context.confirm({
-        title: 'Create sqlfu.config.ts?',
-        body: preview.configContents,
-        bodyType: 'typescript',
-        editable: true,
-      });
-
-      if (!configContents?.trim()) {
-        return 'Initialization cancelled.';
-      }
-
-      await context.host.initializeProject({
-        projectRoot: project.projectRoot,
-        configPath: project.configPath,
-        configContents,
-      });
-
-      return `Initialized sqlfu project in ${project.projectRoot}.`;
+      return runInitCommand(context, context.confirm);
     }),
 
   kill: base

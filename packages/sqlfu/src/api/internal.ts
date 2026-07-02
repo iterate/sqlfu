@@ -1,7 +1,7 @@
 import type {Client, SqlfuMigrationPrefix, SqlfuMigrationPreset, SqlfuProjectConfig} from '../types.js';
 import type {SqlfuHost} from '../host.js';
 import {basename, joinPath} from '../paths.js';
-import {createDefaultInitPreview} from '../init-preview.js';
+import {createDefaultInitPreview, type InitPreviewFormat} from '../init-preview.js';
 import type {LoadedSqlfuProject} from '../config.js';
 import {migrationNickname} from '../naming.js';
 import {
@@ -141,6 +141,35 @@ export type SqlfuCommandConfirm = (params: SqlfuCommandConfirmParams) => string 
  */
 export const autoAcceptConfirm: SqlfuCommandConfirm = async (params) => params.body.trim() || null;
 
+/**
+ * The one init flow, shared by the CLI command, the programmatic api, and the
+ * UI RPC command runner: preview -> editable confirm -> initializeProject.
+ * `initPreviewFormat` only picks which preview to show; the companion files
+ * scaffolded follow the contents the user actually confirms.
+ */
+export async function runInitCommand(context: SqlfuCommandContext, confirm: SqlfuCommandConfirm): Promise<string> {
+  const project = await loadContextProjectState(context);
+  const preview = createDefaultInitPreview(project.projectRoot, {
+    configPath: project.configPath,
+    format: context.initPreviewFormat,
+  });
+  const configContents = await confirm({
+    title: 'Create sqlfu.config.ts?',
+    body: preview.configContents,
+    bodyType: 'typescript',
+    editable: true,
+  });
+  if (!configContents?.trim()) {
+    return 'Initialization cancelled.';
+  }
+  await context.host.initializeProject({
+    projectRoot: project.projectRoot,
+    configPath: project.configPath,
+    configContents,
+  });
+  return `Initialized sqlfu project in ${project.projectRoot}.`;
+}
+
 export async function runSqlfuCommand(
   context: SqlfuCommandContext,
   command: string,
@@ -149,26 +178,7 @@ export async function runSqlfuCommand(
   const normalized = command.trim();
 
   if (normalized === 'sqlfu init') {
-    const project = await loadContextProjectState(context);
-    const preview = createDefaultInitPreview(project.projectRoot, {
-      configPath: project.configPath,
-      format: context.initPreviewFormat,
-    });
-    const configContents = await confirm({
-      title: 'Create sqlfu.config.ts?',
-      body: preview.configContents,
-      bodyType: 'typescript',
-      editable: true,
-    });
-    if (!configContents?.trim()) {
-      return;
-    }
-    await context.host.initializeProject({
-      projectRoot: project.projectRoot,
-      configPath: project.configPath,
-      configContents,
-      format: preview.format,
-    });
+    await runInitCommand(context, confirm);
     return;
   }
 
@@ -1005,7 +1015,7 @@ export interface SqlfuCommandContext {
   configPath?: string;
   config?: SqlfuProjectConfig;
   loadProjectState?: () => Promise<LoadedSqlfuProject>;
-  initPreviewFormat?: 'inline' | 'file-backed';
+  initPreviewFormat?: InitPreviewFormat;
   host: SqlfuHost;
 }
 

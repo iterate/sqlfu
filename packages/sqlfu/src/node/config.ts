@@ -5,8 +5,6 @@ import {pathToFileURL} from 'node:url';
 import type {SqlfuConfig, SqlfuProjectConfig} from '../types.js';
 import {
   assertConfigShape,
-  createDefaultInitPreview,
-  type InitPreviewFormat,
   resolveProjectConfig,
   type LoadedSqlfuProject,
   type TsconfigPreferences,
@@ -109,13 +107,8 @@ export async function loadProjectStateFromConfigPath(configPath: string, cwd: st
   };
 }
 
-export async function initializeProject(input: {
-  projectRoot: string;
-  configContents: string;
-  configPath?: string;
-  format?: InitPreviewFormat;
-}) {
-  const preview = createDefaultInitPreview(input.projectRoot, {configPath: input.configPath});
+export async function initializeProject(input: {projectRoot: string; configContents: string; configPath?: string}) {
+  const configPath = input.configPath || path.join(input.projectRoot, defaultSqlfuConfigFileName);
   const state = input.configPath
     ? await loadProjectStateFromConfigPath(input.configPath, input.projectRoot)
     : await loadProjectStateFrom(input.projectRoot);
@@ -123,17 +116,31 @@ export async function initializeProject(input: {
     throw new Error(`sqlfu is already initialized in ${input.projectRoot}`);
   }
 
-  await fs.mkdir(path.dirname(preview.configPath), {recursive: true});
-  await fs.writeFile(preview.configPath, withTrailingNewline(input.configContents));
-  if (input.format === 'file-backed') {
-    await fs.mkdir(path.join(input.projectRoot, 'migrations'), {recursive: true});
-    await fs.mkdir(path.join(input.projectRoot, 'sql'), {recursive: true});
-    await fs.writeFile(
-      path.join(input.projectRoot, 'definitions.sql'),
-      '-- create table yourtable(id int, body text);\n',
+  await fs.mkdir(path.dirname(configPath), {recursive: true});
+  await fs.writeFile(configPath, withTrailingNewline(input.configContents));
+
+  // Re-load the project from what was actually written: the confirm prompt is
+  // editable, so the confirmed contents can differ from the preview (inline
+  // edited into file-backed or vice versa). This also makes init fail loudly
+  // if the confirmed config can't be loaded, instead of writing a project
+  // every subsequent command rejects. File-backed configs get their companion
+  // paths scaffolded; inline configs need no companions.
+  const written = input.configPath
+    ? await loadProjectStateFromConfigPath(input.configPath, input.projectRoot)
+    : await loadProjectStateFrom(input.projectRoot);
+  if (written.initialized && 'config' in written) {
+    const {config} = written;
+    if (config.migrations) {
+      await fs.mkdir(config.migrations.path, {recursive: true});
+      await fs.writeFile(path.join(config.migrations.path, '.gitkeep'), '');
+    }
+    await fs.mkdir(config.queries, {recursive: true});
+    await fs.writeFile(path.join(config.queries, '.gitkeep'), '');
+    await fs.writeFile(config.definitions, '-- create table yourtable(id int, body text);\n', {flag: 'wx'}).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code !== 'EEXIST') throw error;
+      },
     );
-    await fs.writeFile(path.join(input.projectRoot, 'migrations', '.gitkeep'), '');
-    await fs.writeFile(path.join(input.projectRoot, 'sql', '.gitkeep'), '');
   }
   await ensureGitignoreEntry(path.join(input.projectRoot, '.gitignore'), defaultLocalArtifactsGitignoreEntry);
 }
