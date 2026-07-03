@@ -8,6 +8,7 @@ import {
   autoAcceptConfirm,
   formatCheckFailure,
   loadContextConfig,
+  readDefinitionsSql,
   materializeDefinitionsSchemaForContext,
   materializeMigrationsSchemaForContext,
   compareSchemasForContext,
@@ -166,7 +167,7 @@ export function createSqlfuApi(input: CreateSqlfuApiInput): SqlfuApi {
     async checkMigrationsMatchDefinitions() {
       const sqlfuContext = await loadContextConfig(context);
       const [definitionsSql, migrations] = await Promise.all([
-        sqlfuContext.host.fs.readFile(sqlfuContext.config.definitions),
+        readDefinitionsSql(sqlfuContext),
         readMigrationsFromContext(sqlfuContext),
       ]);
       const [definitionsSchema, migrationsSchema] = await Promise.all([

@@ -27,7 +27,8 @@ export async function loadProjectConfig(input: {configPath?: string} = {}): Prom
   }
   if ('inline' in project) {
     throw new Error(
-      `No file-backed sqlfu config found at ${project.configPath}; inline defineConfig modules support generate and draft only.`,
+      `${project.configPath} is an inline defineConfig module, which has no file-backed project config. ` +
+        'Use the inline-aware entry points (loadProjectState + the sqlfu api/CLI) instead.',
     );
   }
   return project.config;
@@ -58,6 +59,7 @@ export async function loadProjectStateFrom(projectRoot: string): Promise<LoadedS
       configPath,
       inline: {
         modulePath: configPath,
+        sources: inlines,
       },
     };
   }
@@ -93,6 +95,7 @@ export async function loadProjectStateFromConfigPath(configPath: string, cwd: st
       configPath: resolvedConfigPath,
       inline: {
         modulePath: resolvedConfigPath,
+        sources: inlines,
       },
     };
   }
@@ -181,11 +184,18 @@ async function resolveConfigPath(cwd: string): Promise<string | undefined> {
   return undefined;
 }
 
-async function loadConfigFile(configPath: string): Promise<SqlfuConfig> {
-  const moduleUrl = new URL(pathToFileURL(configPath).href);
+/**
+ * Dynamic-import a module bypassing the ESM module cache, so repeated CLI
+ * commands in one process (watch mode, the UI backend) see fresh contents.
+ */
+export async function importModuleFresh(modulePath: string): Promise<Record<string, unknown>> {
+  const moduleUrl = new URL(pathToFileURL(modulePath).href);
   moduleUrl.searchParams.set('t', String(Date.now()));
+  return (await import(moduleUrl.href)) as Record<string, unknown>;
+}
 
-  const loaded = await import(moduleUrl.href);
+async function loadConfigFile(configPath: string): Promise<SqlfuConfig> {
+  const loaded = await importModuleFresh(configPath);
   const config = loaded.default ?? loaded.config ?? loaded;
 
   if (!config || typeof config !== 'object' || Array.isArray(config)) {

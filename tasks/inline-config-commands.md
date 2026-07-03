@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented
 size: medium
 base: inline-config-docs (stacked on #148)
 ---
@@ -8,12 +8,13 @@ base: inline-config-docs (stacked on #148)
 
 ## Status summary
 
-Spec written, implementation not started. The goal is command parity between
-inline and file-backed configs: `sqlfu migrate`, `sqlfu check`, `sync`,
-`pending`, `applied`, `find`, `goto`, `baseline` should work on inline
-defineConfig projects, and inline configs should accept the same optional
-`db` (path or factory) that file-backed configs do. The Admin UI backend
-stays file-backed-only for now.
+Implemented and tested; docs updated. All checklist items done - `migrate`,
+`check`, `sync`, `pending`, `applied`, `find`, `goto` and `baseline` resolve
+inline projects through a synthesized context, and inline configs accept the
+same optional `db` (path or factory) as file-backed configs, with static
+`hasDb` detection so runtime-only modules are never imported. Deliberate
+remaining limitations: modules with multiple inline configs, and the Admin UI
+backend (still file-backed-only).
 
 ## Why
 
@@ -78,20 +79,20 @@ instead resolves them into a full `SqlfuContext`:
 
 ## Checklist
 
-- [ ] static parser records `hasDb` on `InlineConfigSource`
-- [ ] `InlineConfigDefinition.db?` runtime type + carried on `factory.config`
-- [ ] inline context resolution in `loadContextConfig` (synthesized config +
+- [x] static parser records `hasDb` on `InlineConfigSource` _(inline-source.ts, set from parsed properties)_
+- [x] `InlineConfigDefinition.db?` runtime type + carried on `factory.config`
+- [x] inline context resolution in `loadContextConfig` (synthesized config +
       `context.inline` repo inputs + db import when `hasDb`)
-- [ ] `readDefinitionsSql` / `readMigrationsFromContext` inline seams
-- [ ] `sqlfu migrate` applies inline migration entries (default scratch db +
-      explicit db factory) and records history
-- [ ] `sqlfu check` works: `migrationsMatchDefinitions` (repo-only) and
+- [x] `readDefinitionsSql` / `readMigrationsFromContext` inline seams
+- [x] `sqlfu migrate` applies inline migration entries (default scratch db +
+      explicit db factory) and records history _(test/inline-commands-parity.test.ts)_
+- [x] `sqlfu check` works: `migrationsMatchDefinitions` (repo-only) and
       `check.all` (db-backed) for inline projects
-- [ ] `sync`/`pending`/`applied`/`find`/`goto`/`baseline` work via the same
+- [x] `sync`/`pending`/`applied`/`find`/`goto`/`baseline` work via the same
       context (spot-test pending + sync)
-- [ ] api/core.ts draft/generate still route inline projects to the inline
+- [x] api/core.ts draft/generate still route inline projects to the inline
       implementations
-- [ ] multi-source inline modules produce a clear error for db commands
-- [ ] UI serve guard message updated
-- [ ] docs: cli.md / README command-split section updated; turso guide gets
+- [x] multi-source inline modules produce a clear error for db commands
+- [x] UI serve guard message updated
+- [x] docs: cli.md / README command-split section updated; turso guide gets
       its (now legitimate) `db` factory example back

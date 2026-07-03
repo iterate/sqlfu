@@ -43,9 +43,9 @@ npx sqlfu generate
 
 `draft` writes the pending migration entry back into the inline config, and
 `generate` updates `findPostBySlug` to a typed `sql.nullableOne<{...}>` tag.
-There is no `sqlfu migrate` step for inline configs: the database is bound at
-runtime, so the `postsDb.migrate()` call in the snippets below applies pending
-migrations.
+Migrations apply either at runtime - the `postsDb.migrate()` call in the
+snippets below - or via `npx sqlfu migrate`, which uses the config's optional
+`db` entry and defaults to the same `.sqlfu/app.db` local file.
 
 ## `node:sqlite`
 

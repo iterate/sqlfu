@@ -4,15 +4,21 @@ The sqlfu CLI is the project control surface. It reads inline `defineConfig`
 modules first, can still work against split-out SQL files, and starts the local
 backend used by the hosted Admin UI for file-backed projects.
 
-Which commands apply depends on the config shape:
+Every command works on both inline and file-backed configs. For commands that
+touch a database (`check`, `migrate`, `sync`, `goto`, `baseline`, `pending`,
+`applied`), the database comes from the config's optional `db` entry - a
+filesystem path or a factory returning a client - and defaults to the local
+`.sqlfu/app.db` file when omitted. Two inline-specific notes:
 
-- **Inline configs** bind their database at runtime with `dbConfig(client)`,
-  so the CLI has no database to talk to. The authoring commands - `draft` and
-  `generate` - work on inline configs; migrations apply when your app calls
-  `db.migrate()`.
-- **File-backed configs** declare a `db` path or factory, so the
-  database-touching commands - `check`, `migrate`, `sync`, `goto`, `baseline`,
-  and the Admin UI backend - work too.
+- Runtime binding still happens via `dbConfig(client)`, and `db.migrate()`
+  applies pending migrations at runtime - for runtime-managed databases
+  (Durable Objects, per-user SQLite) that is the only channel that can reach
+  the database, so the CLI commands are for databases the CLI can open.
+- Declaring `db` on an inline config opts the module into being dynamically
+  imported by the CLI. Modules that only run in other runtimes (e.g. importing
+  `cloudflare:workers`) should leave `db` out; sqlfu never imports them.
+
+The one file-backed-only surface is the Admin UI backend (`npx sqlfu`).
 
 Most commands can be run through `npx`:
 

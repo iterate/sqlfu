@@ -84,3 +84,10 @@ sql.run<{parameters: {slug: string}}>`insert into posts (slug) values (:slug)`.m
 
 // @ts-expect-error - metadata tags return no rows, so .map is not available on them
 sql.metadata`delete from posts`.map((result: any) => result);
+
+// Inline configs accept the same optional db as file-backed configs.
+defineConfig({
+  db: './app.db',
+  definitions: sql`create table posts (slug text primary key)`,
+  queries: {listPosts: sql`select slug from posts`},
+});

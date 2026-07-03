@@ -12,6 +12,7 @@ import {
   autoAcceptConfirm,
   formatCheckFailure,
   loadContextConfig,
+  readDefinitionsSql,
   loadContextProjectState,
   migrationsPresetOf,
   runInitCommand,
@@ -346,7 +347,7 @@ export const router = {
     migrationsMatchDefinitions: base.handler(async ({context}) => {
       const sqlfuContext = await loadContextConfig(context);
       const [definitionsSql, migrations] = await Promise.all([
-        sqlfuContext.host.fs.readFile(sqlfuContext.config.definitions),
+        readDefinitionsSql(sqlfuContext),
         readMigrationsFromContext(sqlfuContext),
       ]);
       const [definitionsSchema, migrationsSchema] = await Promise.all([

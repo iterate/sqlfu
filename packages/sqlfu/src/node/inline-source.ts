@@ -1,6 +1,5 @@
 import fs from 'node:fs/promises';
 
-import type {Migration} from '../migrations/index.js';
 import type {QueryResultMode} from '../types.js';
 
 export type InlineConfigSource = {
@@ -12,6 +11,13 @@ export type InlineConfigSource = {
   migrations: InlineMigrationSource[];
   migrationsArray: InlineMigrationsArraySource;
   queries: InlineQuerySource[];
+  /**
+   * Whether the defineConfig object declares a `db` property. Statically
+   * detected so CLI commands only dynamically import the module when the
+   * config opted into a CLI-visible database - runtime-only modules (e.g.
+   * Durable Objects importing cloudflare:workers) are never imported.
+   */
+  hasDb: boolean;
 };
 
 export type InlineSqlTemplate = {
@@ -131,6 +137,7 @@ function parseInlineConfigSourceForCall(
           propertyIndent: lineIndentAt(sourceText, queriesProperty.nameStart),
         },
     queries: readQuerySources(sourceText, queriesObject, modulePath),
+    hasDb: definitionProperties.some((property) => property.name === 'db'),
   };
 }
 
@@ -282,13 +289,6 @@ function lastCodeIndexBefore(sourceText: string, limit: number): number | null {
     cursor = end;
   }
   return last;
-}
-
-export function inlineMigrationsToMigrationFiles(inline: InlineConfigSource): Migration[] {
-  return inline.migrations.map((migration) => ({
-    path: `${migration.name}.sql`,
-    content: migration.content.sql,
-  }));
 }
 
 async function readRequiredInlineConfigSources(modulePath: string): Promise<InlineConfigSource[]> {

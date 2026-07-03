@@ -8,6 +8,7 @@ import type {
   QueryResultMode,
   ResultRow,
   RunResult,
+  SqlfuConfig,
   SqlQueryNoArgs,
   SqlResultMapper,
   SqlTypedQueryNoArgs,
@@ -29,6 +30,16 @@ export type InlineConfigQuery<TType extends InlineConfigQueryType = InlineConfig
   | SqlQueryNoArgs;
 
 export type InlineConfigDefinition<TQueries extends Record<string, InlineConfigQuery>> = {
+  /**
+   * Optional database for CLI commands (`sqlfu migrate`, `check`, `sync`,
+   * ...), same as file-backed configs: a filesystem path or a factory
+   * returning a disposable client. Without it, CLI commands use the local
+   * `.sqlfu/app.db` file. Ignored at runtime - runtime binding always goes
+   * through `dbConfig(client)`. Declaring `db` opts the module into being
+   * dynamically imported by the CLI, so only use it in modules that can run
+   * under Node.
+   */
+  db?: SqlfuConfig['db'];
   definitions: SqlQueryNoArgs;
   migrations?: InlineConfigMigration[];
   queries: TQueries;

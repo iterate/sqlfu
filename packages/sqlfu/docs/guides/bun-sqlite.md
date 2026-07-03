@@ -37,8 +37,9 @@ npx sqlfu draft
 npx sqlfu generate
 ```
 
-Migrations for inline configs apply at runtime: the `jobsDb.migrate()` call
-below runs anything pending against the database the app is bound to.
+Migrations apply at runtime - the `jobsDb.migrate()` call below runs anything
+pending against the database the app is bound to - or via `npx sqlfu migrate`
+against the config's `db` (defaulting to the local `.sqlfu/app.db` file).
 
 ## Bun runtime
 

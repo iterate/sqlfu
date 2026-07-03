@@ -43,8 +43,62 @@ npx sqlfu draft
 npx sqlfu generate
 ```
 
-Migrations apply at runtime: each snippet below calls `await orgDb.migrate()`
-against the database the app is actually connected to.
+Migrations can apply at runtime - each snippet below calls
+`await orgDb.migrate()` against the database the app is actually connected
+to - or from the CLI. Without a `db` entry, `npx sqlfu migrate` and
+`npx sqlfu check` use the local `.sqlfu/app.db` file.
+
+## Pointing the CLI at Turso Cloud
+
+To run `sqlfu migrate` / `sqlfu check` against the same database your app
+uses, add the optional `db` factory:
+
+```ts
+import {createClient} from '@libsql/client';
+import {defineConfig, createLibsqlClient, sql} from 'sqlfu';
+
+export default defineConfig({
+  db: () => {
+    const raw = createClient({
+      url: process.env.TURSO_DATABASE_URL || 'file:./.sqlfu/app.db',
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    });
+
+    return {
+      client: createLibsqlClient(raw),
+      async [Symbol.asyncDispose]() {
+        await raw.close();
+      },
+    };
+  },
+  definitions: sql`
+    create table organizations (
+      id integer primary key,
+      slug text not null unique,
+      name text not null
+    );
+  `,
+  queries: {
+    findOrganization: sql`
+      select id, slug, name
+      from organizations
+      where slug = :slug
+      limit 1
+    `,
+  },
+});
+```
+
+Then:
+
+```sh
+npx sqlfu migrate
+npx sqlfu check
+```
+
+`db` is CLI-only: runtime binding still goes through `dbConfig(client)`, and
+declaring `db` means the CLI will import this module, so only use it in config
+modules that can run under Node.
 
 ## Runtime with `@libsql/client`
 
