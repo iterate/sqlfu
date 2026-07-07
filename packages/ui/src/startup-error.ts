@@ -23,8 +23,11 @@ export type StartupFailure =
  * always the tip of main; a user's local `npx sqlfu` is whatever they happened
  * to install. When the local server falls outside this range, we show an
  * upgrade screen instead of letting the mismatch surface as a cryptic 4xx.
+ *
+ * Current floor: 0.1.1 added `foreignKeys`/`referencedBy` to `schema.get`
+ * relations, which the client dereferences without guards.
  */
-export const SUPPORTED_SERVER_RANGE = '>=0.0.2-3';
+export const SUPPORTED_SERVER_RANGE = '>=0.1.1';
 
 /**
  * Error type thrown from the bootstrap path when the local server is too old
