@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+
 import {expect, test} from 'vitest';
 
 import {
@@ -6,6 +8,18 @@ import {
   checkServerVersion,
   classifyStartupError,
 } from './startup-error.ts';
+
+test('the workspace server itself satisfies the floor', () => {
+  // The dev/test server reports packages/sqlfu's package.json version via
+  // project.status. If a floor bump leaves that version behind, the UI shows
+  // the upgrade screen to its own workspace server and every studio test
+  // times out — catch it here instead. Fix by bumping the workspace versions
+  // to a prerelease of the next release (e.g. floor 0.1.1 -> 0.1.2-0).
+  const packageJson = JSON.parse(fs.readFileSync(new URL('../../sqlfu/package.json', import.meta.url), 'utf8')) as {
+    version: string;
+  };
+  expect(checkServerVersion({serverVersion: packageJson.version})).toBeNull();
+});
 
 test('classifies missing HTTP status as unreachable', () => {
   expect(classifyStartupError(new TypeError('Failed to fetch'))).toMatchObject({
