@@ -30,6 +30,14 @@ export type StartupFailure =
 export const SUPPORTED_SERVER_RANGE = '>=0.1.1';
 
 /**
+ * Sentinel version the workspace packages carry between releases (real
+ * versions are stamped at publish time). A server reporting it is the in-repo
+ * dev/test server — tip of tree, newer than any release — so the floor check
+ * waves it through rather than comparing a number that means nothing.
+ */
+export const WORKSPACE_DEV_VERSION = '0.0.0-dev';
+
+/**
  * Error type thrown from the bootstrap path when the local server is too old
  * for this hosted client. Caught by the `StartupErrorBoundary` and turned
  * into a `version-mismatch` startup failure.
@@ -99,6 +107,10 @@ export function checkServerVersion(input: {serverVersion: string | undefined}): 
       serverVersion: null,
       supportedRange: SUPPORTED_SERVER_RANGE,
     });
+  }
+
+  if (input.serverVersion === WORKSPACE_DEV_VERSION) {
+    return null;
   }
 
   if (!semver.satisfies(input.serverVersion, SUPPORTED_SERVER_RANGE, {includePrerelease: true})) {
