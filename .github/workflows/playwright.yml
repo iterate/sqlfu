@@ -52,3 +52,38 @@ jobs:
           path: packages/ui/test-results
           if-no-files-found: ignore
           retention-days: 7
+
+  # Today's UI against the OLDEST npm-published server SUPPORTED_SERVER_RANGE
+  # admits. Red here means the client now relies on an RPC shape the floor
+  # server doesn't speak — bump the range in packages/ui/src/startup-error.ts.
+  ui-floor-compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @sqlfu/ui exec playwright install --with-deps chromium
+
+      - name: Run floor-compatibility tests
+        run: pnpm --filter @sqlfu/ui test:compat
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-compat-report
+          path: packages/ui/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7

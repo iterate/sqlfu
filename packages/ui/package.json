@@ -47,7 +47,8 @@
     "build": "vite build",
     "test:node": "vitest run src/runtime.test.ts src/startup-error.test.ts",
     "typecheck": "tsgo -p tsconfig.json --noEmit",
-    "test": "playwright test"
+    "test": "playwright test",
+    "test:compat": "playwright test --config playwright.compat.config.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",
