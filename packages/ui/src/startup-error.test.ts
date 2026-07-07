@@ -54,7 +54,7 @@ test('classifies ServerVersionMismatchError as version-mismatch with both versio
 });
 
 test('checkServerVersion returns null when the server is at the floor', () => {
-  expect(checkServerVersion({serverVersion: '0.0.2-3'})).toBeNull();
+  expect(checkServerVersion({serverVersion: '0.1.1'})).toBeNull();
 });
 
 test('checkServerVersion returns null when the server is a newer stable release than the floor', () => {
@@ -62,24 +62,24 @@ test('checkServerVersion returns null when the server is a newer stable release 
 });
 
 test('checkServerVersion returns null for prereleases of versions above the floor (includePrerelease)', () => {
-  expect(checkServerVersion({serverVersion: '0.1.0-0'})).toBeNull();
+  expect(checkServerVersion({serverVersion: '0.1.2-0'})).toBeNull();
   expect(checkServerVersion({serverVersion: '1.0.0-beta.2'})).toBeNull();
 });
 
 test('checkServerVersion returns a mismatch error when the server is below the floor', () => {
-  const result = checkServerVersion({serverVersion: '0.0.1'});
+  const result = checkServerVersion({serverVersion: '0.0.3-14'});
   expect(result).toBeInstanceOf(ServerVersionMismatchError);
   expect(result).toMatchObject({
-    serverVersion: '0.0.1',
+    serverVersion: '0.0.3-14',
     supportedRange: SUPPORTED_SERVER_RANGE,
   });
 });
 
 test('checkServerVersion returns a mismatch error for an earlier prerelease of the floor version', () => {
-  const result = checkServerVersion({serverVersion: '0.0.2-2'});
+  const result = checkServerVersion({serverVersion: '0.1.1-0'});
   expect(result).toBeInstanceOf(ServerVersionMismatchError);
   expect(result).toMatchObject({
-    serverVersion: '0.0.2-2',
+    serverVersion: '0.1.1-0',
     supportedRange: SUPPORTED_SERVER_RANGE,
   });
 });
