@@ -65,9 +65,13 @@ jobs:
 
       - run: corepack enable
 
+      # Node 24, not 22: the published sqlfu dist ships untranspiled
+      # `await using`, which Node 22 can't parse — even though package.json
+      # says engines >=22. That's a packaging bug this job surfaced; if the
+      # dist build target is fixed (or engines bumped), align this.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
