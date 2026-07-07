@@ -1,11 +1,31 @@
+import fs from 'node:fs';
+
 import {expect, test} from 'vitest';
 
 import {
   SUPPORTED_SERVER_RANGE,
   ServerVersionMismatchError,
+  WORKSPACE_DEV_VERSION,
   checkServerVersion,
   classifyStartupError,
 } from './startup-error.ts';
+
+test('the workspace server itself satisfies the floor', () => {
+  // The dev/test server reports packages/sqlfu's package.json version via
+  // project.status. If that version fails the floor check, the UI shows the
+  // upgrade screen to its own workspace server and every studio test times
+  // out — catch it here instead. The workspace carries the 0.0.0-dev
+  // sentinel, which checkServerVersion waves through; keep it that way.
+  const packageJson = JSON.parse(fs.readFileSync(new URL('../../sqlfu/package.json', import.meta.url), 'utf8')) as {
+    version: string;
+  };
+  expect(packageJson.version).toBe(WORKSPACE_DEV_VERSION);
+  expect(checkServerVersion({serverVersion: packageJson.version})).toBeNull();
+});
+
+test('checkServerVersion waves the workspace dev sentinel through regardless of the floor', () => {
+  expect(checkServerVersion({serverVersion: WORKSPACE_DEV_VERSION})).toBeNull();
+});
 
 test('classifies missing HTTP status as unreachable', () => {
   expect(classifyStartupError(new TypeError('Failed to fetch'))).toMatchObject({
@@ -54,7 +74,7 @@ test('classifies ServerVersionMismatchError as version-mismatch with both versio
 });
 
 test('checkServerVersion returns null when the server is at the floor', () => {
-  expect(checkServerVersion({serverVersion: '0.0.2-3'})).toBeNull();
+  expect(checkServerVersion({serverVersion: '0.1.1'})).toBeNull();
 });
 
 test('checkServerVersion returns null when the server is a newer stable release than the floor', () => {
@@ -62,24 +82,24 @@ test('checkServerVersion returns null when the server is a newer stable release 
 });
 
 test('checkServerVersion returns null for prereleases of versions above the floor (includePrerelease)', () => {
-  expect(checkServerVersion({serverVersion: '0.1.0-0'})).toBeNull();
+  expect(checkServerVersion({serverVersion: '0.1.2-0'})).toBeNull();
   expect(checkServerVersion({serverVersion: '1.0.0-beta.2'})).toBeNull();
 });
 
 test('checkServerVersion returns a mismatch error when the server is below the floor', () => {
-  const result = checkServerVersion({serverVersion: '0.0.1'});
+  const result = checkServerVersion({serverVersion: '0.0.3-14'});
   expect(result).toBeInstanceOf(ServerVersionMismatchError);
   expect(result).toMatchObject({
-    serverVersion: '0.0.1',
+    serverVersion: '0.0.3-14',
     supportedRange: SUPPORTED_SERVER_RANGE,
   });
 });
 
 test('checkServerVersion returns a mismatch error for an earlier prerelease of the floor version', () => {
-  const result = checkServerVersion({serverVersion: '0.0.2-2'});
+  const result = checkServerVersion({serverVersion: '0.1.1-0'});
   expect(result).toBeInstanceOf(ServerVersionMismatchError);
   expect(result).toMatchObject({
-    serverVersion: '0.0.2-2',
+    serverVersion: '0.1.1-0',
     supportedRange: SUPPORTED_SERVER_RANGE,
   });
 });
