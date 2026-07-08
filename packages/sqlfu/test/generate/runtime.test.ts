@@ -93,6 +93,40 @@ test('generate defaults SQL-derived query results to an explicit camelCase bound
   expect(rows[0]).not.toHaveProperty('published_at');
 });
 
+test('returning-clause column aliases name the result at runtime', async () => {
+  // https://github.com/iterate/sqlfu/issues/152 — the analyzer inferred RETURNING
+  // result names from the table columns, ignoring `as` aliases. The generated
+  // mapResult then read raw keys that don't exist on the actual driver row (which
+  // is keyed by the alias), silently mapping every aliased field to undefined.
+  await using project = await createRuntimeFixture({
+    definitionsSql: `create table projects (id integer primary key, organization_id text not null);`,
+    files: {
+      'sql/projects.sql': dedent`
+        /** @name insertProjectReturning */
+        insert into projects (id, organization_id) values (:id, :organizationId)
+        returning id, organization_id as organizationId;
+      `,
+    },
+  });
+
+  await project.generate();
+
+  const mod = await project.importTranspiledModule<{
+    insertProjectReturning: (
+      client: unknown,
+      params: {id: number; organizationId: string},
+    ) => Promise<{id: number; organizationId: string}>;
+  }>('sql/.generated/projects.sql.ts');
+
+  using database = project.openDatabase();
+  const client = createNodeSqliteClient(database.database);
+
+  await expect(mod.insertProjectReturning(client, {id: 1, organizationId: 'org_1'})).resolves.toEqual({
+    id: 1,
+    organizationId: 'org_1',
+  });
+});
+
 test('generate gives multi-query result mappers unique local names', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: `create table posts (id integer primary key, published_at text not null, reviewed_at text not null);`,
