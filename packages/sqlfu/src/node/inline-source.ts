@@ -24,6 +24,8 @@ export type InlineSqlTemplate = {
   sql: string;
   tagStart: number;
   templateStart: number;
+  /** Whether the template is followed by one or more .map(...) calls. */
+  hasMapCall: boolean;
 };
 
 export type InlineMigrationSource = {
@@ -569,6 +571,7 @@ function readSqlTemplate(
     sql: cookTemplateText(sourceText.slice(templateStart + 1, templateEnd)).trim(),
     tagStart,
     templateStart,
+    hasMapCall: afterTemplate > afterTemplateStart,
   };
 }
 
