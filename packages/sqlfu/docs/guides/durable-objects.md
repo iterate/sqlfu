@@ -1,18 +1,13 @@
 # Durable Objects
 
-Planning to try sqlfu with Durable Objects? You can use either the normal
-[Getting Started](../getting-started.md) workflow or a single inline TypeScript
-module when one Durable Object owns one small schema.
+Planning to try sqlfu with Durable Objects? Start with a single inline
+TypeScript module when one Durable Object owns one schema. The schema stays next
+to the object that owns the storage, `draft` appends migration entries in place,
+and `generate` writes query types back into the inline `sql` tags.
 
-The normal file-backed project changes two things:
-
-1. Keep a separate `sqlfu.config.ts`, `definitions.sql`, `migrations/`, and
-   `sql/` directory for each Durable Object class that owns its own storage.
-2. Generate a migration bundle and run it from the Durable Object constructor
-   with `createDurableObjectClient(ctx.storage)`.
-
-That is the whole shape. You still author SQL first, draft migration files, and
-generate typed wrappers from `.sql` query files.
+Split into `definitions.sql`, `migrations/`, and `sql/` later when that class's
+schema or query list becomes large enough to review more comfortably as
+separate files.
 
 ## Inline module
 
@@ -80,7 +75,7 @@ top-level named classes, with `definitions`, `migrations`, and `queries`
 properties. The static class property form is preferred for Durable Objects
 because the schema stays attached to the object that owns the storage.
 
-## Project shape
+## File-backed project shape
 
 One Durable Object usually wants one sqlfu project:
 

@@ -4,10 +4,10 @@ sqlfu ships an agent skill at `skills/using-sqlfu`. It gives coding agents the
 project-specific facts they need before editing a sqlfu app:
 
 - find `sqlfu.config.ts`
-- treat SQL files as authored source
+- treat inline SQL and SQL files as authored source
 - draft migrations instead of inventing migration history
-- regenerate TypeScript outputs from checked-in query files
-- keep generated files and source SQL in sync
+- regenerate TypeScript outputs from inline queries or checked-in query files
+- keep generated types and source SQL in sync
 
 Install it into a project with:
 
@@ -28,17 +28,17 @@ You are a sqlfu assistant. Read https://sqlfu.dev/llms.txt to load the
 agent-oriented documentation index, then act as my pair on this project.
 
 Goal: help me edit a sqlfu project while keeping SQL as the authored source.
-Inspect sqlfu.config.ts, definitions.sql, migrations/, sql/*.sql, and generated
-wrappers before making changes. Use npx sqlfu check, draft, migrate, generate,
-and format according to the docs. Do not hand-edit generated wrappers unless I
-explicitly ask for that.
+Inspect sqlfu.config.ts first. If the project has split files out, also inspect
+definitions.sql, migrations/, sql/*.sql, and generated wrappers before making
+changes. Use npx sqlfu check, draft, migrate, generate, and format according to
+the docs. Do not hand-edit generated types unless I explicitly ask for that.
 ```
 
 ## When to use it
 
 Use the skill when agents are likely to edit application code, migrations, query
 files, or generated wrappers. It is especially helpful in repos where generated
-files are checked in and review happens through pull requests.
+types are checked in and review happens through pull requests.
 
 The skill should not replace the docs. It is a compact operating guide for
 agents that already have a concrete code-editing task.

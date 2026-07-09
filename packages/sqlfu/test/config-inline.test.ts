@@ -259,6 +259,118 @@ test('static inline defineConfig binds generated query methods to a sync client'
   expect(requiredPost).toEqual({slug: 'hello-world', title: 'Hello, World!'});
 });
 
+test('inline queries can map row results', () => {
+  using fixture = createInlineConfigFixture();
+
+  const app = defineConfig({
+    definitions: sql`
+      create table posts (slug text primary key, title text not null);
+    `,
+    migrations: [
+      {
+        name: '0001_create_posts',
+        content: sql`
+          create table posts (slug text primary key, title text not null);
+        `,
+      },
+    ],
+    queries: {
+      listPosts: sql.many<{result: {slug: string; title: string}}>`
+        select slug, title
+        from posts
+        order by slug
+      `.map((result) => ({slug: result.slug, headline: result.title})),
+      getPostCount: sql.one<{result: {post_count: number}}>`
+        select count(*) as post_count
+        from posts
+      `.map((result) => ({postCount: result.post_count})),
+      findPost: sql.nullableOne<{parameters: {slug: string}; result: {slug: string; title: string}}>`
+        select slug, title
+        from posts
+        where slug = :slug
+      `.map((result) => ({slug: result.slug, headline: result.title})),
+    },
+  });
+
+  const db = app(fixture.client);
+  db.migrate();
+  fixture.client.run(sql`insert into posts (slug, title) values ('hello-world', 'Hello, World!')`);
+
+  const posts: {slug: string; headline: string}[] = db.listPosts();
+  expect(posts).toEqual([{slug: 'hello-world', headline: 'Hello, World!'}]);
+
+  const count: {postCount: number} = db.getPostCount();
+  expect(count).toEqual({postCount: 1});
+
+  const foundPost: {slug: string; headline: string} | null = db.findPost({slug: 'hello-world'});
+  expect(foundPost).toEqual({slug: 'hello-world', headline: 'Hello, World!'});
+
+  const missingPost: {slug: string; headline: string} | null = db.findPost({slug: 'missing'});
+  expect(missingPost).toBeNull();
+});
+
+test('a one-mode mapper is not called when the query returns zero rows', () => {
+  using fixture = createInlineConfigFixture();
+
+  const app = defineConfig({
+    definitions: sql`
+      create table posts (slug text primary key, title text not null);
+    `,
+    migrations: [
+      {
+        name: '0001_create_posts',
+        content: sql`
+          create table posts (slug text primary key, title text not null);
+        `,
+      },
+    ],
+    queries: {
+      getPost: sql.one<{parameters: {slug: string}; result: {slug: string; title: string}}>`
+        select slug, title
+        from posts
+        where slug = :slug
+      `.map((result) => ({headline: result.title})),
+    },
+  });
+
+  const db = app(fixture.client);
+  db.migrate();
+
+  // `one` with zero rows returns undefined, matching generated file-backed
+  // wrappers. The mapper must not run with undefined - that produces an opaque
+  // TypeError blamed on the user's sqlfu.config.ts instead of the real problem.
+  expect(db.getPost({slug: 'missing'})).toBeUndefined();
+});
+
+test('a mapper on a metadata query fails loudly instead of silently doing nothing', () => {
+  using fixture = createInlineConfigFixture();
+
+  const app = defineConfig({
+    definitions: sql`
+      create table posts (slug text primary key);
+    `,
+    migrations: [
+      {
+        name: '0001_create_posts',
+        content: sql`
+          create table posts (slug text primary key);
+        `,
+      },
+    ],
+    queries: {
+      // .map is untyped on metadata tags; the `as any` mimics an untyped caller.
+      createPost: (sql.run<{parameters: {slug: string}}>`
+        insert into posts (slug) values (:slug)
+      ` as any).map((result: any) => result) as any,
+    },
+  });
+
+  const db = app(fixture.client);
+  db.migrate();
+
+  expect(() => (db as any).createPost({slug: 'hello-world'})).toThrow(/\.map\(\.\.\.\) mapper.*does not return rows/);
+});
+
 test('inline migrations and queries tolerate sql line comments', () => {
   using fixture = createInlineConfigFixture();
 

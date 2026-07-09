@@ -707,7 +707,7 @@ function ProjectInitScreen(input: {projectRoot: string}) {
         <section className="startup-section startup-section-wide">
           <h2>Initialize sqlfu</h2>
           <p>
-            Create your <code>sqlfu.config.ts</code> file pointing to your database, migrations and queries.
+            Create a starter <code>sqlfu.config.ts</code> for the Admin UI.
           </p>
           <p className="startup-path">
             <span className="startup-path-label">Project root</span> <code>{displayProjectRoot}</code>
@@ -2378,9 +2378,7 @@ function EmptyState() {
     <section className="panel">
       <section className="card">
         <div className="card-title">No relations found</div>
-        <p className="muted">
-          Create `definitions.sql`, run migrations or sync, and add `.sql` files to start exploring.
-        </p>
+        <p className="muted">Add schema definitions and queries, then draft migrations or sync to start exploring.</p>
       </section>
     </section>
   );

@@ -9,10 +9,12 @@ import type {
   SqlfuValidator,
 } from './types.js';
 import {sqliteDialect} from './dialect.js';
-import {createDefaultInitPreview} from './init-preview.js';
+import {createDefaultInitPreview, type InitPreviewFormat} from './init-preview.js';
+import type {Migration} from './migrations/index.js';
+import type {InlineConfigSource} from './node/inline-source.js';
 import {dirname, resolvePath} from './paths.js';
 
-export {createDefaultInitPreview};
+export {createDefaultInitPreview, type InitPreviewFormat};
 
 export function defineConfig(config: SqlfuConfig): SqlfuConfig {
   return config;
@@ -191,7 +193,7 @@ export function assertConfigShape(configPath: string, config: object): asserts c
   }
 }
 
-function resolveConfigPathValue(configDir: string, configValue: string): string {
+export function resolveConfigPathValue(configDir: string, configValue: string): string {
   return resolvePath(configDir, configValue);
 }
 
@@ -221,6 +223,8 @@ export type LoadedSqlfuProject =
       configPath: string;
       inline: {
         modulePath: string;
+        /** Statically-parsed defineConfig sources; loaded once at project-state time. */
+        sources: InlineConfigSource[];
       };
     }
   | {
@@ -228,6 +232,14 @@ export type LoadedSqlfuProject =
       projectRoot: string;
       configPath: string;
     };
+
+/** The in-memory equivalent of a migrations directory for an inline config. */
+export function inlineMigrationsToMigrationFiles(inline: InlineConfigSource): Migration[] {
+  return inline.migrations.map((migration) => ({
+    path: `${migration.name}.sql`,
+    content: migration.content.sql,
+  }));
+}
 
 /**
  * The UI server deliberately serves uninitialized directories (it has an init
@@ -238,7 +250,7 @@ export type LoadedSqlfuProject =
 export function assertServableProject(project: LoadedSqlfuProject): void {
   if (project.initialized && 'inline' in project) {
     throw new Error(
-      `No file-backed sqlfu config found at ${project.configPath}; inline defineConfig modules support generate and draft only.`,
+      `The sqlfu Admin UI backend requires a file-backed sqlfu config; ${project.configPath} is an inline defineConfig module.`,
     );
   }
 }

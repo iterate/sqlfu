@@ -415,7 +415,7 @@ test('sqlfu server can initialize a fresh directory through the ui rpc', async (
     if (event.kind === 'needsConfirmation') {
       await fixture.client.schema.submitConfirmation({
         id: event.id,
-        body: createDefaultInitPreview(root).configContents,
+        body: createDefaultInitPreview(root, {format: 'file-backed'}).configContents,
       });
     }
   }

@@ -1,8 +1,24 @@
 # CLI
 
-The sqlfu CLI is the project control surface. It reads `sqlfu.config.ts`, works
-against the SQL files in your repo, and starts the local backend used by the
-hosted Admin UI.
+The sqlfu CLI is the project control surface. It reads inline `defineConfig`
+modules first, can still work against split-out SQL files, and starts the local
+backend used by the hosted Admin UI for file-backed projects.
+
+Every command works on both inline and file-backed configs. For commands that
+touch a database (`check`, `migrate`, `sync`, `goto`, `baseline`, `pending`,
+`applied`), the database comes from the config's optional `db` entry - a
+filesystem path or a factory returning a client - and defaults to the local
+`.sqlfu/app.db` file when omitted. Two inline-specific notes:
+
+- Runtime binding still happens via `dbConfig(client)`, and `db.migrate()`
+  applies pending migrations at runtime - for runtime-managed databases
+  (Durable Objects, per-user SQLite) that is the only channel that can reach
+  the database, so the CLI commands are for databases the CLI can open.
+- Declaring `db` on an inline config opts the module into being dynamically
+  imported by the CLI. Modules that only run in other runtimes (e.g. importing
+  `cloudflare:workers`) should leave `db` out; sqlfu never imports them.
+
+The one file-backed-only surface is the Admin UI backend (`npx sqlfu`).
 
 Most commands can be run through `npx`:
 
@@ -43,8 +59,9 @@ command should be.
 
 ### `npx sqlfu draft`
 
-Create a migration file from the difference between replayed migrations and
-`definitions.sql`.
+Create a migration from the difference between replayed migrations and the
+desired schema. Inline projects get a new migration entry in the config module;
+file-backed projects get a new file under `migrations/`.
 
 ```sh
 npx sqlfu draft
@@ -66,15 +83,17 @@ configured for your project.
 
 ### `npx sqlfu generate`
 
-Generate TypeScript wrappers and query metadata from checked-in `.sql` files.
+Generate TypeScript query metadata from inline queries or checked-in `.sql`
+files.
 
 ```sh
 npx sqlfu generate
 ```
 
-By default, type generation reads `definitions.sql`, so it does not need a live
-database. Change `generate.authority` when generated types should follow
-replayed migrations, migration history, or live schema instead.
+By default, type generation reads the desired schema (`definitions: sql\`...\``
+or `definitions.sql`), so it does not need a live database. Change
+`generate.authority` when generated types should follow replayed migrations,
+migration history, or live schema instead.
 
 ### `npx sqlfu format`
 
@@ -123,7 +142,7 @@ Rewrite migration history to an exact target without changing live schema.
 
 ### `npx sqlfu init`
 
-Create a starting `sqlfu.config.ts` and ignore `.sqlfu/` local artifacts.
+Create a starting inline `sqlfu.config.ts` and ignore `.sqlfu/` local artifacts.
 
 ### `npx sqlfu kill`
 

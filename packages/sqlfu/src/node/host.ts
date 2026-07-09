@@ -20,7 +20,7 @@ import {analyzeAdHocSqlForConfig, generateQueryTypesForConfig} from '../typegen/
 import type {SqlAnalysisResponse} from '../ui/shared.js';
 import {isInternalUnsupportedSqlAnalysisError, toSqlEditorDiagnostic} from '../sql-editor-diagnostic.js';
 import type {AdHocSqlResult, HostCatalog, HostFs, SqlfuHost} from '../host.js';
-import {initializeProject} from './config.js';
+import {importModuleFresh, initializeProject} from './config.js';
 
 type NodeSqliteModule = {DatabaseSync: typeof DatabaseSync};
 
@@ -135,6 +135,7 @@ export async function createNodeHost(): Promise<SqlfuHost> {
       };
     },
     initializeProject: (input) => initializeProject(input),
+    importConfigModule: (modulePath) => importModuleFresh(modulePath),
     digest: async (content) => createHash('sha256').update(content).digest('hex'),
     now: () => new Date(),
     uuid: () => randomUUID(),

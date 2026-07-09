@@ -1,4 +1,5 @@
 import {applyMigrations, type Migration} from './migrations/index.js';
+import {assertRowlessQueryHasNoMapper, readSqlQueryMapper} from './sql.js';
 import type {
   AsyncClient,
   Client,
@@ -7,7 +8,9 @@ import type {
   QueryResultMode,
   ResultRow,
   RunResult,
+  SqlfuConfig,
   SqlQueryNoArgs,
+  SqlResultMapper,
   SqlTypedQueryNoArgs,
   SyncClient,
 } from './types.js';
@@ -27,6 +30,16 @@ export type InlineConfigQuery<TType extends InlineConfigQueryType = InlineConfig
   | SqlQueryNoArgs;
 
 export type InlineConfigDefinition<TQueries extends Record<string, InlineConfigQuery>> = {
+  /**
+   * Optional database for CLI commands (`sqlfu migrate`, `check`, `sync`,
+   * ...), same as file-backed configs: a filesystem path or a factory
+   * returning a disposable client. Without it, CLI commands use the local
+   * `.sqlfu/app.db` file. Ignored at runtime - runtime binding always goes
+   * through `dbConfig(client)`. Declaring `db` opts the module into being
+   * dynamically imported by the CLI, so only use it in modules that can run
+   * under Node.
+   */
+  db?: SqlfuConfig['db'];
   definitions: SqlQueryNoArgs;
   migrations?: InlineConfigMigration[];
   queries: TQueries;
@@ -128,9 +141,13 @@ function bindInlineQuery(
     if (query.args.length > 0) {
       throw new Error('Inline queries cannot use template interpolations.');
     }
+    if (mode === 'metadata') {
+      assertRowlessQueryHasNoMapper(query);
+    }
+    const mapper = readSqlQueryMapper(query);
     return client.sync
-      ? (params) => runInlineSyncQuery(client as SyncClient, query.sql, mode, params)
-      : (params) => runInlineAsyncQuery(client as AsyncClient, query.sql, mode, params);
+      ? (params) => runInlineSyncQuery(client as SyncClient, query.sql, mode, params, mapper)
+      : (params) => runInlineAsyncQuery(client as AsyncClient, query.sql, mode, params, mapper);
   } catch (error) {
     return () => {
       throw error;
@@ -143,10 +160,11 @@ function runInlineSyncQuery(
   sql: string,
   mode: QueryResultMode,
   params: PreparedStatementParams | undefined,
+  mapper: SqlResultMapper | undefined,
 ): InlineRuntimeQueryResult {
   using stmt = client.prepare(sql);
   if (mode === 'metadata') return stmt.run(params);
-  return inlineRowsResult(stmt.all(params), mode);
+  return inlineRowsResult(stmt.all(params), mode, mapper);
 }
 
 async function runInlineAsyncQuery(
@@ -154,11 +172,12 @@ async function runInlineAsyncQuery(
   sql: string,
   mode: QueryResultMode,
   params: PreparedStatementParams | undefined,
+  mapper: SqlResultMapper | undefined,
 ): Promise<InlineRuntimeQueryResult> {
   const stmt = client.prepare(sql);
   try {
     if (mode === 'metadata') return await stmt.run(params);
-    return inlineRowsResult(await stmt.all(params), mode);
+    return inlineRowsResult(await stmt.all(params), mode, mapper);
   } finally {
     await stmt[Symbol.asyncDispose]();
   }
@@ -179,9 +198,22 @@ function isQueryResultMode(value: unknown): value is QueryResultMode {
   return value === 'many' || value === 'nullableOne' || value === 'one' || value === 'metadata';
 }
 
-function inlineRowsResult(rows: ResultRow[], mode: QueryResultMode): ResultRow | ResultRow[] | null {
-  if (mode === 'many') return rows;
-  if (mode === 'nullableOne') return rows[0] || null;
-  if (mode === 'one') return rows[0]!;
+function inlineRowsResult(
+  rows: ResultRow[],
+  mode: QueryResultMode,
+  mapper: SqlResultMapper | undefined,
+): ResultRow | ResultRow[] | null {
+  if (mode === 'many') return mapper ? rows.map(mapper) : rows;
+  if (mode === 'nullableOne') {
+    const row = rows[0];
+    if (!row) return null;
+    return mapper ? mapper(row) : row;
+  }
+  if (mode === 'one') {
+    // Zero rows falls through as undefined, matching generated file-backed
+    // wrappers; the mapper must never see undefined.
+    const row = rows[0]!;
+    return row && mapper ? mapper(row) : row;
+  }
   throw new Error(`Inline query mode ${JSON.stringify(mode)} cannot return rows.`);
 }

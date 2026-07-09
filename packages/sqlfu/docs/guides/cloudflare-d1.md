@@ -1,13 +1,50 @@
 # Cloudflare D1
 
 For Cloudflare D1, start with the normal [Getting Started](../getting-started.md)
-workflow: author `definitions.sql`, draft migrations, write `.sql` query files,
-and generate wrappers. Then make the CLI and Worker use the D1 adapter.
+workflow: author inline schema and queries, draft reviewed migrations, and
+generate query types. Then make the Worker bind that inline config to the D1
+adapter.
 
-D1 is asynchronous, so the default generated wrappers are already the right
-shape: call them with `await`.
+D1 is asynchronous, so bound inline queries return promises: call them with
+`await`.
 
-## Project shape
+## Inline shape
+
+```ts
+import {defineConfig, sql} from 'sqlfu';
+
+export default defineConfig({
+  definitions: sql`
+    create table posts (
+      id integer primary key,
+      slug text not null unique,
+      title text not null,
+      published integer not null default 0
+    );
+  `,
+  queries: {
+    listPublishedPosts: sql`
+      select id, slug, title
+      from posts
+      where published = 1
+      order by id desc
+      limit :limit
+    `,
+  },
+});
+```
+
+Run the same loop as the getting-started guide:
+
+```sh
+npx sqlfu --config src/db/sqlfu.config.ts draft
+npx sqlfu --config src/db/sqlfu.config.ts generate
+```
+
+## File-backed shape
+
+Split into files when you want wrangler/Alchemy-compatible D1 migration files or
+a larger SQL folder:
 
 ```txt
 src/db/
@@ -18,7 +55,7 @@ src/db/
 `-- sqlfu.config.ts
 ```
 
-## Config for D1 migrations
+## Config for D1 migration files
 
 If sqlfu owns the D1 migration table, use the default migration preset. If your
 project is taking over from wrangler or alchemy D1 migrations, use the D1 preset
@@ -61,7 +98,7 @@ That factory makes `sqlfu migrate`, `sqlfu check`, `sqlfu goto`, `sqlfu baseline
 and the UI talk to the real deployed D1 database. For local Miniflare-backed D1,
 use the same idea with a Miniflare binding or `findMiniflareD1Path()`.
 
-## Schema and query
+## File-backed schema and query
 
 ```sql
 create table posts (
@@ -83,7 +120,7 @@ order by id desc
 limit :limit;
 ```
 
-Then run the same loop as the getting-started guide:
+Then run the file-backed loop:
 
 ```sh
 npx sqlfu --config src/db/sqlfu.config.ts draft
@@ -99,7 +136,7 @@ the runtime is D1; they only need a sqlfu `AsyncClient`.
 ```ts
 import {createD1Client} from 'sqlfu';
 
-import {listPublishedPosts} from './db/queries/.generated/queries.sql.ts';
+import dbConfig from './db/sqlfu.config.ts';
 
 type Env = {
   DB: D1Database;
@@ -108,12 +145,18 @@ type Env = {
 export default {
   async fetch(_request: Request, env: Env) {
     const client = createD1Client(env.DB);
-    const posts = await listPublishedPosts(client, {limit: 20});
+    const db = dbConfig(client);
+
+    await db.migrate();
+    const posts = await db.listPublishedPosts({limit: 20});
 
     return Response.json(posts);
   },
 };
 ```
+
+If you split into `.sql` query files instead, import the generated wrapper from
+`queries/.generated/queries.sql.ts` and call it with the same D1 client.
 
 ## Read next
 

@@ -28,5 +28,5 @@ test('serve rejects inline defineConfig modules up front instead of starting a b
   if (result && typeof result.stop === 'function') await result.stop();
 
   expect(result).toBeInstanceOf(Error);
-  expect(String(result)).toMatch(/inline defineConfig modules support generate and draft/);
+  expect(String(result)).toMatch(/Admin UI backend requires a file-backed sqlfu config/);
 });
