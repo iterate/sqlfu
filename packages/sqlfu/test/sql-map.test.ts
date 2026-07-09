@@ -33,6 +33,25 @@ test('client.run rejects queries with mappers instead of silently ignoring them'
   expect(() => fixture.client.run(query)).toThrow(/\.map\(\.\.\.\) mapper.*does not return rows/);
 });
 
+test('mapper errors surface raw instead of being wrapped as driver errors', () => {
+  using fixture = createPostsFixture();
+
+  const query = sql<{result: {slug: string}}>`
+    select slug from posts
+  `.map(() => {
+    throw new TypeError('boom');
+  });
+
+  expect(() => fixture.client.all(query)).toThrow(TypeError);
+  expect(() => [...fixture.client.iterate(query)]).toThrow(TypeError);
+});
+
+test('interpolating a query with a mapper into another query throws instead of dropping the mapper', () => {
+  const inner = sql<{result: {slug: string}}>`select slug from posts`.map((row) => row);
+
+  expect(() => sql`with posts_view as (${inner}) select * from posts_view`).toThrow(/\.map\(\.\.\.\)/);
+});
+
 test('chained map calls compose left to right', () => {
   using fixture = createPostsFixture();
 

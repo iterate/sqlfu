@@ -125,6 +125,11 @@ function buildSqlQuery(strings: TemplateStringsArray, values: SqlValue[]): SqlQu
 
     const value = values[index];
     if (isSqlFragment(value)) {
+      if (readSqlQueryMapper(value as MappableSqlQuery)) {
+        throw new Error(
+          'Cannot interpolate a query with a .map(...) mapper into another query; the inner mapper would be silently dropped. Call .map(...) on the outer query instead.',
+        );
+      }
       text += value.sql;
       args.push(...value.args);
       continue;

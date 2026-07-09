@@ -11,7 +11,9 @@ import type {AsyncClient, PreparedStatement, ResultRow, SqlQuery, SyncClient, Sy
  *   `mapSqliteDriverError`, with `system` read from the client's own field so
  *   adapters don't have to pass it twice
  * - `.map(...)` mappers attached to queries are applied to returned rows
- *   (and rejected on `run`, which returns no rows for a mapper to shape)
+ *   (and rejected on `run`, which returns no rows for a mapper to shape).
+ *   Mappers run outside the error wrapper: a throwing mapper is the user's
+ *   own code failing, not a driver error, so it surfaces raw.
  *
  * Transactions re-wrap the inner client so queries inside a tx get the same
  * contract as queries outside it.
@@ -23,12 +25,14 @@ export function wrapSyncClientErrors<TDriver>(client: SyncClient<TDriver>): Sync
     driver: client.driver,
     system: client.system,
     sync: true,
-    all(query) {
+    all<TRow extends ResultRow = ResultRow>(query: SqlQuery): TRow[] {
+      let rows: TRow[];
       try {
-        return mapSqlQueryRows(query, client.all(query));
+        rows = client.all<TRow>(query);
       } catch (error) {
         throw mapQuery(error, query);
       }
+      return mapSqlQueryRows(query, rows);
     },
     run(query) {
       assertRowlessQueryHasNoMapper(query);
@@ -47,12 +51,16 @@ export function wrapSyncClientErrors<TDriver>(client: SyncClient<TDriver>): Sync
     },
     *iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery): Iterable<TRow> {
       const mapper = readSqlQueryMapper(query);
-      try {
-        for (const row of client.iterate<TRow>(query)) {
-          yield (mapper ? mapper(row) : row) as TRow;
-        }
-      } catch (error) {
-        throw mapQuery(error, query);
+      const rows = wrapIterationErrors(
+        () => client.iterate<TRow>(query),
+        (error) => mapQuery(error, query),
+      );
+      if (!mapper) {
+        yield* rows;
+        return;
+      }
+      for (const row of rows) {
+        yield mapper(row) as TRow;
       }
     },
     prepare<TRow extends ResultRow = ResultRow>(sql: string): SyncPreparedStatement<TRow> {
@@ -106,12 +114,14 @@ export function wrapAsyncClientErrors<TDriver>(client: AsyncClient<TDriver>): As
     driver: client.driver,
     system: client.system,
     sync: false,
-    async all(query) {
+    async all<TRow extends ResultRow = ResultRow>(query: SqlQuery): Promise<TRow[]> {
+      let rows: TRow[];
       try {
-        return mapSqlQueryRows(query, await client.all(query));
+        rows = await client.all<TRow>(query);
       } catch (error) {
         throw mapQuery(error, query);
       }
+      return mapSqlQueryRows(query, rows);
     },
     async run(query) {
       assertRowlessQueryHasNoMapper(query);
@@ -130,12 +140,16 @@ export function wrapAsyncClientErrors<TDriver>(client: AsyncClient<TDriver>): As
     },
     async *iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery): AsyncIterable<TRow> {
       const mapper = readSqlQueryMapper(query);
-      try {
-        for await (const row of client.iterate<TRow>(query)) {
-          yield (mapper ? mapper(row) : row) as TRow;
-        }
-      } catch (error) {
-        throw mapQuery(error, query);
+      const rows = wrapAsyncIterationErrors(
+        () => client.iterate<TRow>(query),
+        (error) => mapQuery(error, query),
+      );
+      if (!mapper) {
+        yield* rows;
+        return;
+      }
+      for await (const row of rows) {
+        yield mapper(row) as TRow;
       }
     },
     prepare<TRow extends ResultRow = ResultRow>(sql: string): PreparedStatement<TRow> {
@@ -177,4 +191,28 @@ export function wrapAsyncClientErrors<TDriver>(client: AsyncClient<TDriver>): As
   };
   wrapped.sql = bindAsyncSql(wrapped);
   return wrapped;
+}
+
+/**
+ * Delegate to a driver iterable with its errors normalized, so callers can
+ * apply query mappers per row *outside* this wrapper — a throwing mapper must
+ * surface raw, not disguised as a driver error.
+ */
+function* wrapIterationErrors<TRow>(rows: () => Iterable<TRow>, wrap: (error: unknown) => Error): Generator<TRow> {
+  try {
+    yield* rows();
+  } catch (error) {
+    throw wrap(error);
+  }
+}
+
+async function* wrapAsyncIterationErrors<TRow>(
+  rows: () => AsyncIterable<TRow>,
+  wrap: (error: unknown) => Error,
+): AsyncGenerator<TRow> {
+  try {
+    yield* rows();
+  } catch (error) {
+    throw wrap(error);
+  }
 }
