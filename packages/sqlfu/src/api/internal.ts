@@ -1099,11 +1099,11 @@ export async function loadContextConfig(context: SqlfuCommandContext): Promise<S
  * file-backed configs get) plus the statically-parsed definitions and
  * migration entries as in-memory repo inputs.
  */
-async function resolveInlineContext(
+function resolveInlineContext(
   projectRoot: string,
   inline: {modulePath: string; sources: InlineConfigSource[]},
   host: SqlfuHost,
-): Promise<SqlfuContext> {
+): SqlfuContext {
   const {modulePath, sources} = inline;
   if (sources.length !== 1) {
     throw new Error(
@@ -1111,30 +1111,44 @@ async function resolveInlineContext(
     );
   }
   const source = sources[0];
-  const db = source.hasDb ? await readInlineConfigDb(host, modulePath, source) : undefined;
+
+  const config: SqlfuProjectConfig = {
+    projectRoot,
+    db: undefined,
+    // Inline projects have no definitions.sql or query files on disk; these
+    // paths are never read because `context.inline` supplies the repo
+    // inputs, but the fields are required on SqlfuProjectConfig.
+    definitions: modulePath,
+    queries: modulePath,
+    migrations: undefined,
+    generate: {
+      validator: null,
+      prettyErrors: true,
+      sync: false,
+      experimentalJsonTypes: false,
+      casing: 'camel',
+      runtime: 'sqlfu',
+      importExtension: '.js',
+      authority: 'desired_schema',
+    },
+    dialect: sqliteDialect(),
+  };
+  if (source.hasDb) {
+    // Lazy: the module is only imported when a command actually opens the
+    // database, so repo-only commands (check migrationsMatchDefinitions,
+    // config, generate) work even where the module can't be imported — e.g.
+    // a Durable Object module importing cloudflare:workers.
+    config.db = async () => {
+      const db = await readInlineConfigDb(host, modulePath, source);
+      // A factory from the module is used as-is; a string path (already
+      // resolved relative to the module) round-trips through the host's own
+      // file-opening path.
+      return typeof db === 'function' ? db() : host.openDb({...config, db});
+    };
+  }
 
   return {
-    config: {
-      projectRoot,
-      db,
-      // Inline projects have no definitions.sql or query files on disk; these
-      // paths are never read because `context.inline` supplies the repo
-      // inputs, but the fields are required on SqlfuProjectConfig.
-      definitions: modulePath,
-      queries: modulePath,
-      migrations: undefined,
-      generate: {
-        validator: null,
-        prettyErrors: true,
-        sync: false,
-        experimentalJsonTypes: false,
-        casing: 'camel',
-        runtime: 'sqlfu',
-        importExtension: '.js',
-        authority: 'desired_schema',
-      },
-      dialect: sqliteDialect(),
-    },
+    config,
     host,
     inline: {
       modulePath,
@@ -1163,10 +1177,15 @@ async function readInlineConfigDb(
     : source.name === 'default'
       ? module.default
       : module[source.name];
-  const db = (exported as {config?: {db?: unknown}} | undefined)?.config?.db;
+  if (exported === undefined) {
+    throw new Error(
+      `${modulePath} declares a "db" on its inline defineConfig, but ${exportDescription} is not exported directly from the module, so sqlfu cannot read the db value. Export the defineConfig result so sqlfu commands can open the database.`,
+    );
+  }
+  const db = (exported as {config?: {db?: unknown}}).config?.db;
   if (!db) {
     throw new Error(
-      `${modulePath} declares a "db" on its inline defineConfig, but ${exportDescription} is not exported from the module. Export it so sqlfu commands can open the database.`,
+      `${modulePath} declares a "db" on its inline defineConfig, but it resolved to a falsy value (${String(db)}) at import time. Check the db expression — an unset environment variable, for example.`,
     );
   }
   if (typeof db === 'string') {

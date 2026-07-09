@@ -125,7 +125,64 @@ test('a db on a non-exported inline config is a clear error', async () => {
   await linkSqlfu(root);
   const api = createSqlfuApi({projectRoot: root, host: await createNodeHost(), loadProjectState: () => loadProjectStateFrom(root)});
 
-  await expect(api.migrate({confirm: autoAcceptConfirm})).rejects.toThrow(/export/i);
+  await expect(api.migrate({confirm: autoAcceptConfirm})).rejects.toThrow(/not exported directly/);
+});
+
+test('a db that resolves to a falsy value at import time is reported as such, not as a missing export', async () => {
+  const root = await createTempFixtureRoot('inline-parity-db-falsy');
+  await writeFixtureFiles(root, {
+    'sqlfu.config.ts': dedent`
+      import {defineConfig, sql} from 'sqlfu';
+
+      export const app = defineConfig({
+        db: process.env.SQLFU_TEST_UNSET_DB!,
+        definitions: sql\`create table posts (slug text primary key)\`,
+        queries: {
+          listPosts: sql.many<{result: {slug: string}}>\`select slug from posts\`,
+        },
+      });
+    `,
+  });
+  await linkSqlfu(root);
+  const api = createSqlfuApi({projectRoot: root, host: await createNodeHost(), loadProjectState: () => loadProjectStateFrom(root)});
+
+  // The config IS exported; the error must not claim otherwise.
+  await expect(api.migrate({confirm: autoAcceptConfirm})).rejects.toThrow(/resolved to a falsy value/);
+});
+
+test('repo-only commands do not import the config module even when db is declared', async () => {
+  const root = await createTempFixtureRoot('inline-parity-lazy-db');
+  await writeFixtureFiles(root, {
+    'side-effect.ts': `throw new Error('config module was imported');`,
+    'sqlfu.config.ts': dedent`
+      import './side-effect.js';
+      import {defineConfig, sql} from 'sqlfu';
+
+      export default defineConfig({
+        db: './custom.db',
+        definitions: sql\`create table posts (slug text primary key)\`,
+        migrations: [
+          {
+            name: '0001_create_posts',
+            content: sql\`create table posts (slug text primary key)\`,
+          },
+        ],
+        queries: {
+          listPosts: sql.many<{result: {slug: string}}>\`select slug from posts\`,
+        },
+      });
+    `,
+  });
+  await linkSqlfu(root);
+  const api = createSqlfuApi({projectRoot: root, host: await createNodeHost(), loadProjectState: () => loadProjectStateFrom(root)});
+
+  // Static analysis is enough for repo-only commands; declaring db must not
+  // force a dynamic import (the module may only be importable in its real
+  // runtime, e.g. a Durable Object importing cloudflare:workers).
+  await expect(api.checkMigrationsMatchDefinitions()).resolves.toBeUndefined();
+
+  // Commands that open the database do import — and surface the module's error.
+  await expect(api.migrate({confirm: autoAcceptConfirm})).rejects.toThrow(/config module was imported/);
 });
 
 test('db commands on a module with multiple inline configs error clearly', async () => {
