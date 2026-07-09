@@ -1,6 +1,6 @@
 {
   "name": "@sqlfu/pg",
-  "version": "0.0.0",
+  "version": "0.0.0-dev",
   "description": "Postgres dialect for sqlfu — schema diff, typegen, formatter, migration table DDL, advisory-lock migration runner.",
   "repository": {
     "type": "git",

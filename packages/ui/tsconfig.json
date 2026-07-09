@@ -7,6 +7,6 @@
     "lib": ["ESNext", "ESNext.Disposable", "DOM"],
     "types": ["node", "vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "vite.config.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "test-compat/**/*.ts", "vite.config.ts"],
   "exclude": ["test/projects/**/*.ts", "test/fixture-project/**/*.ts"]
 }

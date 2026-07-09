@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import type {Locator, Page} from '@playwright/test';
 
+import {SUPPORTED_SERVER_RANGE} from '../src/startup-error.ts';
 import {expect, test} from './fixture.ts';
 
 test('shows a helpful startup error page when the local backend is unreachable', async ({page}) => {
@@ -55,7 +56,7 @@ test('shows the upgrade screen when the local backend does not report a version 
   await page.goto('/');
 
   await expect(page.getByRole('heading', {name: 'Please upgrade the local sqlfu server'})).toBeVisible();
-  await expect(page.getByText(/does not satisfy/u)).toContainText('>=0.0.2-3');
+  await expect(page.getByText(/does not satisfy/u)).toContainText(SUPPORTED_SERVER_RANGE);
   await expect(page.getByText(/pre-dates the version-reporting RPC field/u)).toBeVisible();
 });
 
