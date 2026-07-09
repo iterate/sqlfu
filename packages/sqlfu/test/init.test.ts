@@ -4,7 +4,7 @@ import path from 'node:path';
 import {expect, test} from 'vitest';
 
 import {createSqlfuApi} from '../src/api/core.js';
-import {loadProjectStateFrom} from '../src/node/config.js';
+import {initializeProject, loadProjectStateFrom} from '../src/node/config.js';
 import {createNodeHost} from '../src/node/host.js';
 import {generateInlineConfigTypes} from '../src/typegen/index.js';
 import {createTempFixtureRoot, dumpFixtureFs, writeFixtureFiles} from './fs-fixture.js';
@@ -74,6 +74,49 @@ test('init does not scaffold companion files when the user confirms an inline co
   expect(files).not.toContain('definitions.sql');
   expect(files).not.toContain('migrations/');
   expect(files).not.toContain('.gitkeep');
+});
+
+test('initializeProject resolves a relative configPath against the project root, not cwd', async () => {
+  const root = await createTempFixtureRoot('init-relative-config-path');
+  const unrelatedCwd = await createTempFixtureRoot('init-relative-config-path-cwd');
+
+  const previousCwd = process.cwd();
+  process.chdir(unrelatedCwd); // programmatic callers won't necessarily run from the project root
+  try {
+    await initializeProject({
+      projectRoot: root,
+      configPath: 'nested/sqlfu.config.ts',
+      configContents: [
+        'export default {',
+        `  definitions: './definitions.sql',`,
+        `  queries: './sql',`,
+        '};',
+      ].join('\n'),
+    });
+  } finally {
+    process.chdir(previousCwd);
+  }
+
+  await expect(fs.access(path.join(root, 'nested', 'sqlfu.config.ts'))).resolves.toBeUndefined();
+  // Companions scaffolded next to the config prove the written file was the
+  // one loaded back — not a cwd-relative twin.
+  await expect(fs.access(path.join(root, 'nested', 'definitions.sql'))).resolves.toBeUndefined();
+  await expect(fs.access(path.join(unrelatedCwd, 'nested'))).rejects.toThrow();
+});
+
+test('init removes the config file when the confirmed contents cannot be loaded', async () => {
+  const root = await createTempFixtureRoot('init-unloadable-config');
+  const host = await createNodeHost();
+  const api = createSqlfuApi({projectRoot: root, host});
+
+  // The confirm prompt is editable, so the confirmed body can be arbitrarily
+  // broken. A failed init must not leave a half-initialized project behind —
+  // the broken config would make every command, including retrying init, fail.
+  await expect(api.init({confirm: async () => 'export default {'})).rejects.toThrow();
+  await expect(fs.access(path.join(root, 'sqlfu.config.ts'))).rejects.toThrow();
+
+  await api.init({confirm: async (params) => params.body});
+  await expect(loadProjectStateFrom(root)).resolves.toMatchObject({initialized: true});
 });
 
 test('sqlfu init creates the default scaffold in a fresh directory', async () => {

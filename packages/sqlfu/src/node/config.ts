@@ -111,9 +111,14 @@ export async function loadProjectStateFromConfigPath(configPath: string, cwd: st
 }
 
 export async function initializeProject(input: {projectRoot: string; configContents: string; configPath?: string}) {
-  const configPath = input.configPath || path.join(input.projectRoot, defaultSqlfuConfigFileName);
+  // Resolve once, against the project root: `fs.writeFile` would resolve a
+  // relative path against cwd while the load below resolves against the
+  // project root, silently initializing nothing.
+  const configPath = input.configPath
+    ? resolveCliConfigPath(input.configPath, input.projectRoot)
+    : path.join(input.projectRoot, defaultSqlfuConfigFileName);
   const state = input.configPath
-    ? await loadProjectStateFromConfigPath(input.configPath, input.projectRoot)
+    ? await loadProjectStateFromConfigPath(configPath, input.projectRoot)
     : await loadProjectStateFrom(input.projectRoot);
   if (state.initialized) {
     throw new Error(`sqlfu is already initialized in ${input.projectRoot}`);
@@ -124,13 +129,20 @@ export async function initializeProject(input: {projectRoot: string; configConte
 
   // Re-load the project from what was actually written: the confirm prompt is
   // editable, so the confirmed contents can differ from the preview (inline
-  // edited into file-backed or vice versa). This also makes init fail loudly
-  // if the confirmed config can't be loaded, instead of writing a project
-  // every subsequent command rejects. File-backed configs get their companion
-  // paths scaffolded; inline configs need no companions.
-  const written = input.configPath
-    ? await loadProjectStateFromConfigPath(input.configPath, input.projectRoot)
-    : await loadProjectStateFrom(input.projectRoot);
+  // edited into file-backed or vice versa). File-backed configs get their
+  // companion paths scaffolded; inline configs need no companions.
+  let written: LoadedSqlfuProject;
+  try {
+    written = await loadProjectStateFromConfigPath(configPath, input.projectRoot);
+  } catch (error) {
+    // Don't leave a half-initialized project behind: a config that can't be
+    // loaded would make every command, including retrying init, fail.
+    await fs.rm(configPath, {force: true});
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`The confirmed sqlfu config could not be loaded, so ${configPath} was not kept. ${message}`, {
+      cause: error,
+    });
+  }
   if (written.initialized && 'config' in written) {
     const {config} = written;
     if (config.migrations) {
