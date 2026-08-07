@@ -48,6 +48,51 @@ jobs:
       - name: Run sqlfu tests
         run: pnpm --dir packages/sqlfu exec vitest --run
 
+  celld:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build sqlfu
+        run: pnpm --filter sqlfu build
+
+      - name: Install celld and MinIO test binaries
+        env:
+          CELLD_VERSION: v0.1.0
+          MINIO_VERSION: RELEASE.2025-09-07T16-13-09Z
+          MINIO_MC_VERSION: RELEASE.2025-08-13T08-35-41Z
+        run: |
+          mkdir -p "$RUNNER_TEMP/sqlfu-celld-bin"
+          curl -fsSL "https://github.com/denoland/celld/releases/download/$CELLD_VERSION/celld-x86_64-unknown-linux-gnu.gz" \
+            -o "$RUNNER_TEMP/sqlfu-celld-bin/celld.gz"
+          gzip -d "$RUNNER_TEMP/sqlfu-celld-bin/celld.gz"
+          curl -fsSL "https://github.com/minio/minio/releases/download/$MINIO_VERSION/minio.linux-amd64.$MINIO_VERSION" \
+            -o "$RUNNER_TEMP/sqlfu-celld-bin/minio"
+          curl -fsSL "https://github.com/minio/mc/releases/download/$MINIO_MC_VERSION/mc.linux-amd64.$MINIO_MC_VERSION" \
+            -o "$RUNNER_TEMP/sqlfu-celld-bin/mc"
+          chmod +x "$RUNNER_TEMP/sqlfu-celld-bin/celld" "$RUNNER_TEMP/sqlfu-celld-bin/minio" "$RUNNER_TEMP/sqlfu-celld-bin/mc"
+
+      - name: Run real celld compatibility test
+        env:
+          CELLD_TEST: 1
+          CELLD_BIN: ${{ runner.temp }}/sqlfu-celld-bin/celld
+          MINIO_BIN: ${{ runner.temp }}/sqlfu-celld-bin/minio
+          MINIO_MC_BIN: ${{ runner.temp }}/sqlfu-celld-bin/mc
+        run: pnpm --dir packages/sqlfu exec vitest --run test/adapters/celld.test.ts
+
   pg-package:
     runs-on: ubuntu-latest
     timeout-minutes: 10
