@@ -1,11 +1,11 @@
-status: blocked-on-github-auth
+status: done
 size: medium
 
 # Prove sqlfu runs on celld
 
 ## Status
 
-Implementation is complete and locally green. A real celld v0.1.0 process now covers Worker routing, inline sqlfu migration/query use, and isolated named cells against real MinIO storage; dedicated pinned CI setup is included. The branch cannot yet be pushed or opened as a draft PR because this machine has no GitHub HTTPS or SSH credentials.
+Done in draft PR [#154](https://github.com/iterate/sqlfu/pull/154). A real celld v0.1.0 process covers Worker routing, inline sqlfu migration/query use, and isolated named cells against real MinIO storage; dedicated pinned CI setup is included. D1 remains out of scope because celld does not ship it yet.
 
 ## Goal
 
@@ -29,7 +29,7 @@ Prove sqlfu's Durable Object adapter works in the real celld runtime, without Mi
 - [x] Add dedicated CI setup for pinned celld and a real S3-compatible MinIO service. _The `celld` unit-test job downloads celld v0.1.0 plus pinned MinIO server/client binaries before running the opt-in spec._
 - [x] Document the local command and required binaries close to the test. _An opt-in note above the test gives the one-line command and names all three binaries._
 - [x] Run the focused celld compatibility spec and the relevant existing Durable Object suite. _The celld spec, all 14 existing Durable Object tests, sqlfu typecheck, ESLint, formatting, and diff checks pass locally._
-- [ ] Update this task with implementation notes, move it to `tasks/complete/`, and refresh the pull request body. _Task notes are current; moving and PR refresh wait on GitHub authentication so the draft PR can be created first._
+- [x] Update this task with implementation notes, move it to `tasks/complete/`, and refresh the pull request body. _Filed as `tasks/complete/2026-08-07-celld-runtime-testing.md`; draft PR #154 includes runtime scope and before/after evidence._
 
 ## Implementation notes
 
@@ -40,4 +40,4 @@ Prove sqlfu's Durable Object adapter works in the real celld runtime, without Mi
 - 2026-08-07: Installed celld v0.1.0 with its official installer, plus Homebrew `minio` and `minio-mc`, for local verification.
 - 2026-08-07: The first red run exposed two fixture mistakes: treating execa's running `exitCode: null` as an exit, then omitting celld's explicit esbuild path. Fixing those reached the runtime and showed the expected sqlfu run result is `{rowsAffected: 1}`.
 - 2026-08-07: D1 remains excluded because celld's compatibility reference marks it as planned. The module Worker and Durable Object binding used here are supported celld v0.1.0 surfaces.
-- 2026-08-07: `git push` failed over HTTPS (`could not read Username`) and SSH (`Permission denied (publickey)`). No draft PR or monitor exists yet.
+- 2026-08-07: GitHub device authentication plus the `workflow` OAuth scope unblocked the push. Opened draft PR [#154](https://github.com/iterate/sqlfu/pull/154).
