@@ -17,13 +17,24 @@ const test = baseTest.skipIf(!process.env.CELLD_TEST);
 test('sqlfu migrates and queries isolated durable object cells in real celld', async () => {
   await using fixture = await createCelldFixture();
 
-  expect(await fixture.createPost('alpha', {slug: 'hello', title: 'Hello from celld'})).toMatchObject({
+  expect(await fixture.createPost('/durable-object/alpha', {slug: 'hello', title: 'Hello from celld'})).toMatchObject({
     rowsAffected: 1,
   });
-  expect(await fixture.createPost('beta', {slug: 'other', title: 'Another cell'})).toMatchObject({rowsAffected: 1});
+  expect(await fixture.createPost('/durable-object/beta', {slug: 'other', title: 'Another cell'})).toMatchObject({
+    rowsAffected: 1,
+  });
 
-  expect(await fixture.listPosts('alpha')).toMatchObject([{slug: 'hello', title: 'Hello from celld'}]);
-  expect(await fixture.listPosts('beta')).toMatchObject([{slug: 'other', title: 'Another cell'}]);
+  expect(await fixture.listPosts('/durable-object/alpha')).toMatchObject([{slug: 'hello', title: 'Hello from celld'}]);
+  expect(await fixture.listPosts('/durable-object/beta')).toMatchObject([{slug: 'other', title: 'Another cell'}]);
+}, 30_000);
+
+test('sqlfu migrates and queries a D1 database in real celld', async () => {
+  await using fixture = await createCelldFixture();
+
+  // Each request builds a fresh D1 client and migrates, so the second request
+  // also proves the migration is a no-op once applied.
+  expect(await fixture.createPost('/d1', {slug: 'hello', title: 'Hello from D1'})).toMatchObject({rowsAffected: 1});
+  expect(await fixture.listPosts('/d1')).toMatchObject([{slug: 'hello', title: 'Hello from D1'}]);
 }, 30_000);
 
 async function createCelldFixture() {
@@ -50,8 +61,8 @@ async function createCelldFixture() {
     await waitForHealthy(`${celldUrl}/.well-known/celld/health`, celld);
 
     return {
-      async createPost(cell: string, post: {slug: string; title: string}) {
-        const response = await fetch(`${celldUrl}/${cell}/posts`, {
+      async createPost(route: string, post: {slug: string; title: string}) {
+        const response = await fetch(`${celldUrl}${route}/posts`, {
           method: 'POST',
           headers: {'content-type': 'application/json'},
           body: JSON.stringify(post),
@@ -59,8 +70,8 @@ async function createCelldFixture() {
         expect(response).toMatchObject({ok: true, status: 200});
         return response.json();
       },
-      async listPosts(cell: string) {
-        const response = await fetch(`${celldUrl}/${cell}/posts`);
+      async listPosts(route: string) {
+        const response = await fetch(`${celldUrl}${route}/posts`);
         expect(response).toMatchObject({ok: true, status: 200});
         return response.json();
       },
@@ -87,6 +98,7 @@ async function writeCelldProject(projectRoot: string) {
           compatibility_date: '2026-08-05',
           durable_objects: {bindings: [{name: 'POSTS', class_name: 'Posts'}]},
           migrations: [{tag: 'v1', new_sqlite_classes: ['Posts']}],
+          d1_databases: [{binding: 'DB', database_name: 'sqlfu-posts', database_id: 'sqlfu-posts'}],
         },
         null,
         2,
@@ -95,7 +107,7 @@ async function writeCelldProject(projectRoot: string) {
     fs.writeFile(
       path.join(projectRoot, 'worker.js'),
       dedent`
-        import {createDurableObjectClient, defineConfig, sql} from './runtime/index.js';
+        import {createD1Client, createDurableObjectClient, defineConfig, sql} from './runtime/index.js';
 
         const posts = defineConfig({
           definitions: sql\`
@@ -143,9 +155,20 @@ async function writeCelldProject(projectRoot: string) {
         }
 
         export default {
-          fetch(request, env) {
-            const cell = new URL(request.url).pathname.split('/')[1] || 'default';
-            return env.POSTS.get(env.POSTS.idFromName(cell)).fetch(request);
+          async fetch(request, env) {
+            const [, binding, cell] = new URL(request.url).pathname.split('/');
+            if (binding === 'durable-object') {
+              return env.POSTS.get(env.POSTS.idFromName(cell)).fetch(request);
+            }
+            if (binding === 'd1') {
+              const db = posts(createD1Client(env.DB));
+              await db.migrate();
+              if (request.method === 'POST') {
+                return Response.json(await db.createPost(await request.json()));
+              }
+              return Response.json(await db.listPosts());
+            }
+            return new Response('not found', {status: 404});
           },
         };
       ` + '\n',
