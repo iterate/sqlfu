@@ -21,6 +21,9 @@ runtime, framework, service, or SDK?" For database-driver setup only, use
   hand-written SQL wrappers while Kysely remains your query builder.
 - [OpenTelemetry](./integrations/opentelemetry.md): the short path for sending
   generated query names to OTel spans.
+- [Standard Query (reylo)](./integrations/standard-query.md): run reylo `.sql`
+  imports through a sqlfu client, and sqlfu's generated wrappers through any
+  Standard Query driver.
 
 ## Adjacent integration surfaces
 

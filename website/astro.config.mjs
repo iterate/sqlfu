@@ -97,6 +97,7 @@ export default defineConfig({
             {label: 'Cloudflare / Alchemy', slug: 'docs/integrations/cloudflare-alchemy'},
             {label: 'Kysely', slug: 'docs/integrations/kysely'},
             {label: 'OpenTelemetry', slug: 'docs/integrations/opentelemetry'},
+            {label: 'Standard Query (reylo)', slug: 'docs/integrations/standard-query'},
             {label: 'Effect SQL runtime (experimental)', slug: 'docs/effect-sql'},
           ],
         },
