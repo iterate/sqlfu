@@ -1,7 +1,7 @@
 ---
-status: implemented
+status: done
 size: medium
-base: inline-config-docs (stacked on #148)
+base: inline-config-docs (stacked on #148; merged into it as #150)
 ---
 
 # Inline configs: support migrate/check (and friends) plus optional `db`

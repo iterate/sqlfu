@@ -1,5 +1,5 @@
 ---
-status: implemented
+status: done
 size: medium
 ---
 
@@ -27,6 +27,7 @@ Make sqlfu's instructions, guides, getting started material, tutorials, and star
 - [x] Add inline query result mapping with `sql.one\`...\`.map(...)` / `sql.many\`...\`.map(...)`. _the `sql` tag now returns mappable query objects, inline config applies row mappers at runtime, and inline source rewriting preserves `.map(...)` after generated type metadata is inserted_
 - [x] Run focused tests and docs/build checks that cover the changed surfaces. _ran init/UI-init focused Vitest tests, sqlfu and UI typechecks, root README sync, and website docs/LLMs sync_
 - [x] Open a draft PR and keep it updated with the net behavior change for reviewers. _opened draft PR #148 and updated the body after implementation_
+- [x] Bring the agent-facing surfaces in line. _`skills/using-sqlfu/SKILL.md`, the llms.txt agent notes (`website/scripts/sync-llms.mjs`), the Getting Started blurb, and CLI `--help` strings no longer assume `definitions.sql`/`sql/` exist; also covers the remaining #112 asks (published package over local checkout, runtime-specific adapter)_
 
 ## Implementation Notes
 
@@ -41,3 +42,4 @@ Make sqlfu's instructions, guides, getting started material, tutorials, and star
   - `pnpm sync:root-readme`
   - `pnpm --filter sqlfu-website exec node scripts/sync-docs.mjs && pnpm --filter sqlfu-website exec node scripts/sync-llms.mjs`
 - Full `pnpm --filter sqlfu test -- init.test.ts` was not a focused run; the package script fanned out to the full node suite and hit pre-existing/broader failures in watch timeout and UI asset resolution tests. The branch-specific UI init failure from that run was fixed and verified with the targeted test above.
+- 2026-10-29 pre-merge pass: branch already contained main through #153; inline command parity (#150) was merged into this branch, so this PR carries it. Smoke-tested `init -> draft -> generate -> pending -> migrate -> applied -> check` against a scratch project with the source CLI.
