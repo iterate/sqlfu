@@ -14,6 +14,7 @@ import type {
   SqlQuery,
 } from '../types.js';
 import {bindAsyncSql} from '../sql.js';
+import {executeStandardQuery} from '../standard-query.js';
 import {rawSqlWithSqlSplittingAsync, sqlReturnsRows, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
 import type {QueryCatalog} from '../typegen/query-catalog.js';
 import {analyzeAdHocSqlForConfig, generateQueryTypesForConfig} from '../typegen/index.js';
@@ -232,6 +233,12 @@ export function createAsyncNodeSqliteClient(database: NodeSqliteDatabase): Async
     async all<TRow extends ResultRow = ResultRow>(query: SqlQuery): Promise<TRow[]> {
       return database.prepare(query.sql).all(...(query.args as never[])) as TRow[];
     },
+    async values<TRow extends unknown[] = unknown[]>(query: SqlQuery): Promise<TRow[]> {
+      const statement = database.prepare(query.sql);
+      statement.setReturnArrays(true);
+      return statement.all(...(query.args as never[])) as unknown[] as TRow[];
+    },
+    execute: (query, ...args) => executeStandardQuery(client, query, args[0]),
     async run(query: SqlQuery) {
       const result = database.prepare(query.sql).run(...(query.args as never[]));
       return {

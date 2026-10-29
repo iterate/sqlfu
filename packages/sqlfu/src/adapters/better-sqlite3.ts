@@ -1,5 +1,6 @@
 import {wrapSyncClientErrors} from '../adapter-errors.js';
 import {bindSyncSql} from '../sql.js';
+import {executeStandardQuery} from '../standard-query.js';
 import {rawSqlWithSqlSplittingSync, surroundWithBeginCommitRollbackSync} from '../sqlite-text.js';
 import type {PreparedStatementParams, ResultRow, SqlQuery, SyncClient, SyncPreparedStatement} from '../types.js';
 
@@ -11,6 +12,8 @@ export interface BetterSqlite3StatementLike<TRow extends ResultRow = ResultRow> 
     changes?: number;
     lastInsertRowid?: string | number | bigint | null;
   };
+  /** Rows come back as arrays of values instead of objects. Throws for a statement that returns no data. */
+  raw(toggle: boolean): {all(...params: unknown[]): unknown[]};
   /** Optional. Native better-sqlite3 statements expose `finalize`; structural mocks may not. */
   finalize?(): void;
 }
@@ -29,6 +32,17 @@ export function createBetterSqlite3Client(database: BetterSqlite3DatabaseLike): 
     all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       return database.prepare<TRow>(query.sql).all(...query.args);
     },
+    values<TRow extends unknown[] = unknown[]>(query: SqlQuery) {
+      const statement = database.prepare(query.sql);
+      // `raw` refuses a statement that returns no data, which still has to run (a Standard Query
+      // for an insert decodes no rows).
+      if (!statement.reader) {
+        statement.run(...query.args);
+        return [];
+      }
+      return statement.raw(true).all(...query.args) as TRow[];
+    },
+    execute: (query, ...args) => executeStandardQuery(client, query, args[0]),
     run(query: SqlQuery) {
       const result = database.prepare(query.sql).run(...query.args);
       return {

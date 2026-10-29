@@ -71,6 +71,19 @@ test('createD1Client works in a generated local worker fixture', async () => {
   ]);
 });
 
+test('createD1Client.values reads rows as arrays, with BLOBs as Uint8Arrays', async () => {
+  await using fixture = await createD1Fixture({
+    async fetch(_request: Request, env: {DB: unknown}) {
+      const db = createD1Client(env.DB as Parameters<typeof createD1Client>[0]);
+      const [[id, name, data]] = await db.values(sql`select 1 as id, 'bob' as id, x'00ff' as data`);
+      return Response.json({id, name, dataIsUint8Array: data instanceof Uint8Array, bytes: [...(data as Uint8Array)]});
+    },
+  });
+
+  const res = await fixture.fetch('http://fixture/values');
+  expect(await res.json()).toEqual({id: 1, name: 'bob', dataIsUint8Array: true, bytes: [0, 255]});
+});
+
 test('createD1Client runs multiple statements in one query', async () => {
   await using fixture = await createD1Fixture({
     async fetch(request: Request, env: {DB: unknown}) {

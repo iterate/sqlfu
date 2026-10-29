@@ -33,6 +33,24 @@ test('createSqliteWasmClient works in a real browser', {timeout: 60_000}, async 
   expect(await fixture.stub.testme()).toMatchObject([{value: 1}]);
 });
 
+test('createSqliteWasmClient.values reads rows as arrays in a real browser', {timeout: 60_000}, async () => {
+  await using fixture = await createSqliteWasmWebFixture(
+    class ClientValuesTest {
+      client: ReturnType<typeof createSqliteWasmClient>;
+
+      constructor(db: any) {
+        this.client = createSqliteWasmClient(db);
+      }
+
+      async testme() {
+        return this.client.values(sql`select 1 as id, 'bob' as id`);
+      }
+    },
+  );
+
+  expect(await fixture.stub.testme()).toEqual([[1, 'bob']]);
+});
+
 test('createSqliteWasmClient can write and read rows in a real browser', {timeout: 60_000}, async () => {
   await using fixture = await createSqliteWasmWebFixture(
     class ClientPersonTest {

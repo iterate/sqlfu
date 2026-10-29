@@ -1,5 +1,6 @@
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
+import {executeStandardQuery} from '../standard-query.js';
 import {bindSqlParamsToPositional} from '../sql-params.js';
 import {rawSqlWithSqlSplittingAsync} from '../sqlite-text.js';
 import type {AsyncClient, PreparedStatement, ResultRow, SqlQuery} from '../types.js';
@@ -8,6 +9,8 @@ export interface D1PreparedStatement {
   bind(...values: unknown[]): D1PreparedStatement;
   all<T = ResultRow>(): Promise<{results: T[]}>;
   first<T = ResultRow>(columnName?: string): Promise<T | null>;
+  /** Rows as arrays of values instead of objects. */
+  raw<T = unknown[]>(): Promise<T[]>;
   run(): Promise<{
     success: boolean;
     meta?: {
@@ -28,6 +31,17 @@ export function createD1Client(database: D1DatabaseLike): AsyncClient<D1Database
       .bind(...sqlQuery.args)
       .all<TRow>();
     return result.results;
+  };
+  const values: AsyncClient<D1DatabaseLike>['values'] = async <TRow extends unknown[] = unknown[]>(
+    sqlQuery: SqlQuery,
+  ) => {
+    const rows = await database
+      .prepare(sqlQuery.sql)
+      .bind(...sqlQuery.args)
+      .raw<unknown[]>();
+    // D1 reads a BLOB as an array of bytes (an ArrayBuffer in some runtimes); its raw form (a
+    // Standard Query's) is a Uint8Array. SQLite has no other value an array could be.
+    return rows.map((row) => row.map((value) => (isBlob(value) ? new Uint8Array(value) : value))) as TRow[];
   };
   const run: AsyncClient<D1DatabaseLike>['run'] = async (sqlQuery: SqlQuery) => {
     const statement = database.prepare(sqlQuery.sql).bind(...sqlQuery.args);
@@ -111,9 +125,11 @@ export function createD1Client(database: D1DatabaseLike): AsyncClient<D1Database
     system: 'sqlite',
     sync: false,
     all,
+    values,
     run,
     raw,
     iterate,
+    execute: (query, ...args) => executeStandardQuery(d1Client, query, args[0]),
     prepare,
     async transaction<TResult>(fn: (tx: AsyncClient<D1DatabaseLike>) => Promise<TResult> | TResult) {
       // D1 (like Durable Objects' built-in SQL) rejects `begin transaction` /
@@ -134,3 +150,7 @@ export function createD1Client(database: D1DatabaseLike): AsyncClient<D1Database
 }
 
 export const createD1Database = createD1Client;
+
+function isBlob(value: unknown): value is number[] | ArrayBuffer {
+  return Array.isArray(value) || value instanceof ArrayBuffer;
+}

@@ -1,5 +1,6 @@
 import {wrapSyncClientErrors} from '../adapter-errors.js';
 import {bindSyncSql} from '../sql.js';
+import {executeStandardQuery} from '../standard-query.js';
 import {rawSqlWithSqlSplittingSync, surroundWithBeginCommitRollbackSync} from '../sqlite-text.js';
 import type {PreparedStatementParams, ResultRow, SqlQuery, SyncClient, SyncPreparedStatement} from '../types.js';
 
@@ -10,6 +11,8 @@ export interface NodeSqliteStatementLike<TRow extends ResultRow = ResultRow> {
     changes?: number | bigint;
     lastInsertRowid?: string | number | bigint | null;
   };
+  /** Rows come back as arrays of values instead of objects (node:sqlite 22.16 / 24+). */
+  setReturnArrays(enabled: boolean): void;
   /** Optional. Native node:sqlite `StatementSync` exposes `finalize`; structural mocks may not. */
   finalize?(): void;
 }
@@ -26,6 +29,12 @@ export function createNodeSqliteClient(database: NodeSqliteDatabaseLike): SyncCl
     all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       return materializeRows(database.prepare(query.sql).all(...query.args)) as TRow[];
     },
+    values<TRow extends unknown[] = unknown[]>(query: SqlQuery) {
+      const statement = database.prepare(query.sql);
+      statement.setReturnArrays(true);
+      return statement.all(...query.args) as unknown[] as TRow[];
+    },
+    execute: (query, ...args) => executeStandardQuery(client, query, args[0]),
     run(query: SqlQuery) {
       const result = database.prepare(query.sql).run(...query.args);
       return {

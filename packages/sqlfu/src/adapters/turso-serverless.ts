@@ -1,10 +1,8 @@
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
+import {executeStandardQuery} from '../standard-query.js';
 import {bindSqlParamsToPositional} from '../sql-params.js';
-import {
-  rawSqlWithSqlSplittingAsync,
-  surroundWithBeginCommitRollbackAsync,
-} from '../sqlite-text.js';
+import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
 import type {AsyncClient, PreparedStatement, ResultRow, SqlQuery} from '../types.js';
 
 // @tursodatabase/serverless returns rows as arrays with column names attached as non-enumerable
@@ -29,6 +27,10 @@ export function createTursoServerlessClient<TConnection extends TursoServerlessC
   const all: AsyncClient<TConnection>['all'] = async <TRow extends ResultRow = ResultRow>(query: SqlQuery) => {
     const result = await connection.execute(query.sql, [...query.args]);
     return result.rows.map((row) => materializeRow<TRow>(row, result.columns));
+  };
+  const values: AsyncClient<TConnection>['values'] = async <TRow extends unknown[] = unknown[]>(query: SqlQuery) => {
+    const result = await connection.execute(query.sql, [...query.args]);
+    return result.rows.map((row) => Array.from(row as ArrayLike<unknown>)) as TRow[];
   };
   const run: AsyncClient<TConnection>['run'] = async (query: SqlQuery) => {
     const result = await connection.execute(query.sql, [...query.args]);
@@ -87,9 +89,11 @@ export function createTursoServerlessClient<TConnection extends TursoServerlessC
     system: 'sqlite',
     sync: false,
     all,
+    values,
     run,
     raw,
     iterate,
+    execute: (query, ...args) => executeStandardQuery(client, query, args[0]),
     prepare,
     transaction<TResult>(fn: (tx: AsyncClient<TConnection>) => Promise<TResult> | TResult) {
       return surroundWithBeginCommitRollbackAsync(client, fn);

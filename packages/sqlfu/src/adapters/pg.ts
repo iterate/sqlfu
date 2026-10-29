@@ -8,6 +8,7 @@
 // sqlite adapters.
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
+import {executeStandardQuery} from '../standard-query.js';
 import {bindSqlParamsToPositional} from '../sql-params.js';
 import {surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
 import type {AsyncClient, PreparedStatement, PreparedStatementParams, ResultRow, SqlQuery} from '../types.js';
@@ -28,6 +29,7 @@ export interface NodePostgresLike {
     text: string,
     values?: unknown[],
   ): Promise<NodePostgresQueryResult<TRow>>;
+  query(config: NodePostgresArrayQueryConfig): Promise<{rows: unknown[][]}>;
   /**
    * Acquire a session-bound queryable. Used for transactions: begin/commit
    * are sent on the same connection. Implementations must return a queryable
@@ -44,11 +46,23 @@ export interface NodePostgresQueryResult<TRow extends Record<string, unknown> = 
   oid?: number;
 }
 
+/**
+ * node-postgres's array-mode query config, as `values` sends it: rows as arrays, and a type
+ * parser for every column that keeps the text the server sent.
+ */
+export interface NodePostgresArrayQueryConfig {
+  text: string;
+  values: unknown[];
+  rowMode: 'array';
+  types: {getTypeParser: () => (value: string) => unknown};
+}
+
 export interface NodePostgresPoolClientLike {
   query<TRow extends Record<string, unknown> = Record<string, unknown>>(
     text: string,
     values?: unknown[],
   ): Promise<NodePostgresQueryResult<TRow>>;
+  query(config: NodePostgresArrayQueryConfig): Promise<{rows: unknown[][]}>;
   release(err?: unknown): void;
 }
 
@@ -66,6 +80,19 @@ export function createNodePostgresClient(pool: NodePostgresLike): AsyncClient<No
     const {sql, args} = rewriteForPg(sqlQuery.sql, sqlQuery.args);
     const result = await pool.query<Record<string, unknown>>(sql, args);
     return result.rows as unknown as TRow[];
+  };
+  const values: AsyncClient<NodePostgresLike>['values'] = async <TRow extends unknown[] = unknown[]>(
+    sqlQuery: SqlQuery,
+  ) => {
+    const {sql, args} = rewriteForPg(sqlQuery.sql, sqlQuery.args);
+    const result = await pool.query({
+      text: sql,
+      values: args,
+      rowMode: 'array',
+      // Each value as the text the server sent: a Standard Query's raw form on Postgres.
+      types: {getTypeParser: () => (value: string) => value},
+    });
+    return result.rows as TRow[];
   };
   const run: AsyncClient<NodePostgresLike>['run'] = async (sqlQuery: SqlQuery) => {
     const {sql, args} = rewriteForPg(sqlQuery.sql, sqlQuery.args);
@@ -131,9 +158,11 @@ export function createNodePostgresClient(pool: NodePostgresLike): AsyncClient<No
     system: 'postgresql',
     sync: false,
     all,
+    values,
     run,
     raw,
     iterate,
+    execute: (query, ...args) => executeStandardQuery(pgClient, query, args[0]),
     prepare,
     async transaction<TResult>(fn: (tx: AsyncClient<NodePostgresLike>) => Promise<TResult> | TResult) {
       // Reuse the begin/commit/rollback wrapper that sqlite uses. Postgres
@@ -162,8 +191,10 @@ export function createNodePostgresClient(pool: NodePostgresLike): AsyncClient<No
           // statement's first comma as if it ended a previous parameterized
           // call). Forwarding only the args the caller passed keeps simple-
           // query-protocol calls on the simple path.
-          query: (text, values) =>
-            values === undefined ? session.query(text) : session.query(text, values),
+          query: ((textOrConfig: string | NodePostgresArrayQueryConfig, values?: unknown[]) => {
+            if (typeof textOrConfig !== 'string') return session.query(textOrConfig);
+            return values === undefined ? session.query(textOrConfig) : session.query(textOrConfig, values);
+          }) as NodePostgresLike['query'],
         };
         const sessionClient = createNodePostgresClient(sessionPool);
         return await surroundWithBeginCommitRollbackAsync(sessionClient, fn);
@@ -185,9 +216,6 @@ export const createNodePostgresDatabase = createNodePostgresClient;
  * shape. The shared binder owns SQL scanning, including dollar-quoted strings,
  * so named params and positional placeholders are rewritten in one pass.
  */
-function rewriteForPg(
-  sql: string,
-  params: PreparedStatementParams | null | undefined,
-): {sql: string; args: unknown[]} {
+function rewriteForPg(sql: string, params: PreparedStatementParams | null | undefined): {sql: string; args: unknown[]} {
   return bindSqlParamsToPositional(sql, params, 'postgres');
 }

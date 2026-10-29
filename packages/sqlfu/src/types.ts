@@ -1,6 +1,7 @@
 // Type-only import; erased at runtime so no module cycle even though
 // `dialect.ts` depends on `types.ts` for `AsyncClient` etc.
 import type {Dialect} from './dialect.js';
+import type {StandardQueryV1, StandardTypedV1} from './vendor/standard-query.js';
 
 export type QueryArg = null | string | number | bigint | Uint8Array | boolean;
 
@@ -93,9 +94,24 @@ export interface SyncClient<TDriver = unknown> {
   /** `true` for a `SyncClient`; lets callers route sync/async logic without probing. */
   sync: true;
   all<TRow extends ResultRow = ResultRow>(query: SqlQuery): TRow[];
+  /**
+   * Like `all`, but every row is an array of the driver's raw values in the order the statement
+   * selects them, so duplicate column names (`select a.id, b.id`) survive. On Postgres each value
+   * is its text form (type parsers off). This is what a Standard Query's `decode` takes.
+   */
+  values<TRow extends unknown[] = unknown[]>(query: SqlQuery): TRow[];
   run(query: SqlQuery): RunResult;
   raw(sql: string): RunResult;
   iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery): Iterable<TRow>;
+  /**
+   * Run a [Standard Query](https://github.com/colinhacks/reylo/blob/main/src/standard-query.ts), e.g. a
+   * reylo `.sql` import or a sqlfu generated wrapper: bind `encode(input)`, read the rows with `values`,
+   * and return `decode(rows)`. Throws for a query written for another database.
+   */
+  execute<TQuery extends StandardQueryV1>(
+    query: TQuery,
+    ...args: StandardQueryV1.InferArgs<TQuery>
+  ): StandardTypedV1.InferOutput<TQuery>;
   /**
    * Prepare a SQL string once and reuse the resulting handle for many
    * `.all` / `.run` / `.iterate` calls. The handle wraps the driver's native
@@ -116,9 +132,16 @@ export interface AsyncClient<TDriver = unknown> {
   /** `false` for an `AsyncClient`; lets callers route sync/async logic without probing. */
   sync: false;
   all<TRow extends ResultRow = ResultRow>(query: SqlQuery): Promise<TRow[]>;
+  /** See {@link SyncClient.values}. */
+  values<TRow extends unknown[] = unknown[]>(query: SqlQuery): Promise<TRow[]>;
   run(query: SqlQuery): Promise<RunResult>;
   raw(sql: string): Promise<RunResult>;
   iterate<TRow extends ResultRow = ResultRow>(query: SqlQuery): AsyncIterable<TRow>;
+  /** See {@link SyncClient.execute}. */
+  execute<TQuery extends StandardQueryV1>(
+    query: TQuery,
+    ...args: StandardQueryV1.InferArgs<TQuery>
+  ): Promise<StandardTypedV1.InferOutput<TQuery>>;
   /** See {@link SyncClient.prepare}. Async variant; handle uses `Symbol.asyncDispose`. */
   prepare<TRow extends ResultRow = ResultRow>(sql: string): PreparedStatement<TRow>;
   transaction<TResult>(fn: (tx: AsyncClient<TDriver>) => Promise<TResult> | TResult): Promise<TResult>;

@@ -2,7 +2,7 @@ import BetterSqlite3 from 'better-sqlite3';
 import {expect, test} from 'vitest';
 
 import {createBetterSqlite3Client} from '../../src/index.js';
-import {applySyncPrepareSuite} from './prepare-suite.js';
+import {applySyncPrepareSuite, applySyncValuesSuite} from './prepare-suite.js';
 
 test('createBetterSqlite3Client works with a real better-sqlite3 database', async () => {
   using fixture = createBetterSqlite3Fixture(new BetterSqlite3(':memory:'));
@@ -80,6 +80,11 @@ function createBetterSqlite3Fixture(db: InstanceType<typeof BetterSqlite3>) {
 }
 
 applySyncPrepareSuite({
+  label: 'better-sqlite3',
+  openClient: () => createBetterSqlite3Fixture(new BetterSqlite3(':memory:')),
+});
+
+applySyncValuesSuite({
   label: 'better-sqlite3',
   openClient: () => createBetterSqlite3Fixture(new BetterSqlite3(':memory:')),
 });
