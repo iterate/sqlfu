@@ -108,7 +108,7 @@ export const router = {
 
   generate: base
     .meta({
-      description: `Generate TypeScript functions for all queries in the sql/ directory.`,
+      description: `Generate TypeScript types for inline queries or the configured query files.`,
     })
     .input(
       z
@@ -116,7 +116,7 @@ export const router = {
           watch: z
             .boolean()
             .describe(
-              `Run generate once, then re-run whenever a query, definitions.sql, or migration file changes. Exits on SIGINT.`,
+              `Run generate once, then re-run whenever a query, the definitions, or a migration changes. Exits on SIGINT.`,
             ),
         })
         .partial()
@@ -186,8 +186,8 @@ export const router = {
   sync: base
     .meta({
       description:
-        `Update the current database to match definitions.sql. Note: this should only be used for local development. For production databases, use 'sqlfu migrate' instead. ` +
-        `This command fails if semantic changes are required. You can run 'sqlfu draft' to create a migration file with the necessary changes.`,
+        `Update the current database to match the definitions. Note: this should only be used for local development. For production databases, use 'sqlfu migrate' instead. ` +
+        `This command fails if semantic changes are required. You can run 'sqlfu draft' to create a migration with the necessary changes.`,
     })
     .handler(async ({context}) => {
       await applySyncSql(await loadContextConfig(context), context.confirm);
@@ -195,7 +195,7 @@ export const router = {
 
   draft: base
     .meta({
-      description: `Create a migration file from the diff between replayed migrations and definitions.sql.`,
+      description: `Create a migration from the diff between replayed migrations and the definitions.`,
     })
     .input(
       z
@@ -355,7 +355,7 @@ export const router = {
         materializeMigrationsSchemaForContext(sqlfuContext, migrations),
       ]);
       if ((await compareSchemasForContext(sqlfuContext, definitionsSchema, migrationsSchema)).isDifferent) {
-        throw new Error('replayed migrations do not match definitions.sql');
+        throw new Error('replayed migrations do not match definitions');
       }
     }),
   },

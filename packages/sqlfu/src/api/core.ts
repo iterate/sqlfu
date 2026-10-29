@@ -175,7 +175,7 @@ export function createSqlfuApi(input: CreateSqlfuApiInput): SqlfuApi {
         materializeMigrationsSchemaForContext(sqlfuContext, migrations),
       ]);
       if ((await compareSchemasForContext(sqlfuContext, definitionsSchema, migrationsSchema)).isDifferent) {
-        throw new Error('replayed migrations do not match definitions.sql');
+        throw new Error('replayed migrations do not match definitions');
       }
     },
   };
