@@ -58,6 +58,31 @@ test('createD1HttpClient.run() exposes rowsAffected + lastInsertRowid', async ()
   expect(result).toMatchObject({rowsAffected: 3, lastInsertRowid: 17});
 });
 
+test('createD1HttpClient.values() reads rows as arrays from the raw endpoint', async () => {
+  await using cf = await fakeCloudflareApi({
+    onQuery: () => ({results: {columns: ['id', 'id'], rows: [[42, 'hello']]}, meta: {}, success: true}),
+  });
+
+  const client = createD1HttpClient({
+    accountId: 'acct-123',
+    apiToken: 'tok-secret',
+    databaseId: 'db-uuid-456',
+    apiBase: cf.url,
+    fetch: cf.fetch,
+  });
+
+  expect(await client.values({sql: 'select id, name as id from message where id = ?', args: [42]})).toEqual([
+    [42, 'hello'],
+  ]);
+  expect(cf.requests).toMatchObject([
+    {
+      method: 'POST',
+      path: '/accounts/acct-123/d1/database/db-uuid-456/raw',
+      body: {sql: 'select id, name as id from message where id = ?', params: [42]},
+    },
+  ]);
+});
+
 test('createD1HttpClient surfaces Cloudflare API errors actionably', async () => {
   await using cf = await fakeCloudflareApi({
     onQuery: () => ({
@@ -83,7 +108,7 @@ interface QueryRequest {
 }
 
 type QueryResponse =
-  | {results: unknown[]; meta: {changes?: number; last_row_id?: number}; success: boolean}
+  | {results: unknown; meta: {changes?: number; last_row_id?: number}; success: boolean}
   | {status: number; body: unknown};
 
 async function fakeCloudflareApi(handlers: {onQuery: (req: QueryRequest) => QueryResponse}) {
@@ -101,7 +126,7 @@ async function fakeCloudflareApi(handlers: {onQuery: (req: QueryRequest) => Quer
         body,
       });
 
-      if (req.url?.endsWith('/query')) {
+      if (req.url?.endsWith('/query') || req.url?.endsWith('/raw')) {
         const result = handlers.onQuery(body as QueryRequest);
         if ('status' in result) {
           res.writeHead(result.status, {'content-type': 'application/json'});

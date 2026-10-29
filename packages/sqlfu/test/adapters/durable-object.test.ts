@@ -77,6 +77,25 @@ test('createDurableObjectClient can write and read rows in a durable object', as
   ]);
 });
 
+test('createDurableObjectClient.values reads rows as arrays, with BLOBs as Uint8Arrays', async () => {
+  await using fixture = await createDOFixture(
+    class ClientValuesTest {
+      client: ReturnType<typeof createDurableObjectClient>;
+
+      constructor(state: any) {
+        this.client = createDurableObjectClient(state.storage);
+      }
+
+      async testme() {
+        const [[id, name, data]] = this.client.values(sql`select 1 as id, 'bob' as id, x'00ff' as data`);
+        return {id, name, dataIsUint8Array: data instanceof Uint8Array, bytes: [...(data as Uint8Array)]};
+      }
+    },
+  );
+
+  expect(await fixture.stub.testme()).toEqual({id: 1, name: 'bob', dataIsUint8Array: true, bytes: [0, 255]});
+});
+
 test('generated migrate can run inside a durable object constructor', async () => {
   await using fixture = await createDOFixture(
     class GeneratedMigrationsTest {

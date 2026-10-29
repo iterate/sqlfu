@@ -3,7 +3,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {expect, test} from 'vitest';
 
 import {createNodeSqliteClient} from '../../src/index.js';
-import {applySyncPrepareSuite} from './prepare-suite.js';
+import {applySyncPrepareSuite, applySyncValuesSuite} from './prepare-suite.js';
 
 test('createNodeSqliteClient works with a real node:sqlite database', async () => {
   using fixture = createNodeSqliteFixture(new DatabaseSync(':memory:'));
@@ -105,6 +105,11 @@ function createNodeSqliteFixture(db: DatabaseSync) {
 }
 
 applySyncPrepareSuite({
+  label: 'node-sqlite',
+  openClient: () => createNodeSqliteFixture(new DatabaseSync(':memory:')),
+});
+
+applySyncValuesSuite({
   label: 'node-sqlite',
   openClient: () => createNodeSqliteFixture(new DatabaseSync(':memory:')),
 });

@@ -1,5 +1,6 @@
 import {wrapSyncClientErrors} from '../adapter-errors.js';
 import {bindSyncSql} from '../sql.js';
+import {executeStandardQuery} from '../standard-query.js';
 import {prepareSqlParamsBinding, type PreparedSqlParamsBinding} from '../sql-params.js';
 import {rawSqlWithSqlSplittingSync} from '../sqlite-text.js';
 import type {ResultRow, SqlQuery, SyncClient, SyncPreparedStatement} from '../types.js';
@@ -16,6 +17,8 @@ export interface DurableObjectSqlStorageLike {
     ...bindings: any[]
   ): {
     toArray(): unknown[];
+    /** Rows as arrays of values instead of objects. */
+    raw(): Iterable<unknown[]>;
     rowsWritten?: number;
   };
 }
@@ -57,6 +60,14 @@ export function createDurableObjectClient<TStorage extends DurableObjectClientIn
     all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       return sqlStorage.exec(query.sql, ...query.args).toArray() as TRow[];
     },
+    values<TRow extends unknown[] = unknown[]>(query: SqlQuery) {
+      const rows = [...sqlStorage.exec(query.sql, ...query.args).raw()];
+      // DO storage reads a BLOB as an ArrayBuffer; its raw form (a Standard Query's) is a Uint8Array.
+      return rows.map((row) =>
+        row.map((value) => (value instanceof ArrayBuffer ? new Uint8Array(value) : value)),
+      ) as TRow[];
+    },
+    execute: (query, ...args) => executeStandardQuery(client, query, args[0]),
     run(query: SqlQuery) {
       const cursor = sqlStorage.exec(query.sql, ...query.args);
       return {

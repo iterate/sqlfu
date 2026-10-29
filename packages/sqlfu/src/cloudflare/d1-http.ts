@@ -11,24 +11,35 @@ export interface CreateD1HttpClientOptions {
   apiBase?: string;
 }
 
-interface CloudflareQueryEnvelope<TRow = unknown> {
+interface CloudflareStatementResult<TResults> {
+  success: boolean;
+  results: TResults;
+  meta?: {changes?: number; last_row_id?: number};
+}
+
+interface CloudflareQueryEnvelope<TResults> {
   success: boolean;
   errors?: Array<{code?: number; message: string}>;
   messages?: unknown[];
-  result?: Array<{
-    success: boolean;
-    results: TRow[];
-    meta?: {changes?: number; last_row_id?: number};
-  }>;
+  result?: Array<CloudflareStatementResult<TResults>>;
+}
+
+/**
+ * The two D1 HTTP endpoints a statement uses: `/query` reads rows as objects, `/raw` as arrays of
+ * values (with the column names alongside).
+ */
+interface D1HttpEndpoints {
+  query(sql: string, params: unknown[]): Promise<CloudflareStatementResult<unknown[]>>;
+  raw(sql: string, params: unknown[]): Promise<CloudflareStatementResult<{columns: string[]; rows: unknown[][]}>>;
 }
 
 export function createD1HttpClient(options: CreateD1HttpClientOptions): AsyncClient<D1DatabaseLike> {
   const fetchFn = options.fetch || globalThis.fetch;
   const apiBase = options.apiBase || DEFAULT_CLOUDFLARE_API_BASE;
-  const queryUrl = `${apiBase}/accounts/${options.accountId}/d1/database/${options.databaseId}/query`;
+  const databaseUrl = `${apiBase}/accounts/${options.accountId}/d1/database/${options.databaseId}`;
 
-  const callQuery = async (sql: string, params: unknown[]) => {
-    const response = await fetchFn(queryUrl, {
+  const call = async <TResults>(endpoint: 'query' | 'raw', sql: string, params: unknown[]) => {
+    const response = await fetchFn(`${databaseUrl}/${endpoint}`, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${options.apiToken}`,
@@ -37,11 +48,11 @@ export function createD1HttpClient(options: CreateD1HttpClientOptions): AsyncCli
       body: JSON.stringify({sql, params}),
     });
 
-    let envelope: CloudflareQueryEnvelope | undefined;
+    let envelope: CloudflareQueryEnvelope<TResults> | undefined;
     const responseText = await response.text();
     if (responseText) {
       try {
-        envelope = JSON.parse(responseText) as CloudflareQueryEnvelope;
+        envelope = JSON.parse(responseText) as CloudflareQueryEnvelope<TResults>;
       } catch {
         // fall through to status-based error
       }
@@ -64,43 +75,40 @@ export function createD1HttpClient(options: CreateD1HttpClientOptions): AsyncCli
     return statementResult;
   };
 
+  const endpoints: D1HttpEndpoints = {
+    query: (sql, params) => call('query', sql, params),
+    raw: (sql, params) => call('raw', sql, params),
+  };
   const d1Like: D1DatabaseLike = {
     prepare(sql: string): D1PreparedStatement {
-      return makeStatement(sql, [], callQuery);
+      return makeStatement(sql, [], endpoints);
     },
   };
   return createD1Client(d1Like);
 }
 
-function makeStatement(
-  sql: string,
-  params: unknown[],
-  callQuery: (
-    sql: string,
-    params: unknown[],
-  ) => Promise<{
-    results: unknown[];
-    meta?: {changes?: number; last_row_id?: number};
-    success: boolean;
-  }>,
-): D1PreparedStatement {
+function makeStatement(sql: string, params: unknown[], endpoints: D1HttpEndpoints): D1PreparedStatement {
   return {
     bind(...values: unknown[]): D1PreparedStatement {
-      return makeStatement(sql, values, callQuery);
+      return makeStatement(sql, values, endpoints);
     },
     async all<TRow>() {
-      const result = await callQuery(sql, params);
+      const result = await endpoints.query(sql, params);
       return {results: result.results as TRow[]};
     },
+    async raw<TRow>() {
+      const result = await endpoints.raw(sql, params);
+      return result.results.rows as TRow[];
+    },
     async first<TRow>(columnName?: string): Promise<TRow | null> {
-      const result = await callQuery(sql, params);
+      const result = await endpoints.query(sql, params);
       const row = result.results[0] as Record<string, unknown> | undefined;
       if (!row) return null;
       if (columnName !== undefined) return row[columnName] as TRow;
       return row as TRow;
     },
     async run() {
-      const result = await callQuery(sql, params);
+      const result = await endpoints.query(sql, params);
       return {
         success: result.success,
         meta: {

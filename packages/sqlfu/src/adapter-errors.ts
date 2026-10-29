@@ -1,5 +1,6 @@
 import {mapSqliteDriverError} from './errors.js';
 import {bindAsyncSql, bindSyncSql} from './sql.js';
+import {executeStandardQuery} from './standard-query.js';
 import type {AsyncClient, PreparedStatement, ResultRow, SqlQuery, SyncClient, SyncPreparedStatement} from './types.js';
 
 /**
@@ -27,6 +28,14 @@ export function wrapSyncClientErrors<TDriver>(client: SyncClient<TDriver>): Sync
         throw mapQuery(error, query);
       }
     },
+    values(query) {
+      try {
+        return client.values(query);
+      } catch (error) {
+        throw mapQuery(error, query);
+      }
+    },
+    execute: (query, ...args) => executeStandardQuery(wrapped, query, args[0]),
     run(query) {
       try {
         return client.run(query);
@@ -106,6 +115,14 @@ export function wrapAsyncClientErrors<TDriver>(client: AsyncClient<TDriver>): As
         throw mapQuery(error, query);
       }
     },
+    async values(query) {
+      try {
+        return await client.values(query);
+      } catch (error) {
+        throw mapQuery(error, query);
+      }
+    },
+    execute: (query, ...args) => executeStandardQuery(wrapped, query, args[0]),
     async run(query) {
       try {
         return await client.run(query);

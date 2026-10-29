@@ -1,8 +1,9 @@
 import {bindAsyncSql, bindSyncSql} from './sql.js';
+import {executeStandardQuery} from './standard-query.js';
 import type {AsyncClient, Client, SqlQuery, SyncClient} from './types.js';
 import {createOtelHook} from './otel.js';
 
-export type QueryOperation = 'all' | 'run';
+export type QueryOperation = 'all' | 'values' | 'run';
 
 export interface QueryExecutionContext {
   query: SqlQuery;
@@ -36,7 +37,8 @@ export type SyncQueryExecutionHookInput = SyncQueryExecutionHook | QueryExecutio
 export type AsyncQueryExecutionHookInput = AsyncQueryExecutionHook | QueryExecutionHook;
 
 /**
- * Wrap a Client so every `all`/`run` flows through `hook`. `raw`, `iterate`,
+ * Wrap a Client so every `all`/`values`/`run` flows through `hook` (and so
+ * every `execute`, which reads its rows with `values`). `raw`, `iterate`,
  * and `transaction` are passed through unchanged. Queries issued inside a
  * transaction still fire the hook because the tx client is re-instrumented.
  */
@@ -179,9 +181,12 @@ function instrumentAsync<TDriver>(client: AsyncClient<TDriver>, hook: AsyncQuery
     system: client.system,
     sync: false,
     all: (query) => hook(buildAsyncHookArgs({query, operation: 'all', system: client.system}, () => client.all(query))),
+    values: (query) =>
+      hook(buildAsyncHookArgs({query, operation: 'values', system: client.system}, () => client.values(query))),
     run: (query) => hook(buildAsyncHookArgs({query, operation: 'run', system: client.system}, () => client.run(query))),
     raw: (sql) => client.raw(sql),
     iterate: (query) => client.iterate(query),
+    execute: (query, ...args) => executeStandardQuery(wrapped, query, args[0]),
     // prepare bypasses the hook because the hook contract takes a `SqlQuery`
     // and a single execute thunk; a prepared handle has no bound `args` and
     // can be invoked many times. If we ran the hook here, every `.all/.run`
@@ -202,9 +207,12 @@ function instrumentSync<TDriver>(client: SyncClient<TDriver>, hook: SyncQueryExe
     system: client.system,
     sync: true,
     all: (query) => hook(buildSyncHookArgs({query, operation: 'all', system: client.system}, () => client.all(query))),
+    values: (query) =>
+      hook(buildSyncHookArgs({query, operation: 'values', system: client.system}, () => client.values(query))),
     run: (query) => hook(buildSyncHookArgs({query, operation: 'run', system: client.system}, () => client.run(query))),
     raw: (sql) => client.raw(sql),
     iterate: (query) => client.iterate(query),
+    execute: (query, ...args) => executeStandardQuery(wrapped, query, args[0]),
     prepare: (sql) => client.prepare(sql),
     transaction: (<TResult>(fn: (tx: SyncClient<TDriver>) => TResult) =>
       client.transaction((tx: SyncClient<TDriver>) =>

@@ -1,5 +1,6 @@
 import {wrapSyncClientErrors} from '../adapter-errors.js';
 import {bindSyncSql} from '../sql.js';
+import {executeStandardQuery} from '../standard-query.js';
 import {bindSqlParamsToPrefixedRecord} from '../sql-params.js';
 import {rawSqlWithSqlSplittingSync, surroundWithBeginCommitRollbackSync} from '../sqlite-text.js';
 import type {PreparedStatementParams, ResultRow, SqlQuery, SyncClient, SyncPreparedStatement} from '../types.js';
@@ -7,6 +8,8 @@ import type {PreparedStatementParams, ResultRow, SqlQuery, SyncClient, SyncPrepa
 export interface BunSqliteStatementLike<TRow extends ResultRow = ResultRow> {
   all(...params: unknown[]): TRow[];
   iterate(...params: unknown[]): IterableIterator<TRow>;
+  /** Rows as arrays of values instead of objects; `null` for a statement that returns no data. */
+  values(...params: unknown[]): unknown[][] | null;
   run?(...params: unknown[]): {
     changes?: number;
     lastInsertRowid?: string | number | bigint | null;
@@ -34,6 +37,10 @@ export function createBunClient(database: BunSqliteDatabaseLike): SyncClient<Bun
     all<TRow extends ResultRow = ResultRow>(query: SqlQuery) {
       return database.query<TRow>(query.sql).all(...query.args);
     },
+    values<TRow extends unknown[] = unknown[]>(query: SqlQuery) {
+      return (database.query(query.sql).values(...query.args) || []) as TRow[];
+    },
+    execute: (query, ...args) => executeStandardQuery(client, query, args[0]),
     run(query: SqlQuery) {
       const result = database.run(query.sql, [...query.args]);
       return {

@@ -1,5 +1,6 @@
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
+import {executeStandardQuery} from '../standard-query.js';
 import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
 import type {AsyncClient, PreparedStatement, PreparedStatementParams, ResultRow, SqlQuery} from '../types.js';
 
@@ -17,6 +18,13 @@ export function createLibsqlClient(client: LibsqlClientLike): AsyncClient<Libsql
   const all: AsyncClient<LibsqlClientLike>['all'] = async <TRow extends ResultRow = ResultRow>(sqlQuery: SqlQuery) => {
     const result = await client.execute<TRow>(toStatement(sqlQuery));
     return result.rows.map(materializeRow);
+  };
+  const values: AsyncClient<LibsqlClientLike>['values'] = async <TRow extends unknown[] = unknown[]>(
+    sqlQuery: SqlQuery,
+  ) => {
+    // @libsql/client's rows are array-like: values at indices, in select order, with a `length`.
+    const result = await client.execute(toStatement(sqlQuery));
+    return result.rows.map((row) => Array.from(row as unknown as ArrayLike<unknown>)) as TRow[];
   };
   const run: AsyncClient<LibsqlClientLike>['run'] = async (sqlQuery: SqlQuery) => {
     const result = await client.execute(toStatement(sqlQuery));
@@ -75,9 +83,11 @@ export function createLibsqlClient(client: LibsqlClientLike): AsyncClient<Libsql
     system: 'sqlite',
     sync: false,
     all,
+    values,
     run,
     raw,
     iterate,
+    execute: (query, ...args) => executeStandardQuery(queryClient, query, args[0]),
     prepare,
     async transaction<TResult>(fn: (tx: AsyncClient<LibsqlClientLike>) => Promise<TResult> | TResult) {
       return surroundWithBeginCommitRollbackAsync(queryClient, fn);

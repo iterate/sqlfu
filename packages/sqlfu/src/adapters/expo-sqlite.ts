@@ -1,10 +1,8 @@
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
+import {executeStandardQuery} from '../standard-query.js';
 import {bindSqlParamsToPositional} from '../sql-params.js';
-import {
-  rawSqlWithSqlSplittingAsync,
-  surroundWithBeginCommitRollbackAsync,
-} from '../sqlite-text.js';
+import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
 import type {AsyncClient, PreparedStatement, ResultRow, SqlQuery} from '../types.js';
 
 export interface ExpoSqliteRunResult {
@@ -16,6 +14,13 @@ export interface ExpoSqliteDatabaseLike {
   getAllAsync<TRow extends ResultRow = ResultRow>(source: string, params?: unknown[]): Promise<TRow[]>;
   getEachAsync<TRow extends ResultRow = ResultRow>(source: string, params?: unknown[]): AsyncIterableIterator<TRow>;
   runAsync(source: string, params?: unknown[]): Promise<ExpoSqliteRunResult>;
+  prepareAsync(source: string): Promise<ExpoSqliteStatementLike>;
+}
+
+export interface ExpoSqliteStatementLike {
+  /** Rows as arrays of values instead of objects. */
+  executeForRawResultAsync(params: unknown[]): Promise<{getAllAsync(): Promise<unknown[][]>}>;
+  finalizeAsync(): Promise<void>;
 }
 
 export function createExpoSqliteClient(database: ExpoSqliteDatabaseLike): AsyncClient<ExpoSqliteDatabaseLike> {
@@ -23,6 +28,17 @@ export function createExpoSqliteClient(database: ExpoSqliteDatabaseLike): AsyncC
     query: SqlQuery,
   ) => {
     return database.getAllAsync<TRow>(query.sql, [...query.args]);
+  };
+  const values: AsyncClient<ExpoSqliteDatabaseLike>['values'] = async <TRow extends unknown[] = unknown[]>(
+    query: SqlQuery,
+  ) => {
+    const statement = await database.prepareAsync(query.sql);
+    try {
+      const result = await statement.executeForRawResultAsync([...query.args]);
+      return (await result.getAllAsync()) as TRow[];
+    } finally {
+      await statement.finalizeAsync();
+    }
   };
   const run: AsyncClient<ExpoSqliteDatabaseLike>['run'] = async (query: SqlQuery) => {
     const result = await database.runAsync(query.sql, [...query.args]);
@@ -83,9 +99,11 @@ export function createExpoSqliteClient(database: ExpoSqliteDatabaseLike): AsyncC
     system: 'sqlite',
     sync: false,
     all,
+    values,
     run,
     raw,
     iterate,
+    execute: (query, ...args) => executeStandardQuery(client, query, args[0]),
     prepare,
     async transaction<TResult>(fn: (tx: AsyncClient<ExpoSqliteDatabaseLike>) => Promise<TResult> | TResult) {
       return surroundWithBeginCommitRollbackAsync(client, fn);

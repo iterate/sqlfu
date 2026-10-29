@@ -10,6 +10,8 @@ export * from './naming.js';
 export * from './util.js';
 export * from './errors.js';
 export * from './instrument.js';
+export {standardQuery} from './standard-query.js';
+export type {StandardQueryV1, StandardTypedV1} from './standard-query.js';
 export type {
   AsyncQueryExecutionHook,
   AsyncQueryExecutionHookArgs,

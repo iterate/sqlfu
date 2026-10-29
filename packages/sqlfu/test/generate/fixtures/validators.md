@@ -861,6 +861,7 @@ select id, slug from posts;
 
 ```ts (sql/.generated/list-posts.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `select id, slug from posts;`;
 const query = { name: "listPosts", sql, args: [] };
@@ -869,7 +870,16 @@ export const listPosts = Object.assign(
 	async function listPosts(client: Client): Promise<listPosts.Result[]> {
 		return client.all<listPosts.Result>(query);
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "slug"],
+			output: (rows: listPosts.Result[]) => rows,
+		}),
+	},
 );
 
 export namespace listPosts {

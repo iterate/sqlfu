@@ -15,6 +15,7 @@ Why vendor at all? Two reasons:
 | [`sql-formatter/`](./sql-formatter/) | [sql-formatter-org/sql-formatter](https://github.com/sql-formatter-org/sql-formatter) v15.7.3 | MIT | SQL formatter; wrapped by `src/formatter.ts` with sqlfu defaults. See [`sql-formatter/CLAUDE.md`](./sql-formatter/CLAUDE.md). |
 | [`sqlfu-sqlite-parser/`](./sqlfu-sqlite-parser/) | sqlfu-original | MIT (sqlfu) | Hand-rolled SQLite tokenizer + recursive-descent parser. Replaced the ANTLR4 + typesql-parser trees in `tasks/drop-antlr.md` (phases 1–5). Consumed through a compat shim at `typesql/sqlite-query-analyzer/antlr-shim.ts`. |
 | [`typesql/`](./typesql/) | [wsporto/typesql](https://github.com/wsporto/typesql) @ commit f0356201 | MIT | Query analysis and code generation; drives `sqlfu generate`. See [`typesql/CLAUDE.md`](./typesql/CLAUDE.md). |
+| [`standard-query.ts`](./standard-query.ts) | [colinhacks/reylo](https://github.com/colinhacks/reylo) `src/standard-query.ts` @ commit e77a0212 | MIT | `StandardQueryV1` + `StandardTypedV1` types, verbatim (types only; banner in the file). Implemented by `src/standard-query.ts`. The spec only lives in reylo's repo for now, so expect churn. |
 | [`small-utils.ts`](./small-utils.ts) | sqlfu-original + neverthrow-shaped helpers | MIT (sqlfu) | Minimal replacements for the subset of [`neverthrow`](https://github.com/supermacro/neverthrow) TypeSQL uses, plus sqlfu-original helpers consumed by the vendored tree. |
 
 ## Attribution policy

@@ -1,5 +1,6 @@
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
+import {executeStandardQuery} from '../standard-query.js';
 import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
 import type {AsyncClient, PreparedStatement, PreparedStatementParams, ResultRow, SqlQuery} from '../types.js';
 
@@ -7,6 +8,8 @@ export interface TursoDatabaseStatementLike<TRow extends ResultRow = ResultRow> 
   reader: boolean;
   all(...params: unknown[]): Promise<TRow[]>;
   iterate(...params: unknown[]): AsyncIterable<TRow>;
+  /** Rows come back as arrays of values instead of objects. */
+  raw(toggle: boolean): {all(...params: unknown[]): Promise<unknown[]>};
   run(...params: unknown[]): Promise<{
     changes?: number;
     lastInsertRowid?: string | number | bigint | null;
@@ -24,6 +27,12 @@ export function createTursoDatabaseClient<TDatabase extends TursoDatabaseLike>(
 ): AsyncClient<TDatabase> {
   const all: AsyncClient<TDatabase>['all'] = async <TRow extends ResultRow = ResultRow>(query: SqlQuery) => {
     return database.prepare<TRow>(query.sql).all(...query.args);
+  };
+  const values: AsyncClient<TDatabase>['values'] = async <TRow extends unknown[] = unknown[]>(query: SqlQuery) => {
+    return (await database
+      .prepare(query.sql)
+      .raw(true)
+      .all(...query.args)) as TRow[];
   };
   const run: AsyncClient<TDatabase>['run'] = async (query: SqlQuery) => {
     const result = await database.prepare(query.sql).run(...query.args);
@@ -75,9 +84,11 @@ export function createTursoDatabaseClient<TDatabase extends TursoDatabaseLike>(
     system: 'sqlite',
     sync: false,
     all,
+    values,
     run,
     raw,
     iterate,
+    execute: (query, ...args) => executeStandardQuery(client, query, args[0]),
     prepare,
     transaction<TResult>(fn: (tx: AsyncClient<TDatabase>) => Promise<TResult> | TResult) {
       return surroundWithBeginCommitRollbackAsync(client, fn);

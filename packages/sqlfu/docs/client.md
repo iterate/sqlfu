@@ -49,11 +49,15 @@ type Client = SyncClient | AsyncClient;
 Both variants expose:
 
 - `client.all(query)` for row-returning SQL
+- `client.values(query)` for rows as arrays, in select order
 - `client.run(query)` for writes and DDL
 - `client.iterate(query)` for streaming rows
 - `client.prepare(sql)` for reusable ad hoc statements
 - `client.transaction(fn)` for driver-backed transactions
 - `client.sql` for small inline SQL fragments
+- `client.execute(query, input)` for any
+  [Standard Query](https://sqlfu.dev/docs/integrations/standard-query), such as
+  a reylo `.sql` import
 - `client.driver` when you need to escape to the underlying database driver
 
 Generated query wrappers accept this same `Client` shape, so your authored SQL

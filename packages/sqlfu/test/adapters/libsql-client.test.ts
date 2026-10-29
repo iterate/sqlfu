@@ -6,7 +6,7 @@ import {createClient} from '@libsql/client';
 import {expect, test} from 'vitest';
 
 import {createLibsqlClient} from '../../src/index.js';
-import {applyAsyncPrepareSuite} from './prepare-suite.js';
+import {applyAsyncPrepareSuite, applyAsyncValuesSuite} from './prepare-suite.js';
 
 test('createLibsqlClient works with a real @libsql/client database', async () => {
   await using fixture = await createLibsqlFixture(createClient({url: getTmpDbUrl()}));
@@ -106,6 +106,11 @@ async function getDbPath(raw: ReturnType<typeof createClient>) {
 }
 
 applyAsyncPrepareSuite({
+  label: 'libsql-client',
+  openClient: () => createLibsqlFixture(createClient({url: getTmpDbUrl()})),
+});
+
+applyAsyncValuesSuite({
   label: 'libsql-client',
   openClient: () => createLibsqlFixture(createClient({url: getTmpDbUrl()})),
 });

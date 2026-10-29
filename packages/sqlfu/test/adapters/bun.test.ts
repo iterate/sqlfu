@@ -113,6 +113,30 @@ test('createBunClient iterates rows with native statement iteration in a bun sub
   ]);
 });
 
+test('createBunClient.values reads rows as arrays and runs statements that return no rows', async () => {
+  await using fixture = await createBunFixture(
+    class ClientValuesTest {
+      client: ReturnType<typeof createBunClient>;
+
+      constructor(db: any) {
+        this.client = createBunClient(db);
+        this.client.sql.run`create table users (id integer primary key, email text not null)`;
+      }
+
+      insertUser(email: string) {
+        return this.client.values({sql: 'insert into users (email) values (?)', args: [email]});
+      }
+
+      listUsers() {
+        return this.client.values({sql: 'select id, email, id from users order by id', args: []});
+      }
+    },
+  );
+
+  expect(await fixture.stub.insertUser('ada@example.com')).toEqual([]);
+  expect(await fixture.stub.listUsers()).toEqual([[1, 'ada@example.com', 1]]);
+});
+
 test('createBunClient.raw runs multiple statements in a bun subprocess', async () => {
   await using fixture = await createBunFixture(
     class ClientMultiStatementTest {

@@ -142,6 +142,57 @@ export function applyAsyncPrepareSuite(input: {
   });
 }
 
+/**
+ * Shared `client.values(...)` cases: rows as arrays in select order (what a Standard Query's
+ * `decode` reads), and statements that return no rows still run.
+ */
+export function applySyncValuesSuite(input: {label: string; openClient: () => PrepareSuiteSyncFixture}): void {
+  const {label, openClient} = input;
+
+  test(`${label}: values reads rows as arrays in select order, keeping duplicate column names`, () => {
+    using fixture = openSeededSyncFixture(openClient);
+    expect(fixture.client.values({sql: 'select id, slug, id from seed_posts order by id', args: []})).toEqual([
+      [1, 'first', 1],
+      [2, 'second', 2],
+    ]);
+  });
+
+  test(`${label}: values runs a statement that returns no rows`, () => {
+    using fixture = openSeededSyncFixture(openClient);
+    expect(fixture.client.values({sql: 'insert into seed_posts (slug) values (?)', args: ['third']})).toEqual([]);
+    expect(fixture.client.values({sql: 'select slug from seed_posts order by id', args: []})).toEqual([
+      ['first'],
+      ['second'],
+      ['third'],
+    ]);
+  });
+}
+
+export function applyAsyncValuesSuite(input: {
+  label: string;
+  openClient: () => PrepareSuiteAsyncFixture | Promise<PrepareSuiteAsyncFixture>;
+}): void {
+  const {label, openClient} = input;
+
+  test(`${label}: values reads rows as arrays in select order, keeping duplicate column names`, async () => {
+    await using fixture = await openSeededAsyncFixture(openClient);
+    expect(await fixture.client.values({sql: 'select id, slug, id from seed_posts order by id', args: []})).toEqual([
+      [1, 'first', 1],
+      [2, 'second', 2],
+    ]);
+  });
+
+  test(`${label}: values runs a statement that returns no rows`, async () => {
+    await using fixture = await openSeededAsyncFixture(openClient);
+    expect(await fixture.client.values({sql: 'insert into seed_posts (slug) values (?)', args: ['third']})).toEqual([]);
+    expect(await fixture.client.values({sql: 'select slug from seed_posts order by id', args: []})).toEqual([
+      ['first'],
+      ['second'],
+      ['third'],
+    ]);
+  });
+}
+
 interface SeedPostRow {
   id: number;
   slug: string;

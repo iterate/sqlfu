@@ -39,6 +39,7 @@ where s.id = :sessionId;
 
 ```ts (sql/.generated/find-session-user.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `
 select u.login
@@ -56,7 +57,16 @@ export const findSessionUser = Object.assign(
 	async function findSessionUser(client: Client, params: findSessionUser.Params): Promise<findSessionUser.Result[]> {
 		return client.all<findSessionUser.Result>(query(params));
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["login"],
+			output: (rows: findSessionUser.Result[]) => rows,
+		}),
+	},
 );
 
 export namespace findSessionUser {
@@ -94,6 +104,7 @@ where u.id = (select s.user_id from sessions s where s.id = :sessionId);
 
 ```ts (sql/.generated/find-session-user.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `
 select u.login
@@ -111,7 +122,16 @@ export const findSessionUser = Object.assign(
 		const rows = await client.all<findSessionUser.Result>(query(params));
 		return rows.length > 0 ? rows[0] : null;
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["login"],
+			output: (rows: findSessionUser.Result[]) => (rows.length > 0 ? rows[0]! : null),
+		}),
+	},
 );
 
 export namespace findSessionUser {
@@ -146,6 +166,7 @@ select id from posts where id = :id or parent_id = :id;
 
 ```ts (sql/.generated/find-related-posts.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `select id from posts where id = ? or parent_id = ?;`;
 const query = (params: findRelatedPosts.Params) => ({
@@ -158,7 +179,16 @@ export const findRelatedPosts = Object.assign(
 	async function findRelatedPosts(client: Client, params: findRelatedPosts.Params): Promise<findRelatedPosts.Result[]> {
 		return client.all<findRelatedPosts.Result>(query(params));
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id"],
+			output: (rows: findRelatedPosts.Result[]) => rows,
+		}),
+	},
 );
 
 export namespace findRelatedPosts {

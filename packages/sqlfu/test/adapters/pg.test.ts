@@ -6,11 +6,13 @@ test('createNodePostgresClient binds prepared named params directly to postgres 
   const calls: QueryCall[] = [];
   const client = createNodePostgresClient(createPool(calls));
 
-  await using stmt = client.prepare<{id: number}>([
-    `select $fn$select :ignored, ?$fn$ as body`,
-    `from posts`,
-    `where id = :id and slug = @slug and rank < $limit`,
-  ].join('\n'));
+  await using stmt = client.prepare<{id: number}>(
+    [
+      `select $fn$select :ignored, ?$fn$ as body`,
+      `from posts`,
+      `where id = :id and slug = @slug and rank < $limit`,
+    ].join('\n'),
+  );
 
   await stmt.all({id: 1, slug: 'alpha', limit: 10});
 
@@ -61,16 +63,31 @@ test('createNodePostgresClient preserves postgres casts and json question operat
   ]);
 });
 
+test('createNodePostgresClient.values reads rows as arrays of the text the server sent', async () => {
+  const calls: QueryCall[] = [];
+  const client = createNodePostgresClient(createPool(calls));
+
+  await client.values({sql: `select id, created_at from posts where id = ?`, args: [1]});
+
+  expect(calls).toMatchObject([
+    {text: `select id, created_at from posts where id = $1`, values: [1], rowMode: 'array'},
+  ]);
+  const parse = calls[0]!.types!.getTypeParser();
+  expect(parse('2026-10-29 08:54:00+00')).toBe('2026-10-29 08:54:00+00');
+});
+
 type QueryCall = {
   text: string;
   values: unknown[] | undefined;
+  rowMode?: 'array';
+  types?: {getTypeParser: () => (value: string) => unknown};
 };
 
 function createPool(calls: QueryCall[]): NodePostgresLike {
   return {
-    async query<TRow extends Record<string, unknown> = Record<string, unknown>>(text: string, values?: unknown[]) {
-      calls.push({text, values});
-      return {rows: [{id: 1}] as unknown as TRow[], rowCount: 1};
-    },
+    query: (async (textOrConfig: string | QueryCall, values?: unknown[]) => {
+      calls.push(typeof textOrConfig === 'string' ? {text: textOrConfig, values} : textOrConfig);
+      return {rows: [{id: 1}], rowCount: 1};
+    }) as NodePostgresLike['query'],
   };
 }

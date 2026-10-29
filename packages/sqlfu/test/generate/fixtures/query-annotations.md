@@ -49,6 +49,7 @@ export * from "./queries.js";
 
 ```ts (sql/.generated/posts.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const listPostsSql = `select id, slug, title from posts order by id;`;
 const listPostsQuery = { name: "listPosts", sql: listPostsSql, args: [] };
@@ -57,7 +58,16 @@ export const listPosts = Object.assign(
 	async function listPosts(client: Client): Promise<listPosts.Result[]> {
 		return client.all<listPosts.Result>(listPostsQuery);
 	},
-	{ sql: listPostsSql, query: listPostsQuery },
+	{
+		sql: listPostsSql,
+		query: listPostsQuery,
+		"~standard": standardQuery({
+			sql: listPostsSql,
+			query: listPostsQuery,
+			columns: ["id", "slug", "title"],
+			output: (rows: listPosts.Result[]) => rows,
+		}),
+	},
 );
 
 export namespace listPosts {
@@ -79,7 +89,16 @@ export const findPostBySlug = Object.assign(
 	async function findPostBySlug(client: Client, params: findPostBySlug.Params): Promise<findPostBySlug.Result[]> {
 		return client.all<findPostBySlug.Result>(findPostBySlugQuery(params));
 	},
-	{ sql: findPostBySlugSql, query: findPostBySlugQuery },
+	{
+		sql: findPostBySlugSql,
+		query: findPostBySlugQuery,
+		"~standard": standardQuery({
+			sql: findPostBySlugSql,
+			query: findPostBySlugQuery,
+			columns: ["id", "slug", "title"],
+			output: (rows: findPostBySlug.Result[]) => rows,
+		}),
+	},
 );
 
 export namespace findPostBySlug {
@@ -314,6 +333,7 @@ export * from "./queries.js";
 
 ```ts (sql/.generated/insert-post.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `
 insert into posts (slug, title) values (?, ?) returning id, slug, title;
@@ -329,7 +349,16 @@ export const insertPost = Object.assign(
 		const rows = await client.all<insertPost.Result>(query(params));
 		return rows[0];
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "slug", "title"],
+			output: (rows: insertPost.Result[]) => rows[0]!,
+		}),
+	},
 );
 
 export namespace insertPost {

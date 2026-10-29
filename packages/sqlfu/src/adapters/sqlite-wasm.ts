@@ -1,10 +1,8 @@
 import {wrapAsyncClientErrors} from '../adapter-errors.js';
 import {bindAsyncSql} from '../sql.js';
+import {executeStandardQuery} from '../standard-query.js';
 import {bindSqlParamsToPrefixedRecord} from '../sql-params.js';
-import {
-  rawSqlWithSqlSplittingAsync,
-  surroundWithBeginCommitRollbackAsync,
-} from '../sqlite-text.js';
+import {rawSqlWithSqlSplittingAsync, surroundWithBeginCommitRollbackAsync} from '../sqlite-text.js';
 import type {AsyncClient, PreparedStatement, PreparedStatementParams, QueryArg, ResultRow, SqlQuery} from '../types.js';
 
 export type SqliteWasmBindValue = string | number | bigint | Uint8Array | null;
@@ -33,6 +31,17 @@ export function createSqliteWasmClient(database: SqliteWasmDatabaseLike): AsyncC
       returnValue: 'resultRows',
     });
     return (rows as TRow[] | undefined) ?? [];
+  };
+  const values: AsyncClient<SqliteWasmDatabaseLike>['values'] = async <TRow extends unknown[] = unknown[]>(
+    query: SqlQuery,
+  ) => {
+    const rows = database.exec({
+      sql: query.sql,
+      bind: toPositionalBind(query.args),
+      rowMode: 'array',
+      returnValue: 'resultRows',
+    });
+    return (rows as TRow[] | undefined) || [];
   };
   const run: AsyncClient<SqliteWasmDatabaseLike>['run'] = async (query: SqlQuery) => {
     database.exec({
@@ -105,9 +114,11 @@ export function createSqliteWasmClient(database: SqliteWasmDatabaseLike): AsyncC
     system: 'sqlite',
     sync: false,
     all,
+    values,
     run,
     raw,
     iterate,
+    execute: (query, ...args) => executeStandardQuery(client, query, args[0]),
     prepare,
     async transaction<TResult>(fn: (tx: AsyncClient<SqliteWasmDatabaseLike>) => Promise<TResult> | TResult) {
       return surroundWithBeginCommitRollbackAsync(client, fn);

@@ -55,6 +55,7 @@ create table if not exists sqlfu_migrations(
 
 ```ts (sql/.generated/ensure-migration-table.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `
 create table if not exists sqlfu_migrations(
@@ -69,7 +70,16 @@ export const ensureMigrationTable = Object.assign(
 	async function ensureMigrationTable(client: Client) {
 		return client.run(query);
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: [],
+			output: () => undefined,
+		}),
+	},
 );
 ```
 
@@ -179,6 +189,7 @@ select id, slug, body as excerpt from posts where slug = :slug limit 1;
 
 ```ts (sql/.generated/find-post-by-slug.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `
 select id, slug, body as excerpt from posts where slug = ? limit 1;
@@ -194,7 +205,16 @@ export const findPostBySlug = Object.assign(
 		const rows = await client.all<findPostBySlug.Result>(query(params));
 		return rows.length > 0 ? rows[0] : null;
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "slug", "excerpt"],
+			output: (rows: findPostBySlug.Result[]) => (rows.length > 0 ? rows[0]! : null),
+		}),
+	},
 );
 
 export namespace findPostBySlug {
@@ -211,6 +231,7 @@ export namespace findPostBySlug {
 
 ```ts (sql/.generated/list-post-summaries.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `select id, slug, published_at, excerpt from post_summaries;`;
 const query = { name: "listPostSummaries", sql, args: [] };
@@ -229,7 +250,17 @@ export const listPostSummaries = Object.assign(
 		const rows = await client.all<listPostSummaries.RawResult>(query);
 		return rows.map(mapResult);
 	},
-	{ sql, query, mapResult },
+	{
+		sql,
+		query,
+		mapResult,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "slug", "published_at", "excerpt"],
+			output: (rows: listPostSummaries.RawResult[]) => rows.map(mapResult),
+		}),
+	},
 );
 
 export namespace listPostSummaries {

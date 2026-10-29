@@ -91,3 +91,4 @@ Skip these when context is tight or when the task is only about API usage.
 - [Cloudflare / Alchemy](https://sqlfu.dev/docs/integrations/cloudflare-alchemy): Use sqlfu/cloudflare to find Miniflare D1 files, read Alchemy D1 state, or talk to deployed Cloudflare D1 over HTTP.
 - [Kysely](https://sqlfu.dev/docs/integrations/kysely): Use sqlfu for schema authoring, migrations, and hand-written SQL wrappers while Kysely remains your query builder.
 - [OpenTelemetry](https://sqlfu.dev/docs/integrations/opentelemetry): Send generated sqlfu query names to OpenTelemetry spans with instrument.otel().
+- [Standard Query (reylo)](https://sqlfu.dev/docs/integrations/standard-query): Run reylo .sql imports through a sqlfu client with client.execute, and sqlfu generated wrappers through any Standard Query driver.
