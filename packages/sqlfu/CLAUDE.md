@@ -75,4 +75,5 @@ If any of the public `.d.ts` shape shifts (especially: nullable fields dropping 
 ## Other notes
 
 - `tsgo` is an alias for `@typescript/native-preview`'s `tsc`. Still supports `-b`, project references, etc.
+- `tsconfig.build.json` targets ES2025 (base is ESNext) so emit lowers `using` / `await using`. Write ERM freely in source; `test/dist-syntax.test.ts` fails if newer-than-ES2025 syntax reaches `dist/`.
 - Public entry points are `index`, `browser`, `client`, `api`, `cli`, `ui/index`, `ui/browser` — see `publishConfig.exports` in `package.json`. Any build change must preserve these exact `dist/{entry}.{js,d.ts}` paths.
