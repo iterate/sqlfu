@@ -185,6 +185,7 @@ export async function generateInlineConfigTypes(input: {
         descriptor: refineDescriptor(analysis.descriptor, querySource.analysisSqlContent, schema),
         explicitParameterExpansions: querySource.parameterExpansions,
         sourceSql: querySource.sqlContent,
+        queryName: querySource.functionName,
       });
       assertInlineConfigRuntimeSupported(querySource, prepared.descriptor, prepared.parameterExpansions);
       queryTypes.push({
@@ -337,6 +338,7 @@ function renderQueryDocument(input: {
       descriptor: refineDescriptor(analysis.descriptor, querySource.analysisSqlContent, input.schema),
       explicitParameterExpansions: querySource.parameterExpansions,
       sourceSql: querySource.sqlContent,
+      queryName: querySource.functionName,
     });
     return renderQueryWrapper({
       functionName: querySource.functionName,
@@ -1202,6 +1204,7 @@ async function writeQueryCatalog(
       descriptor: refineDescriptor(analysis.descriptor, querySource.analysisSqlContent, schema),
       explicitParameterExpansions: querySource.parameterExpansions,
       sourceSql: querySource.sqlContent,
+      queryName: querySource.functionName,
     });
     const {descriptor, dataMapping} = applyGeneratedInputCasing(prepared.descriptor, config.generate.casing);
     const resultMapping = mapColumnDerivedFields(getResultFields(descriptor), config.generate.casing);
@@ -2689,8 +2692,8 @@ function renderObjectTypeBody(fields: GeneratedField[], fieldKind: 'parameter' |
  * (src/vendor/typesql/codegen/shared/codegen-util.ts): if the occurrences disagree on
  * nullability, the nullable one wins.
  *
- * Result fields are left alone: two result columns with one name are different columns, which
- * TypeSQL renames (`id`, `id_2`) before they get here.
+ * Result fields are left alone: two result columns with one name are different columns, and
+ * `assertUniqueResultColumnNames` rejects them before they get here.
  */
 function uniqueFieldsByName<TField extends GeneratedField>(
   fields: TField[],
@@ -2841,6 +2844,7 @@ function prepareQueryDescriptor(input: {
   descriptor: GeneratedQueryDescriptor;
   explicitParameterExpansions: ParameterExpansion[];
   sourceSql: string;
+  queryName: string;
 }): {
   descriptor: GeneratedQueryDescriptor;
   parameterExpansions: ParameterExpansion[];
@@ -2862,12 +2866,27 @@ function prepareQueryDescriptor(input: {
   }
 
   const parameterExpansions = Array.from(expansions.values());
+  assertUniqueResultColumnNames(input.queryName, input.descriptor);
   assertNoUnsupportedInferredReturning(input.descriptor, parameterExpansions);
   assertRuntimeExpansionReferences(input.sourceSql, parameterExpansions);
   return {
     descriptor: applyParameterExpansionDescriptor(input.descriptor, parameterExpansions, input.sourceSql),
     parameterExpansions,
   };
+}
+
+function assertUniqueResultColumnNames(queryName: string, descriptor: GeneratedQueryDescriptor): void {
+  const seen = new Set<string>();
+  for (const column of descriptor.columns) {
+    if (seen.has(column.name)) {
+      throw new Error(
+        `Query ${queryName} returns more than one column named \`${column.name}\`. ` +
+          `Rows are keyed by column name, so only the last one would reach your code. ` +
+          `Select the columns explicitly and alias the duplicates, e.g. \`u.id as user_id\`.`,
+      );
+    }
+    seen.add(column.name);
+  }
 }
 
 function assertNoUnsupportedInferredReturning(

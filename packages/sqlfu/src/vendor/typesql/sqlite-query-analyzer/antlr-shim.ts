@@ -764,20 +764,15 @@ class ShimSelect_coreContext extends ShimSelect_coreContextBase {
 	table_or_subquery_list(): any[] {
 		if (this._fromListCache) return this._fromListCache;
 		const from = this._parsed.from;
-		let list: ShimTable_or_subqueryContext[] = [];
-		if (!from) {
-			list = [];
-		} else if (from.kind === 'TableList') {
-			list = from.items.map(it => new ShimTable_or_subqueryContext(it, this._sql, this._input, this));
-		} else if (from.kind === 'JoinChain') {
-			// When the FROM uses explicit JOIN syntax, ANTLR puts the ordered
-			// `table_or_subquery` list under both the Select_core AND the
-			// Join_clause. Provide them in walk order here so the analyzer can
-			// iterate over them in parallel with `join_operator_list` /
-			// `join_constraint_list`.
-			const items = [from.chain.first, ...from.chain.joins.map(j => j.target)];
-			list = items.map(it => new ShimTable_or_subqueryContext(it, this._sql, this._input, this));
-		}
+		// An explicit JOIN chain matches ANTLR's `FROM_ join_clause` alternative,
+		// so its tables are children of the Join_clause only; `join_clause()`
+		// exposes them. Listing them here too made traverse.ts walk every joined
+		// table twice: `select *` doubled its columns, and a param in a joined
+		// subquery was bound twice.
+		const list: ShimTable_or_subqueryContext[] =
+			from?.kind === 'TableList'
+				? from.items.map(it => new ShimTable_or_subqueryContext(it, this._sql, this._input, this))
+				: [];
 		this._fromListCache = list;
 		return list;
 	}
@@ -901,10 +896,15 @@ class ShimTable_or_subqueryContext extends ShimParserRuleContext {
 		return new ShimSelect_stmtContext(p.select, this._sql, this._input, this);
 	}
 	table_or_subquery_list(): any[] {
+		// A parenthesised join is ANTLR's `OPEN_PAR join_clause CLOSE_PAR`: its
+		// tables hang off `join_clause()`, together with their join operators and
+		// constraints.
+		return [];
+	}
+	join_clause(): any {
 		const p = this._parsed;
-		if (p.kind !== 'NestedJoin') return [];
-		const items = [p.chain.first, ...p.chain.joins.map(j => j.target)];
-		return items.map(it => new ShimTable_or_subqueryContext(it, this._sql, this._input, this));
+		if (p.kind !== 'NestedJoin') return null;
+		return new ShimJoin_clauseContext(p.chain, p.start, p.stop, this._sql, this._input, this);
 	}
 }
 
@@ -962,6 +962,7 @@ class ShimJoin_operatorContext extends ShimParserRuleContext {
 	getChildCount = shimGetChildCount;
 	getChild = shimGetChild;
 	LEFT_(): any { return this._op.kind === 'LEFT' ? terminal(this._op.start, this._input) : null; }
+	NATURAL_(): any { return this._op.natural ? terminal(this._op.start, this._input) : null; }
 }
 
 class ShimJoin_constraintContext extends ShimParserRuleContext {

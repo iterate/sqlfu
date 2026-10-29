@@ -24,7 +24,7 @@ import { preprocessSql } from '../describe-query.js';
 import { explainSql } from '../sqlite-query-analyzer/query-executor.js';
 import { mapToDynamicParams, mapToDynamicResultColumns, mapToDynamicSelectColumns } from '../ts-dynamic-query-descriptor.js';
 import { mapper } from '../drivers/sqlite.js';
-import { capitalize, convertToCamelCaseName, generateRelationType, hasDateColumn, removeDuplicatedParameters2, renameInvalidNames, replaceOrderByParam, TsDescriptor, writeBuildOrderByBlock, writeBuildSqlFunction, writeDynamicQueryOperators, writeMapToResultFunction, writeNestedTypes, writeOrderByToObjectFunction, writeTypeBlock, writeWhereConditionFunction, writeCollectFunction, writeGroupByFunction, createTypeNames, createCodeBlockWriter, writeDynamicQueryParamType, writeSelectFragements } from './shared/codegen-util.js';
+import { capitalize, convertToCamelCaseName, generateRelationType, hasDateColumn, removeDuplicatedParameters2, escapeInvalidTsField, replaceOrderByParam, TsDescriptor, writeBuildOrderByBlock, writeBuildSqlFunction, writeDynamicQueryOperators, writeMapToResultFunction, writeNestedTypes, writeOrderByToObjectFunction, writeTypeBlock, writeWhereConditionFunction, writeCollectFunction, writeGroupByFunction, createTypeNames, createCodeBlockWriter, writeDynamicQueryParamType, writeSelectFragements } from './shared/codegen-util.js';
 
 type ExecFunctionParams = {
 	functionName: string;
@@ -208,8 +208,10 @@ function mapColumns(client: SQLiteClient, queryType: SchemaDef['queryType'], col
 		}
 	}
 
-	const escapedColumnsNames = renameInvalidNames(columns.map((col) => col.name));
-	return columns.map((col, index) => mapColumnToTsFieldDescriptor({ ...col, name: escapedColumnsNames[index] }, client));
+	// sqlfu divergence: upstream `renameInvalidNames` also renames repeated names (`id`, `id_2`),
+	// but sqlfu's drivers key rows by column name, so a second `id` never arrives as `id_2`.
+	// Keep the names as-is and let sqlfu typegen reject the duplicate.
+	return columns.map((col) => mapColumnToTsFieldDescriptor({ ...col, name: escapeInvalidTsField(col.name) }, client));
 }
 
 function getInsertUpdateResult(client: SQLiteClient) {

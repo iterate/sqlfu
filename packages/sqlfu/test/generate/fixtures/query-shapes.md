@@ -502,3 +502,168 @@ export namespace deleteShares {
 ```
 
 </details>
+
+## expands select * over a join to each column once
+
+<details data-outputs="sql/.generated/list-tagged-posts.sql.ts">
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table posts (post_id integer primary key, title text not null);
+create table post_tags (tagged_post_id integer not null references posts (post_id), tag text not null);
+```
+
+```sql (sql/list-tagged-posts.sql)
+select * from posts p join post_tags t on t.tagged_post_id = p.post_id;
+```
+
+</details>
+
+<details>
+<summary>output</summary>
+
+```ts (sql/.generated/list-tagged-posts.sql.ts)
+import type {Client} from 'sqlfu';
+
+const sql = `
+select * from posts p join post_tags t on t.tagged_post_id = p.post_id;
+`.trim();
+const query = { name: "listTaggedPosts", sql, args: [] };
+
+function mapResult(row: listTaggedPosts.RawResult): listTaggedPosts.Result {
+	return {
+		postId: row.post_id,
+		title: row.title,
+		taggedPostId: row.tagged_post_id,
+		tag: row.tag,
+	};
+}
+
+export const listTaggedPosts = Object.assign(
+	async function listTaggedPosts(client: Client): Promise<listTaggedPosts.Result[]> {
+		const rows = await client.all<listTaggedPosts.RawResult>(query);
+		return rows.map(mapResult);
+	},
+	{ sql, query, mapResult },
+);
+
+export namespace listTaggedPosts {
+	export type RawResult = {
+		post_id: number;
+		title: string;
+		tagged_post_id: number;
+		tag: string;
+	};
+	export type Result = {
+		postId: number;
+		title: string;
+		taggedPostId: number;
+		tag: string;
+	};
+}
+```
+
+</details>
+
+## merges natural and using join columns in select * like sqlite does
+
+<details data-outputs="sql/.generated/queries.sql.ts">
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table posts (post_id integer primary key, title text not null);
+create table post_stats (post_id integer not null, views integer not null);
+create table post_flags (post_id integer not null, flagged integer not null);
+```
+
+```sql (sql/queries.sql)
+/** @name listNaturalJoin */
+select * from posts natural join post_stats;
+
+/** @name listNestedUsingJoin */
+select * from posts join (post_stats join post_flags using (post_id)) using (post_id);
+```
+
+</details>
+
+<details>
+<summary>output</summary>
+
+```ts (sql/.generated/queries.sql.ts)
+import type {Client} from 'sqlfu';
+
+const listNaturalJoinSql = `select * from posts natural join post_stats;`;
+const listNaturalJoinQuery = { name: "listNaturalJoin", sql: listNaturalJoinSql, args: [] };
+
+function listNaturalJoinMapResult(row: listNaturalJoin.RawResult): listNaturalJoin.Result {
+	return {
+		postId: row.post_id,
+		title: row.title,
+		views: row.views,
+	};
+}
+
+export const listNaturalJoin = Object.assign(
+	async function listNaturalJoin(client: Client): Promise<listNaturalJoin.Result[]> {
+		const rows = await client.all<listNaturalJoin.RawResult>(listNaturalJoinQuery);
+		return rows.map(listNaturalJoinMapResult);
+	},
+	{ sql: listNaturalJoinSql, query: listNaturalJoinQuery, mapResult: listNaturalJoinMapResult },
+);
+
+export namespace listNaturalJoin {
+	export type RawResult = {
+		post_id: number;
+		title: string;
+		views: number;
+	};
+	export type Result = {
+		postId: number;
+		title: string;
+		views: number;
+	};
+}
+
+const listNestedUsingJoinSql = `
+select * from posts join (post_stats join post_flags using (post_id)) using (post_id);
+`.trim();
+const listNestedUsingJoinQuery = {
+	name: "listNestedUsingJoin",
+	sql: listNestedUsingJoinSql,
+	args: [],
+};
+
+function listNestedUsingJoinMapResult(row: listNestedUsingJoin.RawResult): listNestedUsingJoin.Result {
+	return {
+		postId: row.post_id,
+		title: row.title,
+		views: row.views,
+		flagged: row.flagged,
+	};
+}
+
+export const listNestedUsingJoin = Object.assign(
+	async function listNestedUsingJoin(client: Client): Promise<listNestedUsingJoin.Result[]> {
+		const rows = await client.all<listNestedUsingJoin.RawResult>(listNestedUsingJoinQuery);
+		return rows.map(listNestedUsingJoinMapResult);
+	},
+	{ sql: listNestedUsingJoinSql, query: listNestedUsingJoinQuery, mapResult: listNestedUsingJoinMapResult },
+);
+
+export namespace listNestedUsingJoin {
+	export type RawResult = {
+		post_id: number;
+		title: string;
+		views: number;
+		flagged: number;
+	};
+	export type Result = {
+		postId: number;
+		title: string;
+		views: number;
+		flagged: number;
+	};
+}
+```
+
+</details>
