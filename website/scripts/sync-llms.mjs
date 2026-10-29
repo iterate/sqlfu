@@ -31,6 +31,8 @@ const sections = [
       'guides/turso-libsql',
       'guides/expo-sqlite',
       'guides/sqlite-wasm',
+      'guides/postgres',
+      'guides/pgkit',
       'cli',
       'adapters',
       'cloudflare-d1',

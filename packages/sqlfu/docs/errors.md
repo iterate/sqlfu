@@ -25,7 +25,7 @@ type SqlfuErrorKind =
   | 'unknown'                 // mapper didn't recognize; inspect `.cause`
 ```
 
-Names are SQLSTATE-aligned (matching the [PostgreSQL error codes](https://www.postgresql.org/docs/current/errcodes-appendix.html) convention). The Node Postgres runtime adapter already exists in `sqlfu`; SQLSTATE-specific classification is part of the broader Postgres hardening work, and the shared vocabulary keeps that path from introducing a second error language. `missing_table` and `missing_column` are the two deliberate deviations: SQLSTATE's `undefined_table` and `undefined_column` collide with TypeScript's `undefined` at reading time.
+Names are SQLSTATE-aligned (matching the [PostgreSQL error codes](https://www.postgresql.org/docs/current/errcodes-appendix.html) convention). The Postgres adapter wraps errors in `SqlfuError` too, but doesn't classify them yet: `kind` is always `'unknown'`, and the SQLSTATE is on `.cause.code`. When classification lands it will use these same names. `missing_table` and `missing_column` are the two deliberate deviations: SQLSTATE's `undefined_table` and `undefined_column` collide with TypeScript's `undefined` at reading time.
 
 Primary-key violations collapse into `unique_violation`. From a product perspective both are "that row already exists"; code that needs to distinguish them can still read `.cause.code`.
 

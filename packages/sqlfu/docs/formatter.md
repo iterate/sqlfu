@@ -23,6 +23,10 @@ Already formatted:
 The formatter is intentionally opinionated: SQLite-first, lowercase by default,
 and biased toward keeping simple clause bodies inline when they still read well.
 
+In a Postgres project (`dialect: pgDialect(...)` in `sqlfu.config.ts`),
+`sqlfu format` switches to Postgres syntax automatically. The ESLint rule needs
+the dialect passed explicitly; see [below](#use-eslint).
+
 ## Use ESLint
 
 The lint plugin exposes the same formatter through `sqlfu/format-sql`.
@@ -41,6 +45,8 @@ export default [
   },
 ];
 ```
+
+For Postgres, use `'sqlfu/format-sql': ['error', {dialect: 'postgresql'}]`.
 
 Then run:
 

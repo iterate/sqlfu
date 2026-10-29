@@ -305,6 +305,6 @@ This is the part that made sqlfu feel worth packaging. Once schema, migrations, 
 
 sqlfu is pre-alpha. The runtime surface is intentionally small, but the toolchain will still change.
 
-It is also SQLite-first. There is a thin Node Postgres runtime adapter now, and [pgkit](https://github.com/mmkal/pgkit) is the Postgres-shaped predecessor, but the broader `@sqlfu/pg` dialect/toolchain story still needs fuller docs and examples before this stops being a SQLite-first project.
+It is also SQLite-first. [Postgres support](https://sqlfu.dev/docs/guides/postgres) exists in `@sqlfu/pg` but is early, and [pgkit](https://github.com/mmkal/pgkit) is the Postgres-shaped predecessor.
 
 You should not adopt it to avoid learning SQL. That is the opposite of the point. sqlfu is for projects where SQL is welcome, reviewable, and central.

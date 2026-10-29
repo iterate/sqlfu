@@ -1,6 +1,6 @@
 # Schema diff internals
 
-This document describes what `diffSchemaSql` does today for SQLite, and how the native implementation is put together.
+This document describes what `diffSchemaSql` does today for SQLite, and how the native implementation is put together. Postgres projects use a different engine (vendored migra in `@sqlfu/pg`), not this one.
 
 It is intentionally narrower than the migration model doc. The migration model explains which authorities exist and which commands mutate them. This document explains the mechanism `sqlfu` uses when it needs to answer "what SQL would move schema A to schema B?".
 
@@ -172,7 +172,7 @@ Column `collate ...` clauses are supported as part of table diffing. Separate SQ
 
 The shape of this engine - inspect both schemas into a typed model, diff the inspected models, emit an ordered plan - is taken from [`@pgkit/schemainspect`](https://github.com/mmkal/pgkit/tree/main/packages/schemainspect) and [`@pgkit/migra`](https://github.com/mmkal/pgkit/tree/main/packages/migra), which are themselves TypeScript ports of [`djrobstep/schemainspect`](https://github.com/djrobstep/schemainspect) and [`djrobstep/migra`](https://github.com/djrobstep/migra) by Robert Lechte.
 
-Those projects are PostgreSQL-only. The sqlfu implementation is SQLite-only today and does not copy their code. See [`src/schemadiff/CLAUDE.md`](../src/schemadiff/CLAUDE.md) for more detail on what is borrowed versus sqlfu-specific.
+Those projects are PostgreSQL-only. This SQLite engine does not copy their code. For Postgres, `@sqlfu/pg` vendors both directly under `packages/pg/src/vendor`; see the [Postgres guide](./guides/postgres.md). See [`src/schemadiff/CLAUDE.md`](../src/schemadiff/CLAUDE.md) for more detail on what is borrowed versus sqlfu-specific.
 
 ## Why This Replaced `sqlite3def`
 

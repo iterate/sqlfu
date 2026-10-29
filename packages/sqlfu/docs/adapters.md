@@ -4,7 +4,7 @@
 database client you already use and gives you the same typed client surface on
 top.
 
-This page lists the runtime adapters that ship in `sqlfu`, with a copy-paste snippet for each. The SQLite-compatible adapters have end-to-end guides today. `createNodePostgresClient()` is runtime-only: it adapts a `pg`-compatible pool for application queries, while the broader `@sqlfu/pg` dialect/toolchain docs are still in progress.
+This page lists the runtime adapters that ship in `sqlfu`, with a copy-paste snippet for each.
 
 For an end-to-end setup, use the matching guide:
 
@@ -18,6 +18,7 @@ For an end-to-end setup, use the matching guide:
 | Turso and libSQL | [Turso and libSQL](./guides/turso-libsql.md) |
 | Expo SQLite | [Expo SQLite](./guides/expo-sqlite.md) |
 | sqlite-wasm | [sqlite-wasm](./guides/sqlite-wasm.md) |
+| Postgres (`pg`) | [Postgres](./guides/postgres.md) |
 
 If you already know which driver you want to use, jump to the section below. If
 you're picking from scratch, see [Choosing an adapter](#choosing-an-adapter) at
@@ -236,14 +237,13 @@ await db.push();
 await db.pull();
 ```
 
-## Postgres runtime
+## Postgres
 
 ### `pg`
 
-`createNodePostgresClient()` adapts a `pg` pool for application queries. This
-adapter is runtime-only and lives in the main `sqlfu` package. The broader
-Postgres dialect/toolchain work lives in `@sqlfu/pg`; fuller docs and examples
-for that package are still in progress.
+`createNodePostgresClient()` adapts a `pg` pool for application queries. To
+point `draft`, `migrate`, `generate` and the UI at Postgres too, set
+`dialect: pgDialect(...)` from `@sqlfu/pg`. See the [Postgres guide](./guides/postgres.md).
 
 ```ts
 import {Pool} from 'pg';

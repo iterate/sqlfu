@@ -88,6 +88,8 @@ export default defineConfig({
             {label: 'Turso and libSQL', slug: 'docs/guides/turso-libsql'},
             {label: 'Expo SQLite', slug: 'docs/guides/expo-sqlite'},
             {label: 'sqlite-wasm', slug: 'docs/guides/sqlite-wasm'},
+            {label: 'Postgres', slug: 'docs/guides/postgres'},
+            {label: 'Coming from pgkit', slug: 'docs/guides/pgkit'},
           ],
         },
         {
