@@ -28,6 +28,17 @@ jobs:
       # The bun adapter tests spawn real `bun` subprocesses.
       - uses: oven-sh/setup-bun@v2
 
+      # The celld adapter tests spawn real `celld dev` processes.
+      - name: Install celld
+        env:
+          CELLD_VERSION: v0.6.3
+        run: |
+          mkdir -p "$RUNNER_TEMP/celld-bin"
+          curl -fsSL "https://github.com/denoland/celld/releases/download/$CELLD_VERSION/celld-x86_64-unknown-linux-gnu.gz" \
+            | gunzip > "$RUNNER_TEMP/celld-bin/celld"
+          chmod +x "$RUNNER_TEMP/celld-bin/celld"
+          echo "$RUNNER_TEMP/celld-bin" >> "$GITHUB_PATH"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -47,41 +58,6 @@ jobs:
 
       - name: Run sqlfu tests
         run: pnpm --dir packages/sqlfu exec vitest --run
-
-  celld:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - run: corepack enable
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build sqlfu
-        run: pnpm --filter sqlfu build
-
-      - name: Install celld
-        env:
-          CELLD_VERSION: v0.6.3
-        run: |
-          curl -fsSL "https://github.com/denoland/celld/releases/download/$CELLD_VERSION/celld-x86_64-unknown-linux-gnu.gz" \
-            | gunzip > "$RUNNER_TEMP/celld"
-          chmod +x "$RUNNER_TEMP/celld"
-
-      - name: Run real celld compatibility test
-        env:
-          CELLD_TEST: 1
-          CELLD_BIN: ${{ runner.temp }}/celld
-        run: pnpm --dir packages/sqlfu exec vitest --run test/adapters/celld.test.ts
 
   pg-package:
     runs-on: ubuntu-latest

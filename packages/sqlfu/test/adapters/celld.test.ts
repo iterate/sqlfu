@@ -5,14 +5,13 @@ import path from 'node:path';
 
 import dedent from 'dedent';
 import {execa, type ResultPromise} from 'execa';
-import {expect, test as baseTest} from 'vitest';
+import {expect, test} from 'vitest';
 
 import {ensureBuilt, packageRoot} from './ensure-built.js';
 
-// Opt in because this starts a real celld process. With `celld` (v0.6.3+) on
-// PATH, run:
-// CELLD_TEST=1 pnpm --dir packages/sqlfu exec vitest --run test/adapters/celld.test.ts
-const test = baseTest.skipIf(!process.env.CELLD_TEST);
+// These tests start a real celld process, so `celld` (v0.6.3+) must be on PATH:
+// https://github.com/denoland/celld#install. To skip them, pass
+// `--exclude test/adapters/celld.test.ts` to vitest.
 
 test('sqlfu migrates and queries isolated durable object cells in real celld', async () => {
   await using fixture = await createCelldFixture();
@@ -26,7 +25,7 @@ test('sqlfu migrates and queries isolated durable object cells in real celld', a
 
   expect(await fixture.listPosts('/durable-object/alpha')).toMatchObject([{slug: 'hello', title: 'Hello from celld'}]);
   expect(await fixture.listPosts('/durable-object/beta')).toMatchObject([{slug: 'other', title: 'Another cell'}]);
-}, 30_000);
+});
 
 test('sqlfu migrates and queries a D1 database in real celld', async () => {
   await using fixture = await createCelldFixture();
@@ -35,7 +34,7 @@ test('sqlfu migrates and queries a D1 database in real celld', async () => {
   // also proves the migration is a no-op once applied.
   expect(await fixture.createPost('/d1', {slug: 'hello', title: 'Hello from D1'})).toMatchObject({rowsAffected: 1});
   expect(await fixture.listPosts('/d1')).toMatchObject([{slug: 'hello', title: 'Hello from D1'}]);
-}, 30_000);
+});
 
 async function createCelldFixture() {
   await ensureBuilt();
@@ -53,7 +52,7 @@ async function createCelldFixture() {
 
     // `celld dev` deploys the project to one real celld node backed by a local
     // object store, so no S3-compatible server is needed.
-    celld = execa(process.env.CELLD_BIN || 'celld', ['dev', projectRoot, '--port', String(celldPort), '--no-watch'], {
+    celld = execa('celld', ['dev', projectRoot, '--port', String(celldPort), '--no-watch'], {
       env: {CELLD_ESBUILD: path.join(packageRoot, 'node_modules', '.bin', 'esbuild')},
       forceKillAfterDelay: 1_000,
       reject: false,
@@ -192,7 +191,10 @@ async function waitForHealthy(url: string, process: ResultPromise) {
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     if (process.exitCode !== null) {
-      const result = await process;
+      const result: any = await process;
+      if (result.code === 'ENOENT') {
+        throw new Error('celld is not on PATH. Install celld v0.6.3+: https://github.com/denoland/celld#install');
+      }
       throw new Error(`celld exited before becoming ready:\n${result.stderr || result.stdout}`);
     }
     try {
