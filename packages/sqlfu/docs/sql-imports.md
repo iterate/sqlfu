@@ -97,7 +97,7 @@ import {listPosts} from './sql/queries.sql';
 - Query wrappers only. Table row types (`sql/.generated/tables.ts`), the migrations bundle, and the query catalog still come from `sqlfu generate`.
 - File-backed configs only. `sql` tags in an [inline config](/docs/sqlfu#inline-durable-object-configs) are TypeScript, which content mappers never see. Keep running `sqlfu generate` for those.
 - Run time is Node only for now. Bundlers (Vite, esbuild, wrangler) have no sqlfu plugin yet, so keep generated wrappers there.
-- The loader analyzes queries when the first `.sql` file loads. That's fine in development and tests. In production, either ship it (the analyzer is part of `sqlfu`) or use generated wrappers.
+- To use it in production, start the app with `node --import sqlfu/register` there too, keep `sqlfu` in `dependencies`, and deploy `sqlfu.config.ts` and `definitions.sql` with your `.sql` files. sqlfu types each `.sql` file when it first loads, so startup takes longer (about 75ms for one small query file).
 - An error spans the whole query, not the exact token.
 
 [reylo](https://github.com/colinhacks/reylo) did `.sql` imports with content mappers first. It types queries against a running database; sqlfu types them from `definitions.sql`.

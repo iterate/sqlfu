@@ -116,6 +116,62 @@ test('node --import sqlfu/register runs .sql imports', async () => {
   expect(JSON.parse(result.stdout)).toMatchObject({id: 1, slug: 'hello', title: 'Hello'});
 });
 
+test('.sql imports follow the generate options: validator, sync, and .query()', async () => {
+  await using project = await createContentMapperProject({
+    'sqlfu.config.ts': dedent`
+      import {defineConfig} from 'sqlfu';
+
+      export default defineConfig({
+        db: './app.db',
+        definitions: './definitions.sql',
+        migrations: './migrations',
+        queries: './sql',
+        generate: {validator: 'zod', sync: true},
+      });
+    `,
+    'sql/queries.sql': dedent`
+      /** @name insertPost */
+      insert into posts (slug, title) values (:slug, :title) returning id;
+
+      /** @name findPostBySlug */
+      select id, slug, title from posts where slug = :slug limit 1;
+    `,
+    'main.ts': dedent`
+      import fs from 'node:fs';
+      import {DatabaseSync} from 'node:sqlite';
+      import {createNodeSqliteClient} from 'sqlfu';
+      import {findPostBySlug, insertPost} from './sql/queries.sql';
+
+      const database = new DatabaseSync(':memory:');
+      database.exec(fs.readFileSync('definitions.sql', 'utf8'));
+      const client = createNodeSqliteClient(database);
+
+      insertPost(client, {slug: 'hello', title: 'Hello'});
+      const post: {id: number; slug: string; title: string | null} | null = findPostBySlug(client, {slug: 'hello'});
+
+      let validationError = '';
+      try {
+        // @ts-expect-error slug is a string
+        findPostBySlug(client, {slug: 1});
+      } catch (error) {
+        validationError = (error as Error).message;
+      }
+
+      console.log(JSON.stringify({post, query: findPostBySlug.query({slug: 'hello'}), validationError}));
+    `,
+  });
+
+  await expect(project.tsc()).resolves.toMatchObject({exitCode: 0, all: ''});
+
+  const result = await execa('node', ['--import', 'sqlfu/register', 'main.ts'], {cwd: project.root, all: true});
+
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    post: {id: 1, slug: 'hello', title: 'Hello'},
+    query: {name: 'findPostBySlug', sql: 'select id, slug, title from posts where slug = ? limit 1;', args: ['hello']},
+    validationError: expect.stringContaining('expected string, received number'),
+  });
+});
+
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tscBin = path.join(packageRoot, 'node_modules/typescript-content-mappers/bin/tsc');
 
@@ -188,4 +244,6 @@ async function installPublishedSqlfu(root: string) {
     JSON.stringify({...packageJson, exports: packageJson.publishConfig.exports}, null, 2),
   );
   await fs.symlink(path.join(packageRoot, 'dist'), path.join(installDir, 'dist'));
+  // For `generate.validator: 'zod'`: the wrappers import it, as a user's project would have it installed.
+  await fs.symlink(path.join(packageRoot, 'node_modules/zod'), path.join(root, 'node_modules/zod'));
 }
