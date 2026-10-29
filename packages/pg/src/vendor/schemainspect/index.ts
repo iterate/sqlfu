@@ -12,6 +12,10 @@
  *     stripped; the static `export const queries` blob remains.
  *   - All relative imports adjusted for `NodeNext` resolution
  *     (`.js` extensions, directory specifiers as `/index.js`).
+ *   - Bug fixes, each marked `sqlfu:` at the change: `create domain` ends
+ *     with `;`; the enums query no longer returns domains over enums; column
+ *     collations are part of `ColumnInfo.creation_clause`, so `create table`
+ *     keeps them.
  *
  * Apache-2.0 license preserved in `./LICENSE`. See `pg-package.md` for
  * the broader vendoring rationale.

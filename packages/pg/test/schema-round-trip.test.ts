@@ -62,6 +62,18 @@ test.for([
     `,
   },
   {
+    shape: 'domains over enums',
+    schema: `
+      create type color as enum ('red', 'orange', 'blue');
+      create domain warm_color as color check (value in ('red', 'orange'));
+      create table paints (id uuid primary key, color warm_color not null);
+    `,
+  },
+  {
+    shape: 'column collations',
+    schema: `create table posts (id uuid primary key, slug text collate "C" not null default '' unique);`,
+  },
+  {
     shape: 'stored generated columns',
     schema: `create table users (id uuid primary key, name text not null, name_lower text generated always as (lower(name)) stored);`,
   },
@@ -103,6 +115,29 @@ test.for([
       create schema billing;
       create table billing.invoices (id uuid primary key, total numeric(10, 2) not null);
       create view billing.big_invoices as select * from billing.invoices where total > 1000;
+    `,
+  },
+])('materializeSchemaSql round-trips $shape', {timeout: 30_000}, async ({schema}) => {
+  const rendered = await dialect.materializeSchemaSql(stubHost, {sourceSql: schema});
+
+  expect(await diffBothWays(rendered, schema)).toEqual({renderedToOriginal: [], originalToRendered: []});
+});
+
+// migra creates every function and composite type after the tables, so a
+// table that uses one can't be created from the rendering (or from a draft).
+test.fails.for([
+  {
+    shape: 'a function called in a column default',
+    schema: `
+      create function new_short_id() returns text language sql as $$ select substr(md5(random()::text), 1, 8) $$;
+      create table links (id text primary key default new_short_id(), url text not null);
+    `,
+  },
+  {
+    shape: 'a composite type as a column type',
+    schema: `
+      create type money_amount as (currency text, cents bigint);
+      create table invoices (id uuid primary key, total money_amount not null);
     `,
   },
 ])('materializeSchemaSql round-trips $shape', {timeout: 30_000}, async ({schema}) => {

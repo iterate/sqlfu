@@ -514,7 +514,7 @@ Those are not accidents. The project is trying to keep schema history explicit, 
 
 Current limits also matter:
 
-- Postgres support is early: `draft`, `check` and `generate` don't yet handle `serial`/identity columns, enums, functions, triggers and more. See [Postgres known gaps](https://sqlfu.dev/docs/guides/postgres#known-gaps)
+- Postgres support is early: tables that call a function in a default or check, or use a composite type, don't draft yet. See [Postgres known gaps](https://sqlfu.dev/docs/guides/postgres#known-gaps)
 - result-type inference is imperfect on some SQLite expressions and views; the sqlfu post-pass that fills gaps in the vendored TypeSQL output is still evolving
 - the formatter is opinionated and still evolving
 

@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 size: medium
 ---
 
@@ -7,7 +7,7 @@ size: medium
 
 ## Status summary
 
-Just started. Spec and approach written; implementation not started.
+Done. `materializeSchemaSql` and `extractSchemaFromClient` render with the vendored migra (empty inspector → db), and every shape in the brief round-trips. Three more vendored schemainspect/migra bugs fixed on the way. Left for later: migra creates functions and composite types after tables, so a default/check/generated column calling a function, or a composite-type column, fails (in drafts too). Tracked in `tasks/pg.md` step three; `test.fails` cases in the spec.
 
 ## Problem
 
@@ -39,16 +39,26 @@ Round trip: for a schema `S`, `diffSchema({baselineSql: materializeSchemaSql(S),
 
 ## Checklist
 
-- [ ] Red round-trip spec covering serial, bigserial, identity, enum, domain, stored generated column, function, trigger, materialized view, extension, non-`public` schema
-- [ ] Spec also covers the shapes that already work (plain tables, FKs, views, checks, indexes, uuid default, jsonb, arrays), so they stay working
-- [ ] Replace `renderCanonicalSchema` with migra-from-empty
-- [ ] `excludedTables` support on the inspector
-- [ ] Fix vendored migra domain ordering + missing `;`
-- [ ] Probe other real-world shapes (functions used in defaults/checks, partitioned tables, composite types, RLS, comments, grants) and record what still fails
-- [ ] Tick step three's first item in `tasks/pg.md`
-- [ ] Shrink "Known gaps" in `packages/sqlfu/docs/guides/postgres.md`; drop the "use `uuid` or `text` ids for now" advice
-- [ ] Existing `@sqlfu/pg` tests + typecheck pass
+- [x] Red round-trip spec covering serial, bigserial, identity, enum, domain, stored generated column, function, trigger, materialized view, extension, non-`public` schema
+- [x] Spec also covers the shapes that already work (plain tables, FKs, views, checks, indexes, uuid default, jsonb, arrays), so they stay working
+- [x] ~Leave out comments and grants~ _kept out, as decided: `diffSchema` ignores them too. Listed in the guide's known gaps as "never drafted"_
+- [x] Replace `renderCanonicalSchema` with migra-from-empty _`renderSchema` in `packages/pg/src/impl/schema.ts`_
+- [x] `excludedTables` support on the inspector _`omitTables`, same file_
+- [x] Fix vendored migra domain ordering + missing `;` _`Migration.add_all_changes`, `Changes.modified_domain_creations`, `InspectedDomain.create_statement`_
+- [x] Probe other real-world shapes (functions used in defaults/checks, partitioned tables, composite types, RLS, comments, grants) and record what still fails _see implementation notes_
+- [x] Tick step three's first item in `tasks/pg.md` _and added the function/composite-type ordering item_
+- [x] Shrink "Known gaps" in `packages/sqlfu/docs/guides/postgres.md`; drop the "use `uuid` or `text` ids for now" advice
+- [x] Existing `@sqlfu/pg` tests + typecheck pass _also ran `packages/ui/test/pg-studio.spec.ts`: 3/3_
 
 ## Implementation notes
 
 Stacked on `pg-docs` (PR #156), because the guide's "Known gaps" table only exists there.
+
+Probed 34 extra shapes against postgres:16 (render, then diff both ways):
+
+- Round-trip after this branch: partitioned tables, RLS policies, views on views/functions, standalone sequences, deferrable FKs, inheritance, unlogged tables, partial/expression indexes, enums in function signatures, `setof` table functions, triggers/serial/enums in other schemas, identity options, enum arrays, `unique nulls not distinct`, domains with `not null default`, cross-schema FKs, matviews on matviews, `with check option`, procedures, extensions in other schemas, exclusion constraints, quoted identifiers.
+- Fixed here (schemainspect bugs): domain over an enum (the enums query matched it via `typcategory = 'E'`, so it was created twice); column collations (`ColumnInfo.creation_clause` left out `collate`, only `add column` had it).
+- Still broken, migra ordering: a function called in a column default, check or generated column; a composite type as a column type. migra creates functions and composite types in `non_table_selectable_creations`, after tables. Drafts from empty fail the same way. Fixing it means knowing which functions depend on which tables (`deps.sql` only reads view rules from `pg_rewrite`), and it reorders draft output for every fixture that adds a function, so it's its own PR.
+- Silently lossy, not caught by the differ: custom ICU collations render as `locale = 'null'` and lose `deterministic = false`. Comments and grants: not rendered, not diffed.
+
+Output formatting: kept migra's statement text (same as drafts), but trimmed each statement and joined with one blank line. Not run through `sql-formatter`, since its newline-heavy output is the thing `format.ts` says the user dislikes.

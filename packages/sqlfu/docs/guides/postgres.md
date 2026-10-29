@@ -13,9 +13,10 @@ Postgres support comes in two parts:
 The loop is the same as for SQLite: `definitions.sql`, reviewed migrations,
 `.sql` query files, generated wrappers.
 
-Postgres support is early. Plain tables, foreign keys, views, check
-constraints and indexes work end to end. Several common Postgres features
-don't yet. Read [Known gaps](#known-gaps) before you adopt it.
+Postgres support is early. Tables, `serial` and identity columns, enums,
+domains, views, materialized views, functions, triggers, extensions and
+multiple schemas work end to end. Read [Known gaps](#known-gaps) before you
+adopt it.
 
 ## Install
 
@@ -78,9 +79,6 @@ create table posts (
   published_at timestamptz
 );
 ```
-
-Use `uuid` or `text` ids for now. `serial` and identity columns hit
-[known gaps](#known-gaps).
 
 Put queries in `sql/queries.sql`. Use sqlfu's `:name` parameters, not `$1`.
 sqlfu rewrites them to `$1`, `$2`, ... in the generated code:
@@ -159,17 +157,15 @@ Generated types follow the `pg` driver's defaults. `timestamptz` comes back as
 
 These are bugs, not design decisions.
 
-Schema features. `draft`, `check` and `generate` re-read your schema through a
-simplified Postgres schema reader. Anything it misses either errors or comes
-back in every new draft:
+Schema features. migra creates every function and composite type after the
+tables, so a table that uses one fails. This hits drafts and `generate`:
 
 | Feature | What happens |
 | --- | --- |
-| `serial` / `bigserial` | `generate` fails: `relation "posts_id_seq" does not exist` |
-| identity columns | every later draft re-adds `add generated always as identity` |
-| enums, domains | `type "..." does not exist` |
-| stored generated columns | `cannot use column reference in DEFAULT expression` |
-| functions, triggers, materialized views, extensions, schemas other than `public` | drafted again every time |
+| a function called in a column default, check constraint or generated column | `function ...() does not exist` |
+| a composite type (`create type ... as (...)`) as a column type | `type "..." does not exist` |
+| custom ICU collations | locale and `deterministic = false` are lost |
+| comments, grants | never drafted |
 
 Generated wrappers. These differ from SQLite output:
 
