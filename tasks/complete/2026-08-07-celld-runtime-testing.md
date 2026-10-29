@@ -5,7 +5,7 @@ size: medium
 
 ## Status
 
-Done in draft PR [#154](https://github.com/iterate/sqlfu/pull/154). A real celld v0.6.3 node (started with `celld dev`) covers Worker routing, inline sqlfu migration/query use, isolated named Durable Object cells, and a D1 binding through `createD1Client`. A dedicated CI job downloads one pinned celld binary.
+Done in draft PR [#154](https://github.com/iterate/sqlfu/pull/154). A real celld v0.6.3 node (started with `celld dev`) covers Worker routing, inline sqlfu migration/query use, isolated named Durable Object cells, and a D1 binding through `createD1Client`. The tests always run (like the bun tests); the main `sqlfu` CI job puts one pinned celld binary on PATH.
 
 ## Goal
 
@@ -27,7 +27,7 @@ Prove sqlfu's Durable Object adapter works in the real celld runtime, without Mi
 - [x] Prove Worker routing keeps distinct named Durable Object cells isolated. _The spec writes different rows to `alpha` and `beta`, then reads each cell independently through its Worker route._
 - [x] Add disposable fixtures for the celld process, its working state, and test project without test hooks or Miniflare. _The async-disposable fixture owns one `celld dev` process and a temp project dir (which also holds celld's local state)._
 - [x] Add dedicated CI setup for pinned celld and a real S3-compatible MinIO service. _The `celld` unit-test job downloads the pinned celld v0.6.3 binary before running the opt-in spec. MinIO dropped on 2026-10-29._
-- [x] Document the local command and required binaries close to the test. _An opt-in note above the test gives the one-line command and the minimum celld version._
+- [x] Document the local command and required binaries close to the test. _A note above the tests gives the minimum celld version, the install link, and how to exclude the file; a missing binary fails with the same advice._
 - [x] Run the focused celld compatibility spec and the relevant existing Durable Object suite. _The celld spec, all 14 existing Durable Object tests, sqlfu typecheck, ESLint, formatting, and diff checks pass locally._
 - [x] Update this task with implementation notes, move it to `tasks/complete/`, and refresh the pull request body. _Filed as `tasks/complete/2026-08-07-celld-runtime-testing.md`; draft PR #154 includes runtime scope and before/after evidence._
 
@@ -45,3 +45,4 @@ Prove sqlfu's Durable Object adapter works in the real celld runtime, without Mi
 - 2026-10-29: Executive decision: switched the fixture from `celld deploy` + `celld` + MinIO + `mc` to `celld dev --no-watch`. It starts the same node binary (`celld --no-control-plane --listen ...`) on a local object store. It is ready in about 2s and exits in about 0.1s on SIGTERM. MinIO's GitHub repo is archived, and its latest release (RELEASE.2025-10-15T17-29-55Z, a CVE fix) ships source only, so the old pin was a dead end. The CI job now downloads one binary.
 - 2026-10-29: A throwaway probe ran sqlfu's `createD1Client` against a celld v0.6.3 D1 binding under `celld dev`. Migrate, a named-param `sql.run` insert, and a `sql.many` select all worked. celld's D1 docs say it binds only `?`/`?NNN`, so sqlfu's D1 adapter must already convert named params before binding. Adding D1 to this spec is cheap (one more binding and route), but it widens the PR's claim, so it is left as a decision for the reviewer.
 - 2026-10-29: The reviewer asked for D1 coverage. The spec's Worker now has a `d1_databases` binding and a `/d1` route that builds a `createD1Client` and migrates on each request. The Durable Object route moved to `/durable-object/<cell>`. Two tests, each with its own `celld dev` process; together they take about 1.6s locally.
+- 2026-10-29: At the reviewer's request, the tests now always run instead of using the `CELLD_TEST=1` opt-in. The bun adapter tests already require `bun` the same way. The separate `celld` CI job is folded into the main `sqlfu` job, which puts celld on PATH. The explicit 30s per-test timeouts are dropped: vitest.config.ts gives 30s in CI and 5s locally, and both tests take about 1.8s together. A missing binary now fails with an install hint. `CELLD_BIN` is removed because PATH covers both CI and local use.
