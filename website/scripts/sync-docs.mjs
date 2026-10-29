@@ -30,7 +30,7 @@ const docs = [
     title: 'Guides',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides.md'),
     description:
-      'Runtime-specific setup guides for Durable Objects, D1, Node SQLite, Bun SQLite, Turso/libSQL, Expo SQLite, and sqlite-wasm.',
+      'Runtime-specific setup guides for Durable Objects, D1, Node SQLite, Bun SQLite, Turso/libSQL, Expo SQLite, sqlite-wasm, and Postgres.',
   },
   {
     slug: 'guides/durable-objects',
@@ -79,6 +79,19 @@ const docs = [
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides', 'sqlite-wasm.md'),
     description:
       'Use sqlfu with @sqlite.org/sqlite-wasm in the browser, including OPFS, generated migrations, and generated query wrappers.',
+  },
+  {
+    slug: 'guides/postgres',
+    title: 'Postgres',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides', 'postgres.md'),
+    description:
+      'Use sqlfu with Postgres: @sqlfu/pg for draft, migrate, generate and the UI, createNodePostgresClient() at runtime, and known gaps.',
+  },
+  {
+    slug: 'guides/pgkit',
+    title: 'Coming from pgkit',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides', 'pgkit.md'),
+    description: 'How pgkit packages and migrator commands map to sqlfu, and what does not carry over.',
   },
   {
     slug: 'integrations',

@@ -16,6 +16,9 @@ tools and service-specific helper modules, use [Integrations](./integrations.md)
 | Turso Cloud and libSQL | [Turso and libSQL](./guides/turso-libsql.md) |
 | Expo SQLite | [Expo SQLite](./guides/expo-sqlite.md) |
 | sqlite-wasm in the browser | [sqlite-wasm](./guides/sqlite-wasm.md) |
+| Postgres via `pg` | [Postgres](./guides/postgres.md) |
+
+Already using pgkit? See [Coming from pgkit](./guides/pgkit.md).
 
 Every guide follows the same SQL-first loop:
 
