@@ -36,7 +36,8 @@ Local changes that are expected:
   (`table_or_subquery.join_clause()`, which upstream ignores) with its own operators and
   constraints, and `joinUsingFields` drops the shared columns of every NATURAL / USING join
   item, not just plain tables. That matches SQLite's `select *` columns, which sqlfu needs now
-  that repeated result names are an error.
+  that repeated result names are an error. `leftJoinFields` likewise makes every left-joined
+  item's columns nullable; upstream only did that for plain tables.
 - `codegen/sqlite.ts` — `mapColumns` keeps repeated result column names instead of renaming
   them `id`, `id_2` (`renameInvalidNames`). sqlfu's drivers key rows by column name, so the
   renamed column never arrives; sqlfu typegen rejects the duplicate with an alias hint.

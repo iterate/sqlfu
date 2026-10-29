@@ -472,17 +472,7 @@ function traverse_table_or_subquery(
 				}
 			}
 			const filteredFields = filterUsingFields(tableOrSubqueryFields, joinUsingFields(join_constraint, join_operator, tableOrSubqueryFields, allFields));
-			if (isLeftJoin) {
-				allFields.push(
-					...filteredFields.map((field) => ({
-						...field,
-						notNull: false,
-						intrinsicNotNull: field.notNull
-					}))
-				);
-			} else {
-				allFields.push(...filteredFields);
-			}
+			allFields.push(...leftJoinFields(filteredFields, isLeftJoin));
 		}
 		const select_stmt = table_or_subquery.select_stmt();
 		if (select_stmt) {
@@ -503,7 +493,7 @@ function traverse_table_or_subquery(
 				};
 				return colDef;
 			});
-			allFields.push(...filterUsingFields(tableOrSubqueryFields, joinUsingFields(join_constraint, join_operator, tableOrSubqueryFields, allFields)));
+			allFields.push(...leftJoinFields(filterUsingFields(tableOrSubqueryFields, joinUsingFields(join_constraint, join_operator, tableOrSubqueryFields, allFields)), isLeftJoin));
 		}
 		// sqlfu divergence: a parenthesised join, `(a join b using (id))`, is a nested join_clause.
 		// Upstream doesn't read it; walk it with its own operators and constraints.
@@ -515,7 +505,7 @@ function traverse_table_or_subquery(
 				nested_join_clause.join_operator_list(),
 				traverseContext
 			);
-			allFields.push(...filterUsingFields(tableOrSubqueryFields, joinUsingFields(join_constraint, join_operator, tableOrSubqueryFields, allFields)));
+			allFields.push(...leftJoinFields(filterUsingFields(tableOrSubqueryFields, joinUsingFields(join_constraint, join_operator, tableOrSubqueryFields, allFields)), isLeftJoin));
 		}
 		const table_or_subquery_list2 = table_or_subquery.table_or_subquery_list();
 		if (table_or_subquery_list2.length > 0) {
@@ -2271,6 +2261,17 @@ function joinUsingFields(
 		return fields.filter((field) => field.hidden !== 1 && leftNames.has(field.columnName.toLowerCase())).map((field) => field.columnName);
 	}
 	return [];
+}
+
+// sqlfu divergence: upstream makes only a plain table's columns nullable under LEFT JOIN. A
+// left-joined subquery or parenthesised join can miss just the same.
+function leftJoinFields(fields: ColumnDef[], isLeftJoin: boolean): ColumnDef[] {
+	if (!isLeftJoin) return fields;
+	return fields.map((field) => ({
+		...field,
+		notNull: false,
+		intrinsicNotNull: field.notNull
+	}));
 }
 
 function filterUsingFields(fields: ColumnDef[], usingFields: string[]) {
