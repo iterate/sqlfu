@@ -30,7 +30,7 @@ const docs = [
     title: 'Guides',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides.md'),
     description:
-      'Runtime-specific setup guides for Durable Objects, D1, Node SQLite, Bun SQLite, Turso/libSQL, Expo SQLite, and sqlite-wasm.',
+      'Runtime-specific setup guides for Durable Objects, D1, Node SQLite, Bun SQLite, celld, Turso/libSQL, Expo SQLite, and sqlite-wasm.',
   },
   {
     slug: 'guides/durable-objects',
@@ -58,6 +58,13 @@ const docs = [
     title: 'Bun SQLite',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides', 'bun-sqlite.md'),
     description: 'Use sqlfu with bun:sqlite: local file config, sync wrappers, and createBunClient() at runtime.',
+  },
+  {
+    slug: 'guides/celld',
+    title: 'celld',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'guides', 'celld.md'),
+    description:
+      'Run sqlfu Durable Objects and D1 on celld, the self-hosted Cloudflare Workers runtime, with no code changes.',
   },
   {
     slug: 'guides/turso-libsql',

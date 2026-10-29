@@ -28,6 +28,22 @@ const db = createNodeSqliteClient(
 const html = await renderFeed(db);
 ```
 
+## celld
+
+```ts artifact=celld
+// Cloudflare Durable Objects, self-hosted with `celld dev`
+import {DurableObject} from "cloudflare:workers";
+import {createDurableObjectClient} from "sqlfu";
+import {renderFeed} from "./src/app.ts";
+
+export class Blog extends DurableObject {
+  async fetch() {
+    const db = createDurableObjectClient(this.ctx.storage);
+    return new Response(await renderFeed(db));
+  }
+}
+```
+
 ## bun:sqlite
 
 ```ts artifact=bun
