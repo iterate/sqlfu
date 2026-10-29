@@ -13,6 +13,7 @@ tools and service-specific helper modules, use [Integrations](./integrations.md)
 | Cloudflare D1 | [Cloudflare D1](./guides/cloudflare-d1.md) |
 | Node SQLite, better-sqlite3, native libsql | [Node SQLite](./guides/node-sqlite.md) |
 | Bun SQLite | [Bun SQLite](./guides/bun-sqlite.md) |
+| celld (self-hosted Workers, Durable Objects, D1) | [celld](./guides/celld.md) |
 | Turso Cloud and libSQL | [Turso and libSQL](./guides/turso-libsql.md) |
 | Expo SQLite | [Expo SQLite](./guides/expo-sqlite.md) |
 | sqlite-wasm in the browser | [sqlite-wasm](./guides/sqlite-wasm.md) |

@@ -14,6 +14,7 @@ For an end-to-end setup, use the matching guide:
 | Cloudflare D1 | [Cloudflare D1](./guides/cloudflare-d1.md) |
 | Node SQLite / better-sqlite3 / native libsql | [Node SQLite](./guides/node-sqlite.md) |
 | Bun SQLite | [Bun SQLite](./guides/bun-sqlite.md) |
+| celld | [celld](./guides/celld.md) |
 | Turso and libSQL | [Turso and libSQL](./guides/turso-libsql.md) |
 | Expo SQLite | [Expo SQLite](./guides/expo-sqlite.md) |
 | sqlite-wasm | [sqlite-wasm](./guides/sqlite-wasm.md) |
