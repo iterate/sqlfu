@@ -444,3 +444,318 @@ export type PostsRow = {
 ```
 
 </details>
+
+## types queries with an in (select ...) subquery
+
+<details data-outputs="sql/.generated/list-users-with-sessions.sql.ts">
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table users (id integer primary key, login text not null);
+create table sessions (id text primary key, user_id integer not null references users (id), expires_at text not null);
+```
+
+```sql (sql/list-users-with-sessions.sql)
+select id, login from users where id in (select user_id from sessions where expires_at > :now);
+```
+
+</details>
+
+<details>
+<summary>output</summary>
+
+```ts (sql/.generated/list-users-with-sessions.sql.ts)
+import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
+
+const sql = `
+select id, login from users where id in (select user_id from sessions where expires_at > ?);
+`.trim();
+const query = (params: listUsersWithSessions.Params) => ({
+	name: "listUsersWithSessions",
+	sql,
+	args: [params.now],
+});
+
+export const listUsersWithSessions = Object.assign(
+	async function listUsersWithSessions(client: Client, params: listUsersWithSessions.Params): Promise<listUsersWithSessions.Result[]> {
+		return client.all<listUsersWithSessions.Result>(query(params));
+	},
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "login"],
+			output: (rows: listUsersWithSessions.Result[]) => rows,
+		}),
+	},
+);
+
+export namespace listUsersWithSessions {
+	export type Params = {
+		now: string;
+	};
+	export type Result = {
+		id: number;
+		login: string;
+	};
+}
+```
+
+</details>
+
+## types deletes with a row-value in (select ...) subquery
+
+<details data-outputs="sql/.generated/delete-shares.sql.ts">
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table shares (project_id text not null, path text not null, primary key (project_id, path));
+create table revoked (project_id text not null, path text not null, revoked_by text not null);
+```
+
+```sql (sql/delete-shares.sql)
+delete from shares where (project_id, path) in (select project_id, path from revoked where revoked_by = :revokedBy);
+```
+
+</details>
+
+<details>
+<summary>output</summary>
+
+```ts (sql/.generated/delete-shares.sql.ts)
+import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
+
+const sql = `
+delete from shares where (project_id, path) in (select project_id, path from revoked where revoked_by = ?);
+`.trim();
+const query = (params: deleteShares.Params) => ({
+	name: "deleteShares",
+	sql,
+	args: [params.revokedBy],
+});
+
+export const deleteShares = Object.assign(
+	async function deleteShares(client: Client, params: deleteShares.Params) {
+		return client.run(query(params));
+	},
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: [],
+			output: () => undefined,
+		}),
+	},
+);
+
+export namespace deleteShares {
+	export type Params = {
+		revokedBy: string;
+	};
+}
+```
+
+</details>
+
+## expands select * over a join to each column once
+
+<details data-outputs="sql/.generated/list-tagged-posts.sql.ts">
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table posts (post_id integer primary key, title text not null);
+create table post_tags (tagged_post_id integer not null references posts (post_id), tag text not null);
+```
+
+```sql (sql/list-tagged-posts.sql)
+select * from posts p join post_tags t on t.tagged_post_id = p.post_id;
+```
+
+</details>
+
+<details>
+<summary>output</summary>
+
+```ts (sql/.generated/list-tagged-posts.sql.ts)
+import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
+
+const sql = `
+select * from posts p join post_tags t on t.tagged_post_id = p.post_id;
+`.trim();
+const query = { name: "listTaggedPosts", sql, args: [] };
+
+function mapResult(row: listTaggedPosts.RawResult): listTaggedPosts.Result {
+	return {
+		postId: row.post_id,
+		title: row.title,
+		taggedPostId: row.tagged_post_id,
+		tag: row.tag,
+	};
+}
+
+export const listTaggedPosts = Object.assign(
+	async function listTaggedPosts(client: Client): Promise<listTaggedPosts.Result[]> {
+		const rows = await client.all<listTaggedPosts.RawResult>(query);
+		return rows.map(mapResult);
+	},
+	{
+		sql,
+		query,
+		mapResult,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["post_id", "title", "tagged_post_id", "tag"],
+			output: (rows: listTaggedPosts.RawResult[]) => rows.map(mapResult),
+		}),
+	},
+);
+
+export namespace listTaggedPosts {
+	export type RawResult = {
+		post_id: number;
+		title: string;
+		tagged_post_id: number;
+		tag: string;
+	};
+	export type Result = {
+		postId: number;
+		title: string;
+		taggedPostId: number;
+		tag: string;
+	};
+}
+```
+
+</details>
+
+## merges natural and using join columns in select * like sqlite does
+
+<details data-outputs="sql/.generated/queries.sql.ts">
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table posts (post_id integer primary key, title text not null);
+create table post_stats (post_id integer not null, views integer not null);
+create table post_flags (post_id integer not null, flagged integer not null);
+```
+
+```sql (sql/queries.sql)
+/** @name listNaturalJoin */
+select * from posts natural join post_stats;
+
+/** @name listNestedUsingJoin */
+select * from posts join (post_stats join post_flags using (post_id)) using (post_id);
+```
+
+</details>
+
+<details>
+<summary>output</summary>
+
+```ts (sql/.generated/queries.sql.ts)
+import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
+
+const listNaturalJoinSql = `select * from posts natural join post_stats;`;
+const listNaturalJoinQuery = { name: "listNaturalJoin", sql: listNaturalJoinSql, args: [] };
+
+function listNaturalJoinMapResult(row: listNaturalJoin.RawResult): listNaturalJoin.Result {
+	return {
+		postId: row.post_id,
+		title: row.title,
+		views: row.views,
+	};
+}
+
+export const listNaturalJoin = Object.assign(
+	async function listNaturalJoin(client: Client): Promise<listNaturalJoin.Result[]> {
+		const rows = await client.all<listNaturalJoin.RawResult>(listNaturalJoinQuery);
+		return rows.map(listNaturalJoinMapResult);
+	},
+	{
+		sql: listNaturalJoinSql,
+		query: listNaturalJoinQuery,
+		mapResult: listNaturalJoinMapResult,
+		"~standard": standardQuery({
+			sql: listNaturalJoinSql,
+			query: listNaturalJoinQuery,
+			columns: ["post_id", "title", "views"],
+			output: (rows: listNaturalJoin.RawResult[]) => rows.map(listNaturalJoinMapResult),
+		}),
+	},
+);
+
+export namespace listNaturalJoin {
+	export type RawResult = {
+		post_id: number;
+		title: string;
+		views: number;
+	};
+	export type Result = {
+		postId: number;
+		title: string;
+		views: number;
+	};
+}
+
+const listNestedUsingJoinSql = `
+select * from posts join (post_stats join post_flags using (post_id)) using (post_id);
+`.trim();
+const listNestedUsingJoinQuery = {
+	name: "listNestedUsingJoin",
+	sql: listNestedUsingJoinSql,
+	args: [],
+};
+
+function listNestedUsingJoinMapResult(row: listNestedUsingJoin.RawResult): listNestedUsingJoin.Result {
+	return {
+		postId: row.post_id,
+		title: row.title,
+		views: row.views,
+		flagged: row.flagged,
+	};
+}
+
+export const listNestedUsingJoin = Object.assign(
+	async function listNestedUsingJoin(client: Client): Promise<listNestedUsingJoin.Result[]> {
+		const rows = await client.all<listNestedUsingJoin.RawResult>(listNestedUsingJoinQuery);
+		return rows.map(listNestedUsingJoinMapResult);
+	},
+	{
+		sql: listNestedUsingJoinSql,
+		query: listNestedUsingJoinQuery,
+		mapResult: listNestedUsingJoinMapResult,
+		"~standard": standardQuery({
+			sql: listNestedUsingJoinSql,
+			query: listNestedUsingJoinQuery,
+			columns: ["post_id", "title", "views", "flagged"],
+			output: (rows: listNestedUsingJoin.RawResult[]) => rows.map(listNestedUsingJoinMapResult),
+		}),
+	},
+);
+
+export namespace listNestedUsingJoin {
+	export type RawResult = {
+		post_id: number;
+		title: string;
+		views: number;
+		flagged: number;
+	};
+	export type Result = {
+		postId: number;
+		title: string;
+		views: number;
+		flagged: number;
+	};
+}
+```
+
+</details>

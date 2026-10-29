@@ -173,6 +173,37 @@ test('generated wrappers are Standard Queries that a driver which knows nothing 
   expect(client.execute(findPostBySlug, {slug: 'hello'})).toEqual(await findPostBySlug(client, {slug: 'hello'}));
 });
 
+test('a param inside a joined subquery binds once', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: dedent`
+      create table posts (post_id integer primary key, title text not null);
+      create table post_tags (tagged_post_id integer not null, tag text not null);
+    `,
+    files: {
+      'sql/list-posts-by-tag.sql': dedent`
+        select p.title
+        from posts p
+        join (select tagged_post_id from post_tags where tag = :tag) t on t.tagged_post_id = p.post_id;
+      `,
+    },
+  });
+
+  await project.generate();
+  await project.applyStatements(dedent`
+    insert into posts (post_id, title) values (1, 'hello'), (2, 'goodbye');
+    insert into post_tags (tagged_post_id, tag) values (1, 'greeting');
+  `);
+
+  const mod = await project.importTranspiledModule<{
+    listPostsByTag: (client: unknown, params: {tag: string}) => Promise<Array<{title: string}>>;
+  }>('sql/.generated/list-posts-by-tag.sql.ts');
+
+  using database = project.openDatabase();
+  const client = createNodeSqliteClient(database.database);
+
+  await expect(mod.listPostsByTag(client, {tag: 'greeting'})).resolves.toEqual([{title: 'hello'}]);
+});
+
 test('generate gives multi-query result mappers unique local names', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: `create table posts (id integer primary key, published_at text not null, reviewed_at text not null);`,

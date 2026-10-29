@@ -349,3 +349,148 @@ export type PostsRow = {
 ```
 
 </details>
+
+## rejects result columns that share a name
+
+<details>
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table users (id integer primary key, login text not null);
+create table sessions (id text primary key, user_id integer not null references users (id));
+```
+
+```sql (sql/list-sessions.sql)
+select s.id, u.id from sessions s join users u on u.id = s.user_id;
+```
+
+</details>
+
+<details>
+<summary>error</summary>
+
+Query listSessions returns more than one column named `id`
+
+</details>
+
+## makes columns from a left-joined subquery or parenthesised join nullable
+
+<details data-outputs="sql/.generated/queries.sql.ts">
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table posts (post_id integer primary key, title text not null);
+create table post_stats (post_id integer not null, views integer not null);
+create table post_flags (post_id integer not null, flagged integer not null);
+```
+
+```sql (sql/queries.sql)
+/** @name listPostsWithStats */
+select p.title, s.views
+from posts p
+left join (select post_id, views from post_stats) s on s.post_id = p.post_id;
+
+/** @name listPostsWithStatsAndFlags */
+select *
+from posts
+left join (post_stats join post_flags using (post_id)) using (post_id);
+```
+
+</details>
+
+<details>
+<summary>output</summary>
+
+```ts (sql/.generated/queries.sql.ts)
+import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
+
+const listPostsWithStatsSql = `
+select p.title, s.views
+from posts p
+left join (select post_id, views from post_stats) s on s.post_id = p.post_id;
+`.trim();
+const listPostsWithStatsQuery = {
+	name: "listPostsWithStats",
+	sql: listPostsWithStatsSql,
+	args: [],
+};
+
+export const listPostsWithStats = Object.assign(
+	async function listPostsWithStats(client: Client): Promise<listPostsWithStats.Result[]> {
+		return client.all<listPostsWithStats.Result>(listPostsWithStatsQuery);
+	},
+	{
+		sql: listPostsWithStatsSql,
+		query: listPostsWithStatsQuery,
+		"~standard": standardQuery({
+			sql: listPostsWithStatsSql,
+			query: listPostsWithStatsQuery,
+			columns: ["title", "views"],
+			output: (rows: listPostsWithStats.Result[]) => rows,
+		}),
+	},
+);
+
+export namespace listPostsWithStats {
+	export type Result = {
+		title: string;
+		views?: number;
+	};
+}
+
+const listPostsWithStatsAndFlagsSql = `
+select *
+from posts
+left join (post_stats join post_flags using (post_id)) using (post_id);
+`.trim();
+const listPostsWithStatsAndFlagsQuery = {
+	name: "listPostsWithStatsAndFlags",
+	sql: listPostsWithStatsAndFlagsSql,
+	args: [],
+};
+
+function listPostsWithStatsAndFlagsMapResult(row: listPostsWithStatsAndFlags.RawResult): listPostsWithStatsAndFlags.Result {
+	return {
+		postId: row.post_id,
+		title: row.title,
+		views: row.views,
+		flagged: row.flagged,
+	};
+}
+
+export const listPostsWithStatsAndFlags = Object.assign(
+	async function listPostsWithStatsAndFlags(client: Client): Promise<listPostsWithStatsAndFlags.Result[]> {
+		const rows = await client.all<listPostsWithStatsAndFlags.RawResult>(listPostsWithStatsAndFlagsQuery);
+		return rows.map(listPostsWithStatsAndFlagsMapResult);
+	},
+	{
+		sql: listPostsWithStatsAndFlagsSql,
+		query: listPostsWithStatsAndFlagsQuery,
+		mapResult: listPostsWithStatsAndFlagsMapResult,
+		"~standard": standardQuery({
+			sql: listPostsWithStatsAndFlagsSql,
+			query: listPostsWithStatsAndFlagsQuery,
+			columns: ["post_id", "title", "views", "flagged"],
+			output: (rows: listPostsWithStatsAndFlags.RawResult[]) => rows.map(listPostsWithStatsAndFlagsMapResult),
+		}),
+	},
+);
+
+export namespace listPostsWithStatsAndFlags {
+	export type RawResult = {
+		post_id: number;
+		title: string;
+		views?: number;
+		flagged?: number;
+	};
+	export type Result = {
+		postId: number;
+		title: string;
+		views?: number;
+		flagged?: number;
+	};
+}
+```
+
+</details>

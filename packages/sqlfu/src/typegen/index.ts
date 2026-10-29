@@ -187,6 +187,7 @@ export async function generateInlineConfigTypes(input: {
         descriptor: refineDescriptor(analysis.descriptor, querySource.analysisSqlContent, schema),
         explicitParameterExpansions: querySource.parameterExpansions,
         sourceSql: querySource.sqlContent,
+        queryName: querySource.functionName,
       });
       assertInlineConfigRuntimeSupported(querySource, prepared.descriptor, prepared.parameterExpansions);
       queryTypes.push({
@@ -248,7 +249,7 @@ function renderInlineConfigQueryType(descriptor: GeneratedQueryDescriptor, casin
 }
 
 function renderInlineTypeLiteral(fields: GeneratedField[], fieldKind: 'parameter' | 'result'): string {
-  const properties = fields.map((field) => {
+  const properties = uniqueFieldsByName(fields, fieldKind).map((field) => {
     const optional = fieldKind === 'parameter' && Boolean(field.optional);
     return `${field.name}${optional ? '?' : ''}: ${inlineFieldTypeExpression(field, fieldKind)}`;
   });
@@ -341,6 +342,7 @@ function renderQueryDocument(input: {
       descriptor: refineDescriptor(analysis.descriptor, querySource.analysisSqlContent, input.schema),
       explicitParameterExpansions: querySource.parameterExpansions,
       sourceSql: querySource.sqlContent,
+      queryName: querySource.functionName,
     });
     return renderQueryWrapper({
       functionName: querySource.functionName,
@@ -1257,6 +1259,7 @@ async function writeQueryCatalog(
       descriptor: refineDescriptor(analysis.descriptor, querySource.analysisSqlContent, schema),
       explicitParameterExpansions: querySource.parameterExpansions,
       sourceSql: querySource.sqlContent,
+      queryName: querySource.functionName,
     });
     const {descriptor, dataMapping} = applyGeneratedInputCasing(prepared.descriptor, config.generate.casing);
     const resultMapping = mapColumnDerivedFields(getResultFields(descriptor), config.generate.casing);
@@ -2410,7 +2413,7 @@ function renderObjectSchemaDeclaration(
   fieldKind: 'parameter' | 'result',
 ): string[] {
   // see tasks/typegen-extensibility.md — future user-provided validator plugins and per-column overrides would hook in here.
-  const fieldLines = fields.map((field) => emitter.renderFieldLine(field, fieldKind));
+  const fieldLines = uniqueFieldsByName(fields, fieldKind).map((field) => emitter.renderFieldLine(field, fieldKind));
   return emitter.objectSchemaDeclaration({schemaName, fieldLines});
 }
 
@@ -2754,11 +2757,35 @@ function getResultMode(descriptor: GeneratedQueryDescriptor): QueryResultMode {
  * `export type Foo = …;`. Indentation is two tabs — one for the namespace, one for the fields.
  */
 function renderObjectTypeBody(fields: GeneratedField[], fieldKind: 'parameter' | 'result'): string {
-  const lines = fields.flatMap((field) => {
+  const lines = uniqueFieldsByName(fields, fieldKind).flatMap((field) => {
     const optional = fieldKind === 'parameter' ? Boolean(field.optional) : !field.notNull;
     return renderTypePropertyLines('\t\t', field.name, optional, fieldTypeExpression(field, fieldKind));
   });
   return [`{`, ...lines, `\t}`].join('\n');
+}
+
+/**
+ * A param used twice (`where id = :id or parent_id = :id`) comes out of the analyzer as one field
+ * per occurrence, because generated `args` bind each `?` in order. Object types and schemas need
+ * each name once. Mirrors TypeSQL's `removeDuplicatedParameters2`
+ * (src/vendor/typesql/codegen/shared/codegen-util.ts): if the occurrences disagree on
+ * nullability, the nullable one wins.
+ *
+ * Result fields are left alone: two result columns with one name are different columns, and
+ * `assertUniqueResultColumnNames` rejects them before they get here.
+ */
+function uniqueFieldsByName<TField extends GeneratedField>(
+  fields: TField[],
+  fieldKind: 'parameter' | 'result',
+): TField[] {
+  if (fieldKind === 'result') return fields;
+  const fieldsByName = new Map<string, TField>();
+  for (const field of fields) {
+    if (!fieldsByName.has(field.name) || !field.notNull) {
+      fieldsByName.set(field.name, field);
+    }
+  }
+  return [...fieldsByName.values()];
 }
 
 function renderTypePropertyLines(indent: string, name: string, optional: boolean, typeExpression: string): string[] {
@@ -2798,8 +2825,9 @@ function objectSchema(
   } = {},
 ): JsonSchemaObject {
   const fieldKind = input.fieldKind ?? 'parameter';
-  const properties = Object.fromEntries(fields.map((field) => [field.name, schemaForField(field)]));
-  const required = fields
+  const uniqueFields = uniqueFieldsByName(fields, fieldKind);
+  const properties = Object.fromEntries(uniqueFields.map((field) => [field.name, schemaForField(field)]));
+  const required = uniqueFields
     .filter((field) => (fieldKind === 'parameter' ? !Boolean(field.optional) : field.notNull))
     .map((field) => field.name);
 
@@ -2895,6 +2923,7 @@ function prepareQueryDescriptor(input: {
   descriptor: GeneratedQueryDescriptor;
   explicitParameterExpansions: ParameterExpansion[];
   sourceSql: string;
+  queryName: string;
 }): {
   descriptor: GeneratedQueryDescriptor;
   parameterExpansions: ParameterExpansion[];
@@ -2916,12 +2945,27 @@ function prepareQueryDescriptor(input: {
   }
 
   const parameterExpansions = Array.from(expansions.values());
+  assertUniqueResultColumnNames(input.queryName, input.descriptor);
   assertNoUnsupportedInferredReturning(input.descriptor, parameterExpansions);
   assertRuntimeExpansionReferences(input.sourceSql, parameterExpansions);
   return {
     descriptor: applyParameterExpansionDescriptor(input.descriptor, parameterExpansions, input.sourceSql),
     parameterExpansions,
   };
+}
+
+function assertUniqueResultColumnNames(queryName: string, descriptor: GeneratedQueryDescriptor): void {
+  const seen = new Set<string>();
+  for (const column of descriptor.columns) {
+    if (seen.has(column.name)) {
+      throw new Error(
+        `Query ${queryName} returns more than one column named \`${column.name}\`. ` +
+          `Rows are keyed by column name, so only the last one would reach your code. ` +
+          `Select the columns explicitly and alias the duplicates, e.g. \`u.id as user_id\`.`,
+      );
+    }
+    seen.add(column.name);
+  }
 }
 
 function assertNoUnsupportedInferredReturning(

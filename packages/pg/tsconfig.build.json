@@ -1,6 +1,10 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    // Source keeps `await using` (ES2026). Node 22 and some consumer bundlers
+    // (e.g. Next.js) can't parse it, so emit lowers it to try/finally.
+    // test/dist-syntax.test.ts holds dist to this target.
+    "target": "ES2025",
     "noEmit": false,
     "rootDir": "src",
     "outDir": "dist",

@@ -1,7 +1,7 @@
 {
   "name": "@sqlfu/pg",
   "version": "0.0.0-dev",
-  "description": "Postgres dialect for sqlfu — schema diff, typegen, formatter, migration table DDL, advisory-lock migration runner.",
+  "description": "Postgres dialect for sqlfu: schema diff, migrations, typegen and formatting for Postgres projects.",
   "repository": {
     "type": "git",
     "url": "https://github.com/mmkal/sqlfu.git",
@@ -45,6 +45,7 @@
     "@types/pg": "^8.11.10",
     "@types/pluralize": "0.0.33",
     "@typescript/native-preview": "^7.0.0-dev.20260414.1",
+    "eslint": "^9.39.4",
     "typescript": "^5.9.3",
     "vitest": "^4.1.1",
     "yaml": "^2.8.4"

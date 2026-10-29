@@ -84,9 +84,12 @@ export default defineConfig({
             {label: 'Cloudflare D1', slug: 'docs/guides/cloudflare-d1'},
             {label: 'Node SQLite', slug: 'docs/guides/node-sqlite'},
             {label: 'Bun SQLite', slug: 'docs/guides/bun-sqlite'},
+            {label: 'celld', slug: 'docs/guides/celld'},
             {label: 'Turso and libSQL', slug: 'docs/guides/turso-libsql'},
             {label: 'Expo SQLite', slug: 'docs/guides/expo-sqlite'},
             {label: 'sqlite-wasm', slug: 'docs/guides/sqlite-wasm'},
+            {label: 'Postgres', slug: 'docs/guides/postgres'},
+            {label: 'Coming from pgkit', slug: 'docs/guides/pgkit'},
           ],
         },
         {
