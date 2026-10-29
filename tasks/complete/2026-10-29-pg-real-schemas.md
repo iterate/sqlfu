@@ -1,31 +1,49 @@
 ---
-status: in-progress
+status: done
 size: large
 ---
 
 # Make Postgres work on real schemas
 
-Status: just started. Three sessions work in parallel on this one branch, each owning one section below. Stacked on #156 (`pg-docs`).
+Status: done. All three sections landed on this branch (PR #159), each with a red-first spec against real Postgres. Left for later: migra creates functions and composite types after tables, a few pg typegen type mismatches (`bigint`/`numeric` as strings, `cast` nullability), migra options. Those are in the guide's Known gaps and `tasks/pg.md` step three. Follow-up to #156 (merged).
 
-Covers the first three items of "Step three" in [pg.md](./pg.md). The guide's "Known gaps" (`packages/sqlfu/docs/guides/postgres.md`) lists the user-facing symptoms and should shrink to whatever is left when this lands.
-
-Each section's owner fleshes out its own spec in its first commit and only edits its own section, its own Known gaps rows, and its own `pg.md` checkbox.
+Covers the first three items of "Step three" in [pg.md](../pg.md). The guide's "Known gaps" (`packages/sqlfu/docs/guides/postgres.md`) lists the user-facing symptoms and should shrink to whatever is left when this lands.
 
 ## Schema renderer
 
-Owner: "Fix Postgres schema renderer for real schemas" session.
+Status: done.
 
-`renderCanonicalSchema` in `packages/pg/src/impl/schema.ts` drops or mangles these, so `draft`/`check`/`generate` break:
+`draft`, `check` and `generate` re-read a Postgres schema as SQL text through `pgDialect.materializeSchemaSql` (apply DDL to a scratch db, read it back) and `pgDialect.extractSchemaFromClient` (read the live db). Both used `renderCanonicalSchema`, a hand-rolled `pg_catalog` renderer that only knew `public` tables, columns, constraints, indexes and views. Anything else was lost, so `diffSchema(rendered, original)` wasn't empty.
 
-- [ ] `serial` / `bigserial` (`relation "t_id_seq" does not exist`)
-- [ ] identity columns (spurious `add generated always as identity` in every later draft)
-- [ ] enums, domains (`type does not exist`)
-- [ ] stored generated columns
-- [ ] functions, triggers, materialized views, extensions, non-`public` schemas (redrafted every time)
+Spec: for a schema `S`, `diffSchema({baselineSql: materializeSchemaSql(S), desiredSql: S})` returns `[]`. Same for `extractSchemaFromClient` on a db where `S` was applied.
+
+Decisions (made without the user, review these):
+
+- **Render with the vendored migra, diffing an empty inspector against the db.** `Migration.create(null, db)` gives `create` statements for everything migra can see, which is what pgkit's migrator does for `definitions.sql`. The renderer and the differ now agree on what a schema contains. Skipping the render step was the other option, but the UI live-schema pane, drift checks and typegen want SQL text, and changing the `Dialect` contract for one dialect is a bigger change.
+- **Output style is migra's.** Schema-qualified names, separate `create unique index` + `add constraint ... using index`, same as pg drafts. Statements trimmed and joined with one blank line, not run through `sql-formatter`.
+- **`excludedTables` drops the table and everything hanging off it** (indexes, constraints, triggers, RLS policies, owned sequences) from the inspector. Matched by unqualified name, as on SQLite.
+- **Leave out what every fresh database has:** the `public` schema and the `plpgsql` extension.
+- **Extension versions aren't pinned,** matching `diffSchema`'s `ignore_extension_versions: true`.
+- **Grants and comments stay out.** `diffSchema` doesn't diff them either. Listed in Known gaps.
+- **Fix migra bugs in the vendored copy, with `sqlfu:` comments.**
+
+- [x] `serial` / `bigserial` (`relation "t_id_seq" does not exist`) _`renderSchema` in `packages/pg/src/impl/schema.ts`_
+- [x] identity columns (spurious `add generated always as identity` in every later draft) _same_
+- [x] enums, domains (`type does not exist`) _same, plus vendored fixes: domains created after the tables using them, `create domain` missing `;`, domain over an enum created twice_
+- [x] stored generated columns _same_
+- [x] functions, triggers, materialized views, extensions, non-`public` schemas (redrafted every time) _same_
+- [x] Spec covers all of the above plus shapes that already worked (plain tables, FKs, views, checks, indexes, uuid default, jsonb, arrays) _`packages/pg/test/schema-round-trip.test.ts`; failing cases are `test.fails`_
+- [x] `excludedTables` _`omitTables` in `schema.ts`_
+- [x] Docs _Known gaps shrunk to what's still broken; dropped the "use `uuid` or `text` ids" advice_
+
+Left for later:
+
+- migra creates functions and composite types after tables, so a default/check/generated column calling a user function, or a composite-type column, fails in drafts and `generate`. Functions' `dependent_on` only covers views (`deps.sql` reads `pg_rewrite`); fixing it needs attrdef/constraint → function deps from `pg_depend`, and it reorders every draft fixture that adds a function. In `tasks/pg.md` step three and Known gaps.
+- Custom ICU collations render as `locale = 'null'` and lose `deterministic = false`. The differ doesn't catch it. In Known gaps.
+
+Notes: probed 34 extra shapes against postgres:16. Round-trip fine: partitioned tables, RLS policies, views on views/functions, standalone sequences, deferrable FKs, inheritance, unlogged tables, partial/expression indexes, `setof` functions, triggers/serial/enums in other schemas, identity options, enum arrays, `unique nulls not distinct`, cross-schema FKs, procedures, exclusion constraints, quoted identifiers. Also fixed column collations (`ColumnInfo.creation_clause` left out `collate`). `packages/ui/test/pg-studio.spec.ts` passes 3/3.
 
 ## Typegen parity
-
-Owner: "Match Postgres typegen output to SQLite" session.
 
 Status: done.
 
@@ -77,8 +95,6 @@ Left for later:
 Notes: the parity test's aggregate case uses `coalesce(max(id), 0)`, because SQLite types `max/min/avg` as not-null and `sum(int)` as `number`, while pg says nullable and `bigint`. Those are column types, not wrapper shape.
 
 ## Error classification
-
-Owner: "Classify Postgres errors into SqlfuError kinds" session.
 
 Status: done.
 
