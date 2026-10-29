@@ -21,8 +21,7 @@ for (const fixturePath of listFixtureFiles(fixturesDir)) {
     const cases = parseGenerateFixture(fs.readFileSync(fixturePath, 'utf8'));
 
     for (const fixtureCase of cases) {
-      const testOrKnownBug = fixtureCase.failing ? test.fails : test;
-      testOrKnownBug(fixtureCase.name, async () => {
+      test(fixtureCase.name, async () => {
         const result = await runFixtureCase(fixtureCase);
 
         if (fixtureCase.expectedError) {
@@ -43,9 +42,7 @@ for (const fixturePath of listFixtureFiles(fixturesDir)) {
           [],
         );
 
-        // A `failing` fixture's output block is the hand-written fixed output, so `-u` must not
-        // overwrite it with whatever the buggy generator emits today.
-        if (inject('updateSnapshots') && !fixtureCase.failing) {
+        if (inject('updateSnapshots')) {
           // Rewrite exact-match outputs (.ts / text files) back into the fixture. JSON fences
           // are partial matches by design (the catalog's `generatedAt` timestamp + deeper
           // metadata fields aren't restated in the fixture) — so in glob-curated mode we still
