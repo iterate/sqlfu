@@ -57,6 +57,8 @@ select id, slug from posts where published = 1
 
 `eslint --fix '**/*.sql'` reformats `.sql` files in place. The same rule autofixes inline template bodies in TS/JS.
 
+The rule doesn't read `sqlfu.config.ts`. For Postgres projects, set the dialect explicitly: `'sqlfu/format-sql': ['error', {dialect: 'postgresql'}]`.
+
 ### `sqlfu/generated-query-freshness`
 
 Flags checked-in `.sql` query files whose generated manifest or wrapper is missing or stale.

@@ -1,5 +1,6 @@
 {
   "name": "sqlfu-website",
+  "version": "0.0.0-dev",
   "private": true,
   "type": "module",
   "scripts": {

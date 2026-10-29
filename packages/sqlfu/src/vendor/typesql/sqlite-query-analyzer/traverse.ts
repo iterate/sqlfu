@@ -2135,6 +2135,14 @@ function traverse_returning_clause(returning_clause: Returning_clauseContext, tr
 		const expr = result_column.expr();
 		if (expr) {
 			const exprResult = traverse_expr(expr, traverseContext);
+			// `returning expr as alias` names the result column after the alias, same
+			// as the select result-column path above (issue #152 — ignoring it made
+			// generated result mappers read raw keys that don't exist on the row).
+			const aliasRaw = result_column.column_alias()?.getText();
+			const alias = aliasRaw && aliasRaw.startsWith('"') && aliasRaw.endsWith('"') ? aliasRaw.slice(1, -1) : aliasRaw;
+			if (alias) {
+				exprResult.name = alias;
+			}
 			return exprResult;
 		}
 		return [];

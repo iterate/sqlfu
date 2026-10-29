@@ -85,14 +85,21 @@ export function bindSqlParamsToPrefixedRecord(
   if (params == null) return undefined;
   if (Array.isArray(params)) return params as QueryArg[];
 
-  const namedParameters = new Map<string, string>();
+  const namedParameters = new Map<string, string[]>();
   for (const parameter of scanSqlNamedParameters(sql)) {
-    if (!namedParameters.has(parameter.name)) namedParameters.set(parameter.name, parameter.parameter);
+    const parameters = namedParameters.get(parameter.name);
+    if (parameters) {
+      if (!parameters.includes(parameter.parameter)) parameters.push(parameter.parameter);
+    } else {
+      namedParameters.set(parameter.name, [parameter.parameter]);
+    }
   }
 
   const out: Record<string, QueryArg> = {};
   for (const [key, value] of Object.entries(params)) {
-    out[sqlBindKey(key, namedParameters)] = value as QueryArg;
+    for (const bindKey of sqlBindKeys(key, namedParameters)) {
+      out[bindKey] = value as QueryArg;
+    }
   }
   return out;
 }
@@ -228,9 +235,9 @@ function isPostgresQuestionOperator(sql: string, index: number): boolean {
   return isExpressionTokenEnd(sql, previousIndex) && isExpressionTokenStart(sql, nextIndex);
 }
 
-function sqlBindKey(key: string, namedParameters: Map<string, string>): string {
-  if (hasBindPrefix(key)) return key;
-  return namedParameters.get(key) || `:${key}`;
+function sqlBindKeys(key: string, namedParameters: Map<string, string[]>): string[] {
+  if (hasBindPrefix(key)) return [key];
+  return namedParameters.get(key) || [`:${key}`];
 }
 
 function hasBindPrefix(key: string): boolean {

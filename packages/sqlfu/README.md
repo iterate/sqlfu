@@ -2,11 +2,11 @@
 
 <img src="./docs/logo.png" alt="" align="right" width="96" />
 
-`sqlfu` is a SQLite-first toolkit for teams that want their data layer to stay close to SQL.
+`sqlfu` is a SQLite-first toolkit for teams that want their data layer to stay close to SQL. Postgres support is early and lives in [`@sqlfu/pg`](https://sqlfu.dev/docs/guides/postgres).
 
 It is built around a simple idea: SQL should be the source language for schema, migrations, queries, formatting, and diffing. TypeScript comes second. You should still get good generated types and wrappers, but without having to push the whole project through an ORM-shaped API.
 
-**New to sqlfu?** Start with the [Getting Started](https://sqlfu.dev/docs/getting-started) walkthrough.
+**New to sqlfu?** Start with the [Getting Started](https://sqlfu.dev/docs/getting-started) walkthrough, or read the [introductory blog post](https://sqlfu.dev/blog/introducing-sqlfu) for the thinking behind it.
 
 ![i know sqlfu](./docs/i-know-sqlfu.gif)
 
@@ -38,7 +38,7 @@ It is built around a simple idea: SQL should be the source language for schema, 
 
 - a client for executing checked-in SQL
 - a migrator built around SQL files, not JavaScript migration code
-- a SQLite schema diff engine
+- a schema diff engine (SQLite built in, Postgres via `@sqlfu/pg`)
 - a type generator for `.sql` queries
 - a SQL formatter
 - an Admin UI for inspecting and working with the project
@@ -76,8 +76,8 @@ You should still get strong TypeScript output from SQL: generated wrappers, type
 
 - **Runtime client.**
   The lightweight `Client` interface is usually the only sqlfu runtime surface
-  your app depends on. Adapter factories create it from the SQLite driver you
-  already use.
+  your app depends on. Adapter factories create it from the SQLite or Postgres
+  driver you already use.
 - **SQL migrations.**
   Schema history is a sequence of reviewed SQL files, with `sqlfu draft`
   helping turn `definitions.sql` changes into best-effort migration drafts.
@@ -116,7 +116,7 @@ Those pieces give `sqlfu` enough information to answer the important questions:
 
 `sqlfu` includes a lightweight client layer for executing SQL directly. It works with checked-in SQL rather than replacing it with a query builder.
 
-sqlfu doesn't ship its own database driver. Instead, `sqlfu` exports a thin adapter for each SQLite-compatible driver, so you can bring whichever one fits your runtime and get the same typed client surface on top. One thing sqlfu goes out of its way to preserve: **sync stays sync**. A client built on a synchronous driver (`better-sqlite3`, `node:sqlite`, Durable Objects) is itself synchronous -- no spurious `async` creeping up your call stack.
+sqlfu doesn't ship its own database driver. Instead, `sqlfu` exports a thin adapter for each SQLite-compatible driver, plus `pg` for Postgres, so you can bring whichever one fits your runtime and get the same typed client surface on top. One thing sqlfu goes out of its way to preserve: **sync stays sync**. A client built on a synchronous driver (`better-sqlite3`, `node:sqlite`, Durable Objects) is itself synchronous -- no spurious `async` creeping up your call stack.
 
 That sync/async distinction carries through generated query wrappers and the migrator. Sync-backed generated functions return rows directly, and `applyMigrations()` runs synchronously on a `SyncClient`. Async-backed clients get the same API shape, but with promises where the underlying driver actually needs them.
 
@@ -212,7 +212,7 @@ try {
 }
 ```
 
-The driver error is preserved byte-identical on `.cause`; `.query` and `.system` come along so error reporters can tag events without a parallel `QueryExecutionContext`. Kind names are SQLSTATE-aligned so the existing Postgres runtime adapter and the broader `@sqlfu/pg` work can share one error vocabulary as SQLSTATE-specific classification fills in. Full kind list, handler recipes, Sentry-tagging example: [Errors](https://sqlfu.dev/docs/errors).
+The driver error is preserved byte-identical on `.cause`; `.query` and `.system` come along so error reporters can tag events without a parallel `QueryExecutionContext`. Kind names are SQLSTATE-aligned so SQLite and Postgres can share one vocabulary. Postgres errors are wrapped too, but always with `kind: 'unknown'` for now; read the SQLSTATE from `.cause.code`. Full kind list, handler recipes, Sentry-tagging example: [Errors](https://sqlfu.dev/docs/errors).
 
 ### Outbox (experimental)
 
@@ -286,6 +286,7 @@ Optional fields:
 
 - `db` -- the database sqlfu talks to for `migrate`, `check`, `sync`, `goto`, `baseline`, and the UI. Either a filesystem path (opens a local sqlite file) or a factory returning a `DisposableAsyncClient`. If omitted, commands that need a database use `.sqlfu/app.db`; this is useful for authoring migrations and generated types before wiring a runtime database. See [Pluggable `db`](#pluggable-db).
 - `migrations` -- directory containing migration files. Omit if you don't use migrations (library-author projects).
+- `dialect` -- which database the toolchain targets. Defaults to SQLite. Set `dialect: pgDialect({adminUrl})` from `@sqlfu/pg` for Postgres. See [Postgres](https://sqlfu.dev/docs/guides/postgres).
 - `generate.authority` -- where `sqlfu generate` reads the schema from. See [`generate.authority`](#generateauthority). Default `'desired_schema'`.
 - `generate.casing` -- generated SQL-derived property casing, either `'camel'` or `'preserve'`. Default `'camel'`.
 - `generate.experimentalJsonTypes` -- opt into experimental JSON logical-type handling. Today this covers SQLite columns declared exactly as `json`; the same flag is reserved for typed JSON metadata/schema support.
@@ -513,8 +514,7 @@ Those are not accidents. The project is trying to keep schema history explicit, 
 
 Current limits also matter:
 
-- `sqlfu` is SQLite-first in important parts of the toolchain
-- Postgres has a runtime adapter today, but the broader `@sqlfu/pg` dialect/toolchain docs and examples are still in progress
+- Postgres support is early: `draft`, `check` and `generate` don't yet handle `serial`/identity columns, enums, functions, triggers and more. See [Postgres known gaps](https://sqlfu.dev/docs/guides/postgres#known-gaps)
 - result-type inference is imperfect on some SQLite expressions and views; the sqlfu post-pass that fills gaps in the vendored TypeSQL output is still evolving
 - the formatter is opinionated and still evolving
 
@@ -528,8 +528,8 @@ Current limits also matter:
 - [antlr4](https://github.com/antlr/antlr4) JavaScript runtime (BSD-3-Clause). Vendored under [`src/vendor/antlr4`](./src/vendor/antlr4) so TypeSQL's parser can run without loading from `node_modules`.
 - [code-block-writer](https://github.com/dsherret/code-block-writer) by David Sherret (MIT). Vendored under [`src/vendor/code-block-writer`](./src/vendor/code-block-writer) and used by TypeSQL's code generator.
 - [Drizzle](https://orm.drizzle.team/). The [`local.drizzle.studio`](https://local.drizzle.studio/) product model -- hosted UI shell talking to a local backend via a permissioned localhost API -- is the direct inspiration for `sqlfu.dev/ui` and the shape of the sqlfu UI package.
-- [`@pgkit/schemainspect`](https://github.com/mmkal/pgkit/tree/main/packages/schemainspect) and [`@pgkit/migra`](https://github.com/mmkal/pgkit/tree/main/packages/migra). The sqlfu schemadiff engine under [`src/schemadiff`](./src/schemadiff) is structurally inspired by these libraries: materialize both schemas into scratch databases, inspect them into a typed model, diff the inspected models, and emit an ordered statement plan. The SQLite-specific implementation does not copy their code, but the shape is taken from them. See [`src/schemadiff/CLAUDE.md`](./src/schemadiff/CLAUDE.md) for more detail.
+- [`@pgkit/schemainspect`](https://github.com/mmkal/pgkit/tree/main/packages/schemainspect) and [`@pgkit/migra`](https://github.com/mmkal/pgkit/tree/main/packages/migra). The sqlfu schemadiff engine under [`src/schemadiff`](./src/schemadiff) is structurally inspired by these libraries: materialize both schemas into scratch databases, inspect them into a typed model, diff the inspected models, and emit an ordered statement plan. The SQLite implementation does not copy their code, but the shape is taken from them. `@sqlfu/pg` vendors both directly for Postgres. See [`src/schemadiff/CLAUDE.md`](./src/schemadiff/CLAUDE.md) for more detail.
 - [`djrobstep/schemainspect`](https://github.com/djrobstep/schemainspect) and [`djrobstep/migra`](https://github.com/djrobstep/migra) by Robert Lechte. These are the Python originals that the `@pgkit/*` packages ported to TypeScript, and therefore the upstream lineage of the sqlfu diff engine.
-- [pgkit](https://github.com/mmkal/pgkit) (same author). pgkit is sqlfu's Postgres-focused prior art. A lot of the mental model for sqlfu -- "SQL as the authored source, generated types next to queries, schema-diff-driven migrations, a web UI that sits on the real client" -- comes from trying that approach in pgkit first. sqlfu is growing back to Postgres in stages: the runtime adapter lives in `sqlfu`, while the broader dialect/toolchain story belongs to `@sqlfu/pg`.
+- [pgkit](https://github.com/mmkal/pgkit) (same author). pgkit is sqlfu's Postgres-focused prior art. A lot of the mental model for sqlfu -- "SQL as the authored source, generated types next to queries, schema-diff-driven migrations, a web UI that sits on the real client" -- comes from trying that approach in pgkit first. `@sqlfu/pg` brings that model back to Postgres using vendored pgkit code. See [Coming from pgkit](https://sqlfu.dev/docs/guides/pgkit).
 
 Vendored directories each carry a short `CLAUDE.md` that pins the upstream commit or version and lists the local modifications, so future updates from upstream can be applied intelligently.

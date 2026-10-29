@@ -1,5 +1,5 @@
 ---
-status: step-one-ready-for-review
+status: in-progress
 size: huge
 ---
 
@@ -7,11 +7,11 @@ pgkit supported postgres. it has basically the same core features. we should be 
 
 ## Status summary
 
-Follow-up docs cleanup is implemented on `bedtime/2026-05-15-pg-docs-followup`: stale README/docs/blog wording now distinguishes the existing Postgres runtime adapter from the broader `@sqlfu/pg` dialect/toolchain story. The remaining gap is fuller `@sqlfu/pg` docs and examples, not this review cleanup.
+Roughly 70% there. Steps one and two shipped (PRs #87, #88, #89) and `@sqlfu/pg@0.1.1` is on npm. A plain-tables Postgres project works end to end: `draft`, `migrate`, `check`, `sync`, `generate`, `format`, the UI, and `createNodePostgresClient` at runtime. Docs landed in PR #156 (Postgres guide + Coming from pgkit).
 
-Step one (ready-for-review on branch `extract-dialect-interface`, PR #87): extracted the `Dialect` interface from the main package and re-implemented the existing sqlite-only behavior as the default `sqliteDialect`. New `src/dialect.ts` is a thin aggregator over existing implementations (no file moves). All existing tests pass untouched (1428 sqlfu + 67 ui). Public surface is unchanged for users (sqlite is still the default); core code routes through `config.dialect` for schemadiff, identifier quoting, migration table DDL, and migration locking. Formatter and typegen routing deferred to step two (formatter call sites all lack a config in scope today; typegen materialization is tangled with sqlite-specific private helpers in `typegen/index.ts` and is best refactored when the pg side drives the requirement).
+Main missing piece: the simplified schema renderer in `packages/pg/src/impl/schema.ts` drops serial/identity, enums, domains, functions, triggers, matviews, extensions, non-`public` schemas and generated columns, so `draft`/`check`/`generate` break on most real schemas. Smaller gaps: pg typegen parity with SQLite, pg error classification, migra options. See "Step three" below.
 
-Step two (later, separate branch): create `packages/pg` (`@sqlfu/pg`) that exports a `pgDialect` object satisfying the same interface, lifting schemainspect+migra from pgkit and using `sql-formatter` directly for postgres formatting. Typegen via typesql (or pgkit's own typegen if typesql doesn't fit).
+Not a goal: drop-in pgkit replacement (no reading pgkit's migrations table, no inline `sql` tag typegen).
 
 ## Plan
 
@@ -58,16 +58,29 @@ Design decisions (sign-off received in chat before this commit):
 
 ### Step two — `@sqlfu/pg` (separate branch, later)
 
-- [ ] Create `packages/pg` with build/test wiring matching the existing packages
-- [ ] Lift `schemainspect` + `migra` from `../pgkit/` (pure TS already; same `(baselineSql, targetSql) => diffSql` interface)
-- [ ] Wire `pgDialect.diffSchema` to the lifted impl
-- [ ] `pgDialect.formatSql` via `sql-formatter` package directly (no vendoring)
-- [ ] `pgDialect.analyzeQueries` via typesql (or pgkit's own typegen if typesql is too constrained — time-boxed spike)
-- [ ] `pgDialect.withMigrationLock` via `pg_advisory_xact_lock`
-- [ ] `pgDialect.defaultMigrationTableDdl` returning the pg version of the migrations table
-- [ ] `pgDialect.quoteIdentifier` (double-quote escaping is already pg-compatible — likely zero changes from sqlite)
-- [ ] Postgres runtime adapter(s) in `packages/sqlfu/src/adapters/` (separate concern, not the dialect package)
-- [ ] Examples / docs / `dev-project` smoke test against postgres
+- [x] Create `packages/pg` with build/test wiring matching the existing packages _PR #88; root `pnpm test` runs it since PR #133_
+- [x] Lift `schemainspect` + `migra` from `../pgkit/` (pure TS already; same `(baselineSql, targetSql) => diffSql` interface) _vendored under `packages/pg/src/vendor/`_
+- [x] Wire `pgDialect.diffSchema` to the lifted impl _`packages/pg/src/impl/schemadiff.ts`_
+- [x] `pgDialect.formatSql` via `sql-formatter` package directly (no vendoring) _`packages/pg/src/impl/format.ts`; `sqlfu format` and the lint plugin pick it up_
+- [x] `pgDialect.analyzeQueries` via typesql (or pgkit's own typegen if typesql is too constrained — time-boxed spike) _PREPARE introspection + vendored pgkit typegen AST passes, `packages/pg/src/impl/typegen.ts`_
+- [x] `pgDialect.withMigrationLock` via `pg_advisory_xact_lock` _`packages/pg/src/impl/migrations.ts`_
+- [x] `pgDialect.defaultMigrationTableDdl` returning the pg version of the migrations table _same file; `applied_at timestamptz`_
+- [x] `pgDialect.quoteIdentifier` (double-quote escaping is already pg-compatible — likely zero changes from sqlite) _`packages/pg/src/impl/identifiers.ts`_
+- [x] Postgres runtime adapter(s) in `packages/sqlfu/src/adapters/` (separate concern, not the dialect package) _`createNodePostgresClient` only; no Bun/postgres.js adapters_
+- [x] Docs and examples _PR #156: `packages/sqlfu/docs/guides/postgres.md`, `guides/pgkit.md`, wording fixes elsewhere. Guide verified end to end against the docker-compose pg_
+- [ ] `dev-project` smoke test against postgres _UI tests use `packages/ui/test/template-project-pg/`; there's no hand-tinkering pg dev-project yet_
+
+### Step three — make it work on real schemas
+
+Found while verifying the PR #156 guide against a real Postgres. Each item is also listed in the guide's "Known gaps", which should shrink as these land.
+
+- [ ] Replace the hand-rolled renderer in `packages/pg/src/impl/schema.ts` (`renderCanonicalSchema`) with the vendored schemainspect, or skip the render step for pg. Repro: `pgDialect.materializeSchemaSql` then `diffSchema(rendered, original)`. Broken today: `serial` (`relation "t_id_seq" does not exist`), identity (spurious `add generated always as identity` in every later draft), enums and domains (`type does not exist`), stored generated columns, and functions/triggers/matviews/extensions/non-`public` schemas (redrafted every time). Plain tables, FKs, views, checks, indexes, `uuid default gen_random_uuid()` and jsonb/arrays are fine
+- [ ] pg typegen parity with SQLite: `limit 1` should return `Result | null` (returns an array); `insert/update/delete ... returning` wrappers should return rows (they call `client.run`); `where col = :param` params are typed nullable; FROM-less selects get no columns
+- [ ] Classify pg errors by SQLSTATE into `SqlfuError` kinds (always `'unknown'` today)
+- [ ] Derive draft names for pg (`sqlfu draft` without `--name` writes `_migration.sql`; SQLite derives `_create_table_posts.sql`)
+- [ ] Plumb migra options (`schema`, `excludeSchema`, extension flags) through `Dialect.diffSchema`
+- [ ] `sqlfu init` option for Postgres (writes a SQLite config today)
+- [ ] pg coverage for `goto`, `baseline` and `check` (only draft/migrate/drift have pg UI specs)
 
 ### Docs follow-up from PR #121 review
 

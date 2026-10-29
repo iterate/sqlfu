@@ -1,5 +1,6 @@
 import {wrapSyncClientErrors} from '../adapter-errors.js';
 import {bindSyncSql} from '../sql.js';
+import {bindSqlParamsToPrefixedRecord} from '../sql-params.js';
 import {rawSqlWithSqlSplittingSync, surroundWithBeginCommitRollbackSync} from '../sqlite-text.js';
 import type {PreparedStatementParams, ResultRow, SqlQuery, SyncClient, SyncPreparedStatement} from '../types.js';
 
@@ -18,7 +19,7 @@ export interface BunSqliteDatabaseLike {
   query<TRow extends ResultRow = ResultRow>(query: string): BunSqliteStatementLike<TRow>;
   run(
     query: string,
-    params?: unknown[],
+    params?: unknown[] | Record<string, unknown>,
   ): {
     changes?: number;
     lastInsertRowid?: string | number | bigint | null;
@@ -54,32 +55,33 @@ export function createBunClient(database: BunSqliteDatabaseLike): SyncClient<Bun
     },
     prepare<TRow extends ResultRow = ResultRow>(sql: string): SyncPreparedStatement<TRow> {
       // bun:sqlite `Statement` accepts either positional spread or a single
-      // named-param object (matching better-sqlite3's API). bindArgs collapses
-      // both shapes into the spread.
+      // prefixed named-param object. Sqlfu's public prepare surface accepts
+      // bare named params, so bindArgs normalizes records before spreading.
       const statement = database.query<TRow>(sql);
       return {
         all(params) {
-          return statement.all(...bindArgs(params));
+          return statement.all(...bindArgs(sql, params));
         },
         run(params) {
           // Bun's Statement may not expose `.run` on every version; fall back
           // to driver-level `database.run` for that path. Loses statement
           // reuse for `.run`, keeps the API contract.
           if (statement.run) {
-            const result = statement.run(...bindArgs(params));
+            const result = statement.run(...bindArgs(sql, params));
             return {
               rowsAffected: result.changes,
               lastInsertRowid: result.lastInsertRowid,
             };
           }
-          const fallback = database.run(sql, bindArgs(params) as unknown[]);
+          const boundParams = bindSqlParamsToPrefixedRecord(sql, params);
+          const fallback = boundParams ? database.run(sql, boundParams) : database.run(sql);
           return {
             rowsAffected: fallback.changes,
             lastInsertRowid: fallback.lastInsertRowid,
           };
         },
         *iterate(params) {
-          yield* statement.iterate(...bindArgs(params));
+          yield* statement.iterate(...bindArgs(sql, params));
         },
         [Symbol.dispose]() {
           statement.finalize?.();
@@ -99,8 +101,9 @@ export function createBunClient(database: BunSqliteDatabaseLike): SyncClient<Bun
 
 export const createBunDatabase = createBunClient;
 
-function bindArgs(params: PreparedStatementParams | undefined): unknown[] {
-  if (params == null) return [];
-  if (Array.isArray(params)) return params;
-  return [params];
+function bindArgs(sql: string, params: PreparedStatementParams | undefined): unknown[] {
+  const boundParams = bindSqlParamsToPrefixedRecord(sql, params);
+  if (boundParams == null) return [];
+  if (Array.isArray(boundParams)) return boundParams;
+  return [boundParams];
 }

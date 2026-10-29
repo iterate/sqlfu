@@ -249,6 +249,12 @@ a {
   margin-top: 1.5rem;
 }
 
+.hero .hero-blog-link {
+  margin-top: 0.9rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
 .button {
   display: inline-flex;
   align-items: center;

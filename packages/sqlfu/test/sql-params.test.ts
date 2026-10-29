@@ -1,10 +1,6 @@
 import {expect, test} from 'vitest';
 
-import {
-  bindSqlParamsToPositional,
-  bindSqlParamsToPrefixedRecord,
-  scanSqlNamedParameters,
-} from '../src/sql-params.js';
+import {bindSqlParamsToPositional, bindSqlParamsToPrefixedRecord, scanSqlNamedParameters} from '../src/sql-params.js';
 
 test('sql named parameter scanner skips quoted text, comments, and dollar-quoted bodies', () => {
   const input = [
@@ -53,11 +49,9 @@ test('sql params bind named records directly to postgres positional placeholders
   ].join('\n');
 
   expect(bindSqlParamsToPositional(input, {id: 1, slug: 'alpha', limit: 10}, 'postgres')).toMatchObject({
-    sql: [
-      `select $fn$select :ignored, ?$fn$ as body`,
-      `from posts`,
-      `where id = $1 and slug = $2 and rank < $3`,
-    ].join('\n'),
+    sql: [`select $fn$select :ignored, ?$fn$ as body`, `from posts`, `where id = $1 and slug = $2 and rank < $3`].join(
+      '\n',
+    ),
     args: [1, 'alpha', 10],
   });
 });
@@ -112,7 +106,13 @@ test('sql params preserve postgres json question operators', () => {
 });
 
 test('sql params bind named right operands after postgres json question operators', () => {
-  expect(bindSqlParamsToPositional(`select * from posts where payload ? :key and id = :id`, {key: 'slug', id: 1}, 'postgres')).toMatchObject({
+  expect(
+    bindSqlParamsToPositional(
+      `select * from posts where payload ? :key and id = :id`,
+      {key: 'slug', id: 1},
+      'postgres',
+    ),
+  ).toMatchObject({
     sql: `select * from posts where payload ? $1 and id = $2`,
     args: ['slug', 1],
   });
@@ -122,10 +122,18 @@ test('sql params bind bare object keys to the prefixes used by sqlite-wasm SQL',
   expect(bindSqlParamsToPrefixedRecord(`select :id, @slug, $limit`, {id: 1, slug: 'alpha', limit: 10})).toMatchObject({
     ':id': 1,
     '@slug': 'alpha',
-    '$limit': 10,
+    $limit: 10,
   });
 
   expect(bindSqlParamsToPrefixedRecord(`select :id`, {':id': 1})).toMatchObject({
     ':id': 1,
+  });
+});
+
+test('sql params bind bare object keys to every sqlite prefix used for the same name', () => {
+  expect(bindSqlParamsToPrefixedRecord(`select :id, @id, $id, :id`, {id: 1})).toMatchObject({
+    ':id': 1,
+    '@id': 1,
+    $id: 1,
   });
 });

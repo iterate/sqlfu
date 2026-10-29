@@ -1,4 +1,4 @@
-import {SQLite, sql} from '@codemirror/lang-sql';
+import {SQLite, keywordCompletionSource, schemaCompletionSource, sql} from '@codemirror/lang-sql';
 import type {SQLNamespace} from '@codemirror/lang-sql';
 import {javascript} from '@codemirror/lang-javascript';
 import {yaml} from '@codemirror/lang-yaml';
@@ -6,6 +6,7 @@ import {EditorState, type Extension, Prec} from '@codemirror/state';
 import {lintGutter, linter} from '@codemirror/lint';
 import {EditorView, keymap} from '@codemirror/view';
 import {acceptCompletion, autocompletion} from '@codemirror/autocomplete';
+import type {Completion, CompletionContext, CompletionResult, CompletionSource} from '@codemirror/autocomplete';
 import CodeMirror from '@uiw/react-codemirror';
 import CodeMirrorMerge from 'react-codemirror-merge';
 import type {ReactNode} from 'react';
@@ -106,6 +107,7 @@ type SqlCodeMirrorProps = {
 function SqlCodeMirrorBase(input: SqlCodeMirrorProps) {
   const theme = useResolvedTheme();
   const schema = buildSqlSchema(input.relations);
+  const completionSource = buildSqlCompletionSource(input.relations, schema);
   const executeKeymapHandler = (view: EditorView) => {
     input.onExecute?.(view.state.doc.toString());
     return true;
@@ -122,6 +124,7 @@ function SqlCodeMirrorBase(input: SqlCodeMirrorProps) {
     }),
     autocompletion({
       interactionDelay: 0,
+      override: [completionSource],
     }),
     linter(() =>
       (input.diagnostics ?? []).map((diagnostic) => ({
@@ -339,6 +342,271 @@ function buildSqlSchema(relations: StudioRelation[]): SQLNamespace {
     ]),
   );
 }
+
+function buildSqlCompletionSource(relations: StudioRelation[], schema: SQLNamespace): CompletionSource {
+  const schemaSource = schemaCompletionSource({dialect: SQLite, schema});
+  const keywordSource = keywordCompletionSource(SQLite);
+  const relationByName = new Map(relations.map((relation) => [relation.name, relation]));
+
+  return (context) => {
+    const schemaResult = schemaSource(context) as CompletionResult | null;
+    const keywordResult = keywordSource(context) as CompletionResult | null;
+    if (!schemaResult && !keywordResult) {
+      return null;
+    }
+
+    const relevantCompletions = buildRelevantSqlCompletions(context, relationByName);
+    const shadowedLabels = new Set(relevantCompletions.map((completion) => completion.label));
+    const options = [
+      ...relevantCompletions,
+      ...withoutShadowedLabels(schemaResult?.options || [], shadowedLabels),
+      ...withoutShadowedLabels(keywordResult?.options || [], shadowedLabels),
+    ];
+
+    let from = context.pos;
+    let to: number | undefined;
+    let validFor: CompletionResult['validFor'] = /^\w*$/u;
+    if (schemaResult) {
+      from = schemaResult.from;
+      to = schemaResult.to;
+      validFor = schemaResult.validFor || validFor;
+    } else if (keywordResult) {
+      from = keywordResult.from;
+      to = keywordResult.to;
+      validFor = keywordResult.validFor || validFor;
+    }
+
+    return {from, to, options, validFor};
+  };
+}
+
+function buildRelevantSqlCompletions(
+  context: CompletionContext,
+  relationByName: Map<string, StudioRelation>,
+): Completion[] {
+  if (isCompletingQualifiedName(context)) {
+    return [];
+  }
+
+  const doc = context.state.doc.toString();
+  const tree = SQLite.language.parser.parse(doc);
+  const statement = findSqlStatement(tree.resolveInner(context.pos, -1));
+  if (!statement || isCompletingSqlRelationName(statement, doc, context.pos)) {
+    return [];
+  }
+
+  const references = findSqlRelationReferences(statement, doc, relationByName);
+  const seenColumnLabels = new Set<string>();
+  const seenRelationLabels = new Set<string>();
+  const columns: Completion[] = [];
+  const referencedRelations: Completion[] = [];
+
+  for (const reference of references) {
+    if (!seenRelationLabels.has(reference.label)) {
+      seenRelationLabels.add(reference.label);
+      referencedRelations.push({
+        label: reference.label,
+        type: reference.alias ? 'constant' : 'type',
+        detail: reference.alias ? reference.relation.name : undefined,
+        boost: 49 - referencedRelations.length,
+      });
+    }
+
+    for (const column of reference.relation.columns) {
+      if (seenColumnLabels.has(column.name)) {
+        continue;
+      }
+      seenColumnLabels.add(column.name);
+      columns.push({
+        label: column.name,
+        type: 'property',
+        detail: `${reference.relation.name} · ${column.type || 'untyped'}`,
+        boost: 99 - columns.length,
+      });
+    }
+  }
+
+  return [...columns, ...referencedRelations];
+}
+
+function findSqlStatement(node: SqlSyntaxNode | null): SqlSyntaxNode | null {
+  for (let current = node; current; current = current.parent) {
+    if (current.name === 'Statement') {
+      return current;
+    }
+  }
+  return null;
+}
+
+function findSqlRelationReferences(
+  statement: SqlSyntaxNode,
+  doc: string,
+  relationByName: Map<string, StudioRelation>,
+): SqlRelationReference[] {
+  const references: SqlRelationReference[] = [];
+  let pending: PendingSqlRelationReference | null = null;
+  let expectsRelation = false;
+
+  const flushPending = () => {
+    if (!pending) {
+      return;
+    }
+    references.push({
+      label: pending.relation.name,
+      relation: pending.relation,
+      alias: false,
+    });
+    pending = null;
+  };
+
+  for (let node = statement.firstChild; node; node = node.nextSibling) {
+    const keyword = sqlKeyword(doc, node);
+    if (keyword && sqlRelationStartKeywords.has(keyword)) {
+      flushPending();
+      expectsRelation = true;
+      continue;
+    }
+    if (keyword && sqlRelationEndKeywords.has(keyword)) {
+      flushPending();
+      expectsRelation = false;
+      continue;
+    }
+    if (!expectsRelation) {
+      continue;
+    }
+    if (isSqlComma(doc, node)) {
+      flushPending();
+      expectsRelation = true;
+      continue;
+    }
+    if (keyword === 'as') {
+      continue;
+    }
+
+    const identifier = sqlIdentifierPath(doc, node).at(-1);
+    if (!identifier) {
+      continue;
+    }
+
+    if (pending) {
+      references.push({
+        label: identifier,
+        relation: pending.relation,
+        alias: true,
+      });
+      pending = null;
+      continue;
+    }
+
+    const relation = relationByName.get(identifier);
+    if (relation) {
+      pending = {relation};
+    }
+  }
+
+  flushPending();
+  return references;
+}
+
+function isCompletingQualifiedName(context: CompletionContext) {
+  const currentWord = context.matchBefore(/\w*/u);
+  const from = currentWord ? currentWord.from : context.pos;
+  return context.state.sliceDoc(from - 1, from) === '.';
+}
+
+function isCompletingSqlRelationName(statement: SqlSyntaxNode, doc: string, pos: number) {
+  let inRelationList = false;
+  for (let node = statement.firstChild; node && node.from < pos; node = node.nextSibling) {
+    const keyword = sqlKeyword(doc, node);
+    if (keyword && sqlRelationStartKeywords.has(keyword)) {
+      inRelationList = true;
+    } else if (keyword && sqlRelationEndKeywords.has(keyword)) {
+      inRelationList = false;
+    } else if (isSqlComma(doc, node) && inRelationList) {
+      inRelationList = true;
+    }
+  }
+  return inRelationList;
+}
+
+function withoutShadowedLabels(options: readonly Completion[], shadowedLabels: Set<string>) {
+  return options.filter((option) => !shadowedLabels.has(option.label));
+}
+
+function sqlKeyword(doc: string, node: SqlSyntaxNode) {
+  if (node.name !== 'Keyword') {
+    return null;
+  }
+  return doc.slice(node.from, node.to).toLowerCase();
+}
+
+function sqlIdentifierPath(doc: string, node: SqlSyntaxNode): string[] {
+  if (node.name === 'CompositeIdentifier') {
+    const path: string[] = [];
+    for (let child = node.firstChild; child; child = child.nextSibling) {
+      if (isSqlIdentifier(child)) {
+        path.push(sqlIdentifierName(doc, child));
+      }
+    }
+    return path;
+  }
+  if (isSqlIdentifier(node)) {
+    return [sqlIdentifierName(doc, node)];
+  }
+  return [];
+}
+
+function sqlIdentifierName(doc: string, node: SqlSyntaxNode) {
+  const text = doc.slice(node.from, node.to);
+  const quoted = /^([`'"\[])(.*)([`'"\]])$/u.exec(text);
+  return quoted ? quoted[2]! : text;
+}
+
+function isSqlIdentifier(node: SqlSyntaxNode) {
+  return node.name === 'Identifier' || node.name === 'QuotedIdentifier';
+}
+
+function isSqlComma(doc: string, node: SqlSyntaxNode) {
+  return node.name === 'Punctuation' && doc.slice(node.from, node.to) === ',';
+}
+
+const sqlRelationStartKeywords = new Set(['from', 'join']);
+const sqlRelationEndKeywords = new Set([
+  'all',
+  'distinct',
+  'except',
+  'fetch',
+  'for',
+  'group',
+  'having',
+  'intersect',
+  'limit',
+  'offset',
+  'on',
+  'order',
+  'union',
+  'using',
+  'where',
+]);
+
+type SqlSyntaxNode = {
+  name: string;
+  from: number;
+  to: number;
+  parent: SqlSyntaxNode | null;
+  firstChild: SqlSyntaxNode | null;
+  nextSibling: SqlSyntaxNode | null;
+};
+
+type SqlRelationReference = {
+  label: string;
+  relation: StudioRelation;
+  alias: boolean;
+};
+
+type PendingSqlRelationReference = {
+  relation: StudioRelation;
+};
 
 function buildTextExtensions(readOnly: boolean, language: 'plain' | 'yaml' | 'markdown' | 'typescript'): Extension[] {
   return [

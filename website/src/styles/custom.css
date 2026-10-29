@@ -184,6 +184,22 @@ main pre {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+.expressive-code .ec-line :where(span[style^='--']:not([class])) {
+  color: var(--0, inherit);
+  background-color: var(--0bg, transparent);
+}
+
+.expressive-code .frame.is-terminal .header {
+  display: none;
+}
+
+.expressive-code .frame.is-terminal pre,
+.expressive-code .frame.is-terminal code {
+  border-top: var(--ec-brdWd) solid var(--ec-brdCol);
+  border-top-left-radius: calc(var(--ec-brdRad) + var(--ec-brdWd));
+  border-top-right-radius: calc(var(--ec-brdRad) + var(--ec-brdWd));
+}
+
 main table {
   border-collapse: collapse;
   border-radius: 0.9rem;

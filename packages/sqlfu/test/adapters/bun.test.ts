@@ -141,6 +141,47 @@ test('createBunClient.raw runs multiple statements in a bun subprocess', async (
   expect(await fixture.stub.listUsers()).toMatchObject([{email: 'ada@example.com'}, {email: 'grace@example.com'}]);
 });
 
+test('createBunClient.prepare binds bare named params in a bun subprocess', async () => {
+  await using fixture = await createBunFixture(
+    class ClientPreparedNamedParamsTest {
+      client: ReturnType<typeof createBunClient>;
+
+      constructor(db: any) {
+        this.client = createBunClient(db);
+        this.client.sql.run`create table items (id text primary key, value integer not null)`;
+      }
+
+      insertAndReadItem() {
+        const insert = this.client.prepare('insert into items (id, value) values (:id, :value)');
+        insert.run({id: 'a', value: 1});
+
+        const namedSelect = this.client.prepare<{id: string; value: number}>(
+          'select id, value from items where id = :id',
+        );
+        const positionalSelect = this.client.prepare<{id: string; value: number}>(
+          'select id, value from items where id = ?',
+        );
+        const mixedPrefixSelect = this.client.prepare<{colon_id: string; at_id: string; dollar_id: string}>(
+          'select :id as colon_id, @id as at_id, $id as dollar_id',
+        );
+        return {
+          bare: namedSelect.all({id: 'a'}),
+          prefixed: namedSelect.all({':id': 'a'}),
+          positional: positionalSelect.all(['a']),
+          mixedPrefix: mixedPrefixSelect.all({id: 'a'}),
+        };
+      }
+    },
+  );
+
+  expect(await fixture.stub.insertAndReadItem()).toMatchObject({
+    bare: [{id: 'a', value: 1}],
+    prefixed: [{id: 'a', value: 1}],
+    positional: [{id: 'a', value: 1}],
+    mixedPrefix: [{colon_id: 'a', at_id: 'a', dollar_id: 'a'}],
+  });
+});
+
 async function createBunFixture<TInstance extends object>(classDef: new (...args: any[]) => TInstance) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-bun-fixture-'));
   const port = await getAvailablePort();
