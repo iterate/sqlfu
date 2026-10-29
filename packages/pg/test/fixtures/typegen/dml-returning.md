@@ -78,3 +78,46 @@ parameters:
 data:
   - {name: $1, tsType: number, notNull: true}
 ```
+
+## with-insert-returning
+
+A `with` clause in front of the insert doesn't change which params can be null.
+
+```sql
+with next_post as (select coalesce(max(id), 0) + 1 as id from posts)
+insert into posts (id, title, draft) values ((select id from next_post), $1, $2) returning id
+```
+
+```yaml
+ok: true
+queryType: Insert
+returning: true
+multipleRowsResult: false
+columns:
+  - {name: id, tsType: number, notNull: true}
+parameters:
+  - {name: $1, tsType: string, notNull: true}
+  - {name: $2, tsType: boolean, notNull: false}
+```
+
+## with-update-returning
+
+A `with` clause in front of the update still sends SET values as `data`.
+
+```sql
+with drafts as (select id from posts where draft)
+update posts set title = $1 where id in (select id from drafts) returning id, title
+```
+
+```yaml
+ok: true
+queryType: Update
+returning: true
+multipleRowsResult: false
+columns:
+  - {name: id, tsType: number, notNull: true}
+  - {name: title, tsType: string, notNull: true}
+parameters: []
+data:
+  - {name: $1, tsType: string, notNull: true}
+```

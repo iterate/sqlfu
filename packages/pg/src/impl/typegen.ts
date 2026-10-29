@@ -188,7 +188,6 @@ async function analyzeOneQuery(
   const stmtName = `sqlfu_analyze_${randomSuffix()}`;
   const viewName = `sqlfu_view_${randomSuffix()}`;
   const analysisSql = normalizeSqlForPgAnalysis(query.sqlContent);
-  const queryType = classifyQuery(analysisSql.sql);
 
   try {
     await client.raw('begin');
@@ -216,6 +215,11 @@ async function analyzeOneQuery(
       // `'…'` so `pgsql-ast-parser` can parse them. See the file
       // header for the empirical safety argument.
       const neutralizedSql = neutralizeStringLiterals(analysisSql.sql);
+
+      // `null` when pgsql-ast-parser can't parse the query: fall back to
+      // many rows and nullable params, which are never wrong, just loose.
+      const shape = analyzeQueryShape(neutralizedSql, paramTypes.length, catalog);
+      const queryType = shape?.queryType || classifyQuery(analysisSql.sql);
 
       // Pass 1: column baseline via temp view (Select-like queries only).
       const baselineColumns =
@@ -262,9 +266,6 @@ async function analyzeOneQuery(
 
       const columns = mergeColumns(baselineColumns, analysedFields);
 
-      // `null` when pgsql-ast-parser can't parse the query: fall back to
-      // many rows and nullable params, which are never wrong, just loose.
-      const shape = analyzeQueryShape(neutralizedSql, paramTypes.length, catalog);
       const parameters = paramTypes.map((typeName, index) => ({
         name: analysisSql.parameterNames[index] || `$${index + 1}`,
         tsType: pgTypeToTs(typeName),
@@ -531,6 +532,8 @@ function formatError(error: unknown): string {
   return parts.join('\n  ');
 }
 
+// Only for queries `pgsql-ast-parser` can't parse. `query-shape.ts` classifies
+// the rest from the AST, which also sees through `with ... insert`.
 function classifyQuery(sql: string): 'Select' | 'Insert' | 'Update' | 'Delete' | 'Copy' | 'Ddl' {
   const stripped = sql.replace(/^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)+/u, '').toLowerCase();
   if (stripped.startsWith('select') || stripped.startsWith('with') || stripped.startsWith('values')) return 'Select';

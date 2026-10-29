@@ -37,6 +37,8 @@ export type QueryShapeCatalog = {
 };
 
 export type QueryShape = {
+  /** `null` for anything that isn't a select, insert, update or delete (DDL, `copy`, ...). */
+  queryType: 'Select' | 'Insert' | 'Update' | 'Delete' | null;
   multipleRowsResult: boolean;
   /** 1-based `$N` indexes. */
   nullableParams: Set<number>;
@@ -111,20 +113,42 @@ export function analyzeQueryShape(sql: string, parameterCount: number, catalog: 
   } catch {
     return null;
   }
+  const main = withoutWithClause(statement);
   return {
-    multipleRowsResult: isMultipleRowStatement(statement, catalog),
-    nullableParams: findNullableParams(statement, catalog),
-    dataParams: findDataParams(statement, parameterCount),
+    queryType: queryTypeOf(main),
+    multipleRowsResult: isMultipleRowStatement(main, catalog),
+    nullableParams: findNullableParams(statement, main, catalog),
+    dataParams: findDataParams(main, parameterCount),
   };
 }
 
-function isMultipleRowStatement(statement: Statement, catalog: QueryShapeCatalog): boolean {
-  switch (statement.type) {
+/** `with ... insert` is an insert, `with ... select` a select, and so on. */
+function withoutWithClause(statement: Statement): Statement {
+  return statement.type === 'with' || statement.type === 'with recursive' ? withoutWithClause(statement.in) : statement;
+}
+
+function queryTypeOf(main: Statement): QueryShape['queryType'] {
+  switch (main.type) {
     case 'select':
-      return isMultipleRowSelect(statement, catalog);
-    case 'with':
-    case 'with recursive':
-      return isMultipleRowStatement(statement.in, catalog);
+    case 'union':
+    case 'union all':
+    case 'values':
+      return 'Select';
+    case 'insert':
+      return 'Insert';
+    case 'update':
+      return 'Update';
+    case 'delete':
+      return 'Delete';
+    default:
+      return null;
+  }
+}
+
+function isMultipleRowStatement(main: Statement, catalog: QueryShapeCatalog): boolean {
+  switch (main.type) {
+    case 'select':
+      return isMultipleRowSelect(main, catalog);
     // Same as typesql: DML is single-row, with or without RETURNING.
     case 'insert':
     case 'update':
@@ -217,9 +241,10 @@ function equalityColumn(expr: Expr, tableNameOrAlias: string): string | undefine
 
 /**
  * Params are not-null unless the query says otherwise, as in typesql: tested
- * with `is null` / `is not null`, or inserted/set into a nullable column.
+ * with `is null` / `is not null` anywhere in `statement`, or inserted/set
+ * into a nullable column by `main`.
  */
-function findNullableParams(statement: Statement, catalog: QueryShapeCatalog): Set<number> {
+function findNullableParams(statement: Statement, main: Statement, catalog: QueryShapeCatalog): Set<number> {
   const nullable = new Set<number>();
   const markIfParam = (expr: Expr) => {
     const index = parameterIndex(expr);
@@ -240,35 +265,35 @@ function findNullableParams(statement: Statement, catalog: QueryShapeCatalog): S
     const column = catalog.tableColumns.get(tableName)?.find((candidate) => candidate.name === columnName);
     return !column?.notNull;
   };
-  if (statement.type === 'insert') {
-    const tableName = statement.into.name;
+  if (main.type === 'insert') {
+    const tableName = main.into.name;
     const columnNames =
-      statement.columns?.map((column) => column.name) ||
+      main.columns?.map((column) => column.name) ||
       (catalog.tableColumns.get(tableName) || []).map((column) => column.name);
-    if (statement.insert.type === 'values') {
-      for (const row of statement.insert.values) {
+    if (main.insert.type === 'values') {
+      for (const row of main.insert.values) {
         row.forEach((value, position) => {
           const columnName = columnNames[position];
           if (columnName && targetIsNullable(tableName, columnName)) markIfParam(value);
         });
       }
     }
-    if (statement.onConflict && statement.onConflict.do !== 'do nothing') {
-      for (const set of statement.onConflict.do.sets) {
+    if (main.onConflict && main.onConflict.do !== 'do nothing') {
+      for (const set of main.onConflict.do.sets) {
         if (targetIsNullable(tableName, set.column.name)) markIfParam(set.value);
       }
     }
   }
-  if (statement.type === 'update') {
-    for (const set of statement.sets) {
-      if (targetIsNullable(statement.table.name, set.column.name)) markIfParam(set.value);
+  if (main.type === 'update') {
+    for (const set of main.sets) {
+      if (targetIsNullable(main.table.name, set.column.name)) markIfParam(set.value);
     }
   }
   return nullable;
 }
 
-function findDataParams(statement: Statement, parameterCount: number): Set<number> {
-  if (statement.type !== 'update') {
+function findDataParams(main: Statement, parameterCount: number): Set<number> {
+  if (main.type !== 'update') {
     return new Set();
   }
   const data = new Set<number>();
@@ -278,7 +303,7 @@ function findDataParams(statement: Statement, parameterCount: number): Set<numbe
       if (index) data.add(index);
     },
   }));
-  for (const set of statement.sets) {
+  for (const set of main.sets) {
     visitor.expr(set.value);
   }
   const others = Array.from({length: parameterCount}, (_, i) => i + 1).filter((index) => !data.has(index));
