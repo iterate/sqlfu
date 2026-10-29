@@ -28,6 +28,10 @@ Local changes that are expected:
   shim's `Sql_stmtContext.<ddl_kind>_stmt()` accessor returns an opaque truthy
   marker for the matching `DdlKind`, and the analyzer reads only presence.
 
+- `shared-analyzer/collect-constraints.ts` — `createColumnTypeFomColumnSchema` gives each
+  column a fresh type-variable id. Upstream uses the bare column name, so `users.id` and
+  `sessions.id` unify as one variable: `where s.id = :x` in a join gets `users.id`'s type, and
+  text-vs-integer pairs throw `Type mismatch`.
 - `codegen/sqlite.ts` — `mapColumns` keeps repeated result column names instead of renaming
   them `id`, `id_2` (`renameInvalidNames`). sqlfu's drivers key rows by column name, so the
   renamed column never arrives; sqlfu typegen rejects the duplicate with an alias hint.

@@ -247,7 +247,7 @@ function renderInlineConfigQueryType(descriptor: GeneratedQueryDescriptor, casin
 }
 
 function renderInlineTypeLiteral(fields: GeneratedField[], fieldKind: 'parameter' | 'result'): string {
-  const properties = fields.map((field) => {
+  const properties = uniqueFieldsByName(fields, fieldKind).map((field) => {
     const optional = fieldKind === 'parameter' && Boolean(field.optional);
     return `${field.name}${optional ? '?' : ''}: ${inlineFieldTypeExpression(field, fieldKind)}`;
   });
@@ -2334,7 +2334,7 @@ function renderObjectSchemaDeclaration(
   fieldKind: 'parameter' | 'result',
 ): string[] {
   // see tasks/typegen-extensibility.md — future user-provided validator plugins and per-column overrides would hook in here.
-  const fieldLines = fields.map((field) => emitter.renderFieldLine(field, fieldKind));
+  const fieldLines = uniqueFieldsByName(fields, fieldKind).map((field) => emitter.renderFieldLine(field, fieldKind));
   return emitter.objectSchemaDeclaration({schemaName, fieldLines});
 }
 
@@ -2678,11 +2678,35 @@ function getResultMode(descriptor: GeneratedQueryDescriptor): QueryResultMode {
  * `export type Foo = …;`. Indentation is two tabs — one for the namespace, one for the fields.
  */
 function renderObjectTypeBody(fields: GeneratedField[], fieldKind: 'parameter' | 'result'): string {
-  const lines = fields.flatMap((field) => {
+  const lines = uniqueFieldsByName(fields, fieldKind).flatMap((field) => {
     const optional = fieldKind === 'parameter' ? Boolean(field.optional) : !field.notNull;
     return renderTypePropertyLines('\t\t', field.name, optional, fieldTypeExpression(field, fieldKind));
   });
   return [`{`, ...lines, `\t}`].join('\n');
+}
+
+/**
+ * A param used twice (`where id = :id or parent_id = :id`) comes out of the analyzer as one field
+ * per occurrence, because generated `args` bind each `?` in order. Object types and schemas need
+ * each name once. Mirrors TypeSQL's `removeDuplicatedParameters2`
+ * (src/vendor/typesql/codegen/shared/codegen-util.ts): if the occurrences disagree on
+ * nullability, the nullable one wins.
+ *
+ * Result fields are left alone: two result columns with one name are different columns, and
+ * `assertUniqueResultColumnNames` rejects them before they get here.
+ */
+function uniqueFieldsByName<TField extends GeneratedField>(
+  fields: TField[],
+  fieldKind: 'parameter' | 'result',
+): TField[] {
+  if (fieldKind === 'result') return fields;
+  const fieldsByName = new Map<string, TField>();
+  for (const field of fields) {
+    if (!fieldsByName.has(field.name) || !field.notNull) {
+      fieldsByName.set(field.name, field);
+    }
+  }
+  return [...fieldsByName.values()];
 }
 
 function renderTypePropertyLines(indent: string, name: string, optional: boolean, typeExpression: string): string[] {
@@ -2722,8 +2746,9 @@ function objectSchema(
   } = {},
 ): JsonSchemaObject {
   const fieldKind = input.fieldKind ?? 'parameter';
-  const properties = Object.fromEntries(fields.map((field) => [field.name, schemaForField(field)]));
-  const required = fields
+  const uniqueFields = uniqueFieldsByName(fields, fieldKind);
+  const properties = Object.fromEntries(uniqueFields.map((field) => [field.name, schemaForField(field)]));
+  const required = uniqueFields
     .filter((field) => (fieldKind === 'parameter' ? !Boolean(field.optional) : field.notNull))
     .map((field) => field.name);
 

@@ -214,6 +214,7 @@ export const router = {
   draft: base
     .meta({
       description: `Create a migration file from the diff between replayed migrations and definitions.sql.`,
+      aliases: {options: {yes: 'y'}},
     })
     .input(
       z
@@ -222,11 +223,18 @@ export const router = {
             .string()
             .min(1)
             .describe('The name of the migration to create. If omitted one is derived from the drafted SQL.'),
+          yes: z
+            .boolean()
+            .describe(
+              `Skip the confirmation prompt and write the drafted migration. Defaults to true when stdin is not a TTY (e.g. CI, piped invocations), false otherwise.`,
+            ),
         })
         .partial()
         .optional(),
     )
     .handler(async ({context, input}) => {
+      const yes = input?.yes ?? !process.stdin.isTTY;
+      const confirm = yes ? autoAcceptConfirm : context.confirm;
       const project = await loadContextProjectState(context);
       if (project.initialized && 'inline' in project) {
         const result = await draftInlineConfigMigration({
@@ -234,11 +242,11 @@ export const router = {
           projectRoot: project.projectRoot,
           host: context.host,
           name: input?.name,
-          confirm: context.confirm,
+          confirm,
         });
         return result ? `Wrote ${result.path}` : undefined;
       }
-      const result = await applyDraftSql(await loadContextConfig(context), input, context.confirm);
+      const result = await applyDraftSql(await loadContextConfig(context), {name: input?.name}, confirm);
       return result ? `Wrote ${result.path}` : undefined;
     }),
 
