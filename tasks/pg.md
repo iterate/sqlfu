@@ -76,7 +76,7 @@ Found while verifying the PR #156 guide against a real Postgres. Each item is al
 
 - [ ] Replace the hand-rolled renderer in `packages/pg/src/impl/schema.ts` (`renderCanonicalSchema`) with the vendored schemainspect, or skip the render step for pg. Repro: `pgDialect.materializeSchemaSql` then `diffSchema(rendered, original)`. Broken today: `serial` (`relation "t_id_seq" does not exist`), identity (spurious `add generated always as identity` in every later draft), enums and domains (`type does not exist`), stored generated columns, and functions/triggers/matviews/extensions/non-`public` schemas (redrafted every time). Plain tables, FKs, views, checks, indexes, `uuid default gen_random_uuid()` and jsonb/arrays are fine
 - [ ] pg typegen parity with SQLite: `limit 1` should return `Result | null` (returns an array); `insert/update/delete ... returning` wrappers should return rows (they call `client.run`); `where col = :param` params are typed nullable; FROM-less selects get no columns
-- [x] Classify pg errors by SQLSTATE into `SqlfuError` kinds (always `'unknown'` today) _PR #160: `classifyPostgresError` in `packages/sqlfu/src/errors.ts`, picked by `system`; spec in `packages/pg/test/client-errors.test.ts`_
+- [x] Classify pg errors by SQLSTATE into `SqlfuError` kinds (always `'unknown'` today) _PR #163: `classifyPostgresError` in `packages/sqlfu/src/errors.ts`, picked by `system`; spec in `packages/pg/test/client-errors.test.ts`_
 - [ ] Derive draft names for pg (`sqlfu draft` without `--name` writes `_migration.sql`; SQLite derives `_create_table_posts.sql`)
 - [ ] Plumb migra options (`schema`, `excludeSchema`, extension flags) through `Dialect.diffSchema`
 - [ ] `sqlfu init` option for Postgres (writes a SQLite config today)
