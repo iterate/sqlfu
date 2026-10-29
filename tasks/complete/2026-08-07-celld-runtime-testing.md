@@ -5,7 +5,7 @@ size: medium
 
 ## Status
 
-Done in draft PR [#154](https://github.com/iterate/sqlfu/pull/154). A real celld v0.6.3 node (started with `celld dev`) covers Worker routing, inline sqlfu migration/query use, and isolated named cells; a dedicated CI job downloads one pinned celld binary. celld has shipped D1 since v0.3.0, but this PR still covers only the Durable Object path. D1 coverage is an open decision; see the 2026-10-29 notes.
+Done in draft PR [#154](https://github.com/iterate/sqlfu/pull/154). A real celld v0.6.3 node (started with `celld dev`) covers Worker routing, inline sqlfu migration/query use, isolated named Durable Object cells, and a D1 binding through `createD1Client`. A dedicated CI job downloads one pinned celld binary.
 
 ## Goal
 
@@ -17,7 +17,7 @@ Prove sqlfu's Durable Object adapter works in the real celld runtime, without Mi
 - Exercise a module Worker routing requests to a SQLite-backed Durable Object. Worker support is part of the same public path, not a separate adapter claim.
 - Exercise sqlfu through its public package surface: create the Durable Object client, apply a migration, bind values, write rows, and read typed results.
 - ~~Run celld against a real MinIO process in tests.~~ _Replaced on 2026-10-29: `celld dev` (since v0.4.0) runs one real celld node on a local object store, so no S3-compatible server is needed. The bucket was only ever a celld prerequisite, not something sqlfu touches._
-- Do not add D1 coverage. celld's compatibility guide lists D1 as planned, and v0.1.0 rejects unsupported Wrangler configuration instead of providing a D1 binding. _Out of date: celld added D1 in v0.3.0. Still not covered here; see the 2026-10-29 notes._
+- Do not add D1 coverage. celld's compatibility guide lists D1 as planned, and v0.1.0 rejects unsupported Wrangler configuration instead of providing a D1 binding. _Reversed on 2026-10-29: celld added D1 in v0.3.0, and the spec now covers it._
 - Keep this as compatibility evidence rather than adding a celld-specific sqlfu adapter unless the red test exposes a genuine product gap.
 
 ## Checklist
@@ -44,3 +44,4 @@ Prove sqlfu's Durable Object adapter works in the real celld runtime, without Mi
 - 2026-10-29: Re-checked before taking the PR out of draft. `main` had not moved since the branch point. celld was at v0.6.3, 12 releases past the v0.1.0 pin. The breaking CLI changes since then were: `--advertise` now names the internal listener (v0.2.0), and health moved to `/.well-known/celld/health` (v0.4.0). Every listed asset still exists.
 - 2026-10-29: Executive decision: switched the fixture from `celld deploy` + `celld` + MinIO + `mc` to `celld dev --no-watch`. It starts the same node binary (`celld --no-control-plane --listen ...`) on a local object store. It is ready in about 2s and exits in about 0.1s on SIGTERM. MinIO's GitHub repo is archived, and its latest release (RELEASE.2025-10-15T17-29-55Z, a CVE fix) ships source only, so the old pin was a dead end. The CI job now downloads one binary.
 - 2026-10-29: A throwaway probe ran sqlfu's `createD1Client` against a celld v0.6.3 D1 binding under `celld dev`. Migrate, a named-param `sql.run` insert, and a `sql.many` select all worked. celld's D1 docs say it binds only `?`/`?NNN`, so sqlfu's D1 adapter must already convert named params before binding. Adding D1 to this spec is cheap (one more binding and route), but it widens the PR's claim, so it is left as a decision for the reviewer.
+- 2026-10-29: The reviewer asked for D1 coverage. The spec's Worker now has a `d1_databases` binding and a `/d1` route that builds a `createD1Client` and migrates on each request. The Durable Object route moved to `/durable-object/<cell>`. Two tests, each with its own `celld dev` process; together they take about 1.6s locally.
