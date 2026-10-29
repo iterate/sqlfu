@@ -172,6 +172,27 @@ test('.sql imports follow the generate options: validator, sync, and .query()', 
   });
 });
 
+test('tsc and node --import sqlfu/register leave no scratch files behind', async () => {
+  await using project = await createContentMapperProject({
+    'sql/queries.sql': dedent`
+      /** @name listPosts */
+      select id, slug from posts;
+    `,
+    'main.ts': dedent`
+      import {listPosts} from './sql/queries.sql';
+      console.log(typeof listPosts);
+    `,
+  });
+  const tmpdir = path.join(project.root, 'tmp');
+  await fs.mkdir(tmpdir);
+
+  await execa('node', [tscBin, '--runExternalCode', '-p', '.'], {cwd: project.root, env: {TMPDIR: tmpdir}});
+  await execa('node', ['--import', 'sqlfu/register', 'main.ts'], {cwd: project.root, env: {TMPDIR: tmpdir}});
+
+  const leftovers = await fs.readdir(tmpdir, {recursive: true, withFileTypes: true});
+  expect(leftovers.filter((entry) => entry.isFile()).map((entry) => entry.name)).toEqual([]);
+});
+
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tscBin = path.join(packageRoot, 'node_modules/typescript-content-mappers/bin/tsc');
 
