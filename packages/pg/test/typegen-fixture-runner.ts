@@ -21,8 +21,11 @@ export type JsonAnalysis =
   | {
       ok: true;
       queryType: string;
+      returning?: true;
+      multipleRowsResult: boolean;
       columns: {name: string; tsType: string; notNull: boolean}[];
       parameters: {name: string; tsType: string; notNull: boolean}[];
+      data?: {name: string; tsType: string; notNull: boolean}[];
     }
   | {ok: false; error: string};
 
@@ -93,8 +96,11 @@ export function simplifyAnalysis(analysis: QueryAnalysis): JsonAnalysis {
   return {
     ok: true,
     queryType: descriptor.queryType,
+    ...(descriptor.returning && {returning: descriptor.returning}),
+    multipleRowsResult: descriptor.multipleRowsResult,
     columns: descriptor.columns.map((c) => ({name: c.name, tsType: c.tsType, notNull: c.notNull})),
     parameters: descriptor.parameters.map((p) => ({name: p.name, tsType: p.tsType, notNull: p.notNull})),
+    ...(descriptor.data && {data: descriptor.data.map((p) => ({name: p.name, tsType: p.tsType, notNull: p.notNull}))}),
   };
 }
 

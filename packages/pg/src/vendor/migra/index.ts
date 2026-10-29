@@ -10,6 +10,9 @@
  *   - `command.ts` (CLI front-end depending on tRPC + zod) dropped —
  *     sqlfu invokes migra programmatically.
  *   - All relative imports adjusted for `NodeNext` resolution.
+ *   - New domains are created before tables, not after, so tables using them
+ *     can be created (`Migration.add_all_changes`,
+ *     `Changes.modified_domain_creations`). Search `sqlfu:` for each change.
  *
  * Apache-2.0 license preserved in `./LICENSE`. See `pg-package.md`.
  */

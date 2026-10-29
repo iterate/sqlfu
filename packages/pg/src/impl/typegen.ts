@@ -6,9 +6,9 @@
 //   2. `loadSchemaForTypegen` — query `pg_catalog` for tables/views/columns,
 //      produce the dialect-neutral `RelationInfo` map.
 //   3. `analyzeQueries` — `PREPARE` each query and read parameter+result
-//      types from `pg_catalog`. Postgres becomes the parser. Phase C5 will
-//      layer AST-driven query rewriting (CTE flattening, DML+RETURNING →
-//      SELECT) and pg17 result_types on top.
+//      types from `pg_catalog`. Postgres becomes the parser. The vendored
+//      pgkit AST passes add result columns for DML+RETURNING and
+//      nullability; `query-shape.ts` decides the wrapper shape.
 //
 // Driver-agnostic: every pg call here goes through sqlfu's `AsyncClient`
 // (via `createNodePostgresClient`). The only places `pg.Pool` is
@@ -28,6 +28,7 @@ import type {
 import {adaptAsyncClient} from '../vendor/schemainspect/pgkit-compat.js';
 import {getColumnInfo, type DescribedQuery} from '../vendor/typegen/index.js';
 import {neutralizeStringLiterals} from './neutralize-string-literals.js';
+import {analyzeQueryShape, loadQueryShapeCatalog, type QueryShapeCatalog} from './query-shape.js';
 import {createTempDatabase, type TempDatabaseHandle} from './scratch-database.js';
 
 type PgMaterializedHandle = MaterializedTypegenSchema & {
@@ -144,9 +145,10 @@ async function loadRelationColumns(
 
 export const pgAnalyzeQueries: Dialect['analyzeQueries'] = async (materialized, queries) => {
   const {client} = assertPgHandle(materialized);
+  const catalog = await loadQueryShapeCatalog(client);
   const analyses: QueryAnalysis[] = [];
   for (const query of queries) {
-    analyses.push(await analyzeOneQuery(client, query));
+    analyses.push(await analyzeOneQuery(client, catalog, query));
   }
   return analyses;
 };
@@ -174,12 +176,18 @@ export const pgAnalyzeQueries: Dialect['analyzeQueries'] = async (materialized, 
  * has a matching name). When pass 1 gave nothing (DML, refused
  * queries), pass 2's output is the whole answer. Default `notNull` is
  * `false` (the safe default for typegen).
+ *
+ * The wrapper shape (one row or many, nullable params, update `data`) comes
+ * from `query-shape.ts`, which follows the SQLite analyzer's rules.
  */
-async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): Promise<QueryAnalysis> {
+async function analyzeOneQuery(
+  client: AsyncClient,
+  catalog: QueryShapeCatalog,
+  query: QueryAnalysisInput,
+): Promise<QueryAnalysis> {
   const stmtName = `sqlfu_analyze_${randomSuffix()}`;
   const viewName = `sqlfu_view_${randomSuffix()}`;
   const analysisSql = normalizeSqlForPgAnalysis(query.sqlContent);
-  const queryType = classifyQuery(analysisSql.sql);
 
   try {
     await client.raw('begin');
@@ -207,6 +215,11 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
       // `'…'` so `pgsql-ast-parser` can parse them. See the file
       // header for the empirical safety argument.
       const neutralizedSql = neutralizeStringLiterals(analysisSql.sql);
+
+      // `null` when pgsql-ast-parser can't parse the query: fall back to
+      // many rows and nullable params, which are never wrong, just loose.
+      const shape = analyzeQueryShape(neutralizedSql, paramTypes.length, catalog);
+      const queryType = shape?.queryType || classifyQuery(analysisSql.sql);
 
       // Pass 1: column baseline via temp view (Select-like queries only).
       const baselineColumns =
@@ -256,10 +269,11 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
       const parameters = paramTypes.map((typeName, index) => ({
         name: analysisSql.parameterNames[index] || `$${index + 1}`,
         tsType: pgTypeToTs(typeName),
-        notNull: false,
+        notNull: shape ? !shape.nullableParams.has(index + 1) : false,
         toDriver: 'identity',
         isArray: typeName.endsWith('[]'),
       }));
+      const data = parameters.filter((_, index) => shape?.dataParams.has(index + 1));
 
       return {
         sqlPath: query.sqlPath,
@@ -267,9 +281,12 @@ async function analyzeOneQuery(client: AsyncClient, query: QueryAnalysisInput): 
         descriptor: {
           sql: analysisSql.sql,
           queryType,
-          multipleRowsResult: queryType === 'Select' || /\breturning\b/iu.test(query.sqlContent),
+          // DML only has result columns when it has a RETURNING clause.
+          ...(queryType !== 'Select' && columns.length > 0 && {returning: true as const}),
+          multipleRowsResult: shape ? shape.multipleRowsResult : queryType === 'Select',
           columns,
-          parameters,
+          parameters: parameters.filter((parameter) => !data.includes(parameter)),
+          ...(data.length > 0 && {data}),
         },
       };
     } finally {
@@ -515,6 +532,8 @@ function formatError(error: unknown): string {
   return parts.join('\n  ');
 }
 
+// Only for queries `pgsql-ast-parser` can't parse. `query-shape.ts` classifies
+// the rest from the AST, which also sees through `with ... insert`.
 function classifyQuery(sql: string): 'Select' | 'Insert' | 'Update' | 'Delete' | 'Copy' | 'Ddl' {
   const stripped = sql.replace(/^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)+/u, '').toLowerCase();
   if (stripped.startsWith('select') || stripped.startsWith('with') || stripped.startsWith('values')) return 'Select';

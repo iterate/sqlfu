@@ -38,6 +38,7 @@ select * from test_view
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: a_view, tsType: number, notNull: true}
   - {name: b_view, tsType: number, notNull: false}
@@ -53,6 +54,7 @@ select * from get_test_table1_by_a(1)
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: a, tsType: number, notNull: true}
 parameters: []
@@ -67,6 +69,7 @@ select get_one_field(1) as z
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: false
 columns:
   - {name: z, tsType: number, notNull: false}
 parameters: []

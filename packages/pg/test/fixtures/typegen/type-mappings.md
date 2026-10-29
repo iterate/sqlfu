@@ -34,6 +34,7 @@ select
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: false
 columns:
   - {name: a, tsType: Date, notNull: false}
   - {name: b, tsType: string, notNull: false}
@@ -60,6 +61,7 @@ select '2000-01-01'::timestamptz as a, 1::int8 as b, true::bool as c, '{}'::json
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: false
 columns:
   - {name: a, tsType: Date, notNull: false}
   - {name: b, tsType: bigint, notNull: false}

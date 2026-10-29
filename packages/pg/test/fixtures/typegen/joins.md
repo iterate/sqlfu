@@ -20,6 +20,7 @@ select a, b from table1 inner join table2 on table1.a = table2.b
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: a, tsType: number, notNull: true}
   - {name: b, tsType: number, notNull: true}
@@ -35,6 +36,7 @@ select a, b from table1 left join table2 on table1.a = table2.b
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: a, tsType: number, notNull: true}
   - {name: b, tsType: number, notNull: false}
@@ -50,6 +52,7 @@ select a, b from table1 t1 left join table2 t2 on t1.a = t2.b
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: a, tsType: number, notNull: true}
   - {name: b, tsType: number, notNull: false}
@@ -65,6 +68,7 @@ select a, b from table1 full outer join table2 on table1.a = table2.b
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: a, tsType: number, notNull: false}
   - {name: b, tsType: number, notNull: false}
@@ -80,6 +84,7 @@ select a, b from table1 t1 full outer join table2 t2 on t1.a = t2.b
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: a, tsType: number, notNull: false}
   - {name: b, tsType: number, notNull: false}

@@ -3,8 +3,8 @@ import type {SqlQuery} from './types.js';
 /**
  * Normalized category for a database error. `kind` is what application code
  * branches on (`error.kind === 'unique_violation'`) instead of string-matching
- * driver messages. Names are SQLSTATE-aligned so that when a postgres adapter
- * lands the mapping is a direct lookup rather than a second vocabulary.
+ * driver messages. Names are SQLSTATE-aligned so the postgres mapping is a
+ * direct lookup rather than a second vocabulary.
  *
  * `'unknown'` is the explicit "we couldn't classify this" signal — users who
  * see it in production should file a bug; the mapper is library-maintained,
@@ -57,15 +57,50 @@ export class SqlfuError extends Error {
   }
 }
 
-/** Normalize a sqlite driver error onto `SqlfuError`. Idempotent. */
-export function mapSqliteDriverError(error: unknown, context: SqlfuErrorContext): SqlfuError {
+/**
+ * Normalize a driver error onto `SqlfuError`. `context.system` picks the
+ * classifier: `'postgresql'` reads the SQLSTATE, everything else is treated
+ * as SQLite. Idempotent.
+ */
+export function mapDriverError(error: unknown, context: SqlfuErrorContext): SqlfuError {
   if (error instanceof SqlfuError) return error;
   return new SqlfuError({
-    kind: classifySqliteError(error),
+    kind: context.system === 'postgresql' ? classifyPostgresError(error) : classifySqliteError(error),
     query: context.query,
     system: context.system,
     cause: error,
   });
+}
+
+// PostgreSQL SQLSTATE codes. https://www.postgresql.org/docs/current/errcodes-appendix.html
+// node-postgres puts the SQLSTATE on the error's `.code`. Errors that never
+// reached the server (e.g. `ECONNREFUSED`) have a non-SQLSTATE `.code` and
+// fall through to 'unknown'.
+function classifyPostgresError(error: unknown): SqlfuErrorKind {
+  const code = error && typeof error === 'object' ? (error as Record<string, unknown>).code : undefined;
+  switch (code) {
+    case '42601': // syntax_error
+      return 'syntax';
+    case '42P01': // undefined_table
+      return 'missing_table';
+    case '42703': // undefined_column
+      return 'missing_column';
+    case '23505': // unique_violation (primary keys too)
+      return 'unique_violation';
+    case '23502': // not_null_violation
+      return 'not_null_violation';
+    case '23503': // foreign_key_violation
+      return 'foreign_key_violation';
+    case '23514': // check_violation
+      return 'check_violation';
+
+    // "Retry the transaction and it'll probably work", same as SQLite's BUSY/LOCKED.
+    case '40001': // serialization_failure
+    case '40P01': // deadlock_detected
+    case '55P03': // lock_not_available
+      return 'transient';
+  }
+  return 'unknown';
 }
 
 function classifySqliteError(error: unknown): SqlfuErrorKind {

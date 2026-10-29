@@ -36,10 +36,11 @@ select x from t where x = $1 or x = $1 + 1
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: x, tsType: number, notNull: true}
 parameters:
-  - {name: $1, tsType: number, notNull: false}
+  - {name: $1, tsType: number, notNull: true}
 ```
 
 ## placeholder-with-cast
@@ -54,10 +55,11 @@ select x from t where x = $1::int
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: x, tsType: number, notNull: true}
 parameters:
-  - {name: $1, tsType: number, notNull: false}
+  - {name: $1, tsType: number, notNull: true}
 ```
 
 ## string-literal-with-dollar
@@ -74,11 +76,12 @@ select 'hello $1 world' as msg, x from t where x = $1
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: msg, tsType: string, notNull: true}
   - {name: x, tsType: number, notNull: true}
 parameters:
-  - {name: $1, tsType: number, notNull: false}
+  - {name: $1, tsType: number, notNull: true}
 ```
 
 ## line-comment-with-dollar
@@ -94,10 +97,11 @@ from t where x = $1
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: x, tsType: number, notNull: true}
 parameters:
-  - {name: $1, tsType: number, notNull: false}
+  - {name: $1, tsType: number, notNull: true}
 ```
 
 ## block-comment-with-dollar
@@ -111,10 +115,11 @@ select x /* uses $1 here */ from t where x = $1
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: x, tsType: number, notNull: true}
 parameters:
-  - {name: $1, tsType: number, notNull: false}
+  - {name: $1, tsType: number, notNull: true}
 ```
 
 ## dollar-quoted-with-dollar
@@ -132,11 +137,12 @@ select $$hello $1 world$$ as msg, x from t where x = $1
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: msg, tsType: string, notNull: true}
   - {name: x, tsType: number, notNull: true}
 parameters:
-  - {name: $1, tsType: number, notNull: false}
+  - {name: $1, tsType: number, notNull: true}
 ```
 
 ## quoted-identifier-with-dollar
@@ -152,10 +158,11 @@ select "$1" from weirdo where "$1" = $1
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: $1, tsType: number, notNull: true}
 parameters:
-  - {name: $1, tsType: number, notNull: false}
+  - {name: $1, tsType: number, notNull: true}
 ```
 
 ## array-literal-with-dollar
@@ -190,9 +197,10 @@ select x, 'cost: $50' as note from t where x = $1
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: x, tsType: number, notNull: true}
   - {name: note, tsType: string, notNull: true}
 parameters:
-  - {name: $1, tsType: number, notNull: false}
+  - {name: $1, tsType: number, notNull: true}
 ```

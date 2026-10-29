@@ -24,6 +24,7 @@ select * from test_table1 t1 join test_table2 t2 on t1.a = t2.b
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: a, tsType: number, notNull: true}
   - {name: b, tsType: number, notNull: false}
@@ -41,6 +42,7 @@ select aaa, bbb from abc join def on abc.aaa = def.bbb
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: aaa, tsType: number, notNull: true}
   - {name: bbb, tsType: number, notNull: false}
@@ -57,6 +59,7 @@ select c as table_size from abc
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: table_size, tsType: bigint, notNull: true}
 parameters: []
@@ -73,6 +76,7 @@ select t as t_aliased1, t_nn as t_nn_aliased
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: t_aliased1, tsType: string, notNull: false}
   - {name: t_nn_aliased, tsType: string, notNull: true}

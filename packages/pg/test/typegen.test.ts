@@ -151,7 +151,7 @@ test(
       }
       expect(analysis.descriptor.queryType).toBe('Select');
       expect(analysis.descriptor.parameters).toEqual([
-        {name: '$1', tsType: 'number', notNull: false, toDriver: 'identity', isArray: false},
+        {name: '$1', tsType: 'number', notNull: true, toDriver: 'identity', isArray: false},
       ]);
       expect(analysis.descriptor.columns.map((c) => c.name)).toEqual(['id', 'name', 'bio']);
       expect(analysis.descriptor.columns.map((c) => c.tsType)).toEqual(['number', 'string', 'string']);
@@ -180,7 +180,7 @@ test('pgDialect.analyzeQueries accepts sqlfu named parameters', {timeout: 30_000
     expect(analysis.descriptor).toMatchObject({
       sql: 'select id, slug, title from posts where slug = $1',
       queryType: 'Select',
-      parameters: [{name: 'slug', tsType: 'string', notNull: false, toDriver: 'identity', isArray: false}],
+      parameters: [{name: 'slug', tsType: 'string', notNull: true, toDriver: 'identity', isArray: false}],
     });
     expect(analysis.descriptor.columns.map((column) => column.name)).toEqual(['id', 'slug', 'title']);
   });

@@ -22,6 +22,7 @@ select * from test_table1 t1 where b is not null and a > 1 and a != 10
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: a, tsType: number, notNull: true}
   - {name: b, tsType: number, notNull: true}
@@ -37,6 +38,7 @@ select * from test_table1 t1 where b < 2 or b > 4
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: a, tsType: number, notNull: true}
   - {name: b, tsType: number, notNull: true}

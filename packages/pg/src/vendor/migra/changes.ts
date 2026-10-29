@@ -835,6 +835,14 @@ export class Changes {
   rlspolicies = this.getChangesFor('rlspolicies')
   privileges = this.getChangesFor('privileges')
   domains = this.getChangesFor('domains')
+
+  // sqlfu: re-creates modified domains after their old version is dropped. New domains are
+  // created separately, before tables (see `Migration.add_all_changes`).
+  modified_domain_creations = () => {
+    const {modified} = differences(this.i_from.domains, this.i_target.domains)
+    const old = Object.fromEntries(Object.keys(modified).map(k => [k, this.i_from.domains[k]]))
+    return statements_for_changes(old, modified, {creations_only: true})
+  }
 }
 
 export type GetSelectableChangesOptions = Parameters<typeof get_selectable_changes>[1]
