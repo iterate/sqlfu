@@ -67,6 +67,8 @@ test.for([
       create type color as enum ('red', 'orange', 'blue');
       create domain warm_color as color check (value in ('red', 'orange'));
       create table paints (id uuid primary key, color warm_color not null);
+      -- any view gives schemainspect a dependency to walk, which is when it looks up each enum column's type
+      create view warm_paints as select * from paints;
     `,
   },
   {
