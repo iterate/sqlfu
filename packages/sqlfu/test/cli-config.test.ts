@@ -188,7 +188,7 @@ test('database commands use a project-local sqlite database when config omits db
   void cwd;
 });
 
-test.fails('draft --yes writes the drafted migration without prompting', async () => {
+test('draft --yes writes the drafted migration without prompting', async () => {
   const root = await createTempFixtureRoot('cli-draft-yes');
   await writeFixtureFiles(root, {
     'sqlfu.config.ts': dedent`
