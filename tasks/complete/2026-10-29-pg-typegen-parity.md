@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 size: medium
 ---
 
@@ -9,7 +9,7 @@ Item two of "Step three" in `tasks/pg.md`. Found while verifying the Postgres gu
 
 ## Status summary
 
-Spec only so far. Nothing implemented yet.
+Done. pg wrappers match SQLite for every case in the table below, checked end to end by `packages/pg/test/generate-parity.test.ts`. Remaining dialect differences are listed under "Follow-ups" and in the Postgres guide's Known gaps.
 
 ## The problem
 
@@ -50,13 +50,13 @@ Plus `data` — SQLite splits update SET-clause params into a separate `data` ar
 
 ## Checklist
 
-- [ ] red parity spec, one test per case: `limit 1`, FROM-less, aggregate, insert/delete RETURNING, update RETURNING (data split), where-param nullability
-- [ ] `query-shape.ts` + wire into `analyzeOneQuery`
-- [ ] param nullability cases in the analyzer fixtures (`is null` escape hatch, nullable insert target)
-- [ ] regenerate analyzer fixtures whose param `notNull` changes
-- [ ] SRF guard covered by a test
-- [ ] tick step three item two in `tasks/pg.md`
-- [ ] update "Generated wrappers" under Known gaps in `packages/sqlfu/docs/guides/postgres.md`
+- [x] red parity spec, one test per case: `limit 1`, FROM-less, aggregate, insert/delete RETURNING, update RETURNING (data split), where-param nullability _`packages/pg/test/generate-parity.test.ts`; asserts the SQLite shape with an inline snapshot, then `pg` toEqual it_
+- [x] `query-shape.ts` + wire into `analyzeOneQuery` _catalog facts (unique indexes, column nullability, aggregate + set-returning functions from `pg_proc`) load once per `analyzeQueries` call_
+- [x] param nullability cases in the analyzer fixtures (`is null` escape hatch, nullable insert target) _new `packages/pg/test/fixtures/typegen/result-shape.md`_
+- [x] regenerate analyzer fixtures whose param `notNull` changes _fixture output now also shows `multipleRowsResult`, plus `returning`/`data` when set_
+- [x] SRF guard covered by a test _`set-returning-function-*` cases in `result-shape.md`_
+- [x] tick step three item two in `tasks/pg.md`
+- [x] update "Generated wrappers" under Known gaps in `packages/sqlfu/docs/guides/postgres.md` _old four bullets replaced with the remaining verified gaps; runtime example no longer destructures `findPostBySlug`_
 
 ## Follow-ups (not this PR)
 
@@ -64,3 +64,12 @@ Plus `data` — SQLite splits update SET-clause params into a separate `data` ar
 - Both dialects: DML+RETURNING that can return many rows (`insert ... select`, multi-row `values`, `update`/`delete` without a unique `where`) is typed as one row. Related: `tasks/one-mode-throw-on-empty.md`.
 - SQLite: a named param used twice (`:body ... or :body is null`) appears twice in `Params`.
 - pg: DDL in a query file fails analysis (`syntax error at or near "create"`); SQLite emits a `client.run` wrapper.
+- pg: `int8` (`count(*)`, `bigint`) is typed `bigint` and `numeric` is typed `number`, but `pg` returns both as strings by default. Either type them `string` or install type parsers in `createNodePostgresClient`.
+- pg: `cast(...)` drops not-null in the vendored pgkit nullability pass (`isNonNullableField` in `packages/pg/src/vendor/typegen/query/column-info.ts`).
+
+## Implementation notes
+
+- Parity spec picks queries whose column types already agree between dialects. SQLite types `max/min/avg` as not-null and `sum(int)` as `number`; pg says nullable and `bigint`. Those are column-type differences, not wrapper shape, so the aggregate case uses `coalesce(max(id), 0)`.
+- `returning` comes from "DML with result columns" rather than the AST, so it needs no extra parse and can't claim rows the column pass didn't find.
+- Update `data` split: with named params, SET is the first clause so its params always get the lowest `$N`. Only hand-numbered `$N` (`set title = $2 where id = $1`) can make it unsafe; then everything stays in `params`.
+- The fixture runner's `simplifyAnalysis` gained `multipleRowsResult`, `returning` and `data`, so every analyzer fixture now records the row shape.

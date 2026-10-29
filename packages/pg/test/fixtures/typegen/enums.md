@@ -25,6 +25,7 @@ select id, status, optional_status from items
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: id, tsType: number, notNull: true}
   - {name: status, tsType: unknown, notNull: true}

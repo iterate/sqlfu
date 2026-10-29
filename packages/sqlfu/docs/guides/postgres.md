@@ -137,11 +137,16 @@ const pool = new Pool({connectionString: process.env.DATABASE_URL});
 const client = createNodePostgresClient(pool);
 
 await insertPost(client, {slug: 'hello-world', title: 'Hello world', body: null});
-const [post] = await findPostBySlug(client, {slug: 'hello-world'});
+const post = await findPostBySlug(client, {slug: 'hello-world'}); // Result | null
 ```
 
+Wrappers have the same shapes as on SQLite: `limit 1` and unique-key lookups
+return `Result | null`, `insert ... returning` returns the row, and `update`
+wrappers take SET values as a separate `data` argument.
+
 Generated types follow the `pg` driver's defaults. `timestamptz` comes back as
-`Date`, `uuid` as `string`.
+`Date`, `uuid` as `string`. `bigint` and `numeric` are the exceptions: see
+[known gaps](#known-gaps).
 
 ## What differs from SQLite
 
@@ -171,12 +176,15 @@ back in every new draft:
 | stored generated columns | `cannot use column reference in DEFAULT expression` |
 | functions, triggers, materialized views, extensions, schemas other than `public` | drafted again every time |
 
-Generated wrappers. These differ from SQLite output:
+Generated wrappers:
 
-- `limit 1` queries return an array, not `Result | null`.
-- `insert`/`update`/`delete ... returning` wrappers don't return rows.
-- Parameters compared with `=` are typed as nullable (`slug: string | null`).
-- Selects with no `from` (`select 1 as a`) get no result columns.
+- `bigint` columns (including `count(*)`) are typed `bigint` and `numeric` is
+  typed `number`, but `pg` returns both as strings unless you set a type parser.
+- DDL in a query file (`create table ...`) gets no wrapper. SQLite generates
+  one that calls `client.run`.
+- `cast(...)` drops not-null: `cast(count(*) as integer)` is typed nullable.
+- If sqlfu's Postgres parser can't read a query (`is not distinct from`,
+  `similar to`), its wrapper returns an array and every parameter is nullable.
 
 Errors. Postgres errors are wrapped in `SqlfuError`, but `kind` is always
 `'unknown'`. Read the SQLSTATE from `error.cause.code` (`'23505'` for a unique

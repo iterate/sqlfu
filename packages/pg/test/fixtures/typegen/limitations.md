@@ -37,9 +37,10 @@ insert into test_table (id, n) values ($1, $2)
 ```yaml
 ok: true
 queryType: Insert
+multipleRowsResult: false
 columns: []
 parameters:
-  - {name: $1, tsType: number, notNull: false}
+  - {name: $1, tsType: number, notNull: true}
   - {name: $2, tsType: number, notNull: false}
 ```
 
@@ -52,10 +53,12 @@ update test_table set n = $1 where id = $2
 ```yaml
 ok: true
 queryType: Update
+multipleRowsResult: false
 columns: []
 parameters:
+  - {name: $2, tsType: number, notNull: true}
+data:
   - {name: $1, tsType: number, notNull: false}
-  - {name: $2, tsType: number, notNull: false}
 ```
 
 ## delete-without-returning
@@ -67,9 +70,10 @@ delete from test_table where id = $1
 ```yaml
 ok: true
 queryType: Delete
+multipleRowsResult: false
 columns: []
 parameters:
-  - {name: $1, tsType: number, notNull: false}
+  - {name: $1, tsType: number, notNull: true}
 ```
 
 ## duplicate-column-names
@@ -81,6 +85,7 @@ select 1 as a, 'two' as a
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: false
 columns: []
 parameters: []
 ```

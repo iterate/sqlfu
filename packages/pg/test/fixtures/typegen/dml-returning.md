@@ -31,12 +31,14 @@ insert into posts (title) values ($1) returning id, title, draft
 ```yaml
 ok: true
 queryType: Insert
+returning: true
+multipleRowsResult: false
 columns:
   - {name: id, tsType: number, notNull: true}
   - {name: title, tsType: string, notNull: true}
   - {name: draft, tsType: boolean, notNull: false}
 parameters:
-  - {name: $1, tsType: string, notNull: false}
+  - {name: $1, tsType: string, notNull: true}
 ```
 
 ## delete-returning
@@ -48,11 +50,13 @@ delete from test_table1 where a = $1 returning a, b
 ```yaml
 ok: true
 queryType: Delete
+returning: true
+multipleRowsResult: false
 columns:
   - {name: a, tsType: number, notNull: true}
   - {name: b, tsType: number, notNull: false}
 parameters:
-  - {name: $1, tsType: number, notNull: false}
+  - {name: $1, tsType: number, notNull: true}
 ```
 
 ## update-returning
@@ -64,10 +68,13 @@ update accounts set balance = balance + $1 where id = $2 returning id, balance
 ```yaml
 ok: true
 queryType: Update
+returning: true
+multipleRowsResult: false
 columns:
   - {name: id, tsType: number, notNull: true}
   - {name: balance, tsType: number, notNull: true}
 parameters:
-  - {name: $1, tsType: number, notNull: false}
-  - {name: $2, tsType: number, notNull: false}
+  - {name: $2, tsType: number, notNull: true}
+data:
+  - {name: $1, tsType: number, notNull: true}
 ```

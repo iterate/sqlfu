@@ -21,6 +21,7 @@ select test_table1.b, (select a from test_table1 where a > 1 limit 1) as aa from
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: b, tsType: number, notNull: false}
   - {name: aa, tsType: number, notNull: true}
@@ -36,6 +37,7 @@ select test_table1.b, (select count(*) from test_table1) as num from test_table1
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: b, tsType: number, notNull: false}
   - {name: num, tsType: bigint, notNull: true}

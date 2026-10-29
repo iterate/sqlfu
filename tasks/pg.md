@@ -9,7 +9,7 @@ pgkit supported postgres. it has basically the same core features. we should be 
 
 Roughly 70% there. Steps one and two shipped (PRs #87, #88, #89) and `@sqlfu/pg@0.1.1` is on npm. A plain-tables Postgres project works end to end: `draft`, `migrate`, `check`, `sync`, `generate`, `format`, the UI, and `createNodePostgresClient` at runtime. Docs landed in PR #156 (Postgres guide + Coming from pgkit).
 
-Main missing piece: the simplified schema renderer in `packages/pg/src/impl/schema.ts` drops serial/identity, enums, domains, functions, triggers, matviews, extensions, non-`public` schemas and generated columns, so `draft`/`check`/`generate` break on most real schemas. Smaller gaps: pg typegen parity with SQLite, pg error classification, migra options. See "Step three" below.
+Main missing piece: the simplified schema renderer in `packages/pg/src/impl/schema.ts` drops serial/identity, enums, domains, functions, triggers, matviews, extensions, non-`public` schemas and generated columns, so `draft`/`check`/`generate` break on most real schemas. Smaller gaps: pg error classification, migra options. See "Step three" below.
 
 Not a goal: drop-in pgkit replacement (no reading pgkit's migrations table, no inline `sql` tag typegen).
 
@@ -75,7 +75,7 @@ Design decisions (sign-off received in chat before this commit):
 Found while verifying the PR #156 guide against a real Postgres. Each item is also listed in the guide's "Known gaps", which should shrink as these land.
 
 - [ ] Replace the hand-rolled renderer in `packages/pg/src/impl/schema.ts` (`renderCanonicalSchema`) with the vendored schemainspect, or skip the render step for pg. Repro: `pgDialect.materializeSchemaSql` then `diffSchema(rendered, original)`. Broken today: `serial` (`relation "t_id_seq" does not exist`), identity (spurious `add generated always as identity` in every later draft), enums and domains (`type does not exist`), stored generated columns, and functions/triggers/matviews/extensions/non-`public` schemas (redrafted every time). Plain tables, FKs, views, checks, indexes, `uuid default gen_random_uuid()` and jsonb/arrays are fine
-- [ ] pg typegen parity with SQLite: `limit 1` should return `Result | null` (returns an array); `insert/update/delete ... returning` wrappers should return rows (they call `client.run`); `where col = :param` params are typed nullable; FROM-less selects get no columns
+- [x] pg typegen parity with SQLite: `limit 1` should return `Result | null` (returns an array); `insert/update/delete ... returning` wrappers should return rows (they call `client.run`); `where col = :param` params are typed nullable; FROM-less selects get no columns _`packages/pg/src/impl/query-shape.ts`, spec in `packages/pg/test/generate-parity.test.ts`. FROM-less columns already worked; the gap was the row count. See `tasks/complete/2026-10-29-pg-typegen-parity.md`_
 - [ ] Classify pg errors by SQLSTATE into `SqlfuError` kinds (always `'unknown'` today)
 - [ ] Derive draft names for pg (`sqlfu draft` without `--name` writes `_migration.sql`; SQLite derives `_create_table_posts.sql`)
 - [ ] Plumb migra options (`schema`, `excludeSchema`, extension flags) through `Dialect.diffSchema`

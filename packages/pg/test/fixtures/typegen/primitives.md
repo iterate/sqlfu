@@ -24,6 +24,7 @@ select 1 as a
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: false
 columns:
   - {name: a, tsType: number, notNull: true}
 parameters: []
@@ -38,6 +39,7 @@ select 'a' as a
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: false
 columns:
   - {name: a, tsType: string, notNull: true}
 parameters: []
@@ -52,6 +54,7 @@ select null::integer as b
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: false
 columns:
   - {name: b, tsType: number, notNull: false}
 parameters: []
@@ -66,6 +69,7 @@ select sum(a) as total from test_table
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: false
 columns:
   - {name: total, tsType: bigint, notNull: false}
 parameters: []
@@ -80,6 +84,7 @@ select sum(b) as total from test_table
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: false
 columns:
   - {name: total, tsType: bigint, notNull: false}
 parameters: []
@@ -94,6 +99,7 @@ select 'foo' || 'bar' as result
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: false
 columns:
   - {name: result, tsType: string, notNull: true}
 parameters: []
@@ -108,6 +114,7 @@ select 'foo' || null as result
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: false
 columns:
   - {name: result, tsType: string, notNull: false}
 parameters: []
@@ -122,6 +129,7 @@ select a > 1 as result from test_table
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: true
 columns:
   - {name: result, tsType: boolean, notNull: false}
 parameters: []
@@ -136,6 +144,7 @@ select 2 > 1 as a
 ```yaml
 ok: true
 queryType: Select
+multipleRowsResult: false
 columns:
   - {name: a, tsType: boolean, notNull: true}
 parameters: []
