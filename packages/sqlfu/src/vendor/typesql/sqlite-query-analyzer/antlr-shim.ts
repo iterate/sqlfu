@@ -896,10 +896,15 @@ class ShimTable_or_subqueryContext extends ShimParserRuleContext {
 		return new ShimSelect_stmtContext(p.select, this._sql, this._input, this);
 	}
 	table_or_subquery_list(): any[] {
+		// A parenthesised join is ANTLR's `OPEN_PAR join_clause CLOSE_PAR`: its
+		// tables hang off `join_clause()`, together with their join operators and
+		// constraints.
+		return [];
+	}
+	join_clause(): any {
 		const p = this._parsed;
-		if (p.kind !== 'NestedJoin') return [];
-		const items = [p.chain.first, ...p.chain.joins.map(j => j.target)];
-		return items.map(it => new ShimTable_or_subqueryContext(it, this._sql, this._input, this));
+		if (p.kind !== 'NestedJoin') return null;
+		return new ShimJoin_clauseContext(p.chain, p.start, p.stop, this._sql, this._input, this);
 	}
 }
 
@@ -957,6 +962,7 @@ class ShimJoin_operatorContext extends ShimParserRuleContext {
 	getChildCount = shimGetChildCount;
 	getChild = shimGetChild;
 	LEFT_(): any { return this._op.kind === 'LEFT' ? terminal(this._op.start, this._input) : null; }
+	NATURAL_(): any { return this._op.natural ? terminal(this._op.start, this._input) : null; }
 }
 
 class ShimJoin_constraintContext extends ShimParserRuleContext {

@@ -451,6 +451,7 @@ function traverse_table_or_subquery(
 				: table_alias_temp;
 
 		const join_constraint = join_constraint_list && index > 0 ? join_constraint_list[index - 1] : undefined;
+		const join_operator = join_operator_list && index > 0 ? join_operator_list[index - 1] : undefined;
 		const asAlias = table_or_subquery.AS_() || false;
 		const tableAlias = table_or_subquery.table_alias()?.getText();
 		const tableOrSubqueryName = table_name ? table_name.any_name().getText() : '';
@@ -470,8 +471,7 @@ function traverse_table_or_subquery(
 					}
 				}
 			}
-			const usingFields = join_constraint?.USING_() ? join_constraint?.column_name_list().map((column_name) => column_name.getText()) : [];
-			const filteredFields = usingFields.length > 0 ? filterUsingFields(tableOrSubqueryFields, usingFields) : tableOrSubqueryFields;
+			const filteredFields = filterUsingFields(tableOrSubqueryFields, joinUsingFields(join_constraint, join_operator, tableOrSubqueryFields, allFields));
 			if (isLeftJoin) {
 				allFields.push(
 					...filteredFields.map((field) => ({
@@ -503,7 +503,19 @@ function traverse_table_or_subquery(
 				};
 				return colDef;
 			});
-			allFields.push(...tableOrSubqueryFields);
+			allFields.push(...filterUsingFields(tableOrSubqueryFields, joinUsingFields(join_constraint, join_operator, tableOrSubqueryFields, allFields)));
+		}
+		// sqlfu divergence: a parenthesised join, `(a join b using (id))`, is a nested join_clause.
+		// Upstream doesn't read it; walk it with its own operators and constraints.
+		const nested_join_clause = table_or_subquery.join_clause?.();
+		if (nested_join_clause) {
+			tableOrSubqueryFields = traverse_table_or_subquery(
+				nested_join_clause.table_or_subquery_list(),
+				nested_join_clause.join_constraint_list(),
+				nested_join_clause.join_operator_list(),
+				traverseContext
+			);
+			allFields.push(...filterUsingFields(tableOrSubqueryFields, joinUsingFields(join_constraint, join_operator, tableOrSubqueryFields, allFields)));
 		}
 		const table_or_subquery_list2 = table_or_subquery.table_or_subquery_list();
 		if (table_or_subquery_list2.length > 0) {
@@ -2240,6 +2252,25 @@ function getAllColumns(expr: ExprContext): FieldName[] {
 		columns.push(splitName(expr2.getText()));
 	}
 	return columns;
+}
+
+// sqlfu divergence: upstream only drops a plain table's USING columns. SQLite returns one copy
+// of each USING column for any joined item, and NATURAL joins on every name shared with the
+// tables to their left.
+function joinUsingFields(
+	join_constraint: Join_constraintContext | undefined,
+	join_operator: Join_operatorContext | undefined,
+	fields: ColumnDef[],
+	leftFields: ColumnDef[]
+): string[] {
+	if (join_constraint?.USING_()) {
+		return join_constraint.column_name_list().map((column_name) => column_name.getText());
+	}
+	if (join_operator?.NATURAL_()) {
+		const leftNames = new Set(leftFields.filter((field) => field.hidden !== 1).map((field) => field.columnName.toLowerCase()));
+		return fields.filter((field) => field.hidden !== 1 && leftNames.has(field.columnName.toLowerCase())).map((field) => field.columnName);
+	}
+	return [];
 }
 
 function filterUsingFields(fields: ColumnDef[], usingFields: string[]) {
