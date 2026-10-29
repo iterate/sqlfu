@@ -156,13 +156,6 @@ select id from posts where id = :id or parent_id = :id;
 </details>
 
 <details>
-<summary>failing</summary>
-
-`Params` lists `id` twice, which TypeScript rejects as a duplicate identifier.
-
-</details>
-
-<details>
 <summary>output</summary>
 
 ```ts (sql/.generated/find-related-posts.sql.ts)
