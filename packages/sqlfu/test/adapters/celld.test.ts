@@ -13,44 +13,47 @@ import {ensureBuilt, packageRoot} from './ensure-built.js';
 // https://github.com/denoland/celld#install. To skip them, pass
 // `--exclude test/adapters/celld.test.ts` to vitest.
 
-// The factories below are serialized into the Worker module, which imports these from the built sqlfu runtime.
+// The factories below are serialized into the Worker module, which imports these from `cloudflare:workers` and the
+// built sqlfu runtime.
+declare const DurableObject: new (ctx: any, env: any) => {ctx: any; env: any};
 declare const createD1Client: typeof import('../../src/index.ts').createD1Client;
 declare const createDurableObjectClient: typeof import('../../src/index.ts').createDurableObjectClient;
 declare const defineConfig: typeof import('../../src/index.ts').defineConfig;
 declare const sql: typeof import('../../src/index.ts').sql;
 
-test('createDurableObjectClient migrates and queries isolated durable objects in real celld', async () => {
+test('an `extends DurableObject` class with an inline config migrates and queries isolated instances in real celld', async () => {
   await using celld = await createCelldFixture(() => {
-    const posts = defineConfig({
-      definitions: sql`
-        create table posts (slug text primary key not null, title text not null);
-      `,
-      migrations: [
-        {
-          name: '20260807000000_create_posts',
-          content: sql`
-            create table posts (slug text primary key not null, title text not null);
+    return class Posts extends DurableObject {
+      static db = defineConfig({
+        definitions: sql`
+          create table posts (slug text primary key not null, title text not null);
+        `,
+        migrations: [
+          {
+            name: '20260807000000_create_posts',
+            content: sql`
+              create table posts (slug text primary key not null, title text not null);
+            `,
+          },
+        ],
+        queries: {
+          createPost: sql.run`
+            insert into posts (slug, title)
+            values (:slug, :title)
+          `,
+          listPosts: sql.many`
+            select slug, title
+            from posts
+            order by slug
           `,
         },
-      ],
-      queries: {
-        createPost: sql.run`
-          insert into posts (slug, title)
-          values (:slug, :title)
-        `,
-        listPosts: sql.many`
-          select slug, title
-          from posts
-          order by slug
-        `,
-      },
-    });
+      });
 
-    return class Posts {
-      db: typeof posts.$type;
+      db: typeof Posts.db.$type;
 
-      constructor(ctx: any) {
-        this.db = posts(createDurableObjectClient(ctx.storage));
+      constructor(ctx: any, env: unknown) {
+        super(ctx, env);
+        this.db = Posts.db(createDurableObjectClient(ctx.storage));
         this.db.migrate();
       }
 
@@ -191,6 +194,7 @@ async function writeCelldProject(projectRoot: string, factory: () => unknown) {
     fs.writeFile(
       path.join(projectRoot, 'worker.js'),
       dedent`
+        import {DurableObject} from 'cloudflare:workers';
         import {createD1Client, createDurableObjectClient, defineConfig, sql} from './runtime/index.js';
 
         const App = (${factory.toString()})();
