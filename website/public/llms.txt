@@ -32,7 +32,7 @@ The main mental model: SQL artifacts are the source, TypeScript wrappers and UI 
 
 Task-oriented pages for operating sqlfu in a real application.
 
-- [Guides](https://sqlfu.dev/docs/guides): Runtime-specific setup guides for Durable Objects, D1, Node SQLite, Bun SQLite, Turso/libSQL, Expo SQLite, and sqlite-wasm.
+- [Guides](https://sqlfu.dev/docs/guides): Runtime-specific setup guides for Durable Objects, D1, Node SQLite, Bun SQLite, Turso/libSQL, Expo SQLite, sqlite-wasm, and Postgres.
 - [Durable Objects](https://sqlfu.dev/docs/guides/durable-objects): Practical Durable Objects setup: config, generated migration bundle, createDurableObjectClient(), and generated query usage.
 - [Cloudflare D1](https://sqlfu.dev/docs/guides/cloudflare-d1): Use sqlfu with Cloudflare D1: D1 migration preset, db factories, createD1Client(), and generated query wrappers.
 - [Node SQLite](https://sqlfu.dev/docs/guides/node-sqlite): Use sqlfu with node:sqlite, better-sqlite3, or native libsql in Node while keeping generated wrappers synchronous.
@@ -40,6 +40,8 @@ Task-oriented pages for operating sqlfu in a real application.
 - [Turso and libSQL](https://sqlfu.dev/docs/guides/turso-libsql): Use sqlfu with Turso Cloud, @libsql/client, @tursodatabase/serverless, and Turso embedded/sync drivers.
 - [Expo SQLite](https://sqlfu.dev/docs/guides/expo-sqlite): Use sqlfu with Expo SQLite: generate from definitions, bundle migrations, and run createExpoSqliteClient() in app startup.
 - [sqlite-wasm](https://sqlfu.dev/docs/guides/sqlite-wasm): Use sqlfu with @sqlite.org/sqlite-wasm in the browser, including OPFS, generated migrations, and generated query wrappers.
+- [Postgres](https://sqlfu.dev/docs/guides/postgres): Use sqlfu with Postgres: @sqlfu/pg for draft, migrate, generate and the UI, createNodePostgresClient() at runtime, and known gaps.
+- [Coming from pgkit](https://sqlfu.dev/docs/guides/pgkit): How pgkit packages and migrator commands map to sqlfu, and what does not carry over.
 - [CLI](https://sqlfu.dev/docs/cli): What npx sqlfu does, what each subcommand is for, and how check, draft, migrate, generate, sync, and format fit together.
 - [Adapters](https://sqlfu.dev/docs/adapters): Client factories for better-sqlite3, node:sqlite, bun:sqlite, libsql, Cloudflare D1, Durable Objects, Expo, sqlite-wasm, and more.
 - [Cloudflare D1 details](https://sqlfu.dev/docs/cloudflare-d1): Deployed Cloudflare D1 access with alchemy state, raw database IDs, and createD1HttpClient().
