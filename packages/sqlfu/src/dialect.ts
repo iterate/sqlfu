@@ -12,7 +12,7 @@
  * import check (`scripts/check-strict-imports.ts`) bundles the runtime graph
  * of `dist/index.js` and forbids `node:*` imports — including those reached
  * via *dynamic* imports (the check follows them). The sqlite typegen helpers
- * (`materializeTypegenDatabase`, `loadSchema`) live on a node:* code path, so
+ * (`openMainDevDatabase`, `loadSchema`) live on a node:* code path, so
  * dialect.ts cannot import them statically *or* dynamically without breaking
  * strict tier.
  *
@@ -232,14 +232,13 @@ export type Dialect = {
    * via `readSchemaForAuthority` — *before* this call, so the dialect
    * doesn't need to know which authority is in play.
    *
-   * Sqlite's materialized form is a temp `.sqlite` file at
-   * `<projectRoot>/.sqlfu/typegen.db`; pg's is an ephemeral
-   * `CREATE DATABASE`'d database. Both are disposed via
+   * Sqlite's materialized form is an in-memory database; pg's is an
+   * ephemeral `CREATE DATABASE`'d database. Both are disposed via
    * `Symbol.asyncDispose` on the returned handle.
    */
   materializeTypegenSchema(
     host: SqlfuHost,
-    input: {projectRoot: string; sourceSql: string; experimentalJsonTypes: boolean},
+    input: {sourceSql: string; experimentalJsonTypes: boolean},
   ): Promise<MaterializedTypegenSchema>;
 
   /** Extract relation (table/view) shapes from the materialized schema. */
@@ -456,14 +455,17 @@ async function getSqlitePrimaryKeyColumns(client: Client, relationName: string):
  * Exposed so the registration in `typegen/index.ts` can use it without
  * duplicating the cast logic.
  */
-export function assertSqliteMaterialized(materialized: MaterializedTypegenSchema): {
-  databasePath: string;
+export type SqliteMaterializedTypegenSchema = MaterializedTypegenSchema & {
+  /** `database` is the driver's own object (`node:sqlite` or `bun:sqlite`), which the vendored analyzer reads. */
+  typegenDatabase: {client: Client; database: unknown};
   experimentalJsonTypes: boolean;
-} {
+};
+
+export function assertSqliteMaterialized(materialized: MaterializedTypegenSchema): SqliteMaterializedTypegenSchema {
   if (materialized.dialect !== 'sqlite') {
     throw new Error(
       `sqliteDialect received a MaterializedTypegenSchema produced by '${materialized.dialect}' — dialect handles must not cross dialect boundaries.`,
     );
   }
-  return materialized as MaterializedTypegenSchema & {databasePath: string; experimentalJsonTypes: boolean};
+  return materialized as SqliteMaterializedTypegenSchema;
 }

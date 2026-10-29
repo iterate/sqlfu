@@ -5,8 +5,6 @@
 // The split exists because the regenerate script runs under tsx and
 // can't import a file that calls `beforeAll(...)` at module scope.
 import {readdirSync, readFileSync} from 'node:fs';
-import {mkdtemp, rm} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
 import {basename, join} from 'node:path';
 
 import type {QueryAnalysis, SqlfuHost} from 'sqlfu';
@@ -68,20 +66,14 @@ export async function runCase(
  * inside share the schema).
  */
 export async function materializeFor(definitions: string) {
-  const projectRoot = await mkdtemp(join(tmpdir(), 'sqlfu-pg-typegen-fixture-'));
   const dialect = pgDialect({adminUrl: TEST_ADMIN_URL});
   const materialized = await dialect.materializeTypegenSchema(stubHost(), {
-    projectRoot,
     sourceSql: definitions,
     experimentalJsonTypes: false,
   });
-  const dispose = materialized[Symbol.asyncDispose];
   return {
     materialized,
-    [Symbol.asyncDispose]: async () => {
-      await dispose.call(materialized);
-      await rm(projectRoot, {recursive: true, force: true});
-    },
+    [Symbol.asyncDispose]: () => materialized[Symbol.asyncDispose](),
   };
 }
 

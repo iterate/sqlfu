@@ -152,6 +152,15 @@ async function ensureGitignoreEntry(gitignorePath: string, entry: string) {
   await fs.writeFile(gitignorePath, `${prefix}${entry}${newline}`);
 }
 
+/** The nearest sqlfu config at or above `fromDir`. */
+export async function findNearestConfigPath(fromDir: string): Promise<string | undefined> {
+  for (let dir = path.resolve(fromDir); ; dir = path.dirname(dir)) {
+    const configPath = await resolveConfigPath(dir);
+    if (configPath) return configPath;
+    if (path.dirname(dir) === dir) return undefined;
+  }
+}
+
 async function resolveConfigPath(cwd: string): Promise<string | undefined> {
   for (const candidate of defaultConfigFileNames) {
     const resolved = path.resolve(cwd, candidate);

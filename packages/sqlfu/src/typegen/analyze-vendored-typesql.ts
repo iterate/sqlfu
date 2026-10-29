@@ -51,7 +51,10 @@ export type VendoredQueryAnalysis =
     };
 
 type VendoredTypesqlModule = {
-  analyzeSqliteQueries(databaseUri: string, queries: VendoredQueryInput[]): Promise<VendoredQueryAnalysis[]>;
+  analyzeSqliteQueriesWithClient(
+    databaseClient: {type: 'sqlite'; client: unknown},
+    queries: VendoredQueryInput[],
+  ): Promise<VendoredQueryAnalysis[]>;
 };
 
 async function loadVendoredTypesql(): Promise<VendoredTypesqlModule> {
@@ -60,10 +63,11 @@ async function loadVendoredTypesql(): Promise<VendoredTypesqlModule> {
   return import(modulePath) as Promise<VendoredTypesqlModule>;
 }
 
+/** Analyze queries against an open `node:sqlite` or `bun:sqlite` database. */
 export async function analyzeVendoredTypesqlQueries(
-  databasePath: string,
+  database: unknown,
   queries: VendoredQueryInput[],
 ): Promise<VendoredQueryAnalysis[]> {
-  const {analyzeSqliteQueries} = await loadVendoredTypesql();
-  return analyzeSqliteQueries(databasePath, queries);
+  const {analyzeSqliteQueriesWithClient} = await loadVendoredTypesql();
+  return analyzeSqliteQueriesWithClient({type: 'sqlite', client: database}, queries);
 }

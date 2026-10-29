@@ -76,6 +76,9 @@ By default, type generation reads `definitions.sql`, so it does not need a live
 database. Change `generate.authority` when generated types should follow
 replayed migrations, migration history, or live schema instead.
 
+On TypeScript 7.1, query wrappers don't need this command:
+[import `.sql` files directly](/docs/sql-imports).
+
 ### `npx sqlfu format`
 
 Rewrite `.sql` files with sqlfu's formatter.

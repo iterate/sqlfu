@@ -14,9 +14,6 @@
     "dist"
   ],
   "type": "module",
-  "engines": {
-    "node": ">=22"
-  },
   "exports": {
     ".": "./src/index.ts",
     "./analyze": "./src/analyze.ts",
@@ -28,7 +25,8 @@
     "./lint-plugin": "./src/lint-plugin.ts",
     "./outbox": "./src/outbox/index.ts",
     "./ui": "./src/ui/server.ts",
-    "./ui/browser": "./src/ui/browser.ts"
+    "./ui/browser": "./src/ui/browser.ts",
+    "./register": "./src/node/register.ts"
   },
   "publishConfig": {
     "exports": {
@@ -75,6 +73,10 @@
       "./ui/browser": {
         "types": "./dist/ui/browser.d.ts",
         "default": "./dist/ui/browser.js"
+      },
+      "./register": {
+        "types": "./dist/node/register.d.ts",
+        "default": "./dist/node/register.js"
       }
     }
   },
@@ -133,6 +135,7 @@
     "posthog-node": "^5.29.2",
     "ts-morph": "^27.0.2",
     "typescript": "^5.9.3",
+    "typescript-content-mappers": "npm:typescript@7.1.0-beta",
     "valibot": "^1.3.1",
     "vite": "^7.1.12",
     "vitest": "^4.1.1"
@@ -156,5 +159,18 @@
     "effect": {
       "optional": true
     }
+  },
+  "typescript": {
+    "contentMapper": {
+      "compilerOptions": [],
+      "dynamicConfig": true,
+      "exec": [
+        "node",
+        "dist/node/content-mapper.js"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

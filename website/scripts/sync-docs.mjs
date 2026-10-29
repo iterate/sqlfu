@@ -187,6 +187,13 @@ const docs = [
       'Generated query wrappers, multi-query SQL files, and inferred parameter forms for lists and bulk inserts.',
   },
   {
+    slug: 'sql-imports',
+    title: 'Import .sql files directly',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'sql-imports.md'),
+    description:
+      'Experimental, TypeScript 7.1: import .sql query files and get types from definitions.sql, with no generate step and no generated files.',
+  },
+  {
     slug: 'runtime-validation',
     title: 'Runtime validation',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'runtime-validation.mdx'),

@@ -140,6 +140,8 @@ By default, `generate` reads `definitions.sql`, so no live database is required.
 Switch `generate.authority` when generated types should follow replayed
 migrations, migration history, or live schema instead.
 
+On TypeScript 7.1 (beta), you can skip the generate step: `import {listPosts} from './sql/queries.sql'` and `tsc --runExternalCode` types it from `definitions.sql`, with no generated files. Experimental. See [Import .sql files directly](https://sqlfu.dev/docs/sql-imports).
+
 Use `/** @name listPosts */` comments when one `.sql` file contains multiple queries.
 Parameter placeholders can also describe the runtime SQL shape directly:
 
@@ -523,6 +525,7 @@ Current limits also matter:
 `sqlfu` is not built in a vacuum. Several existing projects directly shape what it looks like today, either as vendored code or as ideas we lean on.
 
 - [TypeSQL](https://github.com/wsporto/typesql) by Wanderson Camargo (MIT). TypeSQL is vendored under [`src/vendor/typesql`](./src/vendor/typesql) and powers SQL-to-TypeScript analysis for `sqlfu generate`. sqlfu adds a small post-pass for SQLite result typing but otherwise relies on TypeSQL's query analyzer, its ANTLR4-based parser ([`typesql-parser`](https://github.com/wsporto/typesql-parser), vendored under [`src/vendor/typesql-parser`](./src/vendor/typesql-parser)), and its code generator.
+- [reylo](https://github.com/colinhacks/reylo) by Colin McDonnell (MIT). Reylo did `.sql` imports with TypeScript content mappers first. sqlfu's content mapper adapts its JSON-RPC framing ([`src/node/content-mapper.ts`](./src/node/content-mapper.ts)).
 - [sql-formatter](https://github.com/sql-formatter-org/sql-formatter) (MIT). The formatter is essentially vendored whole under [`src/vendor/sql-formatter`](./src/vendor/sql-formatter) and then wrapped by [`src/formatter.ts`](./src/formatter.ts) with sqlfu-specific defaults (SQLite-first, lowercase by default, biased toward keeping simple clause bodies inline).
 - [prettier-plugin-sql-cst](https://github.com/nene/prettier-plugin-sql-cst) by Rene Saarsoo (MIT). The target output shape for `formatSql()` draws on this project's style, and a large set of its upstream tests are imported into sqlfu's formatter fixtures under [`test/formatter/generated-prettier-plugin-sql-cst-*.fixture.sql`](./test/formatter/).
 - [antlr4](https://github.com/antlr/antlr4) JavaScript runtime (BSD-3-Clause). Vendored under [`src/vendor/antlr4`](./src/vendor/antlr4) so TypeSQL's parser can run without loading from `node_modules`.

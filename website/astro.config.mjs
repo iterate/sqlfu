@@ -73,6 +73,7 @@ export default defineConfig({
             {label: 'Runtime client', slug: 'docs/client'},
             {label: 'SQL migrations', slug: 'docs/migration-model'},
             {label: 'Type generation from SQL', slug: 'docs/typegen'},
+            {label: 'Import .sql files (experimental)', slug: 'docs/sql-imports'},
             {label: 'Admin UI', slug: 'docs/ui'},
           ],
         },

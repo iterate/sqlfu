@@ -48,6 +48,8 @@ When `migrations` is not configured, there is no migration history to draft. Upd
 
 If generated TypeScript looks wrong, fix the SQL source or config first. The generated file is output, not the source of truth.
 
+If `tsconfig.json` lists `sqlfu` under `contentMappers` (TypeScript 7.1), skip step 2. Import the `.sql` file itself (`import {listPosts} from './sql/queries.sql'`), not `.generated/`, and type check with `tsc --noEmit --runExternalCode`. An error in a `.sql` file blocks TypeScript errors elsewhere until it's fixed, so fix the SQL first. See https://sqlfu.dev/docs/sql-imports.
+
 ## Useful commands
 
 - `sqlfu init`: create a new sqlfu project.
