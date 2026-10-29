@@ -13,30 +13,127 @@ import {ensureBuilt, packageRoot} from './ensure-built.js';
 // https://github.com/denoland/celld#install. To skip them, pass
 // `--exclude test/adapters/celld.test.ts` to vitest.
 
-test('sqlfu migrates and queries isolated durable object cells in real celld', async () => {
-  await using fixture = await createCelldFixture();
+// The factories below are serialized into the Worker module, which imports these from the built sqlfu runtime.
+declare const createD1Client: typeof import('../../src/index.ts').createD1Client;
+declare const createDurableObjectClient: typeof import('../../src/index.ts').createDurableObjectClient;
+declare const defineConfig: typeof import('../../src/index.ts').defineConfig;
+declare const sql: typeof import('../../src/index.ts').sql;
 
-  expect(await fixture.createPost('/durable-object/alpha', {slug: 'hello', title: 'Hello from celld'})).toMatchObject({
-    rowsAffected: 1,
-  });
-  expect(await fixture.createPost('/durable-object/beta', {slug: 'other', title: 'Another cell'})).toMatchObject({
-    rowsAffected: 1,
+test('createDurableObjectClient migrates and queries isolated durable objects in real celld', async () => {
+  await using celld = await createCelldFixture(() => {
+    const posts = defineConfig({
+      definitions: sql`
+        create table posts (slug text primary key not null, title text not null);
+      `,
+      migrations: [
+        {
+          name: '20260807000000_create_posts',
+          content: sql`
+            create table posts (slug text primary key not null, title text not null);
+          `,
+        },
+      ],
+      queries: {
+        createPost: sql.run`
+          insert into posts (slug, title)
+          values (:slug, :title)
+        `,
+        listPosts: sql.many`
+          select slug, title
+          from posts
+          order by slug
+        `,
+      },
+    });
+
+    return class Posts {
+      db: typeof posts.$type;
+
+      constructor(ctx: any) {
+        this.db = posts(createDurableObjectClient(ctx.storage));
+        this.db.migrate();
+      }
+
+      createPost(post: {slug: string; title: string}) {
+        return this.db.createPost(post);
+      }
+
+      listPosts() {
+        return this.db.listPosts();
+      }
+    };
   });
 
-  expect(await fixture.listPosts('/durable-object/alpha')).toMatchObject([{slug: 'hello', title: 'Hello from celld'}]);
-  expect(await fixture.listPosts('/durable-object/beta')).toMatchObject([{slug: 'other', title: 'Another cell'}]);
+  const alpha = celld.durableObject('alpha');
+  const beta = celld.durableObject('beta');
+
+  expect(await alpha.createPost({slug: 'hello', title: 'Hello from celld'})).toMatchObject({rowsAffected: 1});
+  expect(await beta.createPost({slug: 'other', title: 'Another cell'})).toMatchObject({rowsAffected: 1});
+
+  expect(await alpha.listPosts()).toMatchObject([{slug: 'hello', title: 'Hello from celld'}]);
+  expect(await beta.listPosts()).toMatchObject([{slug: 'other', title: 'Another cell'}]);
 });
 
-test('sqlfu migrates and queries a D1 database in real celld', async () => {
-  await using fixture = await createCelldFixture();
+test('createD1Client migrates and queries a D1 database in real celld', async () => {
+  await using celld = await createCelldFixture(() => {
+    const posts = defineConfig({
+      definitions: sql`
+        create table posts (slug text primary key not null, title text not null);
+      `,
+      migrations: [
+        {
+          name: '20260807000000_create_posts',
+          content: sql`
+            create table posts (slug text primary key not null, title text not null);
+          `,
+        },
+      ],
+      queries: {
+        createPost: sql.run`
+          insert into posts (slug, title)
+          values (:slug, :title)
+        `,
+        listPosts: sql.many`
+          select slug, title
+          from posts
+          order by slug
+        `,
+      },
+    });
 
-  // Each request builds a fresh D1 client and migrates, so the second request
-  // also proves the migration is a no-op once applied.
-  expect(await fixture.createPost('/d1', {slug: 'hello', title: 'Hello from D1'})).toMatchObject({rowsAffected: 1});
-  expect(await fixture.listPosts('/d1')).toMatchObject([{slug: 'hello', title: 'Hello from D1'}]);
+    return class Posts {
+      db: typeof posts.$type;
+
+      constructor(_ctx: unknown, env: {DB: any}) {
+        this.db = posts(createD1Client(env.DB));
+      }
+
+      migrate() {
+        return this.db.migrate();
+      }
+
+      createPost(post: {slug: string; title: string}) {
+        return this.db.createPost(post);
+      }
+
+      listPosts() {
+        return this.db.listPosts();
+      }
+    };
+  });
+
+  await celld.worker.migrate();
+
+  expect(await celld.worker.createPost({slug: 'hello', title: 'Hello from D1'})).toMatchObject({rowsAffected: 1});
+  expect(await celld.worker.listPosts()).toMatchObject([{slug: 'hello', title: 'Hello from D1'}]);
 });
 
-async function createCelldFixture() {
+/**
+ * Deploys a Worker to a real `celld dev` node. `factory` runs at the Worker's module scope and returns a class, which
+ * is both a SQLite-backed Durable Object (`durableObject(name)`) and a per-request Worker instance (`worker`). Both
+ * construct it with `(ctx, env)`, as Cloudflare does, and `env.DB` is a D1 database.
+ */
+async function createCelldFixture<TApp extends object>(factory: () => new (ctx: any, env: any) => TApp) {
   await ensureBuilt();
 
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-celld-'));
@@ -48,7 +145,7 @@ async function createCelldFixture() {
   try {
     await fs.mkdir(projectRoot, {recursive: true});
     await fs.cp(path.join(packageRoot, 'dist'), path.join(projectRoot, 'runtime'), {recursive: true});
-    await writeCelldProject(projectRoot);
+    await writeCelldProject(projectRoot, factory);
 
     // `celld dev` deploys the project to one real celld node backed by a local
     // object store, so no S3-compatible server is needed.
@@ -60,20 +157,8 @@ async function createCelldFixture() {
     await waitForHealthy(`${celldUrl}/.well-known/celld/health`, celld);
 
     return {
-      async createPost(route: string, post: {slug: string; title: string}) {
-        const response = await fetch(`${celldUrl}${route}/posts`, {
-          method: 'POST',
-          headers: {'content-type': 'application/json'},
-          body: JSON.stringify(post),
-        });
-        expect(response).toMatchObject({ok: true, status: 200});
-        return response.json();
-      },
-      async listPosts(route: string) {
-        const response = await fetch(`${celldUrl}${route}/posts`);
-        expect(response).toMatchObject({ok: true, status: 200});
-        return response.json();
-      },
+      durableObject: (name: string) => createRpcStub<TApp>(`${celldUrl}/durable-object/${name}`),
+      worker: createRpcStub<TApp>(`${celldUrl}/worker`),
       async [Symbol.asyncDispose]() {
         await stopProcess(celld);
         await fs.rm(root, {recursive: true, force: true});
@@ -86,18 +171,18 @@ async function createCelldFixture() {
   }
 }
 
-async function writeCelldProject(projectRoot: string) {
+async function writeCelldProject(projectRoot: string, factory: () => unknown) {
   await Promise.all([
     fs.writeFile(
       path.join(projectRoot, 'wrangler.jsonc'),
       JSON.stringify(
         {
-          name: 'sqlfu-celld-compatibility',
+          name: 'sqlfu-celld-fixture',
           main: 'worker.js',
           compatibility_date: '2026-08-05',
-          durable_objects: {bindings: [{name: 'POSTS', class_name: 'Posts'}]},
-          migrations: [{tag: 'v1', new_sqlite_classes: ['Posts']}],
-          d1_databases: [{binding: 'DB', database_name: 'sqlfu-posts', database_id: 'sqlfu-posts'}],
+          durable_objects: {bindings: [{name: 'FIXTURE_OBJECT', class_name: 'FixtureObject'}]},
+          migrations: [{tag: 'v1', new_sqlite_classes: ['FixtureObject']}],
+          d1_databases: [{binding: 'DB', database_name: 'fixture', database_id: 'fixture'}],
         },
         null,
         2,
@@ -108,72 +193,60 @@ async function writeCelldProject(projectRoot: string) {
       dedent`
         import {createD1Client, createDurableObjectClient, defineConfig, sql} from './runtime/index.js';
 
-        const posts = defineConfig({
-          definitions: sql\`
-            create table posts (
-              slug text primary key not null,
-              title text not null
-            );
-          \`,
-          migrations: [
-            {
-              name: '20260807000000_create_posts',
-              content: sql\`
-                create table posts (
-                  slug text primary key not null,
-                  title text not null
-                );
-              \`,
-            },
-          ],
-          queries: {
-            createPost: sql.run\`
-              insert into posts (slug, title)
-              values (:slug, :title)
-            \`,
-            listPosts: sql.many\`
-              select slug, title
-              from posts
-              order by slug
-            \`,
-          },
-        });
+        const App = (${factory.toString()})();
 
-        export class Posts {
-          constructor(state) {
-            this.db = posts(createDurableObjectClient(state.storage));
-            this.db.migrate();
-          }
-
-          async fetch(request) {
-            if (request.method === 'POST') {
-              return Response.json(this.db.createPost(await request.json()));
-            }
-            return Response.json(this.db.listPosts());
+        export class FixtureObject extends App {
+          fetch(request) {
+            return callMethod(this, request);
           }
         }
 
         export default {
-          async fetch(request, env) {
-            const [, binding, cell] = new URL(request.url).pathname.split('/');
-            if (binding === 'durable-object') {
-              return env.POSTS.get(env.POSTS.idFromName(cell)).fetch(request);
+          fetch(request, env, ctx) {
+            const [, target, name] = new URL(request.url).pathname.split('/');
+            if (target === 'durable-object') {
+              return env.FIXTURE_OBJECT.get(env.FIXTURE_OBJECT.idFromName(name)).fetch(request);
             }
-            if (binding === 'd1') {
-              const db = posts(createD1Client(env.DB));
-              await db.migrate();
-              if (request.method === 'POST') {
-                return Response.json(await db.createPost(await request.json()));
-              }
-              return Response.json(await db.listPosts());
-            }
-            return new Response('not found', {status: 404});
+            return callMethod(new App(ctx, env), request);
           },
         };
+
+        async function callMethod(app, request) {
+          const {method, args} = await request.json();
+          try {
+            return Response.json({ok: true, value: await app[method](...args)});
+          } catch (error) {
+            return Response.json({ok: false, error: String(error?.stack || error)});
+          }
+        }
       ` + '\n',
     ),
   ]);
 }
+
+function createRpcStub<TApp extends object>(url: string) {
+  return new Proxy({} as Promisified<TApp>, {
+    get(_target, method) {
+      if (typeof method !== 'string') return undefined;
+      return async (...args: unknown[]) => {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {'content-type': 'application/json'},
+          body: JSON.stringify({method, args}),
+        });
+        const text = await response.text();
+        if (!response.ok) throw new Error(`${method} failed with ${response.status}: ${text}`);
+        const payload = JSON.parse(text);
+        if (!payload.ok) throw new Error(`${method} failed: ${payload.error}`);
+        return payload.value;
+      };
+    },
+  });
+}
+
+type Promisified<T> = {
+  [K in keyof T]: T[K] extends (...args: infer A) => infer R ? (...args: A) => Promise<Awaited<R>> : never;
+};
 
 async function findAvailablePort() {
   const server = net.createServer();
