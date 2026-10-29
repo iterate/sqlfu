@@ -404,3 +404,113 @@ export type PostsRow = {
 ```
 
 </details>
+
+## types queries with an in (select ...) subquery
+
+<details data-outputs="sql/.generated/list-users-with-sessions.sql.ts">
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table users (id integer primary key, login text not null);
+create table sessions (id text primary key, user_id integer not null references users (id), expires_at text not null);
+```
+
+```sql (sql/list-users-with-sessions.sql)
+select id, login from users where id in (select user_id from sessions where expires_at > :now);
+```
+
+</details>
+
+<details>
+<summary>failing</summary>
+
+Falls back to `//Invalid SQL`. The query catalog records the analyzer crash:
+`Cannot read properties of undefined (reading 'select_stmt')`.
+
+</details>
+
+<details>
+<summary>output</summary>
+
+```ts (sql/.generated/list-users-with-sessions.sql.ts)
+import type {Client} from 'sqlfu';
+
+const sql = `select id, login from users where id in (select user_id from sessions where expires_at > ?);`;
+const query = (params: listUsersWithSessions.Params) => ({
+	name: "listUsersWithSessions",
+	sql,
+	args: [params.now],
+});
+
+export const listUsersWithSessions = Object.assign(
+	async function listUsersWithSessions(client: Client, params: listUsersWithSessions.Params): Promise<listUsersWithSessions.Result[]> {
+		return client.all<listUsersWithSessions.Result>(query(params));
+	},
+	{ sql, query },
+);
+
+export namespace listUsersWithSessions {
+	export type Params = {
+		now: string;
+	};
+	export type Result = {
+		id: number;
+		login: string;
+	};
+}
+```
+
+</details>
+
+## types deletes with a row-value in (select ...) subquery
+
+<details data-outputs="sql/.generated/delete-shares.sql.ts">
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table shares (project_id text not null, path text not null, primary key (project_id, path));
+create table revoked (project_id text not null, path text not null, revoked_by text not null);
+```
+
+```sql (sql/delete-shares.sql)
+delete from shares where (project_id, path) in (select project_id, path from revoked where revoked_by = :revokedBy);
+```
+
+</details>
+
+<details>
+<summary>failing</summary>
+
+Falls back to `//Invalid SQL`. The query catalog records the analyzer crash:
+`Cannot read properties of undefined (reading 'select_stmt')`.
+
+</details>
+
+<details>
+<summary>output</summary>
+
+```ts (sql/.generated/delete-shares.sql.ts)
+import type {Client} from 'sqlfu';
+
+const sql = `delete from shares where (project_id, path) in (select project_id, path from revoked where revoked_by = ?);`;
+const query = (params: deleteShares.Params) => ({
+	name: "deleteShares",
+	sql,
+	args: [params.revokedBy],
+});
+
+export const deleteShares = Object.assign(
+	async function deleteShares(client: Client, params: deleteShares.Params) {
+		return client.run(query(params));
+	},
+	{ sql, query },
+);
+
+export namespace deleteShares {
+	export type Params = {
+		revokedBy: string;
+	};
+}
+```
+
+</details>

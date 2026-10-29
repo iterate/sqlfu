@@ -31,6 +31,12 @@ export type FixtureCase = {
    */
   outputGlobs?: string[];
   expectedError?: string;
+  /**
+   * Body of a `<details><summary>failing</summary>` block: why `generate` doesn't produce the
+   * expected output yet. Its presence runs the case as `test.fails`, so a known bug can be pinned
+   * with its fixed output before anyone fixes it. Delete the block once the case passes.
+   */
+  failing?: string;
 };
 
 export type FixtureRunResult =
@@ -257,6 +263,7 @@ export function parseGenerateFixture(contents: string): FixtureCase[] {
     // output tag) is still accepted for fixtures that already use it.
     const outputGlobs = parseOutputGlobs(inputSection?.attrs['data-outputs'] || outputSection?.attrs['data-outputs']);
     const expectedError = extractDetailsBody(body, 'error')?.trim() || undefined;
+    const failing = extractDetailsBody(body, 'failing')?.trim() || undefined;
 
     if (defaultConfig && !inputFiles.some((file) => file.path === 'sqlfu.config.ts')) {
       inputFiles.unshift(defaultConfig);
@@ -266,7 +273,7 @@ export function parseGenerateFixture(contents: string): FixtureCase[] {
       throw new Error(`Fixture "${name}" has no input files`);
     }
 
-    cases.push({name, inputFiles, outputFiles, outputGlobs, expectedError});
+    cases.push({name, inputFiles, outputFiles, outputGlobs, expectedError, failing});
   }
 
   return cases;

@@ -14,6 +14,10 @@ alphabetically. Subsequent `-u` runs regenerate the body — fences whose paths 
 match the globs get dropped, new matches get appended. Without `data-outputs`, `-u` only
 refreshes the bodies of fences the author hand-wrote.
 
+To pin a known bug, write the output block by hand as the *fixed* output and add a
+`<details><summary>failing</summary>why</details>` block. The test then runs as `test.fails`, and
+`-u` leaves it alone. Delete the `failing` block in the PR that fixes the bug.
+
 If a test doesn't include `sqlfu.config.ts` in its `input` block, the `default config` below
 is injected automatically.
 

@@ -188,6 +188,31 @@ test('database commands use a project-local sqlite database when config omits db
   void cwd;
 });
 
+test.fails('draft --yes writes the drafted migration without prompting', async () => {
+  const root = await createTempFixtureRoot('cli-draft-yes');
+  await writeFixtureFiles(root, {
+    'sqlfu.config.ts': dedent`
+      export default {
+        db: './app.db',
+        definitions: './definitions.sql',
+        migrations: './migrations',
+        queries: './sql',
+      };
+    `,
+    'definitions.sql': 'create table posts (id integer primary key, title text not null);',
+  });
+
+  using cwd = chdir(root);
+
+  await runCli(['draft', '--yes']);
+
+  await expect(fs.readdir(path.join(root, 'migrations'))).resolves.toMatchObject([
+    expect.stringMatching(/create_table_posts\.sql$/),
+  ]);
+
+  void cwd;
+});
+
 test('format rewrites .sql files from a positional glob', async () => {
   const root = await createTempFixtureRoot('cli-format');
   await writeFixtureFiles(root, {
