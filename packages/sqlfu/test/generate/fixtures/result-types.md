@@ -328,6 +328,6 @@ select s.id, u.id from sessions s join users u on u.id = s.user_id;
 <details>
 <summary>error</summary>
 
-Query listSessions returns more than one column named "id"
+Query listSessions returns more than one column named `id`
 
 </details>

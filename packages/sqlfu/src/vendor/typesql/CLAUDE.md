@@ -28,6 +28,10 @@ Local changes that are expected:
   shim's `Sql_stmtContext.<ddl_kind>_stmt()` accessor returns an opaque truthy
   marker for the matching `DdlKind`, and the analyzer reads only presence.
 
+- `codegen/sqlite.ts` — `mapColumns` keeps repeated result column names instead of renaming
+  them `id`, `id_2` (`renameInvalidNames`). sqlfu's drivers key rows by column name, so the
+  renamed column never arrives; sqlfu typegen rejects the duplicate with an alias hint.
+
 When updating from upstream:
 - copy upstream `src/` over this directory again rather than editing file-by-file
 - reapply only the local compatibility changes above
