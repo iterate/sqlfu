@@ -1,20 +1,21 @@
-import {mapSqliteDriverError} from './errors.js';
+import {mapDriverError} from './errors.js';
 import {bindAsyncSql, bindSyncSql} from './sql.js';
 import type {AsyncClient, PreparedStatement, ResultRow, SqlQuery, SyncClient, SyncPreparedStatement} from './types.js';
 
 /**
  * Wrap a `SyncClient` so every error from `all` / `run` / `raw` / `iterate`
- * is normalized via `mapSqliteDriverError`. Mirrors `instrumentClient`
+ * is normalized via `mapDriverError`. Mirrors `instrumentClient`
  * structurally — applied once at adapter-factory exit rather than per call.
  *
  * The error's `system` comes from the client's own `.system` field, so
- * adapters don't have to pass it twice.
+ * adapters don't have to pass it twice. It also picks the classifier
+ * (SQLSTATE for `'postgresql'`, SQLite result codes otherwise).
  *
  * Transactions re-wrap the inner client so queries inside a tx get the same
  * error contract as queries outside it.
  */
 export function wrapSyncClientErrors<TDriver>(client: SyncClient<TDriver>): SyncClient<TDriver> {
-  const mapQuery = (error: unknown, query: SqlQuery) => mapSqliteDriverError(error, {query, system: client.system});
+  const mapQuery = (error: unknown, query: SqlQuery) => mapDriverError(error, {query, system: client.system});
 
   const wrapped: Omit<SyncClient<TDriver>, 'sql'> & {sql: SyncClient<TDriver>['sql']} = {
     driver: client.driver,
@@ -93,7 +94,7 @@ export function wrapSyncClientErrors<TDriver>(client: SyncClient<TDriver>): Sync
 }
 
 export function wrapAsyncClientErrors<TDriver>(client: AsyncClient<TDriver>): AsyncClient<TDriver> {
-  const mapQuery = (error: unknown, query: SqlQuery) => mapSqliteDriverError(error, {query, system: client.system});
+  const mapQuery = (error: unknown, query: SqlQuery) => mapDriverError(error, {query, system: client.system});
 
   const wrapped: Omit<AsyncClient<TDriver>, 'sql'> & {sql: AsyncClient<TDriver>['sql']} = {
     driver: client.driver,

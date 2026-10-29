@@ -212,7 +212,7 @@ try {
 }
 ```
 
-The driver error is preserved byte-identical on `.cause`; `.query` and `.system` come along so error reporters can tag events without a parallel `QueryExecutionContext`. Kind names are SQLSTATE-aligned so SQLite and Postgres can share one vocabulary. Postgres errors are wrapped too, but always with `kind: 'unknown'` for now; read the SQLSTATE from `.cause.code`. Full kind list, handler recipes, Sentry-tagging example: [Errors](https://sqlfu.dev/docs/errors).
+The driver error is preserved byte-identical on `.cause`; `.query` and `.system` come along so error reporters can tag events without a parallel `QueryExecutionContext`. Kind names are SQLSTATE-aligned, so SQLite and Postgres errors share one vocabulary. Full kind list, handler recipes, Sentry-tagging example: [Errors](https://sqlfu.dev/docs/errors).
 
 ### Outbox (experimental)
 

@@ -143,6 +143,10 @@ const [post] = await findPostBySlug(client, {slug: 'hello-world'});
 Generated types follow the `pg` driver's defaults. `timestamptz` comes back as
 `Date`, `uuid` as `string`.
 
+Errors are `SqlfuError`s with the same `kind`s as SQLite, mapped from the
+SQLSTATE. Inserting a duplicate slug throws `kind: 'unique_violation'`, with
+`'23505'` on `error.cause.code`. See [Errors](../errors.md).
+
 ## What differs from SQLite
 
 - **Scratch databases.** SQLite drafts in memory. Postgres creates and drops real
@@ -177,10 +181,6 @@ Generated wrappers. These differ from SQLite output:
 - `insert`/`update`/`delete ... returning` wrappers don't return rows.
 - Parameters compared with `=` are typed as nullable (`slug: string | null`).
 - Selects with no `from` (`select 1 as a`) get no result columns.
-
-Errors. Postgres errors are wrapped in `SqlfuError`, but `kind` is always
-`'unknown'`. Read the SQLSTATE from `error.cause.code` (`'23505'` for a unique
-violation). See [Errors](../errors.md).
 
 Not covered at all:
 
