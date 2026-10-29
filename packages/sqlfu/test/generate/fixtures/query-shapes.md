@@ -36,6 +36,7 @@ insert into posts (slug) values (:slug);
 
 ```ts (sql/.generated/insert-post.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `insert into posts (slug) values (?);`;
 const query = (params: insertPost.Params) => ({ name: "insertPost", sql, args: [params.slug] });
@@ -44,7 +45,16 @@ export const insertPost = Object.assign(
 	async function insertPost(client: Client, params: insertPost.Params) {
 		return client.run(query(params));
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: [],
+			output: () => undefined,
+		}),
+	},
 );
 
 export namespace insertPost {
@@ -91,6 +101,7 @@ insert into users (name, email) values (:fullName, :emailAddress) returning *;
 
 ```ts (sql/.generated/add-user.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `insert into users (name, email) values (?, ?) returning *;`;
 const query = (params: addUser.Params) => ({
@@ -104,7 +115,16 @@ export const addUser = Object.assign(
 		const rows = await client.all<addUser.Result>(query(params));
 		return rows[0];
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "name", "email"],
+			output: (rows: addUser.Result[]) => rows[0]!,
+		}),
+	},
 );
 
 export namespace addUser {
@@ -220,6 +240,7 @@ delete from posts where id = :id;
 
 ```ts (sql/.generated/delete-post.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `delete from posts where id = ?;`;
 const query = (params: deletePost.Params) => ({ name: "deletePost", sql, args: [params.id] });
@@ -228,7 +249,16 @@ export const deletePost = Object.assign(
 	async function deletePost(client: Client, params: deletePost.Params) {
 		return client.run(query(params));
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: [],
+			output: () => undefined,
+		}),
+	},
 );
 
 export namespace deletePost {
@@ -275,6 +305,7 @@ select count(*) as total from posts;
 
 ```ts (sql/.generated/count-posts.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `select count(*) as total from posts;`;
 const query = { name: "countPosts", sql, args: [] };
@@ -284,7 +315,16 @@ export const countPosts = Object.assign(
 		const rows = await client.all<countPosts.Result>(query);
 		return rows.length > 0 ? rows[0] : null;
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["total"],
+			output: (rows: countPosts.Result[]) => (rows.length > 0 ? rows[0]! : null),
+		}),
+	},
 );
 
 export namespace countPosts {

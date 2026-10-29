@@ -117,6 +117,8 @@ export async function generateQueryTypesForConfig(
         sync: config.generate.sync,
         casing: config.generate.casing,
         runtime: config.generate.runtime,
+        // `standardQuery` speaks SQLite's raw values; Postgres would need per-column text decoders.
+        emitStandardQuery: config.dialect.name === 'sqlite',
       });
       await fs.writeFile(wrapperPath, contents);
       writtenFiles.push(projectRelativePath(config, wrapperPath));
@@ -296,6 +298,7 @@ function renderQueryDocument(input: {
   sync: boolean;
   casing: SqlfuGenerateCasing;
   runtime: SqlfuGenerateRuntime;
+  emitStandardQuery: boolean;
 }): string {
   const renderedQueries = input.queryDocument.queries.map((querySource) => {
     const analysis = input.queryAnalyses.find((query) => query.sqlPath === querySource.sqlPath);
@@ -329,6 +332,7 @@ function renderQueryDocument(input: {
         sql: querySource.sqlContent,
         sync: input.sync,
         runtime: input.runtime,
+        emitStandardQuery: input.emitStandardQuery,
         localNames,
       });
     }
@@ -348,6 +352,7 @@ function renderQueryDocument(input: {
       sync: input.sync,
       casing: input.casing,
       runtime: input.runtime,
+      emitStandardQuery: input.emitStandardQuery,
       localNames,
     });
   });
@@ -433,6 +438,7 @@ function renderDdlWrapper(input: {
   sql: string;
   sync: boolean;
   runtime: SqlfuGenerateRuntime;
+  emitStandardQuery: boolean;
   localNames?: LocalNames;
 }): string {
   const functionName = input.functionName;
@@ -500,6 +506,7 @@ function renderDdlWrapper(input: {
 
   return [
     `import type {${clientType}} from 'sqlfu';`,
+    ...(input.emitStandardQuery ? [standardQueryImportLine] : []),
     ``,
     ...renderSqlConstant(input.sql, sqlName),
     renderConstQueryObjectDeclaration({
@@ -513,10 +520,58 @@ function renderDdlWrapper(input: {
     `\t${maybeAsync}function ${functionName}(client: ${clientType}) {`,
     `\t\treturn client.run(${queryName});`,
     `\t},`,
-    `\t{ ${objectProperty('sql', sqlName)}, ${objectProperty('query', queryName)} },`,
+    ...renderAttachedProperties(
+      [objectProperty('sql', sqlName), objectProperty('query', queryName)],
+      input.emitStandardQuery ? {sqlName, queryName, columns: [], output: '() => undefined'} : null,
+    ),
     `);`,
     ``,
   ].join('\n');
+}
+
+const standardQueryImportLine = `import {standardQuery} from 'sqlfu';`;
+
+/**
+ * The second `Object.assign` argument of a wrapper: one line, or one property per line once a
+ * `~standard` property (a Standard Query, see `standardQuery` in src/standard-query.ts) joins.
+ */
+function renderAttachedProperties(
+  properties: string[],
+  standard: {sqlName: string; queryName: string; columns: string[]; output: string} | null,
+): string[] {
+  if (!standard) {
+    return [`\t{ ${properties.join(', ')} },`];
+  }
+  return [
+    `\t{`,
+    ...properties.map((property) => `\t\t${property},`),
+    `\t\t"~standard": standardQuery({`,
+    `\t\t\t${objectProperty('sql', standard.sqlName)},`,
+    `\t\t\t${objectProperty('query', standard.queryName)},`,
+    `\t\t\tcolumns: [${standard.columns.map((column) => JSON.stringify(column)).join(', ')}],`,
+    `\t\t\toutput: ${standard.output},`,
+    `\t\t}),`,
+    `\t},`,
+  ];
+}
+
+/**
+ * What a wrapper's Standard Query `decode` hands back for its rows (already keyed by raw column
+ * name): the same mapping and cardinality as the wrapper function's body.
+ */
+function renderStandardQueryOutput(input: {
+  resultMode: 'many' | 'nullableOne' | 'one';
+  rowType: string;
+  resultMapperName: string | null;
+}): string {
+  const mapRow = (row: string) => (input.resultMapperName ? `${input.resultMapperName}(${row})` : row);
+  if (input.resultMode === 'many') {
+    return `(rows: ${input.rowType}[]) => ${input.resultMapperName ? `rows.map(${input.resultMapperName})` : 'rows'}`;
+  }
+  if (input.resultMode === 'nullableOne') {
+    return `(rows: ${input.rowType}[]) => (rows.length > 0 ? ${mapRow('rows[0]!')} : null)`;
+  }
+  return `(rows: ${input.rowType}[]) => ${mapRow('rows[0]!')}`;
 }
 
 /**
@@ -1273,6 +1328,7 @@ function renderQueryWrapper(input: {
   sync: boolean;
   casing: SqlfuGenerateCasing;
   runtime: SqlfuGenerateRuntime;
+  emitStandardQuery: boolean;
   localNames?: LocalNames;
 }): string {
   if (isEffectSqlRuntime(input.runtime)) {
@@ -1413,8 +1469,28 @@ function renderQueryWrapper(input: {
       })
     : [`\t\treturn client.run(${queryReference});`];
 
+  // A Standard Query's text can't depend on its input, and its input is one value, so wrappers with
+  // runtime-expanded params or separate `data` + `params` arguments don't get one.
+  const standard =
+    input.emitStandardQuery && !hasData && !hasRuntimeParameterExpansions(input.parameterExpansions)
+      ? {
+          sqlName,
+          queryName,
+          columns: emitResultType ? resultMapping.rawFields.map((field) => field.name) : [],
+          output:
+            resultMode === 'metadata'
+              ? '() => undefined'
+              : renderStandardQueryOutput({
+                  resultMode,
+                  rowType: resultMapperName ? `${functionName}.RawResult` : resultTypeRef,
+                  resultMapperName,
+                }),
+        }
+      : null;
+
   return [
     `import type {${clientType}} from 'sqlfu';`,
+    ...(standard ? [standardQueryImportLine] : []),
     ``,
     ...renderSqlConstant(input.descriptor.sql, sqlName),
     queryDeclaration,
@@ -1424,11 +1500,14 @@ function renderQueryWrapper(input: {
     functionDeclaration,
     ...implementationLines,
     `\t},`,
-    `\t{ ${[
-      objectProperty('sql', sqlName),
-      objectProperty('query', queryName),
-      ...(resultMapperName ? [objectProperty('mapResult', resultMapperName)] : []),
-    ].join(', ')} },`,
+    ...renderAttachedProperties(
+      [
+        objectProperty('sql', sqlName),
+        objectProperty('query', queryName),
+        ...(resultMapperName ? [objectProperty('mapResult', resultMapperName)] : []),
+      ],
+      standard,
+    ),
     `);`,
     ``,
     ...(namespaceLines.length === 0 ? [] : [`export namespace ${functionName} {`, ...namespaceLines, `}`, ``]),

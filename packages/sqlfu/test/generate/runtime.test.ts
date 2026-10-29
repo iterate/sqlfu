@@ -127,6 +127,52 @@ test('returning-clause column aliases name the result at runtime', async () => {
   });
 });
 
+test('generated wrappers are Standard Queries that a driver which knows nothing of sqlfu can run', async () => {
+  await using project = await createRuntimeFixture({
+    definitionsSql: `create table posts (id integer primary key, slug text not null, published_at text not null);`,
+    files: {
+      'sql/posts.sql': dedent`
+        /** @name insertPost */
+        insert into posts (slug, published_at) values (:slug, :publishedAt);
+
+        /** @name listPosts */
+        select id, slug, published_at from posts order by id;
+
+        /** @name findPostBySlug */
+        select id, slug, published_at from posts where slug = :slug limit 1;
+      `,
+    },
+  });
+
+  await project.generate();
+  const {insertPost, listPosts, findPostBySlug} =
+    await project.importTranspiledModule<any>('sql/.generated/posts.sql.ts');
+  using database = project.openDatabase();
+
+  // A Standard Query driver over bare node:sqlite: bind encode(input), read rows as arrays, return decode(rows).
+  const execute = (standardQuery: any, input?: unknown) => {
+    const {dialect, text, encode, decode} = standardQuery['~standard'].query;
+    expect(dialect).toBe('sqlite');
+    const statement = database.database.prepare(text);
+    statement.setReturnArrays(true);
+    return decode(statement.all(...encode(input)));
+  };
+
+  expect(execute(insertPost, {slug: 'hello', publishedAt: '2026-10-29'})).toBe(undefined);
+  expect(execute(insertPost, {slug: 'world', publishedAt: '2026-10-30'})).toBe(undefined);
+  expect(execute(listPosts)).toEqual([
+    {id: 1, slug: 'hello', publishedAt: '2026-10-29'},
+    {id: 2, slug: 'world', publishedAt: '2026-10-30'},
+  ]);
+  expect(execute(findPostBySlug, {slug: 'world'})).toEqual({id: 2, slug: 'world', publishedAt: '2026-10-30'});
+  expect(execute(findPostBySlug, {slug: 'nope'})).toBe(null);
+
+  // the same output the wrappers themselves give, and sqlfu's own client is one such driver
+  const client = createNodeSqliteClient(database.database);
+  expect(execute(listPosts)).toEqual(await listPosts(client));
+  expect(client.execute(findPostBySlug, {slug: 'hello'})).toEqual(await findPostBySlug(client, {slug: 'hello'}));
+});
+
 test('generate gives multi-query result mappers unique local names', async () => {
   await using project = await createRuntimeFixture({
     definitionsSql: `create table posts (id integer primary key, published_at text not null, reviewed_at text not null);`,

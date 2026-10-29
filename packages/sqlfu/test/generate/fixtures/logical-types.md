@@ -72,6 +72,7 @@ export const sqlfuQuerySources = [
 
 ```ts (sql/.generated/slack-webhooks.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const recordSlackWebhookSql = `
 insert into slack_webhooks (payload, created_at) values (?, ?);
@@ -86,7 +87,16 @@ export const recordSlackWebhook = Object.assign(
 	async function recordSlackWebhook(client: Client, params: recordSlackWebhook.Params) {
 		return client.run(recordSlackWebhookQuery(params));
 	},
-	{ sql: recordSlackWebhookSql, query: recordSlackWebhookQuery },
+	{
+		sql: recordSlackWebhookSql,
+		query: recordSlackWebhookQuery,
+		"~standard": standardQuery({
+			sql: recordSlackWebhookSql,
+			query: recordSlackWebhookQuery,
+			columns: [],
+			output: () => undefined,
+		}),
+	},
 );
 
 export namespace recordSlackWebhook {
@@ -117,7 +127,17 @@ export const listSlackWebhooks = Object.assign(
 		const rows = await client.all<listSlackWebhooks.RawResult>(listSlackWebhooksQuery);
 		return rows.map(listSlackWebhooksMapResult);
 	},
-	{ sql: listSlackWebhooksSql, query: listSlackWebhooksQuery, mapResult: listSlackWebhooksMapResult },
+	{
+		sql: listSlackWebhooksSql,
+		query: listSlackWebhooksQuery,
+		mapResult: listSlackWebhooksMapResult,
+		"~standard": standardQuery({
+			sql: listSlackWebhooksSql,
+			query: listSlackWebhooksQuery,
+			columns: ["id", "payload", "created_at"],
+			output: (rows: listSlackWebhooks.RawResult[]) => rows.map(listSlackWebhooksMapResult),
+		}),
+	},
 );
 
 export namespace listSlackWebhooks {

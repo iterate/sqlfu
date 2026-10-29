@@ -36,6 +36,7 @@ select id, slug, title from posts where slug = :slug limit 1;
 
 ```ts (sql/.generated/find-post-by-slug.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `select id, slug, title from posts where slug = ? limit 1;`;
 const query = (params: findPostBySlug.Params) => ({
@@ -49,7 +50,16 @@ export const findPostBySlug = Object.assign(
 		const rows = await client.all<findPostBySlug.Result>(query(params));
 		return rows.length > 0 ? rows[0] : null;
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "slug", "title"],
+			output: (rows: findPostBySlug.Result[]) => (rows.length > 0 ? rows[0]! : null),
+		}),
+	},
 );
 
 export namespace findPostBySlug {
@@ -102,6 +112,7 @@ select id, body as excerpt from posts limit 5;
 
 ```ts (sql/.generated/find-post-preview.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `select id, body as excerpt from posts limit 5;`;
 const query = { name: "findPostPreview", sql, args: [] };
@@ -110,7 +121,16 @@ export const findPostPreview = Object.assign(
 	async function findPostPreview(client: Client): Promise<findPostPreview.Result[]> {
 		return client.all<findPostPreview.Result>(query);
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "excerpt"],
+			output: (rows: findPostPreview.Result[]) => rows,
+		}),
+	},
 );
 
 export namespace findPostPreview {
@@ -158,6 +178,7 @@ select id, published_at from posts where published_at is not null limit 1;
 
 ```ts (sql/.generated/find-published-post-by-slug.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `
 select id, published_at from posts where published_at is not null limit 1;
@@ -176,7 +197,17 @@ export const findPublishedPostBySlug = Object.assign(
 		const rows = await client.all<findPublishedPostBySlug.RawResult>(query);
 		return rows.length > 0 ? mapResult(rows[0]!) : null;
 	},
-	{ sql, query, mapResult },
+	{
+		sql,
+		query,
+		mapResult,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "published_at"],
+			output: (rows: findPublishedPostBySlug.RawResult[]) => (rows.length > 0 ? mapResult(rows[0]!) : null),
+		}),
+	},
 );
 
 export namespace findPublishedPostBySlug {
@@ -229,6 +260,7 @@ select id, excerpt from post_summaries;
 
 ```ts (sql/.generated/list-post-summaries.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `select id, excerpt from post_summaries;`;
 const query = { name: "listPostSummaries", sql, args: [] };
@@ -237,7 +269,16 @@ export const listPostSummaries = Object.assign(
 	async function listPostSummaries(client: Client): Promise<listPostSummaries.Result[]> {
 		return client.all<listPostSummaries.Result>(query);
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "excerpt"],
+			output: (rows: listPostSummaries.Result[]) => rows,
+		}),
+	},
 );
 
 export namespace listPostSummaries {

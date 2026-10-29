@@ -43,6 +43,7 @@ insert into posts (slug, title) values (:slug, :title);
 
 ```ts (sql/.generated/list-posts.sql.ts)
 import type {SyncClient} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `select id, slug, title from posts;`;
 const query = { name: "listPosts", sql, args: [] };
@@ -51,7 +52,16 @@ export const listPosts = Object.assign(
 	function listPosts(client: SyncClient): listPosts.Result[] {
 		return client.all<listPosts.Result>(query);
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "slug", "title"],
+			output: (rows: listPosts.Result[]) => rows,
+		}),
+	},
 );
 
 export namespace listPosts {
@@ -65,6 +75,7 @@ export namespace listPosts {
 
 ```ts (sql/.generated/find-post.sql.ts)
 import type {SyncClient} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `select id, slug, title from posts where slug = ? limit 1;`;
 const query = (params: findPost.Params) => ({ name: "findPost", sql, args: [params.slug] });
@@ -74,7 +85,16 @@ export const findPost = Object.assign(
 		const rows = client.all<findPost.Result>(query(params));
 		return rows.length > 0 ? rows[0] : null;
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "slug", "title"],
+			output: (rows: findPost.Result[]) => (rows.length > 0 ? rows[0]! : null),
+		}),
+	},
 );
 
 export namespace findPost {
@@ -91,6 +111,7 @@ export namespace findPost {
 
 ```ts (sql/.generated/insert-post.sql.ts)
 import type {SyncClient} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `insert into posts (slug, title) values (?, ?);`;
 const query = (params: insertPost.Params) => ({
@@ -103,7 +124,16 @@ export const insertPost = Object.assign(
 	function insertPost(client: SyncClient, params: insertPost.Params) {
 		return client.run(query(params));
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: [],
+			output: () => undefined,
+		}),
+	},
 );
 
 export namespace insertPost {
@@ -151,6 +181,7 @@ export * from "./queries.ts";
 
 ```ts (sql/.generated/list-posts.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `select id, slug from posts;`;
 const query = { name: "listPosts", sql, args: [] };
@@ -159,7 +190,16 @@ export const listPosts = Object.assign(
 	async function listPosts(client: Client): Promise<listPosts.Result[]> {
 		return client.all<listPosts.Result>(query);
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "slug"],
+			output: (rows: listPosts.Result[]) => rows,
+		}),
+	},
 );
 
 export namespace listPosts {
@@ -288,6 +328,7 @@ export * from "./queries.js";
 
 ```ts (sql/.generated/users/list-profiles.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `select id, name from profiles;`;
 const query = { name: "usersListProfiles", sql, args: [] };
@@ -296,7 +337,16 @@ export const usersListProfiles = Object.assign(
 	async function usersListProfiles(client: Client): Promise<usersListProfiles.Result[]> {
 		return client.all<usersListProfiles.Result>(query);
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "name"],
+			output: (rows: usersListProfiles.Result[]) => rows,
+		}),
+	},
 );
 
 export namespace usersListProfiles {
@@ -309,6 +359,7 @@ export namespace usersListProfiles {
 
 ```ts (sql/.generated/orders/list-orders.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `select id, total from orders;`;
 const query = { name: "ordersListOrders", sql, args: [] };
@@ -317,7 +368,16 @@ export const ordersListOrders = Object.assign(
 	async function ordersListOrders(client: Client): Promise<ordersListOrders.Result[]> {
 		return client.all<ordersListOrders.Result>(query);
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: ["id", "total"],
+			output: (rows: ordersListOrders.Result[]) => rows,
+		}),
+	},
 );
 
 export namespace ordersListOrders {
@@ -379,6 +439,7 @@ create table if not exists drafts (id integer primary key, body text not null);
 
 ```ts (sql/.generated/drop-posts.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `drop table posts;`;
 const query = { name: "dropPosts", sql, args: [] };
@@ -387,12 +448,22 @@ export const dropPosts = Object.assign(
 	async function dropPosts(client: Client) {
 		return client.run(query);
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: [],
+			output: () => undefined,
+		}),
+	},
 );
 ```
 
 ```ts (sql/.generated/alter-posts-add-title.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `alter table posts add column title text;`;
 const query = { name: "alterPostsAddTitle", sql, args: [] };
@@ -401,12 +472,22 @@ export const alterPostsAddTitle = Object.assign(
 	async function alterPostsAddTitle(client: Client) {
 		return client.run(query);
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: [],
+			output: () => undefined,
+		}),
+	},
 );
 ```
 
 ```ts (sql/.generated/enable-foreign-keys.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `pragma foreign_keys = on;`;
 const query = { name: "enableForeignKeys", sql, args: [] };
@@ -415,12 +496,22 @@ export const enableForeignKeys = Object.assign(
 	async function enableForeignKeys(client: Client) {
 		return client.run(query);
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: [],
+			output: () => undefined,
+		}),
+	},
 );
 ```
 
 ```ts (sql/.generated/reset-posts.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `
 drop table if exists posts;
@@ -432,12 +523,22 @@ export const resetPosts = Object.assign(
 	async function resetPosts(client: Client) {
 		return client.run(query);
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: [],
+			output: () => undefined,
+		}),
+	},
 );
 ```
 
 ```ts (sql/.generated/commented-create.sql.ts)
 import type {Client} from 'sqlfu';
+import {standardQuery} from 'sqlfu';
 
 const sql = `
 -- ensure the drafts table exists before we import
@@ -451,7 +552,16 @@ export const commentedCreate = Object.assign(
 	async function commentedCreate(client: Client) {
 		return client.run(query);
 	},
-	{ sql, query },
+	{
+		sql,
+		query,
+		"~standard": standardQuery({
+			sql,
+			query,
+			columns: [],
+			output: () => undefined,
+		}),
+	},
 );
 ```
 
