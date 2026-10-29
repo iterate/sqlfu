@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 
 import {analyzeVendoredTypesqlQueries} from './analyze-vendored-typesql.js';
@@ -19,6 +20,7 @@ import {
   sqliteDialect,
   type DialectColumnInfo,
   type LogicalType,
+  type MaterializedTypegenSchema,
   type RelationInfo,
 } from '../dialect.js';
 import {quoteIdentifier as sqliteQuoteIdentifier} from '../schemadiff/sqlite/identifiers.js';
@@ -134,6 +136,102 @@ export async function generateQueryTypesForConfig(
   }
 
   return {writtenFiles: writtenFiles.sort((left, right) => left.localeCompare(right))};
+}
+
+export type RenderedQueryModule = {
+  /** The module `sqlfu generate` would write to `.generated/<file>.sql.ts`. */
+  text: string;
+  /** Problems to report in the `.sql` file. `start` and `length` are UTF-16 offsets into its content. */
+  diagnostics: {message: string; start: number; length: number}[];
+};
+
+/**
+ * Renders a query file's module in memory, for the TypeScript content mapper and the Node loader: the same
+ * analysis and wrapper as `sqlfu generate`, with nothing written to the project. The typegen scratch database
+ * stays open between calls, and is rebuilt when the schema source (`definitions.sql`, by default) changes.
+ */
+export async function createQueryModuleRenderer(config: SqlfuProjectConfig, host: SqlfuHost) {
+  // A private scratch root, so this never races `sqlfu generate` over `<projectRoot>/.sqlfu/typegen.db`.
+  const scratchRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-query-modules-'));
+  let current:
+    | {sourceSql: string; materialized: MaterializedTypegenSchema; schema: ReadonlyMap<string, RelationInfo>}
+    | undefined;
+
+  async function materialize() {
+    const sourceSql = await readSchemaForAuthority(config, host);
+    if (current?.sourceSql === sourceSql) return current;
+    await current?.materialized[Symbol.asyncDispose]();
+    const materialized = await config.dialect.materializeTypegenSchema(host, {
+      projectRoot: scratchRoot,
+      sourceSql,
+      experimentalJsonTypes: config.generate.experimentalJsonTypes,
+    });
+    current = {sourceSql, materialized, schema: await config.dialect.loadSchemaForTypegen(materialized)};
+    return current;
+  }
+
+  // Renders share one scratch database, which a schema change rebuilds: one at a time.
+  let queue: Promise<unknown> = Promise.resolve();
+
+  return {
+    /** Whether a `.sql` file is a query file, as opposed to `definitions.sql`, a migration, or anything else. */
+    isQueryFile: (sqlPath: string) => !path.relative(config.queries, sqlPath).startsWith('..'),
+
+    render(sqlPath: string, sqlContent: string): Promise<RenderedQueryModule> {
+      const rendered = queue.then(() => renderNow(sqlPath, sqlContent));
+      queue = rendered.catch(() => {});
+      return rendered;
+    },
+
+    async [Symbol.asyncDispose]() {
+      await queue;
+      await current?.materialized[Symbol.asyncDispose]();
+      await fs.rm(scratchRoot, {recursive: true, force: true});
+    },
+  };
+
+  async function renderNow(sqlPath: string, sqlContent: string): Promise<RenderedQueryModule> {
+    const relativePath = path.relative(config.queries, sqlPath).split(path.sep).join('/').slice(0, -'.sql'.length);
+    let queries: QuerySource[];
+    try {
+      queries = splitQueryDocument({sqlPath, relativePath, sqlContent});
+    } catch (error) {
+      return {text: 'export {};\n', diagnostics: [{message: String(error), start: 0, length: 0}]};
+    }
+
+    const {materialized, schema} = await materialize();
+    const queryAnalyses = await config.dialect.analyzeQueries(
+      materialized,
+      queries.map((query) => ({sqlPath: query.sqlPath, sqlContent: query.analysisSqlContent})),
+    );
+
+    const diagnostics: RenderedQueryModule['diagnostics'] = [];
+    let searchFrom = 0;
+    for (const query of queries) {
+      const start = sqlContent.indexOf(query.sqlContent, searchFrom);
+      searchFrom = start + query.sqlContent.length;
+      const analysis = queryAnalyses.find((candidate) => candidate.sqlPath === query.sqlPath);
+      if (analysis && !analysis.ok) {
+        diagnostics.push({
+          message: `${query.functionName}: ${analysis.error.description}`,
+          start,
+          length: query.sqlContent.length,
+        });
+      }
+    }
+
+    const text = renderQueryDocument({
+      queryDocument: {sqlPath, relativePath, sqlContent, queries},
+      queryAnalyses,
+      schema,
+      validator: config.generate.validator,
+      prettyErrors: config.generate.prettyErrors,
+      sync: config.generate.sync,
+      casing: config.generate.casing,
+      runtime: config.generate.runtime,
+    });
+    return {text, diagnostics};
+  }
 }
 
 export async function generateInlineConfigTypes(input: {

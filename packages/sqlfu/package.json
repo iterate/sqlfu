@@ -14,9 +14,6 @@
     "dist"
   ],
   "type": "module",
-  "engines": {
-    "node": ">=22"
-  },
   "exports": {
     ".": "./src/index.ts",
     "./analyze": "./src/analyze.ts",
@@ -28,7 +25,8 @@
     "./lint-plugin": "./src/lint-plugin.ts",
     "./outbox": "./src/outbox/index.ts",
     "./ui": "./src/ui/server.ts",
-    "./ui/browser": "./src/ui/browser.ts"
+    "./ui/browser": "./src/ui/browser.ts",
+    "./register": "./src/node/register.ts"
   },
   "publishConfig": {
     "exports": {
@@ -75,6 +73,10 @@
       "./ui/browser": {
         "types": "./dist/ui/browser.d.ts",
         "default": "./dist/ui/browser.js"
+      },
+      "./register": {
+        "types": "./dist/node/register.d.ts",
+        "default": "./dist/node/register.js"
       }
     }
   },
@@ -157,5 +159,18 @@
     "effect": {
       "optional": true
     }
+  },
+  "typescript": {
+    "contentMapper": {
+      "compilerOptions": [],
+      "dynamicConfig": true,
+      "exec": [
+        "node",
+        "dist/node/content-mapper.js"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

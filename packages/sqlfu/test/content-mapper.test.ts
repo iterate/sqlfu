@@ -21,7 +21,7 @@ test('tsc types .sql imports from definitions.sql, with no generate step and no 
       import {findPostBySlug, listPosts} from './sql/queries.sql';
 
       export async function main(client: Client) {
-        const posts: {id: number; slug: string; title: string | null}[] = await listPosts(client);
+        const posts: {id: number; slug: string; title?: string}[] = await listPosts(client);
         const post: {id: number; slug: string} | null = await findPostBySlug(client, {slug: 'hello'});
 
         // @ts-expect-error slug is a string
@@ -58,10 +58,7 @@ test('a query the analyzer rejects is a type error in the .sql file', async () =
   const result = await project.tsc();
 
   expect(result.exitCode).toBe(2);
-  expect(result.all).toMatchInlineSnapshot(`
-    "main.ts(1,25): error TS2307: Cannot find module './sql/queries.sql' or its corresponding type declarations.
-    tsconfig.json(1,283): error TS18078: The 'package.json' of the content mapper package 'sqlfu' does not declare a 'typescript.contentMapper' object."
-  `);
+  expect(result.all).toMatchInlineSnapshot(`"sql/queries.sql(5,1): error sqlfu1: listAuthors: no such table: authors"`);
 });
 
 test('editing definitions.sql changes the types, with nothing to regenerate', async () => {
