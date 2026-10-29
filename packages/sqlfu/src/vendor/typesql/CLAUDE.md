@@ -28,6 +28,11 @@ Local changes that are expected:
   shim's `Sql_stmtContext.<ddl_kind>_stmt()` accessor returns an opaque truthy
   marker for the matching `DdlKind`, and the analyzer reads only presence.
 
+- `shared-analyzer/collect-constraints.ts` — `createColumnTypeFomColumnSchema` gives each
+  column a fresh type-variable id. Upstream uses the bare column name, so `users.id` and
+  `sessions.id` unify as one variable: `where s.id = :x` in a join gets `users.id`'s type, and
+  text-vs-integer pairs throw `Type mismatch`.
+
 When updating from upstream:
 - copy upstream `src/` over this directory again rather than editing file-by-file
 - reapply only the local compatibility changes above

@@ -35,13 +35,6 @@ where s.id = :sessionId;
 </details>
 
 <details>
-<summary>failing</summary>
-
-`sessions.id` is `text`, but `sessionId` comes out as `number`: it's typed from `users.id`.
-
-</details>
-
-<details>
 <summary>output</summary>
 
 ```ts (sql/.generated/find-session-user.sql.ts)
@@ -97,14 +90,6 @@ where u.id = (select s.user_id from sessions s where s.id = :sessionId);
 </details>
 
 <details>
-<summary>failing</summary>
-
-`generate` throws `Type mismatch: TEXT and INTEGER` for the whole project, without naming the
-query.
-
-</details>
-
-<details>
 <summary>output</summary>
 
 ```ts (sql/.generated/find-session-user.sql.ts)
@@ -122,8 +107,9 @@ const query = (params: findSessionUser.Params) => ({
 });
 
 export const findSessionUser = Object.assign(
-	async function findSessionUser(client: Client, params: findSessionUser.Params): Promise<findSessionUser.Result[]> {
-		return client.all<findSessionUser.Result>(query(params));
+	async function findSessionUser(client: Client, params: findSessionUser.Params): Promise<findSessionUser.Result | null> {
+		const rows = await client.all<findSessionUser.Result>(query(params));
+		return rows.length > 0 ? rows[0] : null;
 	},
 	{ sql, query },
 );

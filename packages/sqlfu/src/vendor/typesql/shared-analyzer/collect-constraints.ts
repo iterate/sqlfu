@@ -32,7 +32,10 @@ export function createColumnType(col: ColumnDef) {
 export function createColumnTypeFomColumnSchema(col: ColumnSchema) {
 	const columnType: TypeVar = {
 		kind: 'TypeVar',
-		id: col.column,
+		// sqlfu divergence: upstream uses `id: col.column`, so same-named columns of different
+		// tables (`users.id`, `sessions.id`) share one type variable during unification. A param
+		// compared to one got the other's type, or unification threw "Type mismatch".
+		id: (++counter).toString(),
 		name: col.column,
 		type: col.column_type,
 		table: col.table
