@@ -115,6 +115,13 @@ const docs = [
     description: 'Send generated sqlfu query names to OpenTelemetry spans with instrument.otel().',
   },
   {
+    slug: 'integrations/standard-query',
+    title: 'Standard Query (reylo)',
+    sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'integrations', 'standard-query.md'),
+    description:
+      'Run reylo .sql imports through a sqlfu client with client.execute, and sqlfu generated wrappers through any Standard Query driver.',
+  },
+  {
     slug: 'adapters',
     title: 'Adapters',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'adapters.md'),
