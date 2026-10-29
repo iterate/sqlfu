@@ -42,9 +42,6 @@ existing pgkit project over is not a supported path yet.
   history and use `sqlfu baseline` to mark it as applied.
 - **Inline queries.** Queries written as `sql` tags in `.ts` files need to move
   into `.sql` files before `sqlfu generate` will type them.
-- **Schema coverage.** pgkit's migrator diffs with full `schemainspect`. sqlfu's
-  Postgres support still misses enums, sequences, functions and more. See
-  [Known gaps](./postgres.md#known-gaps).
 
 ## Read next
 

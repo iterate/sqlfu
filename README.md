@@ -212,7 +212,7 @@ try {
 }
 ```
 
-The driver error is preserved byte-identical on `.cause`; `.query` and `.system` come along so error reporters can tag events without a parallel `QueryExecutionContext`. Kind names are SQLSTATE-aligned so SQLite and Postgres can share one vocabulary. Postgres errors are wrapped too, but always with `kind: 'unknown'` for now; read the SQLSTATE from `.cause.code`. Full kind list, handler recipes, Sentry-tagging example: [Errors](https://sqlfu.dev/docs/errors).
+The driver error is preserved byte-identical on `.cause`; `.query` and `.system` come along so error reporters can tag events without a parallel `QueryExecutionContext`. Kind names are SQLSTATE-aligned, so SQLite and Postgres errors share one vocabulary. Full kind list, handler recipes, Sentry-tagging example: [Errors](https://sqlfu.dev/docs/errors).
 
 ### Outbox (experimental)
 
@@ -514,7 +514,7 @@ Those are not accidents. The project is trying to keep schema history explicit, 
 
 Current limits also matter:
 
-- Postgres support is early: `draft`, `check` and `generate` don't yet handle `serial`/identity columns, enums, functions, triggers and more. See [Postgres known gaps](https://sqlfu.dev/docs/guides/postgres#known-gaps)
+- Postgres support is early: tables that call a function in a default or check, or use a composite type, don't draft yet. See [Postgres known gaps](https://sqlfu.dev/docs/guides/postgres#known-gaps)
 - result-type inference is imperfect on some SQLite expressions and views; the sqlfu post-pass that fills gaps in the vendored TypeSQL output is still evolving
 - the formatter is opinionated and still evolving
 

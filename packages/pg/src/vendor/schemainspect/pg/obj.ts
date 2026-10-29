@@ -808,8 +808,8 @@ export class InspectedDomain extends AutoThisAssigner<InspectedDomainParams, typ
   }
 
   get create_statement(): string {
-    const sql = `create domain ${this.signature}\nas ${this.data_type}\n${this.collation_clause}${this.default_clause}${this.nullable_clause}${this.check_clause}`
-    return sql
+    // sqlfu: trailing `;` added — upstream omitted it, so the domain merged into the next statement.
+    return `create domain ${this.signature}\nas ${this.data_type}\n${this.collation_clause}${this.default_clause}${this.nullable_clause}${this.check_clause}`.trimEnd() + ';'
   }
 
   get check_clause(): string {

@@ -88,6 +88,8 @@ export class Migration {
     this.add(this.changes.extensions({modifications_only: true, modifications: true}))
     this.add(this.changes.collations({creations_only: true}))
     this.add(this.changes.enums({creations_only: true, modifications: false}))
+    // sqlfu: new domains are created up front, like enums, so tables using them can be created.
+    this.add(this.changes.domains({creations_only: true, modifications: false}))
     this.add(this.changes.sequences({creations_only: true}))
     this.add(this.changes.triggers({drops_only: true}))
     this.add(this.changes.rlspolicies({drops_only: true}))
@@ -110,7 +112,7 @@ export class Migration {
     this.add(this.changes.extensions({drops_only: true, modifications: false}))
     this.add(this.changes.domains({drops_only: true}))
 
-    this.add(this.changes.domains({creations_only: true}))
+    this.add(this.changes.modified_domain_creations())
     this.add(this.changes.non_mv_indexes({creations_only: true}))
     this.add(this.changes.pk_constraints({creations_only: true}))
     this.add(this.changes.non_pk_constraints({creations_only: true}))

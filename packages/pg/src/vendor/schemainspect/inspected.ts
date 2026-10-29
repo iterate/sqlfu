@@ -175,7 +175,8 @@ export class ColumnInfo extends AutoThisAssigner<ColumnInfoOptions, typeof AutoR
   }
 
   get creation_clause(): string {
-    let x = `${this.quoted_name} ${this.dbtypestr}`
+    // sqlfu: collation moved here from `add_column_clause`, so `create table` keeps it too.
+    let x = `${this.quoted_name} ${this.dbtypestr}${this.collation_subclause}`
     if (this.is_identity) {
       const identity_type = this.is_identity_always ? 'always' : 'by default'
       x += ` generated ${identity_type} as identity`
@@ -195,7 +196,7 @@ export class ColumnInfo extends AutoThisAssigner<ColumnInfoOptions, typeof AutoR
   }
 
   get add_column_clause(): string {
-    return `add column ${this.creation_clause}${this.collation_subclause}`
+    return `add column ${this.creation_clause}`
   }
 
   get drop_column_clause(): string {
