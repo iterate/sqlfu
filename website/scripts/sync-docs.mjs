@@ -17,7 +17,7 @@ const docs = [
     title: 'Getting Started',
     sourcePath: path.join(repoRoot, 'packages', 'sqlfu', 'docs', 'getting-started.md'),
     description:
-      'End-to-end walkthrough: schema, migrations, query files, typed wrappers, and a working client.all() call.',
+      'End-to-end walkthrough: one inline config holding schema, migrations, and queries, generated types, and a working typed query call.',
   },
   {
     slug: 'sqlfu',
