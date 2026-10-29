@@ -199,7 +199,18 @@ export async function createQueryModuleRenderer(config: SqlfuProjectConfig, host
       return {text: 'export {};\n', diagnostics: [{message: String(error), start: 0, length: 0}]};
     }
 
-    const {materialized, schema} = await materialize();
+    let materializedSchema: Awaited<ReturnType<typeof materialize>>;
+    try {
+      materializedSchema = await materialize();
+    } catch (error) {
+      const source =
+        config.generate.authority === 'desired_schema'
+          ? path.relative(config.projectRoot, config.definitions)
+          : `generate.authority '${config.generate.authority}'`;
+      const message = `Could not build the schema these queries are typed against, from ${source}: ${(error as Error).message}`;
+      return {text: 'export {};\n', diagnostics: [{message, start: 0, length: 0}]};
+    }
+    const {materialized, schema} = materializedSchema;
     const queryAnalyses = await config.dialect.analyzeQueries(
       materialized,
       queries.map((query) => ({sqlPath: query.sqlPath, sqlContent: query.analysisSqlContent})),
