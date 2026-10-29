@@ -27,6 +27,7 @@ const sections = [
       'guides/cloudflare-d1',
       'guides/node-sqlite',
       'guides/bun-sqlite',
+      'guides/celld',
       'guides/turso-libsql',
       'guides/expo-sqlite',
       'guides/sqlite-wasm',

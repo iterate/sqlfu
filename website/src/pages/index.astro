@@ -21,6 +21,7 @@ const demo = {
   runtime: {
     app: await renderDemo('runtime', 'app'),
     node: await renderDemo('runtime', 'node'),
+    celld: await renderDemo('runtime', 'celld'),
     bun: await renderDemo('runtime', 'bun'),
     better: await renderDemo('runtime', 'better'),
     libsql: await renderDemo('runtime', 'libsql'),
@@ -186,7 +187,7 @@ const demo = {
             <div class="eyebrow">3. runtime</div>
             <h3>One client interface, many drivers.</h3>
             <p>
-              Your app code takes the sqlfu <code>Client</code> interface. <code>sqlfu</code> ships with many (very thin!) adapters, with graceful fallback for features like prepared statements depending on client support, and proper handling of synchronous clients. Pick from Node, Bun, better-sqlite3, libsql, expo, browser via wasm, Durable Object storage, and more.
+              Your app code takes the sqlfu <code>Client</code> interface. <code>sqlfu</code> ships with many (very thin!) adapters, with graceful fallback for features like prepared statements depending on client support, and proper handling of synchronous clients. Pick from Node, Bun, better-sqlite3, libsql, expo, browser via wasm, Durable Objects on Cloudflare or self-hosted with <a href="/docs/guides/celld">celld</a>, and more.
             </p>
             <a href="/docs/adapters">Choose an adapter</a>
           </div>
@@ -198,6 +199,7 @@ const demo = {
             <div class="artifact artifact-tall artifact-tabs runtime-tabs" data-tabbed-artifact data-default-tab="node">
               <div class="artifact-tablist" role="tablist" aria-label="Runtime adapter examples">
                 <button class="artifact-tab is-active" type="button" role="tab" aria-selected="true" data-tab-for="node">node:sqlite</button>
+                <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="celld">celld</button>
                 <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="bun">bun:sqlite</button>
                 <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="better">better-sqlite3</button>
                 <button class="artifact-tab" type="button" role="tab" aria-selected="false" data-tab-for="libsql">libsql</button>
@@ -213,6 +215,9 @@ const demo = {
               </div>
               <div class="artifact-tab-panel is-active" role="tabpanel" data-tab-panel="node">
                 <Fragment set:html={demo.runtime.node.html} />
+              </div>
+              <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="celld">
+                <Fragment set:html={demo.runtime.celld.html} />
               </div>
               <div class="artifact-tab-panel" role="tabpanel" data-tab-panel="bun">
                 <Fragment set:html={demo.runtime.bun.html} />

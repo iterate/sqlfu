@@ -28,6 +28,17 @@ jobs:
       # The bun adapter tests spawn real `bun` subprocesses.
       - uses: oven-sh/setup-bun@v2
 
+      # The celld adapter tests spawn real `celld dev` processes.
+      - name: Install celld
+        env:
+          CELLD_VERSION: v0.6.3
+        run: |
+          mkdir -p "$RUNNER_TEMP/celld-bin"
+          curl -fsSL "https://github.com/denoland/celld/releases/download/$CELLD_VERSION/celld-x86_64-unknown-linux-gnu.gz" \
+            | gunzip > "$RUNNER_TEMP/celld-bin/celld"
+          chmod +x "$RUNNER_TEMP/celld-bin/celld"
+          echo "$RUNNER_TEMP/celld-bin" >> "$GITHUB_PATH"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
