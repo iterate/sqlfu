@@ -12,8 +12,8 @@ This document describes sqlfu's migration model in plain English.
 
 | Name | Meaning | Current Representation |
 | --- | --- | --- |
-| Desired Schema | The schema the application wants now | `definitions.sql` |
-| Migrations | The ordered transition program | `migrations/*.sql` |
+| Desired Schema | The schema the application wants now | inline `definitions: sql\`...\`` or `definitions.sql` |
+| Migrations | The ordered transition program | inline migration entries or `migrations/*.sql` |
 | Migration History | What a specific database claims it has applied | `sqlfu_migrations` |
 | Live Schema | What the database actually looks like now | inspected directly from the database |
 
@@ -27,7 +27,7 @@ This is the schema authoring surface.
 
 Migrations are the ordered transition program.
 
-Today, they are usually stored as `migrations/*.sql`, but the concept is broader than files on disk. In other environments they could come from memory, durable storage, or some other source.
+Today, new projects usually start with inline migration entries in the config module. Larger file-backed projects usually store them as `migrations/*.sql`, but the concept is broader than files on disk. In other environments they could come from memory, durable storage, or some other source.
 
 If you replay all migrations from the beginning, they should produce the Desired Schema.
 
@@ -86,16 +86,16 @@ Cloudflare Durable Objects make the chain more visible because each Durable Obje
 
 The intended sqlfu flow is:
 
-1. Edit `definitions.sql`.
-2. Run `sqlfu draft` and commit the generated `migrations/*.sql`.
-3. Run `sqlfu generate` so `migrations/.generated/migrations.ts` contains those migration files as a plain TypeScript bundle.
-4. Import `migrate` from that generated module in the Durable Object, build the client with `createDurableObjectClient(ctx.storage)`, and run `migrate(client)` during constructor initialization.
+1. Edit inline `definitions`.
+2. Run `sqlfu draft` and commit the generated inline migration entry.
+3. Run `sqlfu generate` so inline queries carry their generated modes and types.
+4. Bind the inline config with `createDurableObjectClient(ctx.storage)` and run `db.migrate()` during constructor initialization.
 
 The sqlfu Durable Object migrator is synchronous, so running it directly in the constructor is enough: the object does not serve a request before the constructor returns. Pass the full `ctx.storage` object to `createDurableObjectClient`, not `ctx.storage.sql`, so sqlfu can use Durable Objects' `transactionSync()` API for per-migration rollback. If you need a query-only escape hatch, pass `{sql: ctx.storage.sql}` explicitly.
 
 Missing migrations are treated as an integrity problem, not as a cue to synthesize SQL at runtime. If a Durable Object database has recorded `sqlfu_migrations` rows that are not present in the generated bundle, `applyMigrations()` fails with a deleted-applied-migration error before applying newer migrations. Under the default `sqlfu` preset it also checks applied migration checksums, so editing an already-applied migration file is reported as history drift.
 
-The schema diff engine helps before deployment: `sqlfu draft` turns reviewed `definitions.sql` changes into migration files, and `sqlfu check` can explain repo drift, pending migrations, history drift, and schema drift. It should not be used as runtime magic inside a Durable Object to invent missing migrations from the current desired schema. Runtime schema changes still need reviewable migration files because renames, destructive changes, and backfills are product decisions.
+The schema diff engine helps before deployment: `sqlfu draft` turns reviewed Desired Schema changes into reviewable migration entries or files, and `sqlfu check` can explain repo drift, pending migrations, history drift, and schema drift. It should not be used as runtime magic inside a Durable Object to invent missing migrations from the current desired schema. Runtime schema changes still need reviewable migrations because renames, destructive changes, and backfills are product decisions.
 
 ## Authority Mismatches
 

@@ -159,3 +159,88 @@ export const app = defineConfig({
   const [inline] = parseInlineConfigSources('file-module.ts', source);
   expect(inline.queries[0].content.sql).toBe(runtime.sql);
 });
+
+test('parses an inline config exported as export default defineConfig(...)', () => {
+  const source = `
+import {defineConfig, sql} from 'sqlfu';
+
+export default defineConfig({
+  definitions: sql\`
+    create table posts (slug text primary key);
+  \`,
+  queries: {
+    listPosts: sql\`select slug from posts\`,
+  },
+});
+`;
+
+  const sources = parseInlineConfigSources('post-module.ts', source);
+  expect(sources).toMatchObject([{name: 'default', queries: [{name: 'listPosts'}]}]);
+});
+
+test('sql.map accepts explicit type arguments', () => {
+  const source = `
+import {defineConfig, sql} from 'sqlfu';
+
+export const app = defineConfig({
+  definitions: sql\`create table posts (slug text primary key)\`,
+  queries: {
+    listPosts: sql.many<{result: {slug: string}}>\`select slug from posts\`.map<{slug: string}>((row) => row),
+  },
+});
+`;
+
+  const sources = parseInlineConfigSources('post-module.ts', source);
+  expect(sources).toMatchObject([{queries: [{name: 'listPosts'}]}]);
+});
+
+test('sql.map is rejected on definitions where it can never run', () => {
+  const source = `
+import {defineConfig, sql} from 'sqlfu';
+
+export const app = defineConfig({
+  definitions: sql\`create table posts (slug text primary key)\`.map((row) => row),
+  queries: {
+    listPosts: sql\`select slug from posts\`,
+  },
+});
+`;
+
+  expect(() => parseInlineConfigSources('post-module.ts', source)).toThrow(/definitions.*map/);
+});
+
+test('sql.map is rejected on migration content where it can never run', () => {
+  const source = `
+import {defineConfig, sql} from 'sqlfu';
+
+export const app = defineConfig({
+  definitions: sql\`create table posts (slug text primary key)\`,
+  migrations: [
+    {
+      name: '0001_create_posts',
+      content: sql\`create table posts (slug text primary key)\`.map((row) => row),
+    },
+  ],
+  queries: {
+    listPosts: sql\`select slug from posts\`,
+  },
+});
+`;
+
+  expect(() => parseInlineConfigSources('post-module.ts', source)).toThrow(/migration.*map/);
+});
+
+test('sql.map is rejected on metadata-mode query tags which return no rows', () => {
+  const source = `
+import {defineConfig, sql} from 'sqlfu';
+
+export const app = defineConfig({
+  definitions: sql\`create table posts (slug text primary key)\`,
+  queries: {
+    createPost: sql.run<{parameters: {slug: string}}>\`insert into posts (slug) values (:slug)\`.map((row) => row),
+  },
+});
+`;
+
+  expect(() => parseInlineConfigSources('post-module.ts', source)).toThrow(/do not return rows/);
+});

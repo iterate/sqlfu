@@ -44,6 +44,13 @@ export interface SqlfuHost {
   openScratchDb(slug: string): Promise<DisposableAsyncClient>;
   execAdHocSql(client: AsyncClient, sql: string, params: AdHocSqlParams): Promise<AdHocSqlResult>;
   initializeProject(input: {projectRoot: string; configContents: string; configPath?: string}): Promise<void>;
+  /**
+   * Dynamic-import a config module, bypassing the module cache. Used to read
+   * the `db` value off inline defineConfig modules that declare one. Optional
+   * because non-node hosts (browser demo, workers) cannot import arbitrary
+   * modules; commands that need it fail with a clear error there.
+   */
+  importConfigModule?(modulePath: string): Promise<Record<string, unknown>>;
   digest(content: string): Promise<string>;
   now(): Date;
   uuid(): string;

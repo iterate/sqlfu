@@ -94,10 +94,11 @@ const lines = [
   '',
   'Agent notes:',
   '',
-  '- Prefer checked-in SQL artifacts over ORM-shaped rewrites: `definitions.sql`, `migrations/`, `sql/*.sql`, and generated wrappers under `sql/.generated/`.',
+  '- Prefer authored SQL over ORM-shaped rewrites. New projects keep schema, migrations, and queries as `sql` templates in one inline `sqlfu.config.ts`; larger projects may split them into `definitions.sql`, `migrations/`, `sql/*.sql`, and generated wrappers under `sql/.generated/`.',
   '- For a new project, start with Getting Started, then read CLI, SQL migrations, Type generation from SQL, Runtime client, and Adapters as needed.',
-  '- For an existing project, inspect `sqlfu.config.ts` first, then run `npx sqlfu check` before drafting migrations or regenerating wrappers.',
-  '- Generated files should normally be regenerated with `npx sqlfu generate`, not edited by hand.',
+  '- For an existing project, inspect `sqlfu.config.ts` first, then run `npx sqlfu check` before drafting migrations or regenerating types.',
+  '- Generated types (inline query tags or `sql/.generated/` wrappers) should be regenerated with `npx sqlfu generate`, not edited by hand.',
+  '- Install the published `sqlfu` package unless told to test a local checkout.',
   '',
 ];
 

@@ -187,12 +187,23 @@ export async function generateInlineConfigTypes(input: {
         sourceSql: querySource.sqlContent,
       });
       assertInlineConfigRuntimeSupported(querySource, prepared.descriptor, prepared.parameterExpansions);
+      const mode = getResultMode(prepared.descriptor);
+      const sourceQuery = inline.queries.find((query) => query.name === querySource.functionName);
+      if (mode === 'metadata' && sourceQuery?.content.hasMapCall) {
+        // Writing the run tag while keeping the .map call would produce a
+        // module the parser rejects — generate must not invalidate the file
+        // it is annotating. Leave this query's tag untouched and report it.
+        failures.push(
+          `${querySource.functionName}: the query returns no rows (its generated tag is sql.run), so .map(...) would never run. Remove the .map(...) call.`,
+        );
+        continue;
+      }
       queryTypes.push({
         className: inline.className,
         configName: inline.name,
         queryName: querySource.functionName,
         type: renderInlineConfigQueryType(prepared.descriptor, 'preserve'),
-        mode: getResultMode(prepared.descriptor),
+        mode,
       });
     }
   }

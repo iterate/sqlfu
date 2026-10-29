@@ -3,24 +3,62 @@
 Use this guide when your app talks to Turso Cloud, a local `file:` libSQL
 database, `@tursodatabase/serverless`, or the newer Turso database drivers.
 
-The sqlfu workflow is still the same: author `definitions.sql`, draft
-migrations, write `.sql` query files, and generate wrappers. Most Turso/libSQL
-client packages are asynchronous, so the default generated wrappers already use
+The sqlfu workflow is still the same: author inline schema, draft reviewed
+inline migrations, write inline queries, and generate query types. Most
+Turso/libSQL client packages are asynchronous, so bound inline queries use
 `await`.
 
-## Config for `@libsql/client`
+## Inline config
 
-For a local `file:` database or Turso Cloud URL:
+The config declares schema and queries; the database connection is bound at
+runtime, so the same config works against a local `file:` database and Turso
+Cloud:
 
 ```ts
-import {mkdirSync} from 'node:fs';
+import {defineConfig, sql} from 'sqlfu';
+
+export default defineConfig({
+  definitions: sql`
+    create table organizations (
+      id integer primary key,
+      slug text not null unique,
+      name text not null
+    );
+  `,
+  queries: {
+    findOrganization: sql`
+      select id, slug, name
+      from organizations
+      where slug = :slug
+      limit 1
+    `,
+  },
+});
+```
+
+Draft the migration entry and generate query types:
+
+```sh
+npx sqlfu draft
+npx sqlfu generate
+```
+
+Migrations can apply at runtime - each snippet below calls
+`await orgDb.migrate()` against the database the app is actually connected
+to - or from the CLI. Without a `db` entry, `npx sqlfu migrate` and
+`npx sqlfu check` use the local `.sqlfu/app.db` file.
+
+## Pointing the CLI at Turso Cloud
+
+To run `sqlfu migrate` / `sqlfu check` against the same database your app
+uses, add the optional `db` factory:
+
+```ts
 import {createClient} from '@libsql/client';
-import {defineConfig, createLibsqlClient} from 'sqlfu';
+import {defineConfig, createLibsqlClient, sql} from 'sqlfu';
 
 export default defineConfig({
   db: () => {
-    mkdirSync('.sqlfu', {recursive: true});
-
     const raw = createClient({
       url: process.env.TURSO_DATABASE_URL || 'file:./.sqlfu/app.db',
       authToken: process.env.TURSO_AUTH_TOKEN,
@@ -33,43 +71,34 @@ export default defineConfig({
       },
     };
   },
-  definitions: './definitions.sql',
-  migrations: './migrations',
-  queries: './sql',
+  definitions: sql`
+    create table organizations (
+      id integer primary key,
+      slug text not null unique,
+      name text not null
+    );
+  `,
+  queries: {
+    findOrganization: sql`
+      select id, slug, name
+      from organizations
+      where slug = :slug
+      limit 1
+    `,
+  },
 });
 ```
 
-Use the same `db` factory for `sqlfu migrate`, `sqlfu check`, and the UI. The
-factory keeps sqlfu pointed at the same database your app uses instead of a
-scratch file.
-
-## Schema and query
-
-```sql
-create table organizations (
-  id integer primary key,
-  slug text not null unique,
-  name text not null
-);
-```
-
-Put the query in `sql/queries.sql`:
-
-```sql
-/** @name findOrganization */
-select id, slug, name
-from organizations
-where slug = :slug
-limit 1;
-```
-
-Run:
+Then:
 
 ```sh
-npx sqlfu draft
 npx sqlfu migrate
-npx sqlfu generate
+npx sqlfu check
 ```
+
+`db` is CLI-only: runtime binding still goes through `dbConfig(client)`, and
+declaring `db` means the CLI will import this module, so only use it in config
+modules that can run under Node.
 
 ## Runtime with `@libsql/client`
 
@@ -77,15 +106,17 @@ npx sqlfu generate
 import {createClient} from '@libsql/client';
 import {createLibsqlClient} from 'sqlfu';
 
-import {findOrganization} from './sql/.generated/queries.sql.ts';
+import dbConfig from './sqlfu.config.ts';
 
 const raw = createClient({
   url: process.env.TURSO_DATABASE_URL!,
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 const client = createLibsqlClient(raw);
+const orgDb = dbConfig(client);
 
-const organization = await findOrganization(client, {slug: 'acme'});
+await orgDb.migrate();
+const organization = await orgDb.findOrganization({slug: 'acme'});
 ```
 
 ## Runtime with `@tursodatabase/serverless`
@@ -94,15 +125,17 @@ const organization = await findOrganization(client, {slug: 'acme'});
 import {connect} from '@tursodatabase/serverless';
 import {createTursoServerlessClient} from 'sqlfu';
 
-import {findOrganization} from './sql/.generated/queries.sql.ts';
+import dbConfig from './sqlfu.config.ts';
 
 const connection = connect({
   url: process.env.TURSO_DATABASE_URL!,
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 const client = createTursoServerlessClient(connection);
+const orgDb = dbConfig(client);
 
-const organization = await findOrganization(client, {slug: 'acme'});
+await orgDb.migrate();
+const organization = await orgDb.findOrganization({slug: 'acme'});
 ```
 
 ## Runtime with `@tursodatabase/database` or `@tursodatabase/sync`
@@ -113,12 +146,14 @@ Both packages use `createTursoDatabaseClient()` at the sqlfu boundary:
 import {connect} from '@tursodatabase/database';
 import {createTursoDatabaseClient} from 'sqlfu';
 
-import {findOrganization} from './sql/.generated/queries.sql.ts';
+import dbConfig from './sqlfu.config.ts';
 
 const db = await connect('app.db');
 const client = createTursoDatabaseClient(db);
+const orgDb = dbConfig(client);
 
-const organization = await findOrganization(client, {slug: 'acme'});
+await orgDb.migrate();
+const organization = await orgDb.findOrganization({slug: 'acme'});
 ```
 
 If you use `@tursodatabase/sync`, call `db.push()` and `db.pull()` at the

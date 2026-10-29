@@ -5,7 +5,6 @@ import {pathToFileURL} from 'node:url';
 import type {SqlfuConfig, SqlfuProjectConfig} from '../types.js';
 import {
   assertConfigShape,
-  createDefaultInitPreview,
   resolveProjectConfig,
   type LoadedSqlfuProject,
   type TsconfigPreferences,
@@ -28,7 +27,8 @@ export async function loadProjectConfig(input: {configPath?: string} = {}): Prom
   }
   if ('inline' in project) {
     throw new Error(
-      `No file-backed sqlfu config found at ${project.configPath}; inline defineConfig modules support generate and draft only.`,
+      `${project.configPath} is an inline defineConfig module, which has no file-backed project config. ` +
+        'Use the inline-aware entry points (loadProjectState + the sqlfu api/CLI) instead.',
     );
   }
   return project.config;
@@ -59,6 +59,7 @@ export async function loadProjectStateFrom(projectRoot: string): Promise<LoadedS
       configPath,
       inline: {
         modulePath: configPath,
+        sources: inlines,
       },
     };
   }
@@ -94,6 +95,7 @@ export async function loadProjectStateFromConfigPath(configPath: string, cwd: st
       configPath: resolvedConfigPath,
       inline: {
         modulePath: resolvedConfigPath,
+        sources: inlines,
       },
     };
   }
@@ -109,25 +111,53 @@ export async function loadProjectStateFromConfigPath(configPath: string, cwd: st
 }
 
 export async function initializeProject(input: {projectRoot: string; configContents: string; configPath?: string}) {
-  const preview = createDefaultInitPreview(input.projectRoot, {configPath: input.configPath});
+  // Resolve once, against the project root: `fs.writeFile` would resolve a
+  // relative path against cwd while the load below resolves against the
+  // project root, silently initializing nothing.
+  const configPath = input.configPath
+    ? resolveCliConfigPath(input.configPath, input.projectRoot)
+    : path.join(input.projectRoot, defaultSqlfuConfigFileName);
   const state = input.configPath
-    ? await loadProjectStateFromConfigPath(input.configPath, input.projectRoot)
+    ? await loadProjectStateFromConfigPath(configPath, input.projectRoot)
     : await loadProjectStateFrom(input.projectRoot);
   if (state.initialized) {
     throw new Error(`sqlfu is already initialized in ${input.projectRoot}`);
   }
 
-  await fs.mkdir(path.join(input.projectRoot, 'migrations'), {recursive: true});
-  await fs.mkdir(path.join(input.projectRoot, 'sql'), {recursive: true});
-  await fs.mkdir(path.dirname(preview.configPath), {recursive: true});
-  await fs.writeFile(preview.configPath, withTrailingNewline(input.configContents));
-  await fs.writeFile(
-    path.join(input.projectRoot, 'definitions.sql'),
-    '-- create table yourtable(id int, body text);\n',
-  );
+  await fs.mkdir(path.dirname(configPath), {recursive: true});
+  await fs.writeFile(configPath, withTrailingNewline(input.configContents));
+
+  // Re-load the project from what was actually written: the confirm prompt is
+  // editable, so the confirmed contents can differ from the preview (inline
+  // edited into file-backed or vice versa). File-backed configs get their
+  // companion paths scaffolded; inline configs need no companions.
+  let written: LoadedSqlfuProject;
+  try {
+    written = await loadProjectStateFromConfigPath(configPath, input.projectRoot);
+  } catch (error) {
+    // Don't leave a half-initialized project behind: a config that can't be
+    // loaded would make every command, including retrying init, fail.
+    await fs.rm(configPath, {force: true});
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`The confirmed sqlfu config could not be loaded, so ${configPath} was not kept. ${message}`, {
+      cause: error,
+    });
+  }
+  if (written.initialized && 'config' in written) {
+    const {config} = written;
+    if (config.migrations) {
+      await fs.mkdir(config.migrations.path, {recursive: true});
+      await fs.writeFile(path.join(config.migrations.path, '.gitkeep'), '');
+    }
+    await fs.mkdir(config.queries, {recursive: true});
+    await fs.writeFile(path.join(config.queries, '.gitkeep'), '');
+    await fs.writeFile(config.definitions, '-- create table yourtable(id int, body text);\n', {flag: 'wx'}).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code !== 'EEXIST') throw error;
+      },
+    );
+  }
   await ensureGitignoreEntry(path.join(input.projectRoot, '.gitignore'), defaultLocalArtifactsGitignoreEntry);
-  await fs.writeFile(path.join(input.projectRoot, 'migrations', '.gitkeep'), '');
-  await fs.writeFile(path.join(input.projectRoot, 'sql', '.gitkeep'), '');
 }
 
 async function ensureGitignoreEntry(gitignorePath: string, entry: string) {
@@ -166,11 +196,18 @@ async function resolveConfigPath(cwd: string): Promise<string | undefined> {
   return undefined;
 }
 
-async function loadConfigFile(configPath: string): Promise<SqlfuConfig> {
-  const moduleUrl = new URL(pathToFileURL(configPath).href);
+/**
+ * Dynamic-import a module bypassing the ESM module cache, so repeated CLI
+ * commands in one process (watch mode, the UI backend) see fresh contents.
+ */
+export async function importModuleFresh(modulePath: string): Promise<Record<string, unknown>> {
+  const moduleUrl = new URL(pathToFileURL(modulePath).href);
   moduleUrl.searchParams.set('t', String(Date.now()));
+  return (await import(moduleUrl.href)) as Record<string, unknown>;
+}
 
-  const loaded = await import(moduleUrl.href);
+async function loadConfigFile(configPath: string): Promise<SqlfuConfig> {
+  const loaded = await importModuleFresh(configPath);
   const config = loaded.default ?? loaded.config ?? loaded;
 
   if (!config || typeof config !== 'object' || Array.isArray(config)) {

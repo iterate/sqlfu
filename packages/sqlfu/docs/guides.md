@@ -1,8 +1,9 @@
 # Guides
 
 Use these when you already know the runtime you want and need a complete
-project shape: config, schema files, query files, generated wrappers, adapter
-usage, and runtime migration notes.
+project shape: inline config, generated query types, adapter usage, and runtime
+migration notes. File-backed examples are included where a larger project would
+benefit from splitting schema and queries out.
 
 For compact adapter snippets only, use [Adapters](./adapters.md). For external
 tools and service-specific helper modules, use [Integrations](./integrations.md).
@@ -19,8 +20,11 @@ tools and service-specific helper modules, use [Integrations](./integrations.md)
 
 Every guide follows the same SQL-first loop:
 
-1. author `definitions.sql`;
-2. write runtime queries in a small `queries.sql` file;
+1. author inline `definitions: sql\`...\``;
+2. write named inline queries under `queries`;
 3. run `sqlfu draft`;
 4. run `sqlfu generate`;
 5. pass the generated wrapper a sqlfu client from the runtime adapter.
+
+When the inline module gets too large, move the same SQL into
+`definitions.sql`, `sql/queries.sql`, and `migrations/`.

@@ -4,43 +4,35 @@ Use this guide when your app runs in Expo or React Native and stores data in
 `expo-sqlite`.
 
 Start from [Getting Started](../getting-started.md), but do not expect the
-mobile runtime to read migration files from disk. Commit migrations, run
-`sqlfu generate`, and import the generated migration bundle into the app.
+mobile runtime to read migration files from disk. Keep migrations inline in the
+config module, run `sqlfu generate`, and import that module into the app.
 
-## Config
+## Inline config
 
-Generation can use `definitions.sql` directly, so `db` can be omitted:
+Generation can use inline `definitions` directly, so `db` can be omitted:
 
 ```ts
-import {defineConfig} from 'sqlfu';
+import {defineConfig, sql} from 'sqlfu';
 
 export default defineConfig({
-  definitions: './definitions.sql',
-  migrations: './migrations',
-  queries: './sql',
+  definitions: sql`
+    create table todos (
+      id integer primary key,
+      title text not null,
+      completed integer not null default 0
+    );
+  `,
+  queries: {
+    listTodos: sql`
+      select id, title, completed
+      from todos
+      order by id
+    `,
+  },
 });
 ```
 
-The generated wrappers are async by default, matching `expo-sqlite`.
-
-## Schema and query
-
-```sql
-create table todos (
-  id integer primary key,
-  title text not null,
-  completed integer not null default 0
-);
-```
-
-Put the query in `sql/queries.sql`:
-
-```sql
-/** @name listTodos */
-select id, title, completed
-from todos
-order by id;
-```
+The bound inline queries are async, matching `expo-sqlite`.
 
 Run the normal authoring loop:
 
@@ -49,9 +41,8 @@ npx sqlfu draft
 npx sqlfu generate
 ```
 
-If you also keep a local development database for tools, configure `db` and run
-`npx sqlfu migrate` against that database too. The app itself should use the
-generated migration bundle.
+If you split migrations into files later, import the generated migration bundle
+instead of calling `appDb.migrate()`.
 
 ## Expo runtime
 
@@ -59,25 +50,25 @@ generated migration bundle.
 import * as SQLite from 'expo-sqlite';
 import {createExpoSqliteClient} from 'sqlfu';
 
-import {migrate} from './migrations/.generated/migrations.ts';
-import {listTodos} from './sql/.generated/queries.sql.ts';
+import dbConfig from './sqlfu.config.ts';
 
 export async function openAppDatabase() {
   const db = await SQLite.openDatabaseAsync('app.db');
   const client = createExpoSqliteClient(db);
+  const appDb = dbConfig(client);
 
-  await migrate(client);
+  await appDb.migrate();
 
-  return client;
+  return appDb;
 }
 
 export async function loadTodos() {
-  const client = await openAppDatabase();
-  return listTodos(client);
+  const db = await openAppDatabase();
+  return db.listTodos();
 }
 ```
 
-The migration bundle is idempotent. It applies missing migrations and skips
+Inline migrations are idempotent. sqlfu applies missing migrations and skips
 migrations already recorded in the on-device SQLite database.
 
 ## Read next

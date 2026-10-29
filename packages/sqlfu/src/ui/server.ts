@@ -264,7 +264,7 @@ function toResolvedUiProject(project: LoadedSqlfuProject): ResolvedUiProject {
   if (!project.initialized) return project;
   if ('inline' in project) {
     throw new Error(
-      'The sqlfu UI requires a file-backed sqlfu config; inline defineConfig modules support generate and draft.',
+      'The sqlfu UI backend requires a file-backed sqlfu config; this project uses an inline defineConfig module.',
     );
   }
   return {

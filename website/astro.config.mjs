@@ -1,5 +1,17 @@
 import {defineConfig} from 'astro/config';
 import starlight from '@astrojs/starlight';
+import {bundledLanguages} from 'shiki';
+import {sqlTagGrammar} from './src/sql-tag-grammar.mjs';
+
+// sqlTagGrammar injects SQL highlighting into ts/js grammars, and TextMate
+// injections only bind to grammars that are already registered - so the sql
+// grammar it embeds and every grammar it injects into must be loaded up front
+// rather than lazily on their first code fence.
+const preloadedLanguages = (
+  await Promise.all(
+    ['sql', 'typescript', 'tsx', 'javascript', 'jsx'].map(async (lang) => (await bundledLanguages[lang]()).default),
+  )
+).flat();
 
 const site = 'https://sqlfu.dev';
 const socialImage = `${site}/social-card.png`;
@@ -28,6 +40,11 @@ export default defineConfig({
       disable404Route: true,
       favicon: '/favicon.ico',
       logo: {src: './src/assets/logo.png', alt: 'sqlfu'},
+      expressiveCode: {
+        shiki: {
+          langs: [...preloadedLanguages, sqlTagGrammar],
+        },
+      },
       head: [
         {tag: 'link', attrs: {rel: 'preconnect', href: 'https://fonts.googleapis.com'}},
         {tag: 'link', attrs: {rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: ''}},

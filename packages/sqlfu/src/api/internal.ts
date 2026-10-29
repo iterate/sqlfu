@@ -1,8 +1,10 @@
 import type {Client, SqlfuMigrationPrefix, SqlfuMigrationPreset, SqlfuProjectConfig} from '../types.js';
 import type {SqlfuHost} from '../host.js';
-import {basename, joinPath} from '../paths.js';
-import {createDefaultInitPreview} from '../init-preview.js';
-import type {LoadedSqlfuProject} from '../config.js';
+import {basename, dirname, joinPath} from '../paths.js';
+import {createDefaultInitPreview, type InitPreviewFormat} from '../init-preview.js';
+import {inlineMigrationsToMigrationFiles, resolveConfigPathValue, type LoadedSqlfuProject} from '../config.js';
+import {sqliteDialect} from '../dialect.js';
+import type {InlineConfigSource} from '../node/inline-source.js';
 import {migrationNickname} from '../naming.js';
 import {
   applyMigrations,
@@ -35,11 +37,16 @@ export async function getCheckAnalysis(context: SqlfuContext): Promise<CheckAnal
 }
 
 export async function writeDefinitionsSql(context: SqlfuContext, sql: string): Promise<void> {
+  if (context.inline) {
+    throw new Error(
+      `Cannot write definitions.sql for an inline config; edit the defineConfig module (${context.inline.modulePath}) instead.`,
+    );
+  }
   await context.host.fs.writeFile(context.config.definitions, `${sql.trimEnd()}\n`);
 }
 
 export async function getSchemaAuthorities(context: SqlfuContext) {
-  const definitionsSql = await readDefinitionsSql(context.host, context.config.definitions);
+  const definitionsSql = await readDefinitionsSql(context);
   const migrations = await readMigrationsFromContext(context);
 
   await using database = await context.host.openDb(context.config);
@@ -141,6 +148,35 @@ export type SqlfuCommandConfirm = (params: SqlfuCommandConfirmParams) => string 
  */
 export const autoAcceptConfirm: SqlfuCommandConfirm = async (params) => params.body.trim() || null;
 
+/**
+ * The one init flow, shared by the CLI command, the programmatic api, and the
+ * UI RPC command runner: preview -> editable confirm -> initializeProject.
+ * `initPreviewFormat` only picks which preview to show; the companion files
+ * scaffolded follow the contents the user actually confirms.
+ */
+export async function runInitCommand(context: SqlfuCommandContext, confirm: SqlfuCommandConfirm): Promise<string> {
+  const project = await loadContextProjectState(context);
+  const preview = createDefaultInitPreview(project.projectRoot, {
+    configPath: project.configPath,
+    format: context.initPreviewFormat,
+  });
+  const configContents = await confirm({
+    title: 'Create sqlfu.config.ts?',
+    body: preview.configContents,
+    bodyType: 'typescript',
+    editable: true,
+  });
+  if (!configContents?.trim()) {
+    return 'Initialization cancelled.';
+  }
+  await context.host.initializeProject({
+    projectRoot: project.projectRoot,
+    configPath: project.configPath,
+    configContents,
+  });
+  return `Initialized sqlfu project in ${project.projectRoot}.`;
+}
+
 export async function runSqlfuCommand(
   context: SqlfuCommandContext,
   command: string,
@@ -149,22 +185,7 @@ export async function runSqlfuCommand(
   const normalized = command.trim();
 
   if (normalized === 'sqlfu init') {
-    const project = await loadContextProjectState(context);
-    const preview = createDefaultInitPreview(project.projectRoot, {configPath: project.configPath});
-    const configContents = await confirm({
-      title: 'Create sqlfu.config.ts?',
-      body: preview.configContents,
-      bodyType: 'typescript',
-      editable: true,
-    });
-    if (!configContents?.trim()) {
-      return;
-    }
-    await context.host.initializeProject({
-      projectRoot: project.projectRoot,
-      configPath: project.configPath,
-      configContents,
-    });
+    await runInitCommand(context, confirm);
     return;
   }
 
@@ -219,12 +240,18 @@ export async function runSqlfuCommand(
 }
 
 export async function readMigrationsFromContext(context: SqlfuContext): Promise<Migration[]> {
+  if (context.inline) {
+    return context.inline.migrations;
+  }
   return readMigrationFiles(context.host, context.config);
 }
 
-async function readDefinitionsSql(host: SqlfuHost, definitionsPath: string) {
+export async function readDefinitionsSql(context: SqlfuContext) {
+  if (context.inline) {
+    return context.inline.definitionsSql;
+  }
   try {
-    return await host.fs.readFile(definitionsPath);
+    return await context.host.fs.readFile(context.config.definitions);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       throw new Error('definitions.sql not found');
@@ -238,8 +265,13 @@ export async function applyDraftSql(
   input: {name?: string} | undefined,
   confirm: SqlfuCommandConfirm,
 ): Promise<{path: string} | null> {
+  if (context.inline) {
+    throw new Error(
+      'Drafting for inline configs appends migration entries to the defineConfig module - use the sqlfu draft CLI command or draftInlineConfigMigration, not the file-backed drafting path.',
+    );
+  }
   const migrations = await readMigrationsFromContext(context);
-  const definitionsSql = await readDefinitionsSql(context.host, context.config.definitions);
+  const definitionsSql = await readDefinitionsSql(context);
   const baselineSql = migrations.length === 0 ? '' : await materializeMigrationsSchemaForContext(context, migrations);
   const diffLines = await context.config.dialect.diffSchema(context.host, {
     baselineSql,
@@ -285,7 +317,7 @@ function projectRelativePath(config: SqlfuProjectConfig, filePath: string) {
 }
 
 export async function applySyncSql(context: SqlfuContext, confirm: SqlfuCommandConfirm) {
-  const definitionsSql = await readDefinitionsSql(context.host, context.config.definitions);
+  const definitionsSql = await readDefinitionsSql(context);
   await using database = await context.host.openDb(context.config);
   const baselineSql = await context.config.dialect.extractSchemaFromClient(database.client, {
     excludedTables: schemaDriftExcludedTables(context),
@@ -643,7 +675,7 @@ function getMigrationsThroughTarget(migrations: Migration[], target: string) {
 export async function analyzeDatabase(context: SqlfuContext) {
   const host = context.host;
   const migrations = await readMigrationsFromContext(context);
-  const definitionsSql = await readDefinitionsSql(host, context.config.definitions);
+  const definitionsSql = await readDefinitionsSql(context);
   const [desiredSchema, migrationsSchema] = await Promise.all([
     materializeDefinitionsSchemaForContext(context, definitionsSql),
     materializeMigrationsSchemaForContext(context, migrations),
@@ -994,6 +1026,16 @@ function summarizeErrorLastLine(error: unknown) {
 export interface SqlfuContext {
   config: SqlfuProjectConfig;
   host: SqlfuHost;
+  /**
+   * Present for inline defineConfig projects: the statically-parsed repo
+   * inputs that stand in for the definitions.sql file and migrations
+   * directory a file-backed project would have on disk.
+   */
+  inline?: {
+    modulePath: string;
+    definitionsSql: string;
+    migrations: Migration[];
+  };
 }
 
 export interface SqlfuCommandContext {
@@ -1001,6 +1043,7 @@ export interface SqlfuCommandContext {
   configPath?: string;
   config?: SqlfuProjectConfig;
   loadProjectState?: () => Promise<LoadedSqlfuProject>;
+  initPreviewFormat?: InitPreviewFormat;
   host: SqlfuHost;
 }
 
@@ -1040,15 +1083,116 @@ export async function loadContextConfig(context: SqlfuCommandContext): Promise<S
     throw new Error(`No sqlfu config found in ${project.projectRoot}. Run 'sqlfu init' first.`);
   }
   if ('inline' in project) {
-    throw new Error(
-      'This command requires a file-backed sqlfu config. inline defineConfig modules currently support generate and draft.',
-    );
+    return resolveInlineContext(project.projectRoot, project.inline, context.host);
   }
 
   return {
     config: project.config,
     host: context.host,
   };
+}
+
+/**
+ * Give an inline defineConfig project the same command surface as a
+ * file-backed one: a synthesized project config (db from the inline `db`
+ * property when declared, otherwise the same `.sqlfu/app.db` default
+ * file-backed configs get) plus the statically-parsed definitions and
+ * migration entries as in-memory repo inputs.
+ */
+function resolveInlineContext(
+  projectRoot: string,
+  inline: {modulePath: string; sources: InlineConfigSource[]},
+  host: SqlfuHost,
+): SqlfuContext {
+  const {modulePath, sources} = inline;
+  if (sources.length !== 1) {
+    throw new Error(
+      `${modulePath} contains ${sources.length} inline defineConfig calls; commands beyond generate and draft support exactly one per module.`,
+    );
+  }
+  const source = sources[0];
+
+  const config: SqlfuProjectConfig = {
+    projectRoot,
+    db: undefined,
+    // Inline projects have no definitions.sql or query files on disk; these
+    // paths are never read because `context.inline` supplies the repo
+    // inputs, but the fields are required on SqlfuProjectConfig.
+    definitions: modulePath,
+    queries: modulePath,
+    migrations: undefined,
+    generate: {
+      validator: null,
+      prettyErrors: true,
+      sync: false,
+      experimentalJsonTypes: false,
+      casing: 'camel',
+      runtime: 'sqlfu',
+      importExtension: '.js',
+      authority: 'desired_schema',
+    },
+    dialect: sqliteDialect(),
+  };
+  if (source.hasDb) {
+    // Lazy: the module is only imported when a command actually opens the
+    // database, so repo-only commands (check migrationsMatchDefinitions,
+    // config, generate) work even where the module can't be imported — e.g.
+    // a Durable Object module importing cloudflare:workers.
+    config.db = async () => {
+      const db = await readInlineConfigDb(host, modulePath, source);
+      // A factory from the module is used as-is; a string path (already
+      // resolved relative to the module) round-trips through the host's own
+      // file-opening path.
+      return typeof db === 'function' ? db() : host.openDb({...config, db});
+    };
+  }
+
+  return {
+    config,
+    host,
+    inline: {
+      modulePath,
+      definitionsSql: source.definitions.sql,
+      migrations: inlineMigrationsToMigrationFiles(source),
+    },
+  };
+}
+
+async function readInlineConfigDb(
+  host: SqlfuHost,
+  modulePath: string,
+  source: InlineConfigSource,
+): Promise<SqlfuProjectConfig['db']> {
+  if (!host.importConfigModule) {
+    throw new Error(`This environment cannot import ${modulePath} to read the inline config's "db" value.`);
+  }
+  const exportDescription = source.className
+    ? `class "${source.className}" (with static property "${source.name}")`
+    : source.name === 'default'
+      ? 'the default export'
+      : `"${source.name}"`;
+  const module = await host.importConfigModule(modulePath);
+  const exported = source.className
+    ? (module[source.className] as Record<string, unknown> | undefined)?.[source.name]
+    : source.name === 'default'
+      ? module.default
+      : module[source.name];
+  if (exported === undefined) {
+    throw new Error(
+      `${modulePath} declares a "db" on its inline defineConfig, but ${exportDescription} is not exported directly from the module, so sqlfu cannot read the db value. Export the defineConfig result so sqlfu commands can open the database.`,
+    );
+  }
+  const db = (exported as {config?: {db?: unknown}}).config?.db;
+  if (!db) {
+    throw new Error(
+      `${modulePath} declares a "db" on its inline defineConfig, but it resolved to a falsy value (${String(db)}) at import time. Check the db expression — an unset environment variable, for example.`,
+    );
+  }
+  if (typeof db === 'string') {
+    // Match file-backed configs: string paths resolve relative to the config module.
+    return resolveConfigPathValue(dirname(modulePath), db);
+  }
+  return db as SqlfuProjectConfig['db'];
 }
 
 export async function loadContextProjectState(context: SqlfuCommandContext): Promise<LoadedSqlfuProject> {

@@ -3,18 +3,14 @@ import path from 'node:path';
 
 import {autoAcceptConfirm, type Confirm} from '../api/core.js';
 import {getMigrationPrefix} from '../api/internal.js';
+import {inlineMigrationsToMigrationFiles} from '../config.js';
 import {sqliteDialect} from '../dialect.js';
 import {materializeDefinitionsSchemaFor, materializeMigrationsSchemaFor} from '../materialize.js';
 import {migrationNickname} from '../naming.js';
 import type {SqlfuHost} from '../host.js';
 import {generateInlineConfigTypes, type GenerateQueryTypesResult} from '../typegen/index.js';
 import {watchAndRegenerate} from './watcher.js';
-import {
-  appendInlineMigration,
-  inlineMigrationsToMigrationFiles,
-  readInlineConfigSources,
-  type InlineConfigSource,
-} from './inline-source.js';
+import {appendInlineMigration, readInlineConfigSources, type InlineConfigSource} from './inline-source.js';
 
 export async function generateInlineConfigModule(input: {
   modulePath: string;

@@ -6,16 +6,17 @@ This file is an agent navigation index for the documentation site at https://sql
 
 Agent notes:
 
-- Prefer checked-in SQL artifacts over ORM-shaped rewrites: `definitions.sql`, `migrations/`, `sql/*.sql`, and generated wrappers under `sql/.generated/`.
+- Prefer authored SQL over ORM-shaped rewrites. New projects keep schema, migrations, and queries as `sql` templates in one inline `sqlfu.config.ts`; larger projects may split them into `definitions.sql`, `migrations/`, `sql/*.sql`, and generated wrappers under `sql/.generated/`.
 - For a new project, start with Getting Started, then read CLI, SQL migrations, Type generation from SQL, Runtime client, and Adapters as needed.
-- For an existing project, inspect `sqlfu.config.ts` first, then run `npx sqlfu check` before drafting migrations or regenerating wrappers.
-- Generated files should normally be regenerated with `npx sqlfu generate`, not edited by hand.
+- For an existing project, inspect `sqlfu.config.ts` first, then run `npx sqlfu check` before drafting migrations or regenerating types.
+- Generated types (inline query tags or `sql/.generated/` wrappers) should be regenerated with `npx sqlfu generate`, not edited by hand.
+- Install the published `sqlfu` package unless told to test a local checkout.
 
 ## Start here
 
 Read these first when you are new to sqlfu or need to orient yourself before editing a project.
 
-- [Getting Started](https://sqlfu.dev/docs/getting-started): End-to-end walkthrough: schema, migrations, query files, typed wrappers, and a working client.all() call.
+- [Getting Started](https://sqlfu.dev/docs/getting-started): End-to-end walkthrough: one inline config holding schema, migrations, and queries, generated types, and a working typed query call.
 - [Overview](https://sqlfu.dev/docs/sqlfu): Overview, quick start, CLI model, and core concepts.
 - [Agent skill](https://sqlfu.dev/docs/agent-skill): Install the sqlfu agent skill so coding agents edit SQL, migrations, and generated files coherently.
 

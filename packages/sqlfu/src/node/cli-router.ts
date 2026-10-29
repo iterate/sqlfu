@@ -12,10 +12,11 @@ import {
   autoAcceptConfirm,
   formatCheckFailure,
   loadContextConfig,
+  readDefinitionsSql,
   loadContextProjectState,
   migrationsPresetOf,
+  runInitCommand,
 } from '../api/internal.js';
-import {createDefaultInitPreview} from '../init-preview.js';
 import {migrationName, readMigrationHistory} from '../migrations/index.js';
 import {formatSqlFiles} from './format-files.js';
 import {stopProcessesListeningOnPort} from './port-process.js';
@@ -79,26 +80,7 @@ export const router = {
       description: `Initialize a new sqlfu project in the current directory.`,
     })
     .handler(async ({context}) => {
-      const project = await loadContextProjectState(context);
-      const preview = createDefaultInitPreview(project.projectRoot, {configPath: project.configPath});
-      const configContents = await context.confirm({
-        title: 'Create sqlfu.config.ts?',
-        body: preview.configContents,
-        bodyType: 'typescript',
-        editable: true,
-      });
-
-      if (!configContents?.trim()) {
-        return 'Initialization cancelled.';
-      }
-
-      await context.host.initializeProject({
-        projectRoot: project.projectRoot,
-        configPath: project.configPath,
-        configContents,
-      });
-
-      return `Initialized sqlfu project in ${project.projectRoot}.`;
+      return runInitCommand(context, context.confirm);
     }),
 
   kill: base
@@ -126,7 +108,7 @@ export const router = {
 
   generate: base
     .meta({
-      description: `Generate TypeScript functions for all queries in the sql/ directory.`,
+      description: `Generate TypeScript types for inline queries or the configured query files.`,
     })
     .input(
       z
@@ -134,7 +116,7 @@ export const router = {
           watch: z
             .boolean()
             .describe(
-              `Run generate once, then re-run whenever a query, definitions.sql, or migration file changes. Exits on SIGINT.`,
+              `Run generate once, then re-run whenever a query, the definitions, or a migration changes. Exits on SIGINT.`,
             ),
         })
         .partial()
@@ -204,8 +186,8 @@ export const router = {
   sync: base
     .meta({
       description:
-        `Update the current database to match definitions.sql. Note: this should only be used for local development. For production databases, use 'sqlfu migrate' instead. ` +
-        `This command fails if semantic changes are required. You can run 'sqlfu draft' to create a migration file with the necessary changes.`,
+        `Update the current database to match the definitions. Note: this should only be used for local development. For production databases, use 'sqlfu migrate' instead. ` +
+        `This command fails if semantic changes are required. You can run 'sqlfu draft' to create a migration with the necessary changes.`,
     })
     .handler(async ({context}) => {
       await applySyncSql(await loadContextConfig(context), context.confirm);
@@ -213,7 +195,7 @@ export const router = {
 
   draft: base
     .meta({
-      description: `Create a migration file from the diff between replayed migrations and definitions.sql.`,
+      description: `Create a migration from the diff between replayed migrations and the definitions.`,
     })
     .input(
       z
@@ -365,7 +347,7 @@ export const router = {
     migrationsMatchDefinitions: base.handler(async ({context}) => {
       const sqlfuContext = await loadContextConfig(context);
       const [definitionsSql, migrations] = await Promise.all([
-        sqlfuContext.host.fs.readFile(sqlfuContext.config.definitions),
+        readDefinitionsSql(sqlfuContext),
         readMigrationsFromContext(sqlfuContext),
       ]);
       const [definitionsSchema, migrationsSchema] = await Promise.all([
@@ -373,7 +355,7 @@ export const router = {
         materializeMigrationsSchemaForContext(sqlfuContext, migrations),
       ]);
       if ((await compareSchemasForContext(sqlfuContext, definitionsSchema, migrationsSchema)).isDifferent) {
-        throw new Error('replayed migrations do not match definitions.sql');
+        throw new Error('replayed migrations do not match definitions');
       }
     }),
   },
