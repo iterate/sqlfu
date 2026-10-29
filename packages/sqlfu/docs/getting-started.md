@@ -133,6 +133,9 @@ Because the default `generate.authority` is `desired_schema`, generation does
 not need a live database. This walkthrough still runs `migrate` first so the
 next step can call the wrapper against `.sqlfu/app.db`.
 
+On TypeScript 7.1 (beta), you can skip this step and import `./sql/queries.sql`
+directly. See [Import .sql files directly](/docs/sql-imports).
+
 ## Call the wrapper
 
 ```ts

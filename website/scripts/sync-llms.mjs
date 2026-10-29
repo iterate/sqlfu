@@ -16,7 +16,7 @@ const sections = [
   {
     title: 'Core concepts',
     lead: 'The main mental model: SQL artifacts are the source, TypeScript wrappers and UI metadata are generated from them.',
-    slugs: ['client', 'migration-model', 'typegen', 'ui'],
+    slugs: ['client', 'migration-model', 'typegen', 'sql-imports', 'ui'],
   },
   {
     title: 'Features and guides',

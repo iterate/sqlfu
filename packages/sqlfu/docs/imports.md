@@ -161,6 +161,9 @@ independently:
 
 - `sqlfu/outbox` for the transactional outbox/job queue.
 - `sqlfu/lint-plugin` for the ESLint plugin.
+- `sqlfu/register` for importing `.sql` query files on Node:
+  `node --import sqlfu/register main.ts`. See
+  [Import .sql files directly](/docs/sql-imports).
 
 If you are not sure where a symbol belongs, prefer the higher-level path first:
 app/runtime code imports from `sqlfu`, command scripts import from `sqlfu/api`,

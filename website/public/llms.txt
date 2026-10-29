@@ -26,6 +26,7 @@ The main mental model: SQL artifacts are the source, TypeScript wrappers and UI 
 - [Runtime client](https://sqlfu.dev/docs/client): The lightweight Client interface your app runtime usually depends on, plus how adapters preserve sync and async drivers.
 - [SQL migrations](https://sqlfu.dev/docs/migration-model): Migration history, drift checks, smart drafts, and the intended production path.
 - [Type generation from SQL](https://sqlfu.dev/docs/typegen): Generated query wrappers, multi-query SQL files, and inferred parameter forms for lists and bulk inserts.
+- [Import .sql files directly](https://sqlfu.dev/docs/sql-imports): Experimental, TypeScript 7.1: import .sql query files and get types from definitions.sql, with no generate step and no generated files.
 - [Admin UI](https://sqlfu.dev/docs/ui): Hosted, demo, and embedded Admin UI modes for schema, migrations, queries, and live data.
 
 ## Features and guides

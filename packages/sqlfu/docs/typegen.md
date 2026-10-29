@@ -20,6 +20,8 @@ import {getPost} from './sql/.generated/get-post.sql.ts';
 const post = await getPost(client, {id: 123});
 ```
 
+On TypeScript 7.1 you can import `./sql/get-post.sql` itself and skip `generate`. The type check builds the same wrapper in memory. See [Import .sql files directly](/docs/sql-imports).
+
 ## Generated casing
 
 `generate.casing` controls generated SQL-derived property names. It defaults to

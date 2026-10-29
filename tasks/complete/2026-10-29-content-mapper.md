@@ -7,7 +7,7 @@ size: large
 
 ## Status (for humans)
 
-Spike done, and it works. `tsc --runExternalCode` (TypeScript 7.1 beta) types `import {listPosts} from './sql/queries.sql'` straight from `definitions.sql`: no `sqlfu generate`, no `.generated/`, no database. `node --import sqlfu/register` runs the same imports. Not done: bundler plugins, editor (`tsc --lsp`) testing, docs. Recommendation for #148 is at the bottom.
+Spike done, and it works. `tsc --runExternalCode` (TypeScript 7.1 beta) types `import {listPosts} from './sql/queries.sql'` straight from `definitions.sql`: no `sqlfu generate`, no `.generated/`, no database. `node --import sqlfu/register` runs the same imports. Docs are written, as they'd look if merged. Not done: bundler plugins, editor (`tsc --lsp`) testing. Recommendation for #148 is at the bottom.
 
 ## Why
 
@@ -104,7 +104,7 @@ Suggested: land #148's machinery (inline command parity, optional `db`, `.map`, 
 - Bundler plugins: Vite and esbuild (esbuild covers wrangler). Reylo's are a working reference.
 - Editor check with `tsc --lsp` in VS Code: hover, go-to-definition into the `.sql` file, re-typing on `definitions.sql` edits, settling `watchedFiles`.
 - Span mappings, so a TS error on a generated param or result type points at the query, not `1:1`.
-- Docs: a "no generate step" section in `docs/typegen.md`, once the above lands.
+- ~~Docs~~ _— done on this branch, to show what merging would look like: new `docs/sql-imports.md` page ("Import .sql files directly", marked experimental), one-paragraph pointers from the README typegen section, `typegen.md`, `getting-started.md` and `cli.md`, `sqlfu/register` in `imports.md`, reylo in README prior art, and a `contentMappers` rule in the agent skill_
 - Decide whether `.generated/` stays as the fallback for TypeScript < 7.1 or goes away once 7.1 is stable.
 
 ## Implementation log
@@ -115,3 +115,4 @@ Suggested: land #148's machinery (inline command parity, optional `db`, `.map`, 
 - The renderer serializes its calls: TypeScript sends transforms concurrently, and a schema change rebuilds the shared scratch database.
 - The mapper redirects `console.log` to stderr, since stdout carries the protocol.
 - Full sqlfu suite: 1593 passed. 2 failures in `resolve-sqlfu-ui.test.ts`, because `packages/ui` isn't built in a fresh worktree (`#serialized-assets` missing). Unrelated.
+- Docs placement, per the repo's docs rules: a deep-dive page, since it's an alternative to `generate`, not a new product axis; no landing-page change while TS 7.1 is beta. Page title aims at the search "import .sql file typescript". Sidebar: under Concepts, after typegen. `llms.txt`: Core concepts. Checked the page renders on the dev site and its links and anchors resolve.
