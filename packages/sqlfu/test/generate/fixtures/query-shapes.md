@@ -422,20 +422,14 @@ select id, login from users where id in (select user_id from sessions where expi
 </details>
 
 <details>
-<summary>failing</summary>
-
-Falls back to `//Invalid SQL`. The query catalog records the analyzer crash:
-`Cannot read properties of undefined (reading 'select_stmt')`.
-
-</details>
-
-<details>
 <summary>output</summary>
 
 ```ts (sql/.generated/list-users-with-sessions.sql.ts)
 import type {Client} from 'sqlfu';
 
-const sql = `select id, login from users where id in (select user_id from sessions where expires_at > ?);`;
+const sql = `
+select id, login from users where id in (select user_id from sessions where expires_at > ?);
+`.trim();
 const query = (params: listUsersWithSessions.Params) => ({
 	name: "listUsersWithSessions",
 	sql,
@@ -479,20 +473,14 @@ delete from shares where (project_id, path) in (select project_id, path from rev
 </details>
 
 <details>
-<summary>failing</summary>
-
-Falls back to `//Invalid SQL`. The query catalog records the analyzer crash:
-`Cannot read properties of undefined (reading 'select_stmt')`.
-
-</details>
-
-<details>
 <summary>output</summary>
 
 ```ts (sql/.generated/delete-shares.sql.ts)
 import type {Client} from 'sqlfu';
 
-const sql = `delete from shares where (project_id, path) in (select project_id, path from revoked where revoked_by = ?);`;
+const sql = `
+delete from shares where (project_id, path) in (select project_id, path from revoked where revoked_by = ?);
+`.trim();
 const query = (params: deleteShares.Params) => ({
 	name: "deleteShares",
 	sql,

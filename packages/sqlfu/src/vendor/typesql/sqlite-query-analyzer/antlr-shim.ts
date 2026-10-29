@@ -471,7 +471,8 @@ class ShimExprContext extends ShimExprContextBase {
 	 * - Case: flatten [operand?, when1, then1, when2, then2, ..., else?]
 	 * - Between: [expr, low, high]
 	 * - InList: [expr, synthetic-paren-expr]  (matches ANTLR's shape)
-	 * - InSubquery: [expr]  (the select isn't a child ExprContext)
+	 * - InSubquery: [expr, synthetic-subquery-expr] for IN; [expr] for NOT IN
+	 *   (see the InSubquery case below)
 	 * - Like: [expr, pattern] or [expr, pattern, escape] if ESCAPE clause used
 	 * - IsNull: [operand]
 	 * - Is: [left, right]
@@ -524,9 +525,20 @@ class ShimExprContext extends ShimExprContextBase {
 				result = [wrap(p.expr), wrap(paren)];
 				break;
 			}
-			case 'InSubquery':
-				result = [wrap(p.expr)];
+			case 'InSubquery': {
+				// ANTLR parses `x IN (select ...)` with the binary-operator rule
+				// (`expr IN_ expr`), so the subquery is the right-hand ExprContext.
+				// `x NOT IN (select ...)` can only match `expr NOT_? IN_ (OPEN_PAR
+				// select_stmt CLOSE_PAR)`, where the select is a direct child.
+				// traverse.ts reads each branch accordingly.
+				if (p.negated) {
+					result = [wrap(p.expr)];
+					break;
+				}
+				const subquery: ParsedExpr = {kind: 'Subquery', select: p.select, start: p.select.start, stop: p.select.stop};
+				result = [wrap(p.expr), wrap(subquery)];
 				break;
+			}
 			case 'InTable':
 				result = [wrap(p.expr)];
 				break;
@@ -569,7 +581,7 @@ class ShimExprContext extends ShimExprContextBase {
 		const p = this._parsed;
 		if (p.kind === 'Subquery') return new ShimSelect_stmtContext(p.select, this._sql, this._input, this);
 		if (p.kind === 'Exists') return new ShimSelect_stmtContext(p.select, this._sql, this._input, this);
-		if (p.kind === 'InSubquery') return new ShimSelect_stmtContext(p.select, this._sql, this._input, this);
+		if (p.kind === 'InSubquery' && p.negated) return new ShimSelect_stmtContext(p.select, this._sql, this._input, this);
 		return null;
 	}
 
