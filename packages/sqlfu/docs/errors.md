@@ -15,17 +15,32 @@ The code that cares about a database error rarely cares *which* driver threw it.
 ```ts
 type SqlfuErrorKind =
   | 'syntax'                  // malformed SQL
-  | 'missing_table'           // SQLite "no such table"
-  | 'missing_column'          // SQLite "no such column"
+  | 'missing_table'           // table or view doesn't exist
+  | 'missing_column'
   | 'unique_violation'        // unique *or* primary-key constraint
   | 'not_null_violation'
   | 'foreign_key_violation'
   | 'check_violation'
-  | 'transient'               // SQLITE_BUSY / SQLITE_LOCKED families
+  | 'transient'               // lock contention; retrying usually works
   | 'unknown'                 // mapper didn't recognize; inspect `.cause`
 ```
 
-Names are SQLSTATE-aligned (matching the [PostgreSQL error codes](https://www.postgresql.org/docs/current/errcodes-appendix.html) convention). The Postgres adapter wraps errors in `SqlfuError` too, but doesn't classify them yet: `kind` is always `'unknown'`, and the SQLSTATE is on `.cause.code`. When classification lands it will use these same names. `missing_table` and `missing_column` are the two deliberate deviations: SQLSTATE's `undefined_table` and `undefined_column` collide with TypeScript's `undefined` at reading time.
+What each kind is mapped from:
+
+| kind | SQLite | Postgres SQLSTATE |
+| --- | --- | --- |
+| `syntax` | `syntax error` message | `42601` |
+| `missing_table` | `no such table` message | `42P01` |
+| `missing_column` | `no such column` message | `42703` |
+| `unique_violation` | `SQLITE_CONSTRAINT_UNIQUE`, `SQLITE_CONSTRAINT_PRIMARYKEY` | `23505` |
+| `not_null_violation` | `SQLITE_CONSTRAINT_NOTNULL` | `23502` |
+| `foreign_key_violation` | `SQLITE_CONSTRAINT_FOREIGNKEY` | `23503` |
+| `check_violation` | `SQLITE_CONSTRAINT_CHECK` | `23514` |
+| `transient` | `SQLITE_BUSY*`, `SQLITE_LOCKED*` | `40001` serialization failure, `40P01` deadlock, `55P03` lock not available |
+
+Any other Postgres error is `'unknown'`, with its SQLSTATE still on `.cause.code` (`'22012'` for division by zero).
+
+Names are SQLSTATE-aligned (matching the [PostgreSQL error codes](https://www.postgresql.org/docs/current/errcodes-appendix.html) convention), so the Postgres mapping is a direct lookup. `missing_table` and `missing_column` are the two deliberate deviations: SQLSTATE's `undefined_table` and `undefined_column` collide with TypeScript's `undefined` at reading time.
 
 Primary-key violations collapse into `unique_violation`. From a product perspective both are "that row already exists"; code that needs to distinguish them can still read `.cause.code`.
 
@@ -106,5 +121,5 @@ If you see `kind: 'unknown'` in production, the right response is to file a bug 
 ## References
 
 - [SQLite result codes](https://www.sqlite.org/rescode.html)
-- [PostgreSQL SQLSTATE codes](https://www.postgresql.org/docs/current/errcodes-appendix.html) (for context on the naming convention)
+- [PostgreSQL SQLSTATE codes](https://www.postgresql.org/docs/current/errcodes-appendix.html) (the naming convention, and what the Postgres mapping reads)
 - [observability.md](./observability.md): how `onError` composes with OpenTelemetry, Sentry, PostHog
