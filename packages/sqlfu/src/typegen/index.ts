@@ -1,5 +1,4 @@
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 
 import {analyzeVendoredTypesqlQueries} from './analyze-vendored-typesql.js';
@@ -16,6 +15,7 @@ import {
 } from './query-parameters.js';
 import {
   assertSqliteMaterialized,
+  type SqliteMaterializedTypegenSchema,
   registerSqliteTypegenImpls,
   sqliteDialect,
   type DialectColumnInfo,
@@ -84,7 +84,6 @@ export async function generateQueryTypesForConfig(
   const dialect = config.dialect;
   const sourceSql = await readSchemaForAuthority(config, host);
   await using materialized = await dialect.materializeTypegenSchema(host, {
-    projectRoot: config.projectRoot,
     sourceSql,
     experimentalJsonTypes: config.generate.experimentalJsonTypes,
   });
@@ -151,8 +150,6 @@ export type RenderedQueryModule = {
  * stays open between calls, and is rebuilt when the schema source (`definitions.sql`, by default) changes.
  */
 export async function createQueryModuleRenderer(config: SqlfuProjectConfig, host: SqlfuHost) {
-  // A private scratch root, so this never races `sqlfu generate` over `<projectRoot>/.sqlfu/typegen.db`.
-  const scratchRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'sqlfu-query-modules-'));
   let current:
     | {sourceSql: string; materialized: MaterializedTypegenSchema; schema: ReadonlyMap<string, RelationInfo>}
     | undefined;
@@ -162,7 +159,6 @@ export async function createQueryModuleRenderer(config: SqlfuProjectConfig, host
     if (current?.sourceSql === sourceSql) return current;
     await current?.materialized[Symbol.asyncDispose]();
     const materialized = await config.dialect.materializeTypegenSchema(host, {
-      projectRoot: scratchRoot,
       sourceSql,
       experimentalJsonTypes: config.generate.experimentalJsonTypes,
     });
@@ -186,7 +182,6 @@ export async function createQueryModuleRenderer(config: SqlfuProjectConfig, host
     async [Symbol.asyncDispose]() {
       await queue;
       await current?.materialized[Symbol.asyncDispose]();
-      await fs.rm(scratchRoot, {recursive: true, force: true});
     },
   };
 
@@ -261,7 +256,6 @@ export async function generateInlineConfigTypes(input: {
   for (const inline of inlines) {
     const sourceSql = await materializeDefinitionsSchemaFor(input.host, inline.definitions.sql, {dialect});
     await using materialized = await dialect.materializeTypegenSchema(input.host, {
-      projectRoot: input.projectRoot,
       sourceSql,
       experimentalJsonTypes: false,
     });
@@ -651,7 +645,6 @@ export async function analyzeAdHocSqlForConfig(
   const dialect = config.dialect;
   const sourceSql = await readSchemaForAuthority(config, host);
   await using materialized = await dialect.materializeTypegenSchema(host, {
-    projectRoot: config.projectRoot,
     sourceSql,
     experimentalJsonTypes: config.generate.experimentalJsonTypes,
   });
@@ -678,6 +671,11 @@ export async function analyzeAdHocSqlForConfig(
 type DisposableClient = {
   client: Client;
   [Symbol.asyncDispose](): Promise<void>;
+};
+
+type OpenSqliteDatabase = DisposableClient & {
+  /** The driver's own database object (`node:sqlite` or `bun:sqlite`), which the vendored analyzer reads directly. */
+  database: unknown;
 };
 
 // `TsColumn` and `RelationInfo` are imported from `../dialect.js` as
@@ -769,27 +767,9 @@ type QuerySource = {
   parameterExpansions: ParameterExpansion[];
 };
 
-export async function materializeTypegenDatabase(input: {
-  projectRoot: string;
-  sourceSql: string;
-  experimentalJsonTypes: boolean;
-}) {
-  const tempDbPath = path.join(input.projectRoot, '.sqlfu', 'typegen.db');
-
-  await fs.mkdir(path.dirname(tempDbPath), {recursive: true});
-  await fs.rm(tempDbPath, {force: true});
-  await fs.rm(`${tempDbPath}-shm`, {force: true});
-  await fs.rm(`${tempDbPath}-wal`, {force: true});
-
-  await using typegenDatabase = await openMainDevDatabase(tempDbPath);
-  await typegenDatabase.client.raw(input.sourceSql);
-
-  return tempDbPath;
-}
-
 /**
  * Read the canonical schema source for the project's chosen typegen
- * authority. Used by sqlite's `materializeTypegenDatabase` and exported
+ * authority. Used by sqlite's `materializeTypegenSchema` and exported
  * for pg-side dialects to use for the same purpose. The result is a SQL
  * string ready to apply to a scratch DB.
  *
@@ -959,7 +939,7 @@ async function openLiveDb(
   return openMainDevDatabase(db);
 }
 
-async function openMainDevDatabase(dbPath: string): Promise<DisposableClient> {
+async function openMainDevDatabase(dbPath: string): Promise<OpenSqliteDatabase> {
   if (dbPath !== ':memory:') {
     await fs.mkdir(path.dirname(dbPath), {recursive: true});
   }
@@ -969,6 +949,7 @@ async function openMainDevDatabase(dbPath: string): Promise<DisposableClient> {
     const {Database} = await import('bun:sqlite' as any);
     const database = new Database(dbPath);
     return {
+      database,
       client: createBunClient(database as Parameters<typeof createBunClient>[0]),
       async [Symbol.asyncDispose]() {
         database.close();
@@ -979,6 +960,7 @@ async function openMainDevDatabase(dbPath: string): Promise<DisposableClient> {
   const {DatabaseSync} = await import('node:sqlite');
   const database = new DatabaseSync(dbPath);
   return {
+    database,
     client: createNodeSqliteClient(database as Parameters<typeof createNodeSqliteClient>[0]),
     async [Symbol.asyncDispose]() {
       database.close();
@@ -3723,64 +3705,55 @@ type LoadSchemaOptions = {
   experimentalJsonTypes: boolean;
 };
 
-async function loadSchema(
-  databasePath: string,
-  options: LoadSchemaOptions,
-): Promise<ReadonlyMap<string, RelationInfo>> {
-  await using database = await openMainDevDatabase(databasePath);
-  const client = database.client;
+async function loadSchema(client: Client, options: LoadSchemaOptions): Promise<ReadonlyMap<string, RelationInfo>> {
+  const logicalTypes = options.experimentalJsonTypes
+    ? await loadSqlfuTypes(client)
+    : new Map<string, LogicalTypeInfo>();
+  const schemaResult = await client.all<{name: string; type: string; sql: string | null}>({
+    sql: `
+      select name, type, sql
+      from sqlite_schema
+      where type in ('table', 'view')
+        and ${excludeReservedSqliteObjects}
+      order by name
+    `,
+    args: [],
+  });
 
-  try {
-    const logicalTypes = options.experimentalJsonTypes
-      ? await loadSqlfuTypes(client)
-      : new Map<string, LogicalTypeInfo>();
-    const schemaResult = await client.all<{name: string; type: string; sql: string | null}>({
-      sql: `
-        select name, type, sql
-        from sqlite_schema
-        where type in ('table', 'view')
-          and ${excludeReservedSqliteObjects}
-        order by name
-      `,
-      args: [],
+  const relations = new Map<string, RelationInfo>();
+
+  for (const row of schemaResult) {
+    const name = String(row.name);
+    if (name.toLowerCase() === 'sqlfu_types') {
+      continue;
+    }
+    const kind = row.type === 'view' ? 'view' : 'table';
+    const columns = await loadRelationColumns(client, name, options, logicalTypes);
+    relations.set(name, {
+      kind,
+      name,
+      columns,
+      sql: typeof row.sql === 'string' ? row.sql : undefined,
     });
-
-    const relations = new Map<string, RelationInfo>();
-
-    for (const row of schemaResult) {
-      const name = String(row.name);
-      if (name.toLowerCase() === 'sqlfu_types') {
-        continue;
-      }
-      const kind = row.type === 'view' ? 'view' : 'table';
-      const columns = await loadRelationColumns(client, name, options, logicalTypes);
-      relations.set(name, {
-        kind,
-        name,
-        columns,
-        sql: typeof row.sql === 'string' ? row.sql : undefined,
-      });
-    }
-
-    for (const relation of relations.values()) {
-      if (relation.kind !== 'view' || !relation.sql) {
-        continue;
-      }
-
-      const inferredView = inferViewColumns(relation.sql, relations);
-      if (inferredView.size === 0) {
-        continue;
-      }
-
-      relations.set(relation.name, {
-        ...relation,
-        columns: inferredView,
-      });
-    }
-
-    return relations;
-  } finally {
   }
+
+  for (const relation of relations.values()) {
+    if (relation.kind !== 'view' || !relation.sql) {
+      continue;
+    }
+
+    const inferredView = inferViewColumns(relation.sql, relations);
+    if (inferredView.size === 0) {
+      continue;
+    }
+
+    relations.set(relation.name, {
+      ...relation,
+      columns: inferredView,
+    });
+  }
+
+  return relations;
 }
 
 /**
@@ -4296,26 +4269,31 @@ function mapSqliteTypeToTs(columnType: string): string {
 // api/exports, ui/server) all transitively load this module, so the real
 // methods are in place before any caller invokes them.
 registerSqliteTypegenImpls({
+  // In memory: nothing on disk, so nothing is left behind when a process exits without disposing (a content mapper
+  // that tsc kills, the `sqlfu/register` hooks thread).
   materializeTypegenSchema: async (_host, input) => {
-    const databasePath = await materializeTypegenDatabase(input);
+    const typegenDatabase = await openMainDevDatabase(':memory:');
+    try {
+      await typegenDatabase.client.raw(input.sourceSql);
+    } catch (error) {
+      await typegenDatabase[Symbol.asyncDispose]();
+      throw error;
+    }
     return {
       dialect: 'sqlite',
-      databasePath,
+      typegenDatabase,
       experimentalJsonTypes: input.experimentalJsonTypes,
-      [Symbol.asyncDispose]: async () => {
-        // Sqlite leaves the typegen db on disk between runs — the next
-        // materialize wipes it. No active disposal needed.
-      },
-    } satisfies AsyncDisposable & {dialect: string; databasePath: string; experimentalJsonTypes: boolean};
+      [Symbol.asyncDispose]: () => typegenDatabase[Symbol.asyncDispose](),
+    } satisfies SqliteMaterializedTypegenSchema;
   },
   loadSchemaForTypegen: async (materialized) => {
     const sqliteMaterialized = assertSqliteMaterialized(materialized);
-    return loadSchema(sqliteMaterialized.databasePath, {
+    return loadSchema(sqliteMaterialized.typegenDatabase.client, {
       experimentalJsonTypes: sqliteMaterialized.experimentalJsonTypes,
     });
   },
   analyzeQueries: async (materialized, queries) =>
-    analyzeVendoredTypesqlQueries(assertSqliteMaterialized(materialized).databasePath, queries),
+    analyzeVendoredTypesqlQueries(assertSqliteMaterialized(materialized).typegenDatabase.database, queries),
 });
 
 function logicalTypeForDeclaredSqliteType(columnType: string, options: LoadSchemaOptions): LogicalType | undefined {

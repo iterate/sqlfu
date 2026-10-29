@@ -107,7 +107,6 @@ test('pgDialect.materializeTypegenSchema + loadSchemaForTypegen returns the rela
   `;
   await withProject(sql, async (config, host, dialect) => {
     await using materialized = await dialect.materializeTypegenSchema(host, {
-      projectRoot: config.projectRoot,
       sourceSql: sql,
       experimentalJsonTypes: false,
     });
@@ -136,7 +135,6 @@ test(
     const sql = `create table users (id integer primary key, name text not null, bio text);`;
     await withProject(sql, async (config, host, dialect) => {
       await using materialized = await dialect.materializeTypegenSchema(host, {
-        projectRoot: config.projectRoot,
         sourceSql: sql,
         experimentalJsonTypes: false,
       });
@@ -165,7 +163,6 @@ test('pgDialect.analyzeQueries accepts sqlfu named parameters', {timeout: 30_000
   const sql = `create table posts (id integer primary key, slug text not null, title text not null);`;
   await withProject(sql, async (config, host, dialect) => {
     await using materialized = await dialect.materializeTypegenSchema(host, {
-      projectRoot: config.projectRoot,
       sourceSql: sql,
       experimentalJsonTypes: false,
     });
@@ -197,7 +194,6 @@ test('pgDialect.analyzeQueries handles LEFT JOIN queries end-to-end', {timeout: 
     `;
   await withProject(sql, async (config, host, dialect) => {
     await using materialized = await dialect.materializeTypegenSchema(host, {
-      projectRoot: config.projectRoot,
       sourceSql: sql,
       experimentalJsonTypes: false,
     });
@@ -225,7 +221,6 @@ test('pgDialect.analyzeQueries handles INSERT...RETURNING via DML→SELECT rewri
   const sql = `create table posts (id integer primary key, title text not null, draft boolean);`;
   await withProject(sql, async (config, host, dialect) => {
     await using materialized = await dialect.materializeTypegenSchema(host, {
-      projectRoot: config.projectRoot,
       sourceSql: sql,
       experimentalJsonTypes: false,
     });
@@ -256,7 +251,6 @@ test('pgDialect.analyzeQueries reports prepare-time errors as ok:false', {timeou
   const sql = `create table users (id integer primary key);`;
   await withProject(sql, async (config, host, dialect) => {
     await using materialized = await dialect.materializeTypegenSchema(host, {
-      projectRoot: config.projectRoot,
       sourceSql: sql,
       experimentalJsonTypes: false,
     });
@@ -286,7 +280,6 @@ test('pgDialect.materializeTypegenSchema is authority-agnostic', {timeout: 30_00
   `;
   const dialect = pgDialect({adminUrl: TEST_ADMIN_URL});
   await using materialized = await dialect.materializeTypegenSchema(createMinimalHost(), {
-    projectRoot: '/dev/null/unused-by-pg',
     sourceSql,
     experimentalJsonTypes: false,
   });

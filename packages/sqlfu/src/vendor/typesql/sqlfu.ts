@@ -3,11 +3,10 @@
  * f0356201d41f3f317824968a3f1c7a90fbafdc99 (MIT).
  *
  * Local additions:
- * - expose a sqlite-only descriptor-level API for sqlfu
  * - avoid the upstream file-oriented compile pipeline when sqlfu generates wrappers
- * - re-export the browser-safe client-level entrypoint from sqlfu-with-client.ts
+ * - re-export the browser-safe client-level entrypoint from sqlfu-with-client.ts, which sqlfu calls with a
+ *   database it already has open (typegen's in-memory scratch database)
  */
-import {closeClient, createClient} from './schema-info.js';
 import {
 	analyzeSqliteQueriesWithClient,
 	type SqlfuQueryAnalysis,
@@ -16,18 +15,3 @@ import {
 
 export {analyzeSqliteQueriesWithClient};
 export type {SqlfuQueryAnalysis, SqlfuQueryInput};
-
-export async function analyzeSqliteQueries(databaseUri: string, queries: readonly SqlfuQueryInput[]): Promise<readonly SqlfuQueryAnalysis[]> {
-	const databaseClientResult = await createClient(databaseUri, 'sqlite');
-	if (databaseClientResult.isErr()) {
-		throw new Error(databaseClientResult.error.description);
-	}
-
-	const databaseClient = databaseClientResult.value;
-
-	try {
-		return await analyzeSqliteQueriesWithClient(databaseClient, queries);
-	} finally {
-		await closeClient(databaseClient);
-	}
-}

@@ -1,10 +1,8 @@
-import BetterSqlite3 from 'better-sqlite3';
 import path from 'node:path';
 import {expect, test} from 'vitest';
 
 import {autoAcceptConfirm, createSqlfuApi} from '../src/api/core.js';
 import {sqliteDialect} from '../src/dialect.js';
-import {createBetterSqlite3Client} from '../src/index.js';
 import {createNodeHost, openLocalSqliteFile} from '../src/node/host.js';
 import {generateQueryTypesForConfig} from '../src/typegen/index.js';
 import type {SqlfuAuthority, SqlfuDbFactory, SqlfuProjectConfig} from '../src/types.js';
@@ -20,7 +18,7 @@ test("authority 'desired_schema' is the default — generate reads definitions.s
   await generateQueryTypesForConfig(fixture.config, fixture.host);
 
   expect(fixture.factoryInvocations()).toBe(0);
-  expect(await fixture.typegenDbTables()).toEqual(['person']);
+  expect(await fixture.generatedRowTypes()).toEqual(['PersonRow']);
 });
 
 test("authority 'migrations' replays migration files into a scratch DB, no live DB needed", async () => {
@@ -37,7 +35,7 @@ test("authority 'migrations' replays migration files into a scratch DB, no live 
   await generateQueryTypesForConfig(fixture.config, fixture.host);
 
   expect(fixture.factoryInvocations()).toBe(0);
-  expect(await fixture.typegenDbTables()).toEqual(['person', 'pet']);
+  expect(await fixture.generatedRowTypes()).toEqual(['PersonRow', 'PetRow']);
 });
 
 test("authority 'live_schema' opens the factory-provided DB and extracts its schema", async () => {
@@ -55,7 +53,7 @@ test("authority 'live_schema' opens the factory-provided DB and extracts its sch
   await generateQueryTypesForConfig(fixture.config, fixture.host);
 
   expect(fixture.factoryInvocations()).toBeGreaterThan(invocationsAfterMigrate);
-  expect(await fixture.typegenDbTables()).toEqual(['person']);
+  expect(await fixture.generatedRowTypes()).toEqual(['PersonRow']);
 });
 
 test("authority 'migration_history' replays only applied migrations recorded in sqlfu_migrations", async () => {
@@ -71,7 +69,7 @@ test("authority 'migration_history' replays only applied migrations recorded in 
   await createSqlfuApi({config: fixture.config, host: fixture.host}).migrate({confirm: autoAcceptConfirm});
 
   await generateQueryTypesForConfig(fixture.config, fixture.host);
-  expect(await fixture.typegenDbTables()).toEqual(['person', 'pet']);
+  expect(await fixture.generatedRowTypes()).toEqual(['PersonRow', 'PetRow']);
 
   // delete the second migration file so it's no longer on disk but is still in sqlfu_migrations
   const fs = await import('node:fs/promises');
@@ -144,19 +142,11 @@ async function createAuthorityFixture(input: {
     config,
     host,
     factoryInvocations: () => invocations,
-    async typegenDbTables(): Promise<string[]> {
-      const typegenPath = path.join(root, '.sqlfu', 'typegen.db');
-      const database = new BetterSqlite3(typegenPath);
-      try {
-        const client = createBetterSqlite3Client(database);
-        const rows = client.all<{name: string}>({
-          sql: `select name from sqlite_master where type = 'table' and name not like 'sqlite_%' order by rowid`,
-          args: [],
-        });
-        return rows.map((row) => row.name);
-      } finally {
-        database.close();
-      }
+    /** The row types `generate` wrote: one per table in the schema it typed against. */
+    async generatedRowTypes(): Promise<string[]> {
+      const fs = await import('node:fs/promises');
+      const tables = await fs.readFile(path.join(root, 'sql', '.generated', 'tables.ts'), 'utf8');
+      return [...tables.matchAll(/^export type (\w+) =/gm)].map((match) => match[1]!);
     },
     async [Symbol.asyncDispose]() {
       const fs = await import('node:fs/promises');
