@@ -72,6 +72,9 @@ importers:
       '@typescript/native-preview':
         specifier: ^7.0.0-dev.20260414.1
         version: 7.0.0-dev.20260420.1
+      eslint:
+        specifier: ^9.39.4
+        version: 9.39.4(jiti@2.6.1)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

@@ -1,6 +1,8 @@
 {
   "extends": "../../../../tsconfig.base.json",
   "compilerOptions": {
+    // Same as ../../tsconfig.build.json: dist/vendor must parse as ES2025.
+    "target": "ES2025",
     "noEmit": false,
     "rootDir": ".",
     "outDir": "../../dist/vendor",

@@ -77,6 +77,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # test/dist-syntax.test.ts checks the published dist.
+      - name: Build @sqlfu/pg
+        run: pnpm --filter @sqlfu/pg build
+
       # Same docker compose dev runs locally. Keeps the "how do I run
       # this on my laptop" answer one shell command away from "how does
       # CI run this".
