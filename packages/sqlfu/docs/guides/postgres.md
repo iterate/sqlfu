@@ -178,6 +178,10 @@ Generated wrappers. These differ from SQLite output:
 - Parameters compared with `=` are typed as nullable (`slug: string | null`).
 - Selects with no `from` (`select 1 as a`) get no result columns.
 
+Errors. Postgres errors are wrapped in `SqlfuError`, but `kind` is always
+`'unknown'`. Read the SQLSTATE from `error.cause.code` (`'23505'` for a unique
+violation). See [Errors](../errors.md).
+
 Not covered at all:
 
 - Postgres drivers other than `pg`.
