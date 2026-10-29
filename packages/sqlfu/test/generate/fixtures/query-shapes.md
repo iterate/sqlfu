@@ -404,3 +404,65 @@ export type PostsRow = {
 ```
 
 </details>
+
+## expands select * over a join to each column once
+
+<details data-outputs="sql/.generated/list-tagged-posts.sql.ts">
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table posts (post_id integer primary key, title text not null);
+create table post_tags (tagged_post_id integer not null references posts (post_id), tag text not null);
+```
+
+```sql (sql/list-tagged-posts.sql)
+select * from posts p join post_tags t on t.tagged_post_id = p.post_id;
+```
+
+</details>
+
+<details>
+<summary>output</summary>
+
+```ts (sql/.generated/list-tagged-posts.sql.ts)
+import type {Client} from 'sqlfu';
+
+const sql = `
+select * from posts p join post_tags t on t.tagged_post_id = p.post_id;
+`.trim();
+const query = { name: "listTaggedPosts", sql, args: [] };
+
+function mapResult(row: listTaggedPosts.RawResult): listTaggedPosts.Result {
+	return {
+		postId: row.post_id,
+		title: row.title,
+		taggedPostId: row.tagged_post_id,
+		tag: row.tag,
+	};
+}
+
+export const listTaggedPosts = Object.assign(
+	async function listTaggedPosts(client: Client): Promise<listTaggedPosts.Result[]> {
+		const rows = await client.all<listTaggedPosts.RawResult>(query);
+		return rows.map(mapResult);
+	},
+	{ sql, query, mapResult },
+);
+
+export namespace listTaggedPosts {
+	export type RawResult = {
+		post_id: number;
+		title: string;
+		tagged_post_id: number;
+		tag: string;
+	};
+	export type Result = {
+		postId: number;
+		title: string;
+		taggedPostId: number;
+		tag: string;
+	};
+}
+```
+
+</details>

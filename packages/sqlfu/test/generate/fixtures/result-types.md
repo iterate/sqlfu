@@ -308,3 +308,26 @@ export type PostsRow = {
 ```
 
 </details>
+
+## rejects result columns that share a name
+
+<details>
+<summary>input</summary>
+
+```sql (definitions.sql)
+create table users (id integer primary key, login text not null);
+create table sessions (id text primary key, user_id integer not null references users (id));
+```
+
+```sql (sql/list-sessions.sql)
+select s.id, u.id from sessions s join users u on u.id = s.user_id;
+```
+
+</details>
+
+<details>
+<summary>error</summary>
+
+Query listSessions returns more than one column named "id"
+
+</details>
